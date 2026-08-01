@@ -9,11 +9,120 @@
 - `x11/wayland/xios_surface.{c,h}` — the DDX present side (IOSurface, typed HELLO/DIRTY/CURSOR framing).
 - `x11/wayland/xios_canvas.{c,h}` — native-iPadOS per-window canvas registry + `iosc-native.sock` rendezvous.
 - `x11/wayland/iosc_xwm.{c,h}` — rootless Xwayland XWM module integrated into iosc.
+- `x11/linux-build/patches/xios/xios_output_queue.h` — platform-neutral output
+  ownership scheduler (rotation, buffer age, release waits, disconnect quarantine),
+  exercised by `x11/wayland/xios-output-queue-test.c` on every iosc host build.
 - Clipboard bridge is now compiled/wired through `iosc.c` on the shared 32-byte `XMS1` envelope (`XIOS_MSG_CLIPBOARD` 0x04).
 - `x11/wayland/xios.json` contract: `{width,height,stride,format:BGRA,ddx:"iosurface",socket:<ddx>,input_socket:<path>,display}`.
 - Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
 
 ## Current state
+- 2026-08-01 host-only swapchain hardening and repository release (`iosc
+  0.9.46`, ANGLE `es3-16`, `com.max.xios 0.1.10`; published to staging and
+  production, not installed on-device): output ownership is now a
+  platform-neutral, header-only scheduler rather than policy embedded in the
+  Apple transport. Its mandatory host test covers legacy primary-only use,
+  three-buffer rotation, exact-generation releases, one-shot GPU wait transfer,
+  EGL-style age, cancellation, fixed one-buffer stream-v2, and disconnect
+  recovery. A dropped app socket no longer makes an allocation immediately
+  reusable: pending output buffers are quarantined until the next completed app
+  handshake proves the old Metal consumer was torn down or died. Deferred
+  direct-present `wl_buffer.release` now follows the same boundary instead of
+  becoming safe merely because no stream-v2 socket is active. This closes a
+  latent write-while-sampled race in otherwise successful reconnect smoke tests.
+  The GLES IOSurface cache also destroys a pbuffer when `eglBindTexImage` fails
+  instead of permanently caching a zero texture.
+
+  The host audit caught a packaging mismatch before rollout: public ANGLE
+  `es3-15` does not export `eglWaitSync`, despite the final development shim
+  doing so. The immutable successor `es3-16` contains the fixed load-bearing
+  `/var/jb/lib/angle/libEGL.dylib`; `iosc 0.9.46` depends on that exact floor.
+  Full cross-build, render-plan tests, output-queue tests, Release iPhoneOS app
+  build, package assembly, symbol inspection, entitlement inspection, and
+  rootless target-package checks pass. The production index is solvable across
+  all 621 published packages, its signed live stanzas match source/index commit
+  `fc95ee3a`, and the full public-version/collision gate passes. Published
+  package SHA256 values:
+  `angle ...+es3-16` =
+  `ed7488b9714728c891a5dfe6cbb2ba895da842fb3b98e9e7fc25369a480d385d`,
+  `iosc 0.9.46` =
+  `2cf942dd87c063c26be3ec6ebbf8ad79f001f3ef35df1e54c12e6df00505650f`,
+  and `com.max.xios 0.1.10` =
+  `79a0acbb85f4af3f0e3cd43ed4926371ba6dc0ea52a7e1378eca8d102083e071`.
+  Extracted payload hashes are iosc
+  `97cb62c722c394bf7470c71aa8aa9cc499827660d4e17a39a7c0bf22145b6ed0`,
+  load-bearing ANGLE shim
+  `ec542f1a5c3feb78e060bb0e950cc444e0843580c116d31b4a34fdcf658fc8c8`,
+  and Xios
+  `e4bfb9f2d4a64e5ff2e1203ac3a81cf210ace227f28e73628a7c880f807ee4a5`.
+  The physical gate is a matched three-package install followed by (1) classic
+  output IDs 1/2/3 rotating with releases, (2) KDE direct -> forced composited
+  -> direct transitions, (3) live Xios socket loss/reconnect without premature
+  `wl_buffer.release`, and (4) one physical UIKit-origin tap. No 2026-08-01
+  device claim is made while the iPad is away.
+- 2026-07-30 swapchain/direct-present performance wave (`iosc 0.9.44`
+  package built; direct path and disconnect recovery device verified):
+  classic iosc now allocates three output
+  IOSurfaces and rotates them under explicit ownership. The producer publishes
+  its existing Metal completion timeline with each surface-addressed DIRTY; the
+  Xios app signals a compositor-owned release timeline after its last sample;
+  iosc encodes that release wait on the GPU before reusing the allocation.
+  Neither CPU waits for the other GPU queue. Buffer-age damage history preserves
+  partial repaint correctness when an older output returns from the app.
+  Stream-v2 also supports dynamically exported client IOSurfaces. When exactly
+  one fullscreen, explicitly opaque IOSurface toplevel owns the output (and no
+  lock, DnD, viewport transform, or compositor cursor intervenes), iosc forwards
+  that allocation and its original producer fence directly to Xios and submits
+  no outer GLES draw. Every transition back to composition forces a complete
+  restoration frame. Legacy clients retain output 1; fixed one-buffer producers
+  may negotiate surface-addressed framing without a release timeline and are
+  deliberately never parked awaiting RELEASED. `build-iosc.sh` and its render
+  plan tests pass. Physical launch then proved stream-v2 app attachment with
+  release capability, `buffers=3`, A10 ANGLE/Metal, brokered bidirectional
+  shared events, vblank pacing, and Xios `iosurface-zerocopy`.
+  KWin's fullscreen opaque output entered `present-path=direct-iosurface`,
+  bypassing the outer GLES draw.
+
+  The device gate found two real transition bugs before closure. First, the
+  packaged EGL shim did not export/return the EGL 1.5 `eglWaitSync` core entry
+  point, so release waits could never be queued. Second, output IOSurface
+  pbuffers were both texture-bound and later reused as EGL draw surfaces;
+  rotation back to one correctly failed with `EGL_BAD_ACCESS`. The shim now
+  forwards `eglWaitSync`, while iosc keeps its context current on a dedicated
+  1x1 pbuffer and treats all output IOSurfaces only as permanent texture-backed
+  FBO targets. Target setup occurs before the GPU release wait, with writes
+  still ordered after that wait.
+
+  The final isolated `codex-gles` KDE proof survived a screencopy-forced
+  direct-to-composited transition with Xios attached, produced a 2880x2160
+  capture with 99.8% non-black pixels, and re-entered `direct-iosurface`
+  without fatal/EGL/release-wait errors. The authoritative log is
+  `artifacts/device-runs/kde-direct-context-pbuffer-20260730-0415/iosc-codex-gles.log`;
+  that bundle also contains an unrelated stale global `iosc.log` from the
+  earlier failing default session. A second capture also had 99.8% content,
+  but concurrent session work backgrounded/relaunched Xios before it, so it
+  does not count as three-target consumer-ownership proof.
+  A subsequent default-session proof deliberately killed the attached Xios
+  process while KWin and Plasma were live. `iosc` logged the client drop,
+  continued compositing without `EGL_BAD_ACCESS` or a fatal target bind, and
+  accepted the relaunched Xios client; app status returned to
+  `iosurface-zerocopy 2880x2160 [metal]` and
+  `input-connected iosc(wayland)`. A deterministic click also reached the live
+  `/var/jb/tmp/iosc-input.sock`. Evidence:
+  `artifacts/device-runs/kde-stream-v2-disconnect-reconnect-fixed-20260730/`.
+  The `0.9.44` package SHA256 is
+  `42b9092a7bd313727656e2c8fce9c42229d0798c697ce3d2fb4f2d6e4ae2d024`;
+  its iosc and canonical EGL shim payload hashes are
+  `0ef418c08cda4d740bd1b160ba4e9872a69971200219682adea8d7d6da55a349`
+  and
+  `1944b72f3cdeed0fcd0bc1cfc644a9cd5a0fa1da0f03324492969bb73b3717a2`.
+  It used the matching development EGL shim. A later package audit found that
+  public ANGLE `es3-15` predates the final `eglWaitSync` export; the host-only
+  `es3-16`/`iosc 0.9.46` candidates above supersede that packaging pair. A fresh
+  physical tap remains the final UIKit-origin input observation;
+  the deterministic socket click does not cross that app boundary.
+  `idevicescreenshot` over the network still failed, so the PNG is
+  compositor-output evidence rather than a physical-screen capture.
 - 2026-07-29 classic selective repaint: `iosc 0.9.42` no longer turns a
   repaint request with no pending output damage into a full-output composite.
   Explicit full-scene transitions (output reconfigure and session lock/unlock)

@@ -93,7 +93,23 @@ declined" and "this GPU has no spatial scaler" are both visible in the UI.
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
-- 2026-07-30 stream-v2 consumer (development deploy, physical launch pending):
+- 2026-08-01 host-only repository release (`com.max.xios 0.1.10`; published to
+  staging and production, not installed on-device): `0.1.9` was packaged before
+  the final stream-v2 C client sources,
+  so the immutable successor was built from the actual final tree. Release
+  iPhoneOS build, ldid entitlement inspection, local symbol inspection, package
+  assembly, and the rootless target-package check pass. Package SHA256 is
+  `79a0acbb85f4af3f0e3cd43ed4926371ba6dc0ea52a7e1378eca8d102083e071`;
+  packaged Xios binary SHA256 is
+  `e4bfb9f2d4a64e5ff2e1203ac3a81cf210ace227f28e73628a7c880f807ee4a5`.
+  The public package bytes and signed index were independently verified against
+  source/index commit `fc95ee3a` after production deployment.
+  It must be deployed only with ANGLE `es3-16` and `iosc 0.9.46`, then pass the
+  three-output rotation, direct/composited/direct, reconnect quarantine, and
+  physical UIKit-tap matrix described in `iosc-compositor.md`. No new device
+  result is claimed while the iPad is away.
+- 2026-07-30 stream-v2 consumer (development deploy, direct-path device
+  verified; final three-target rotation proof pending):
   XSurface negotiates up to three fixed output IOSurfaces plus dynamically
   exported direct-present surfaces, with legacy reconnect fallback. DIRTY now
   identifies the exact allocation and is consumed one frame at a time rather
@@ -107,9 +123,23 @@ declined" and "this GPU has no spatial scaler" are both visible in the UI.
   Release-iphoneos and the canonical `bin/install-app.sh x11/apps/Xios` flow
   passed; the installed binary SHA256 is
   `fa85c3be663919159b21e002d5ef76076a540f8c069aca2ec0d8ea7424212f29`.
-  FrontBoard `uiopen` returned success but started no Xios process, so the
-  matched app/compositor runtime proof is gated on physically tapping the Home
-  Screen `X11` icon.
+  After a physical Home Screen launch, Xios negotiated
+  `typed stream-v2 ... outputs=3`, stayed at
+  `iosurface-zerocopy 2880x2160 [metal]`, and kept the slot input socket
+  connected while KWin switched from its direct IOSurface to composited
+  fallback and back. The isolated proof survived that forced fallback/capture
+  with KWin/Plasma/iosc/Xios alive; the authoritative slot log is
+  `artifacts/device-runs/kde-direct-context-pbuffer-20260730-0415/iosc-codex-gles.log`.
+  A later default-session run deliberately killed and relaunched Xios while the
+  packaged-candidate `iosc 0.9.44` compositor, KWin, and Plasma stayed live.
+  The compositor accepted the new stream-v2 client and Xios returned to
+  `iosurface-zerocopy 2880x2160 [metal]` with
+  `input-connected iosc(wayland)`; the matching evidence bundle is
+  `artifacts/device-runs/kde-stream-v2-disconnect-reconnect-fixed-20260730/`.
+  A new physical tap is still required to close the UIKit-origin boundary.
+  Network `idevicescreenshot` was unavailable, so the captures prove compositor
+  contents while the app status/process/stream logs prove the UIKit consumer
+  remained attached for the clean direct/fallback/direct cycle.
 - 2026-07-29 device proof: `com.max.xios 0.1.4` and `xios-session 1.0.67`
   are installed. Xios PID `77756` survived repeated iosc → KDE → iosc → KDE
   transitions and concurrent client-launch pressure. Final state was
