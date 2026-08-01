@@ -1,14 +1,13 @@
 # Public Readiness
 
-Status as of 2026-07-29: one blocker left — a history purge. Everything else on the original
-list is done: MIT `LICENSE` at the root, the artifact policy decided and enforced by
-`.gitignore`, Blob hosting live, and CI running the PR checks below.
+Status as of 2026-08-01: complete. The repository is public, the history cleanup is
+complete, the MIT `LICENSE` is at the root, the artifact policy is enforced by
+`.gitignore`, Blob hosting is live, and CI runs the PR checks below.
 
-## Current Blocker
+## History Cleanup (completed 2026-08-01)
 
-**Purge copied proprietary assets and private transcripts from history** before making this
-repository public. These are already out of the index, but if history is preserved they must
-be stripped with `git filter-repo` (or the repo published from clean history):
+The public history was purged of these copied proprietary assets, private material,
+and reproducible source archives:
 
 - `x11/apps/iosc-shell/design/.sf/SFNS.ttf` — Apple's proprietary San Francisco font
   (redistribution violates Apple's license).
@@ -19,8 +18,8 @@ be stripped with `git filter-repo` (or the repo published from clean history):
   loss. Curated header subdirs (`dbus-headers/`, `libei-1.3.0/src/`) stay tracked as build
   inputs — do **not** purge those paths.
 
-Run a secret/artifact scan (`gitleaks`, `git filter-repo --analyze`, or equivalent) as part
-of the same pass.
+The final reachable history passed `git filter-repo --analyze`, a targeted path scan,
+and a Gitleaks scan across all public refs.
 
 ## Settled
 
