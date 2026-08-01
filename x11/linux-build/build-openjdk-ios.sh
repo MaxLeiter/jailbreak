@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and package a full OpenJDK 21 HotSpot JDK for rootless arm64 iOS.
+# Build and package a full OpenJDK 21 HotSpot JDK for arm64 iOS.
 #
 # This lane deliberately produces a headless JDK first: Java CLI, compiler,
 # build tools, networking, crypto, images/fonts, JFR and HotSpot C1/C2 work,
@@ -19,20 +19,27 @@ ROOT="$(cd "$HERE/.." && pwd)"
 
 source "$HERE/target-lib.sh"
 xios_load_target "${XIOS_TARGET:-rootless-1900}"
-[ "$XIOS_PREFIX" = /var/jb ] || {
-  echo "OpenJDK packaging currently supports the rootless /var/jb target only" >&2
-  exit 1
-}
 source "$ROOT/lib/xlib.sh"
 
-OUT="${OUT:-$HERE/out}"
-WORK="${WORK:-$OUT/openjdk-ios-work}"
+MODE="${1:-all}"
+if [ "$XIOS_REPO_PROFILE" = rootless ]; then
+  OUT="${OUT:-$HERE/out}"
+else
+  OUT="${OUT:-$HERE/out/targets/$XIOS_TARGET_ID}"
+fi
+WORK="${WORK:-$HERE/out/openjdk-ios-work}"
 CONF="${OPENJDK_CONF:-ios-aarch64-server-release}"
 IMAGE="$WORK/openjdk/build/$CONF/images/jdk"
-JVM_HOME="$XIOS_PREFIX/usr/lib/jvm/java-21-openjdk"
-IOS_MIN="${IOS_MIN:-16.0}"
+JVM_HOME="$XIOS_INSTALL_PREFIX/lib/jvm/java-21-openjdk"
+IOS_MIN="${IOS_MIN:-$XIOS_DEFAULT_MIN_IOS}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
-MODE="${1:-all}"
+
+if [ "$XIOS_REPO_PROFILE" != rootless ] && [ "$MODE" != "--package-only" ]; then
+  echo "OpenJDK's arm64 iOS image is target-neutral, but source builds use the rootless" >&2
+  echo "development sysroot. Build it once with rootless-1900, then repackage with:" >&2
+  echo "  XIOS_TARGET=$XIOS_TARGET_ID $0 --package-only" >&2
+  exit 2
+fi
 
 OPENJDK_REPO="${OPENJDK_REPO:-https://github.com/openjdk/jdk21u.git}"
 OPENJDK_COMMIT="${OPENJDK_COMMIT:-9de4f68c88a0a1510373f291d1a95b1f6b0db8c8}"
@@ -329,6 +336,21 @@ package_image() {
     "$jdk_home/bin" "$jdk$XIOS_PREFIX/usr/bin"
   cp "$ROOT/packages/openjdk-21-jre-headless/DEBIAN/control" "$jre/DEBIAN/control"
   cp "$ROOT/packages/openjdk-21-jdk-headless/DEBIAN/control" "$jdk/DEBIAN/control"
+  local runtime_version="21.0.12$XIOS_VERSION_SUFFIX"
+  sed -i.bak \
+    -e "s/^Version: .*/Version: $runtime_version/" \
+    -e "s/^Architecture: .*/Architecture: $XIOS_DEB_ARCH/" \
+    -e "s/^MinimumOSVersion: .*/MinimumOSVersion: $IOS_MIN/" \
+    -e 's/ for rootless iOS\\./ for iOS./' \
+    "$jre/DEBIAN/control"
+  sed -i.bak \
+    -e "s/^Version: .*/Version: $runtime_version/" \
+    -e "s/^Architecture: .*/Architecture: $XIOS_DEB_ARCH/" \
+    -e "s/^Depends: openjdk-21-jre-headless .*/Depends: openjdk-21-jre-headless (= $runtime_version)/" \
+    -e "s/^MinimumOSVersion: .*/MinimumOSVersion: $IOS_MIN/" \
+    -e 's/ for rootless iOS\\./ for iOS./' \
+    "$jdk/DEBIAN/control"
+  rm -f "$jre/DEBIAN/control.bak" "$jdk/DEBIAN/control.bak"
 
   for d in conf legal; do
     cp -R "$IMAGE/$d" "$jre_home/$d"
@@ -360,6 +382,7 @@ package_image() {
 
   chmod 0755 "$jre_home/bin/"* "$jdk_home/bin/"*
   local jre_deb jdk_deb
+  mkdir -p "$OUT"
   jre_deb="$(make_deb_isolated "$jre")"
   jdk_deb="$(make_deb_isolated "$jdk")"
   echo "==> packages"

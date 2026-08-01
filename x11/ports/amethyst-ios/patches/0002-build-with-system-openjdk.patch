@@ -1,0 +1,48 @@
+diff --git a/Makefile b/Makefile
+index 00a6c56..6a355b0 100644
+--- a/Makefile
++++ b/Makefile
+@@ -186,24 +186,10 @@ ifneq ($(call METHOD_DEPCHECK,cmake --version),1)
+ $(error You need to install cmake)
+ endif
+ 
+-ifneq ($(call METHOD_DEPCHECK,$(BOOTJDK)/javac -version),1)
+-$(error You need to install JDK 8)
+-endif
+-
+-ifeq ($(IOS),0)
+-ifeq ($(filter 1.8.0,$(shell $(BOOTJDK)/javac -version &> javaver.txt && cat javaver.txt | cut -b 7-11 && rm -rf javaver.txt)),)
+-$(error You need to install JDK 8)
+-endif
+-endif
+-
+ ifneq ($(call METHOD_DEPCHECK,ldid),1)
+ $(error You need to install ldid)
+ endif
+ 
+-ifneq ($(call METHOD_DEPCHECK,wget --version),1)
+-$(error You need to install wget)
+-endif
+-
+ ifeq ($(DETECTPLAT),Linux)
+ ifneq ($(call METHOD_DEPCHECK,lld),1)
+ $(error You need to install lld)
+@@ -284,6 +270,10 @@ java:
+ 	echo '[Amethyst v$(VERSION)] java - end'
+ 
+ jre: native
++ifeq ($(XIOS_SYSTEM_JRE),1)
++	echo '[Amethyst v$(VERSION)] jre - using Xios system OpenJDK'
++	mkdir -p $(OUTPUTDIR)/java_runtimes
++else
+ 	echo '[Amethyst v$(VERSION)] jre - start'
+ 	mkdir -p $(SOURCEDIR)/depends
+ 	cd $(SOURCEDIR)/depends; \
+@@ -304,6 +294,7 @@ jre: native
+ 	cp $(WORKINGDIR)/libawt_xawt.dylib $(OUTPUTDIR)/java_runtimes/java-21-openjdk/lib;
+ 	cp $(WORKINGDIR)/libawt_xawt.dylib $(OUTPUTDIR)/java_runtimes/java-25-openjdk/lib
+ 	echo '[Amethyst v$(VERSION)] jre - end'
++endif
+ 
+ dep_mg:
+ 	echo '[Amethyst v$(VERSION)] dep_mg - start'

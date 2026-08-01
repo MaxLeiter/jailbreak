@@ -1,0 +1,40 @@
+diff --git a/Natives/LauncherPreferences.m b/Natives/LauncherPreferences.m
+index f5bb312..74a7ab1 100644
+--- a/Natives/LauncherPreferences.m
++++ b/Natives/LauncherPreferences.m
+@@ -118,7 +118,21 @@ UIEdgeInsets getDefaultSafeArea() {
+     }
+ 
+     id selectedDir = pref[selectedVer];
+-    if ([selectedDir isEqualToString:@"internal"]) {
++    if ([selectedDir isEqualToString:@"xios-system"]) {
++        NSArray<NSString *> *systemCandidates = @[
++            @"/var/jb/usr/lib/jvm/java-21-openjdk",
++            @"/usr/lib/jvm/java-21-openjdk",
++            [NSString stringWithFormat:@"%@/java_runtimes/java-%@-openjdk",
++                NSBundle.mainBundle.bundlePath, selectedVer]
++        ];
++        for (NSString *candidate in systemCandidates) {
++            if ([NSFileManager.defaultManager fileExistsAtPath:candidate]) {
++                return candidate;
++            }
++        }
++        NSLog(@"Error: Xios system Java %@ was not installed in a rootless, rootful, or bundled location!", selectedVer);
++        return nil;
++    } else if ([selectedDir isEqualToString:@"internal"]) {
+         selectedDir = [NSString stringWithFormat:@"%@/java_runtimes/java-%@-openjdk", NSBundle.mainBundle.bundlePath, selectedVer];
+     } else {
+         selectedDir = [NSString stringWithFormat:@"%s/java_runtimes/%@", getenv("POJAV_HOME"), selectedDir];
+diff --git a/Natives/PLPreferences.m b/Natives/PLPreferences.m
+index 007f24c..bbdfce7 100644
+--- a/Natives/PLPreferences.m
++++ b/Natives/PLPreferences.m
+@@ -56,7 +56,7 @@ + (id)defaultPrefForGlobal:(BOOL)global {
+                 }.mutableCopy,
+                 @"8": @"internal",
+                 @"17": @"internal",
+-                @"21": @"internal"
++                @"21": @"xios-system"
+             }.mutableCopy,
+             @"java_args": @"",
+             @"env_variables": @"",

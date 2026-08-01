@@ -1,6 +1,6 @@
-# OpenJDK 21 for rootless iOS
+# OpenJDK 21 for rootless and rootful iOS
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 ## Current state
 
@@ -16,6 +16,17 @@ The package split is:
   crypto, management, JFR runtime, and `/var/jb/usr/bin` links.
 - `openjdk-21-jdk-headless 21.0.12+ios1`: `javac`, JShell, javadoc, jar,
   jlink/jmod, diagnostics/debuggers, headers, jmods, man pages, and source zip.
+
+The same target-neutral arm64 JDK image now also has a rootful package profile:
+
+- `openjdk-21-jre-headless 21.0.12+rootful1` installs the runtime and command
+  links under `/usr`, with package architecture `iphoneos-arm`.
+- `openjdk-21-jdk-headless 21.0.12+rootful1` installs the matching development
+  tools and depends exactly on the rootful JRE revision.
+
+The rootful packages pass host payload/control/signature inspection but have
+not run on rootful hardware. They are not published and must not be described
+as device-proven.
 
 Final local and installed package bytes:
 
@@ -49,6 +60,14 @@ Run from the repository root:
 
 ```bash
 bash x11/linux-build/build-openjdk-ios.sh
+```
+
+The source build uses the rootless development sysroot. Repackage the same
+arm64 iOS image for rootful after that build completes:
+
+```bash
+XIOS_TARGET=rootful-1900 \
+  bash x11/linux-build/build-openjdk-ios.sh --package-only
 ```
 
 The build pins:
