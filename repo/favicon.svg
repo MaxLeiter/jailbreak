@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Xios X11 mark</title>
+  <desc id="desc">A bright asymmetric X crossed by an orbital ring on a dark blue tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#121a2d"/>
+      <stop offset="0.52" stop-color="#08111f"/>
+      <stop offset="1" stop-color="#03070e"/>
+    </linearGradient>
+    <linearGradient id="x" x1="118" y1="88" x2="404" y2="424" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d9e9ff"/>
+    </linearGradient>
+    <linearGradient id="orbit" x1="65" y1="170" x2="447" y2="354" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#409dff"/>
+      <stop offset="1" stop-color="#36e1ff"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="496" height="496" rx="112" fill="url(#tile)"/>
+  <rect x="18" y="18" width="476" height="476" rx="102" fill="none" stroke="#ffffff" stroke-opacity=".10" stroke-width="4"/>
+
+  <!-- Back half of the orbit, tucked behind the X like the classic X11 mark. -->
+  <path d="M69 263c0-96 82-154 187-154s187 58 187 154-82 154-187 154S69 359 69 263Z"
+        fill="none" stroke="url(#orbit)" stroke-width="24" stroke-linecap="round"/>
+
+  <!-- The deliberately asymmetric X preserves the distinctive X11 silhouette. -->
+  <path d="M115 88h86l207 336h-86L115 88Z" fill="url(#x)"/>
+  <path d="M359 88h38L153 424h-38L359 88Z" fill="url(#x)"/>
+
+  <!-- Front arc makes the orbit visibly pass around, rather than behind, the X. -->
+  <path d="M70 276c8 87 86 141 186 141 85 0 156-39 180-105"
+        fill="none" stroke="url(#orbit)" stroke-width="28" stroke-linecap="round"/>
+</svg>

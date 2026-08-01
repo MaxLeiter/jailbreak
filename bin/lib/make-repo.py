@@ -5,7 +5,7 @@ Outputs in repo/:
   Packages, Packages.gz, Release      package index (+ rich fields)
   index.html                          themed landing page
   robots.txt, sitemap.xml             search-engine discovery
-  CydiaIcon.png, favicon.ico          repo icon (from maxleiter.com favicon)
+  favicon.svg/.ico/.png, touch icons  X11-inspired repo identity
   icons/<pkg>.png                     per-package icon
   banners/<pkg>.png                   featured banner
   depictions/<pkg>.json               Sileo native depiction
@@ -25,6 +25,8 @@ Two modes:
                  CI can rebuild and sign the index from a plain checkout while
                  the payloads live immutably in Blob. Leaves repo/Packages and
                  the tracked icons/banners byte-identical.
+  --identity-only regenerate just the favicon, touch/repo icons, and manifest
+                  from x11/apps/Xios/assets/xios-mark.svg.
 
 Both modes prune per-package assets whose package left the index; see
 prune_orphan_assets.
@@ -59,16 +61,17 @@ APP_SECTION_PACKAGES = {
 }
 
 # ── identity / theme ─────────────────────────────────────────────────────────
-BASE_URL    = "https://repo.maxleiter.com"
+BASE_URL    = os.environ.get("XIOS_REPO_BASE_URL", "https://repo.maxleiter.com")
 REPO_NAME   = "Max's Repo"
 ORIGIN      = REPO_NAME
 DESCRIPTION = "Jailbreak packages by Max"
-ARCH        = "iphoneos-arm64"
+ARCH        = "iphoneos-arm64" if PROFILE == "rootless" else "iphoneos-arm"
 PUBLISHER   = "Max Leiter <maxwell.leiter@gmail.com>"
 ACCENT      = (85, 170, 255)      # #55aaff (maxleiter.com brand blue)
 ACCENT_HEX  = "#55aaff"
 ICON_BG     = (16, 16, 20)
-FAVICON_SRC = os.path.expanduser("~/Documents/maxleiter.com/public/favicons")
+REPO_ICON_SOURCE = os.path.abspath(os.path.join(
+    HERE, "..", "..", "x11", "apps", "Xios", "assets", "xios-mark.svg"))
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -491,8 +494,10 @@ RSVG_CONVERT = shutil.which("rsvg-convert")
 # dark rounded tile the generated glyphs use, so real + generated icons sit
 # together without looking mismatched.
 def _load_logo_source(pid, px):
-    for ext in ("svg", "png"):
-        path = os.path.join(LOGO_SOURCES, f"{pid}.{ext}")
+    candidates = ([(REPO_ICON_SOURCE, "svg")] if pid == "com.max.xios" else
+                  [(os.path.join(LOGO_SOURCES, f"{pid}.{ext}"), ext)
+                   for ext in ("svg", "png")])
+    for path, ext in candidates:
         if not os.path.exists(path):
             continue
         if ext == "svg":
@@ -506,6 +511,71 @@ def _load_logo_source(pid, px):
             return Image.open(io.BytesIO(out.stdout)).convert("RGBA")
         return Image.open(path).convert("RGBA")
     return None
+
+def _render_svg(path, px):
+    if not HAVE_PIL or not RSVG_CONVERT or not os.path.exists(path):
+        return None
+    out = subprocess.run(
+        [RSVG_CONVERT, "-w", str(px), "-h", str(px), path],
+        stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if out.returncode != 0:
+        return None
+    return Image.open(io.BytesIO(out.stdout)).convert("RGBA")
+
+def generate_repo_identity(render_rasters=False):
+    """Install the vector identity and, on authoring hosts, its raster family."""
+    shutil.copyfile(REPO_ICON_SOURCE, os.path.join(REPO, "favicon.svg"))
+    manifest = {
+        "name": REPO_NAME,
+        "short_name": "Xios Repo",
+        "icons": [
+            {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+            {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+        ],
+        "theme_color": "#0a0a0b",
+        "background_color": "#0a0a0b",
+        "display": "standalone",
+    }
+    with open(os.path.join(REPO, "site.webmanifest"), "w") as f:
+        json.dump(manifest, f, indent=2)
+        f.write("\n")
+
+    if not render_rasters:
+        return
+    master = _render_svg(REPO_ICON_SOURCE, 512)
+    if master is None:
+        raise SystemExit("ERROR: repo identity raster generation needs Pillow and rsvg-convert")
+    for filename, size in (
+        ("favicon-16x16.png", 16),
+        ("favicon-32x32.png", 32),
+        ("apple-touch-icon.png", 180),
+        ("CydiaIcon.png", 180),
+        ("icon-192.png", 192),
+        ("icon-512.png", 512),
+    ):
+        master.resize((size, size), Image.LANCZOS).save(os.path.join(REPO, filename))
+    master.save(os.path.join(REPO, "favicon.ico"), format="ICO",
+                sizes=[(16, 16), (32, 32), (48, 48)])
+
+    # Keep the package-manager depiction in the same identity family as the
+    # actual Home Screen app, rather than falling back to the Desktop glyph.
+    os.makedirs(os.path.join(REPO, "icons"), exist_ok=True)
+    os.makedirs(os.path.join(REPO, "banners"), exist_ok=True)
+    xios_icon = package_icon("com.max.xios", "Desktop", 256)
+    xios_icon.save(os.path.join(REPO, "icons", "com.max.xios.png"))
+    xios_ctrl = {}
+    packages_path = os.path.join(REPO, "Packages")
+    if os.path.exists(packages_path):
+        _, ctrls = parse_packages_index(packages_path)
+        xios_ctrl = next((c for c in ctrls if c.get("Package") == "com.max.xios"), {})
+    xios_meta = load_meta("com.max.xios")
+    make_banner(
+        os.path.join(REPO, "banners", "com.max.xios.png"),
+        package_name(xios_ctrl, xios_meta) if xios_ctrl else "Xios",
+        xios_meta.get("tagline", xios_ctrl.get(
+            "Description", "The app that puts the desktop on your screen")),
+        xios_icon,
+    )
 
 def package_icon(pid, section, px=256):
     s = 4; S = px * s
@@ -719,7 +789,7 @@ def html_depiction(ctrl, meta, size):
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#000000">
-{seo_head(ctrl, meta)}<link rel="icon" href="../favicon.ico">{head_links("../")}{HEAD_JS}</head>
+{seo_head(ctrl, meta)}{favicon_links("../")}{head_links("../")}{HEAD_JS}</head>
 <body><div class="wrap">
   <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
   <header class="masthead"><img src="../icons/{pid}.png" alt="">
@@ -735,6 +805,15 @@ def head_links(prefix=""):
     # inlined into every page. Fonts are self-hosted via @font-face inside it, so the
     # site makes no third-party (Google Fonts) requests.
     return f'<link rel="stylesheet" href="{prefix}site.css">'
+
+def favicon_links(prefix=""):
+    return (
+        f'<link rel="icon" href="{prefix}favicon.ico" sizes="16x16 32x32 48x48">'
+        f'<link rel="icon" href="{prefix}favicon.svg" type="image/svg+xml">'
+        f'<link rel="icon" href="{prefix}favicon-32x32.png" sizes="32x32" type="image/png">'
+        f'<link rel="apple-touch-icon" href="{prefix}apple-touch-icon.png">'
+        f'<link rel="manifest" href="{prefix}site.webmanifest">'
+    )
 
 # Written once to repo/site.css by main(); linked by index + every depiction.
 # @font-face url() resolves relative to THIS file (repo/site.css) -> repo/fonts/.
@@ -1264,7 +1343,7 @@ def write_index(pkgs):
 <meta property="og:url" content="{BASE_URL}/">
 <meta property="og:image" content="{BASE_URL}/CydiaIcon.png">
 <meta name="twitter:card" content="summary">
-<link rel="icon" href="favicon.ico">{head_links("")}{HEAD_JS}</head>
+{favicon_links("")}{head_links("")}{HEAD_JS}</head>
 <body><div class="wrap">
   <header class="mast reveal" style="--i:0">
     <div class="mast-top"><a class="micro" href="https://maxleiter.com">maxleiter.com</a>{THEME_PICKER}</div>
@@ -1345,8 +1424,14 @@ def main():
     ap.add_argument("--from-index", action="store_true",
                     help="regenerate only what derives from the committed "
                          "repo/Packages; needs no .deb payloads")
+    ap.add_argument("--identity-only", action="store_true",
+                    help="regenerate only the repo favicon, touch icon, and web manifest")
     args = ap.parse_args()
     from_index = args.from_index
+
+    if args.identity_only:
+        generate_repo_identity(render_rasters=True)
+        return
 
     for d in ("icons", "banners", "depictions"):
         os.makedirs(os.path.join(REPO, d), exist_ok=True)
@@ -1354,15 +1439,10 @@ def main():
     # one shared, cacheable stylesheet for index + all depictions (was inlined per page)
     open(os.path.join(REPO, "site.css"), "w").write(SITE_CSS)
 
-    # repo icon from the website favicon. Authoring-host only: FAVICON_SRC is a
-    # path in the maxleiter.com checkout, and CydiaIcon.png/favicon.ico are
-    # tracked, so a --from-index run just uses what the checkout already has.
-    if not from_index and os.path.isdir(FAVICON_SRC):
-        shutil.copyfile(os.path.join(FAVICON_SRC, "apple-touch-icon.png"),
-                        os.path.join(REPO, "CydiaIcon.png"))
-        ico = os.path.join(FAVICON_SRC, "favicon.ico")
-        if os.path.exists(ico):
-            shutil.copyfile(ico, os.path.join(REPO, "favicon.ico"))
+    # The vector source and manifest are cheap and deterministic. Raster assets
+    # stay byte-identical in --from-index/CI runs, but authoring runs refresh the
+    # complete icon family from the checked-in source.
+    generate_repo_identity(render_rasters=not from_index)
 
     pkgs, stanzas, featured_by_pid = [], [], {}
 
