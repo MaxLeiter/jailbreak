@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.24+ios1"
+          "text": "0.1.25+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "68264.2 KiB"
+          "text": "68253.1 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.1.23+ios1  \u00b7  2026-07-28\n- Declares iPhone alongside iPad (`UIDeviceFamily` 1 and 2) so the app installs and shows a home-screen icon on iPhone. **Untested on iPhone**: the layout is safe-area and DPI independent, but the toolbar is tight on small screens and there is no keyboard inset yet\n- Adds the generic `CFBundleIcons` and orientation keys that were previously iPad-only\n- Stamps `MinimumOSVersion: 16.0` in the package control, so Sileo no longer offers the package to iOS 15 devices where it cannot launch\n- No engine or frontend code changes: all six binaries are byte-identical to 0.1.22+ios1\n\n## 0.1.22+ios1  \u00b7  2026-07-06\n- Links the real ANGLE EGL/GLES runtime for iOS GPU/WebGL\n- Verifies WebGL context creation through ANGLE Metal on A10\n- Makes WebGL bring-up tracing opt-in instead of writing logs by default\n- Keeps the standalone UIKit app self-contained with bundled helpers and dylibs\n\n## 0.1.11+ios1  \u00b7  2026-07-05\n- Present Ladybird's IOSurface-backed front buffer through Metal\n- Use Mach bootstrap IPC on iOS for bundled helpers and IOSurface handoff\n- Friendlier address bar parsing for bare HTTPS hosts\n- Keyboard input and autofocus handoff fixes\n- Real upstream Ladybird app icon\n- Bundled fonts and self-contained app resources"
+          "markdown": "## 0.1.25+ios1  \u00b7  2026-08-01\n- Adds scheme-neutral runtime paths and ships the same `ladybird-app` package id for both jailbreak layouts: `iphoneos-arm64` under `/var/jb/Applications` and `iphoneos-arm` under `/Applications`\n- Keeps the supported device floor explicit at 64-bit iPhone/iPad on iOS or iPadOS 16 and newer\n- Rewrites the external `libiosexec` rpath and filesystem entitlements for each target, strips foreign rpaths from bundled dylibs, and registers the exact app path with `uicache`\n- Both payloads passed host architecture, load-path, entitlement, package-layout, and dependency audits; rootful physical-device runtime validation is still pending\n\n## 0.1.23+ios1  \u00b7  2026-07-28\n- Declares iPhone alongside iPad (`UIDeviceFamily` 1 and 2) so the app installs and shows a home-screen icon on iPhone. **Untested on iPhone**: the layout is safe-area and DPI independent, but the toolbar is tight on small screens and there is no keyboard inset yet\n- Adds the generic `CFBundleIcons` and orientation keys that were previously iPad-only\n- Stamps `MinimumOSVersion: 16.0` in the package control, so Sileo no longer offers the package to iOS 15 devices where it cannot launch\n- No engine or frontend code changes: all six binaries are byte-identical to 0.1.22+ios1\n\n## 0.1.22+ios1  \u00b7  2026-07-06\n- Links the real ANGLE EGL/GLES runtime for iOS GPU/WebGL\n- Verifies WebGL context creation through ANGLE Metal on A10\n- Makes WebGL bring-up tracing opt-in instead of writing logs by default\n- Keeps the standalone UIKit app self-contained with bundled helpers and dylibs\n\n## 0.1.11+ios1  \u00b7  2026-07-05\n- Present Ladybird's IOSurface-backed front buffer through Metal\n- Use Mach bootstrap IPC on iOS for bundled helpers and IOSurface handoff\n- Friendlier address bar parsing for bare HTTPS hosts\n- Keyboard input and autofocus handoff fixes\n- Real upstream Ladybird app icon\n- Bundled fonts and self-contained app resources"
         }
       ]
     }
