@@ -22,7 +22,13 @@
 #include <stdint.h>
 #include "XiosProtocol.h"
 
-/* Create the shared BGRA8 IOSurface for a `width`x`height` screen.
+/* Select how many compositor output IOSurfaces xios_surface_create() allocates.
+ * The default is one for fixed-target users (Xorg/Mutter). iosc selects three
+ * before create so rendering and app presentation can overlap without either
+ * GPU queue touching the same allocation. Values outside 1..3 are rejected. */
+int xios_set_output_buffer_count(unsigned count);
+
+/* Create the shared BGRA8 IOSurface set for a `width`x`height` screen.
  * Returns the framebuffer base address (the X server draws directly here), or
  * NULL on failure. On success *stride is the real bytes-per-row (may be padded
  * for alignment) and *alloc_size is the total allocation in bytes. */
@@ -34,6 +40,20 @@ void *xios_surface_create(int width, int height, int *stride, int *alloc_size);
  * clients are disconnected so they re-handshake, and the new framebuffer base is
  * returned with the same contract as xios_surface_create(). */
 void *xios_surface_resize(int width, int height, int *stride, int *alloc_size);
+
+/* Acquire an output buffer for a compositor frame. `age` follows EGL buffer-age
+ * semantics: 0 means undefined contents (redraw everything), 1 means the
+ * preceding output frame, N means accumulate the preceding N-1 frames' damage.
+ * `release_wait_value` is a value on the compositor-owned release timeline that
+ * must be GPU-waited before writing this allocation. Returns 1 on success and 0
+ * when every output is still awaiting a release submission from the app. */
+int xios_output_acquire(void **iosurface, uint32_t *surface_id,
+                        unsigned *age, uint64_t *release_wait_value);
+void xios_output_cancel(uint32_t surface_id);
+
+/* Configure the compositor-owned release MTLSharedEvent token advertised to
+ * stream-v2 app clients. Must be called before xios_server_start(). */
+int xios_set_release_fence_token(const void *token, size_t token_size);
 
 /* Start the AF_UNIX rendezvous/damage socket at sock_path and write the geometry
  * handshake to json_path (so the app can detect IOSurface mode and find the
@@ -53,6 +73,25 @@ int xios_server_start(const char *sock_path, const char *json_path,
 int xios_notify_dirty_with_fence(const void *shared_event_token,
                                  size_t token_size,
                                  uint64_t event_value);
+
+/* Surface-addressed form used by the output swapchain and direct IOSurface
+ * pass-through. On success seq_out receives the DIRTY sequence. */
+int xios_notify_surface_with_fence(uint32_t surface_id,
+                                   const void *shared_event_token,
+                                   size_t token_size,
+                                   uint64_t event_value,
+                                   uint64_t *seq_out);
+
+/* Export an already-existing client IOSurface into the app stream without a
+ * compositor copy. Registration retains the surface until unregister. The
+ * returned id is stable for repeated registration of the same IOSurface. */
+uint32_t xios_stream_register_surface(void *iosurface, uint32_t flags);
+void xios_stream_unregister_surface(uint32_t surface_id);
+uint64_t xios_stream_released_generation(uint32_t surface_id);
+
+/* True only when the sole attached app negotiated stream-v2. Direct
+ * pass-through must fall back to composition otherwise. */
+int xios_stream_v2_active(void);
 
 uint64_t xios_dirty_generation(void);
 uint64_t xios_presented_generation(void);

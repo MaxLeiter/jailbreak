@@ -5,6 +5,7 @@
  * CoreFoundation/IOSurface/mach declarations can't collide with dix macros.
  */
 #include "xios_surface.h"
+#include "xios_output_queue.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,19 +43,52 @@ typedef struct {
 /* ---- state ---------------------------------------------------------------- */
 
 #define XIOS_MAX_CLIENTS 8
+#define XIOS_MAX_OUTPUTS 3
+#define XIOS_MAX_STREAM_SURFACES 128
 
 struct app_client {
     int fd;
+    mach_port_t dst;
+    uint32_t caps;
+    int active;
+    uint64_t serial;
 };
 
 static IOSurfaceRef s_surface = NULL;
 static int s_width, s_height, s_stride;
+
+struct output_surface {
+    IOSurfaceRef surface;
+    uint32_t id;
+    int stride;
+    int alloc_size;
+};
+
+struct stream_surface {
+    IOSurfaceRef surface;
+    uint32_t id;
+    uint32_t flags;
+    int width, height, stride;
+    uint32_t sent_clients;
+    uint64_t last_seq;
+    uint64_t released_seq;
+};
+
+static struct output_surface s_outputs[XIOS_MAX_OUTPUTS];
+static unsigned s_output_count_requested = 1;
+static unsigned s_output_count;
+static struct xios_output_queue s_output_queue;
+static unsigned char s_release_token[XIOS_GPU_FENCE_TOKEN_SIZE];
+static size_t s_release_token_size;
+static struct stream_surface s_stream_surfaces[XIOS_MAX_STREAM_SURFACES];
+static uint32_t s_next_stream_surface_id = XIOS_DYNAMIC_SURFACE_ID_BASE;
 
 static int s_listen_fd = -1;
 static pthread_t s_thread;
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct app_client s_clients[XIOS_MAX_CLIENTS];
 static int s_nclients = 0;
+static uint64_t s_next_client_serial;
 static uint64_t s_dirty_seq = 0;
 static uint64_t s_presented_seq = 0;
 static char s_compositor_id[32] = "";          /* "iosc"/"mutter-ios"; sent in the typed HELLO */
@@ -64,6 +98,8 @@ static char s_upscale_hint[32] = "";           /* present-side upscale spec for 
 static unsigned s_generation = 0;              /* bumped by resize; stale handshakes close */
 static char s_sock_path_kept[256] = "";        /* for resize-time xios.json rewrite */
 static char s_json_path_kept[256] = "";
+
+static struct stream_surface *find_stream_surface_locked(uint32_t id);
 
 /* ---- display pacing state (XIOS_MSG_PACING / XIOS_MSG_PRESENTED) ------------
  * Written on the per-client read thread, read from the compositor's event loop,
@@ -112,6 +148,33 @@ void xios_set_upscale_hint(const char *spec)
             break;
         }
     }
+}
+
+int xios_set_output_buffer_count(unsigned count)
+{
+    if (count < 1 || count > XIOS_MAX_OUTPUTS || s_output_count != 0)
+        return -1;
+    s_output_count_requested = count;
+    return 0;
+}
+
+int xios_set_release_fence_token(const void *token, size_t token_size)
+{
+    if (!token || token_size != XIOS_GPU_FENCE_TOKEN_SIZE || s_listen_fd >= 0)
+        return -1;
+    memcpy(s_release_token, token, token_size);
+    s_release_token_size = token_size;
+    return 0;
+}
+
+static uint32_t stream_v2_client_mask_locked(void)
+{
+    uint32_t mask = 0;
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++)
+        if (s_clients[i].active &&
+            (s_clients[i].caps & XIOS_HELLO_CAP_STREAM_V2))
+            mask |= 1u << i;
+    return mask;
 }
 
 /* ---- helpers -------------------------------------------------------------- */
@@ -272,74 +335,108 @@ static IOSurfaceRef make_surface(int width, int height, int *stride, int *alloc_
 
 void *xios_surface_create(int width, int height, int *stride, int *alloc_size)
 {
-    int st = 0, alloc_sz = 0;
-    IOSurfaceRef s = make_surface(width, height, &st, &alloc_sz);
-    if (!s)
-        return NULL;
+    struct output_surface made[XIOS_MAX_OUTPUTS];
+    memset(made, 0, sizeof(made));
+    unsigned count = s_output_count_requested;
+    for (unsigned i = 0; i < count; i++) {
+        int st = 0, alloc_sz = 0;
+        made[i].surface = make_surface(width, height, &st, &alloc_sz);
+        if (!made[i].surface) {
+            for (unsigned j = 0; j < i; j++)
+                CFRelease(made[j].surface);
+            return NULL;
+        }
+        made[i].id = XIOS_PRIMARY_SURFACE_ID + i;
+        made[i].stride = st;
+        made[i].alloc_size = alloc_sz;
+    }
 
-    s_surface = s;
+    memcpy(s_outputs, made, sizeof(made));
+    s_output_count = count;
+    xios_output_queue_reset(&s_output_queue, count);
+    s_surface = s_outputs[0].surface;
     s_width = width;
     s_height = height;
-    s_stride = st;
-    if (stride) *stride = st;
-    if (alloc_size) *alloc_size = alloc_sz;
-    void *base = IOSurfaceGetBaseAddress(s);
+    s_stride = s_outputs[0].stride;
+    if (stride) *stride = s_stride;
+    if (alloc_size) *alloc_size = s_outputs[0].alloc_size;
+    void *base = IOSurfaceGetBaseAddress(s_surface);
+    fprintf(stderr, "xios: output stream allocated %u buffer%s\n",
+            count, count == 1 ? "" : "s");
     return base;
 }
 
 void *xios_surface_resize(int width, int height, int *stride, int *alloc_size)
 {
-    int st = 0, alloc_sz = 0;
-    IOSurfaceRef ns = make_surface(width, height, &st, &alloc_sz);
-    if (!ns)
-        return NULL;
-    void *base = IOSurfaceGetBaseAddress(ns);
-    if (!base) {
-        CFRelease(ns);
-        return NULL;
+    struct output_surface made[XIOS_MAX_OUTPUTS];
+    struct output_surface old[XIOS_MAX_OUTPUTS];
+    memset(made, 0, sizeof(made));
+    memset(old, 0, sizeof(old));
+    unsigned count = s_output_count ? s_output_count : s_output_count_requested;
+    for (unsigned i = 0; i < count; i++) {
+        int st = 0, alloc_sz = 0;
+        made[i].surface = make_surface(width, height, &st, &alloc_sz);
+        if (!made[i].surface) {
+            for (unsigned j = 0; j < i; j++)
+                CFRelease(made[j].surface);
+            return NULL;
+        }
+        made[i].id = XIOS_PRIMARY_SURFACE_ID + i;
+        made[i].stride = st;
+        made[i].alloc_size = alloc_sz;
     }
+    void *base = IOSurfaceGetBaseAddress(made[0].surface);
 
     pthread_mutex_lock(&s_lock);
-    IOSurfaceRef old = s_surface;
-    s_surface = ns;
+    memcpy(old, s_outputs, sizeof(old));
+    memcpy(s_outputs, made, sizeof(made));
+    s_output_count = count;
+    xios_output_queue_reset(&s_output_queue, count);
+    s_surface = s_outputs[0].surface;
     s_width = width;
     s_height = height;
-    s_stride = st;
+    s_stride = s_outputs[0].stride;
     s_generation++;
-    for (int i = 0; i < s_nclients; i++)
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++) {
+        if (!s_clients[i].active)
+            continue;
+        shutdown(s_clients[i].fd, SHUT_RDWR);
         close(s_clients[i].fd);
+        if (s_clients[i].dst != MACH_PORT_NULL)
+            mach_port_deallocate(mach_task_self(), s_clients[i].dst);
+        memset(&s_clients[i], 0, sizeof(s_clients[i]));
+        s_clients[i].fd = -1;
+    }
     s_nclients = 0;
     pthread_mutex_unlock(&s_lock);
 
-    if (old)
-        CFRelease(old);
+    for (unsigned i = 0; i < count; i++)
+        if (old[i].surface)
+            CFRelease(old[i].surface);
     if (s_json_path_kept[0] && s_sock_path_kept[0])
-        write_json(s_json_path_kept, width, height, st, s_sock_path_kept);
-    if (stride) *stride = st;
-    if (alloc_size) *alloc_size = alloc_sz;
-    fprintf(stderr, "xios: output resized to %dx%d stride=%d (clients dropped)\n",
-            width, height, st);
+        write_json(s_json_path_kept, width, height, s_stride, s_sock_path_kept);
+    if (stride) *stride = s_stride;
+    if (alloc_size) *alloc_size = s_outputs[0].alloc_size;
+    fprintf(stderr,
+            "xios: %u-buffer output resized to %dx%d stride=%d (clients dropped)\n",
+            count, width, height, s_stride);
     return base;
 }
 
 /* ---- mach-port hand-off --------------------------------------------------- */
 
-/* task_for_pid the app, extract a send right to its receive port, and mach_msg
- * the IOSurface's mach port across. Returns 0 on success. */
-static int deliver_surface_port(int pid, unsigned portname, IOSurfaceRef surf)
+/* Resolve the app's receive-port name once. The retained send right stays with
+ * the client so later swapchain/direct surfaces can be delivered without another
+ * task_for_pid round-trip on the compositor hot path. */
+static mach_port_t extract_reply_port(int pid, unsigned portname)
 {
-    if (!surf) {
-        fprintf(stderr, "xios: no IOSurface available for hand-off\n");
-        return -1;
-    }
-
     task_t task = MACH_PORT_NULL;
     kern_return_t kr = task_for_pid(mach_task_self(), pid, &task);
     if (kr) {
         fprintf(stderr, "xios: task_for_pid(%d) failed: 0x%x (%s) — needs "
                         "task_for_pid-allow on Xios + get-task-allow on the app\n",
                 pid, kr, mach_error_string(kr));
-        return -1;
+        return MACH_PORT_NULL;
     }
 
     mach_port_t dst = MACH_PORT_NULL;
@@ -351,13 +448,23 @@ static int deliver_surface_port(int pid, unsigned portname, IOSurfaceRef surf)
     if (kr) {
         fprintf(stderr, "xios: mach_port_extract_right failed: 0x%x (%s)\n",
                 kr, mach_error_string(kr));
+        return MACH_PORT_NULL;
+    }
+    return dst;
+}
+
+/* Send one IOSurface port to an already-resolved app receive port. */
+static int deliver_surface_port(mach_port_t dst, IOSurfaceRef surf,
+                                mach_msg_timeout_t timeout_ms)
+{
+    if (!surf || dst == MACH_PORT_NULL) {
+        fprintf(stderr, "xios: no IOSurface/destination available for hand-off\n");
         return -1;
     }
 
     mach_port_t sp = IOSurfaceCreateMachPort(surf);
     if (sp == MACH_PORT_NULL) {
         fprintf(stderr, "xios: IOSurfaceCreateMachPort failed\n");
-        mach_port_deallocate(mach_task_self(), dst);
         return -1;
     }
 
@@ -376,12 +483,13 @@ static int deliver_surface_port(int pid, unsigned portname, IOSurfaceRef surf)
     /* MACH_SEND_TIMEOUT must be in the option mask or the timeout arg is ignored;
      * a suspended/unresponsive app could otherwise block the accept thread forever
      * (and with it every future client). */
-    kr = mach_msg(&msg.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(msg), 0,
-                  MACH_PORT_NULL, 2000 /*ms*/, MACH_PORT_NULL);
+    kern_return_t kr = mach_msg(&msg.header,
+                                MACH_SEND_MSG | MACH_SEND_TIMEOUT,
+                                sizeof(msg), 0, MACH_PORT_NULL,
+                                timeout_ms, MACH_PORT_NULL);
 
-    /* Drop our local refs; the kernel copied what it needed into the message. */
+    /* Drop the per-surface send right. `dst` is retained by app_client. */
     mach_port_deallocate(mach_task_self(), sp);
-    mach_port_deallocate(mach_task_self(), dst);
 
     if (kr) {
         fprintf(stderr, "xios: mach_msg(send IOSurface port) failed: 0x%x (%s)\n",
@@ -391,45 +499,105 @@ static int deliver_surface_port(int pid, unsigned portname, IOSurfaceRef surf)
     return 0;
 }
 
-static int add_client(int fd, unsigned generation)
+static void clear_client_pending_locked(int slot)
 {
-    int ok = 0;
+    uint32_t bit = 1u << slot;
+    xios_output_queue_drop_client(&s_output_queue, bit);
+    for (int i = 0; i < XIOS_MAX_STREAM_SURFACES; i++)
+        s_stream_surfaces[i].sent_clients &= ~bit;
+}
+
+/* A socket close is not proof that the app's Metal queue has stopped sampling.
+ * Output slots therefore stay quarantined on drop. The next completed app
+ * handshake is the recovery boundary: Xios tears down the old connection and
+ * texture before reconnecting, while a killed process has already lost access.
+ * Direct-present buffers use the same boundary via released_seq. */
+static void recover_consumer_after_handshake_locked(void)
+{
+    xios_output_queue_recover_abandoned(&s_output_queue);
+    for (int i = 0; i < XIOS_MAX_STREAM_SURFACES; i++) {
+        struct stream_surface *stream = &s_stream_surfaces[i];
+        if (stream->surface && stream->sent_clients == 0 &&
+            stream->released_seq < stream->last_seq)
+            stream->released_seq = stream->last_seq;
+    }
+}
+
+static int add_client(int fd, mach_port_t dst, uint32_t caps,
+                      unsigned generation, uint64_t *serial_out)
+{
+    int slot = -1;
     pthread_mutex_lock(&s_lock);
     if (generation != s_generation) {
         close(fd);
+        mach_port_deallocate(mach_task_self(), dst);
         fprintf(stderr, "xios: stale app client fd=%d rejected after resize\n", fd);
-    } else if (s_nclients < XIOS_MAX_CLIENTS) {
-        s_clients[s_nclients++].fd = fd;
-        ok = 1;
-        fprintf(stderr, "xios: app client attached (typed fd=%d, total=%d)\n",
-                fd, s_nclients);
     } else {
-        close(fd);
-        fprintf(stderr, "xios: too many clients, rejecting fd=%d\n", fd);
+        uint32_t v2 = stream_v2_client_mask_locked();
+        if (((caps & XIOS_HELLO_CAP_STREAM_V2) && s_nclients != 0) ||
+            (!(caps & XIOS_HELLO_CAP_STREAM_V2) && v2 != 0)) {
+            close(fd);
+            mach_port_deallocate(mach_task_self(), dst);
+            fprintf(stderr,
+                    "xios: stream-v2 presentation is single-consumer; rejecting fd=%d\n",
+                    fd);
+        } else {
+            for (int i = 0; i < XIOS_MAX_CLIENTS; i++)
+                if (!s_clients[i].active) {
+                    slot = i;
+                    break;
+                }
+            if (slot >= 0) {
+                if (s_nclients == 0)
+                    recover_consumer_after_handshake_locked();
+                s_clients[slot].fd = fd;
+                s_clients[slot].dst = dst;
+                s_clients[slot].caps = caps;
+                s_clients[slot].active = 1;
+                s_clients[slot].serial = ++s_next_client_serial;
+                if (s_clients[slot].serial == 0)
+                    s_clients[slot].serial = ++s_next_client_serial;
+                if (serial_out)
+                    *serial_out = s_clients[slot].serial;
+                s_nclients++;
+                fprintf(stderr,
+                        "xios: app client attached (typed fd=%d slot=%d caps=0x%x total=%d)\n",
+                        fd, slot, caps, s_nclients);
+            } else {
+                close(fd);
+                mach_port_deallocate(mach_task_self(), dst);
+                fprintf(stderr, "xios: too many clients, rejecting fd=%d\n", fd);
+            }
+        }
     }
     pthread_mutex_unlock(&s_lock);
-    return ok;
+    return slot;
 }
 
-static void drop_client_fd_locked(int fd)
+static void drop_client_identity_locked(int slot, int fd, uint64_t serial)
 {
-    for (int i = 0; i < s_nclients; i++) {
-        if (s_clients[i].fd != fd)
-            continue;
-        fprintf(stderr, "xios: client fd=%d dropped\n", fd);
-        close(s_clients[i].fd);
-        s_clients[i] = s_clients[s_nclients - 1];
-        s_nclients--;
-        if (s_nclients == 0) {
-            /* No app left to pace against. Drop the display clock now rather than
-             * letting it go stale on its own: the compositor must fall back to
-             * event-loop pacing immediately, not one stale-timeout later. */
-            s_vblank_interval_us = 0;
-            s_vblank_rx_ms = 0;
-            s_vblank_deadline_ms = 0;
-            s_present_age_valid = 0;
-        }
+    if (slot < 0 || slot >= XIOS_MAX_CLIENTS ||
+        !s_clients[slot].active ||
+        s_clients[slot].fd != fd ||
+        s_clients[slot].serial != serial)
         return;
+    fprintf(stderr, "xios: client fd=%d dropped\n", fd);
+    shutdown(s_clients[slot].fd, SHUT_RDWR);
+    close(s_clients[slot].fd);
+    if (s_clients[slot].dst != MACH_PORT_NULL)
+        mach_port_deallocate(mach_task_self(), s_clients[slot].dst);
+    clear_client_pending_locked(slot);
+    memset(&s_clients[slot], 0, sizeof(s_clients[slot]));
+    s_clients[slot].fd = -1;
+    s_nclients--;
+    if (s_nclients == 0) {
+        /* No app left to pace against. Drop the display clock now rather than
+         * letting it go stale on its own: the compositor must fall back to
+         * event-loop pacing immediately, not one stale-timeout later. */
+        s_vblank_interval_us = 0;
+        s_vblank_rx_ms = 0;
+        s_vblank_deadline_ms = 0;
+        s_present_age_valid = 0;
     }
 }
 
@@ -460,10 +628,46 @@ static void handle_pacing_msg(const xios_msg *m)
     pthread_mutex_unlock(&s_lock);
 }
 
-static void handle_client_msg(const xios_msg *m)
+static void handle_client_msg(int slot, uint64_t serial, const xios_msg *m)
 {
+    pthread_mutex_lock(&s_lock);
+    int live = slot >= 0 && slot < XIOS_MAX_CLIENTS &&
+               s_clients[slot].active &&
+               s_clients[slot].serial == serial;
+    pthread_mutex_unlock(&s_lock);
+    if (!live)
+        return;
     if (m->type == XIOS_MSG_PACING) {
         handle_pacing_msg(m);
+        return;
+    }
+    if (m->type == XIOS_MSG_RELEASED) {
+        uint64_t seq = ((uint64_t)(uint32_t)m->b << 32) | (uint32_t)m->a;
+        if (seq == 0 || m->length != 0)
+            return;
+        pthread_mutex_lock(&s_lock);
+        if (slot >= 0 && slot < XIOS_MAX_CLIENTS &&
+            s_clients[slot].active &&
+            s_clients[slot].serial == serial) {
+            uint32_t bit = 1u << slot;
+            int handled = 0;
+            for (unsigned i = 0; i < s_output_count; i++) {
+                if (s_outputs[i].id != m->window_id)
+                    continue;
+                handled = xios_output_queue_release(
+                    &s_output_queue, i, bit, seq);
+                break;
+            }
+            if (!handled) {
+                struct stream_surface *stream =
+                    find_stream_surface_locked(m->window_id);
+                if (stream && (stream->sent_clients & bit) &&
+                    stream->last_seq == seq &&
+                    seq > stream->released_seq)
+                    stream->released_seq = seq;
+            }
+        }
+        pthread_mutex_unlock(&s_lock);
         return;
     }
     if (m->type != XIOS_MSG_PRESENTED)
@@ -525,10 +729,18 @@ int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms)
     return have;
 }
 
+struct client_reader_arg {
+    int read_fd;
+    int client_fd;
+    int slot;
+    uint64_t serial;
+};
+
 static void *client_read_loop(void *arg)
 {
-    int fd = *(int *)arg;
+    struct client_reader_arg reader = *(struct client_reader_arg *)arg;
     free(arg);
+    int fd = reader.read_fd;
 
     unsigned char rxbuf[sizeof(xios_msg)];
     int rxlen = 0;
@@ -564,7 +776,7 @@ static void *client_read_loop(void *arg)
                 rxlen = 0;
                 if (m.magic != XIOS_MSG_MAGIC)
                     goto out;
-                handle_client_msg(&m);
+                handle_client_msg(reader.slot, reader.serial, &m);
                 if (m.length > 0)
                     skip = (int)m.length;
                 continue;
@@ -576,8 +788,9 @@ static void *client_read_loop(void *arg)
         }
     }
 out:
+    close(reader.read_fd);
     pthread_mutex_lock(&s_lock);
-    drop_client_fd_locked(fd);
+    drop_client_identity_locked(reader.slot, reader.client_fd, reader.serial);
     pthread_mutex_unlock(&s_lock);
     return NULL;
 }
@@ -600,7 +813,7 @@ static void handle_client(int fd)
         hello.length != 0 ||
         hello.a <= 0 ||
         (uint32_t)hello.b == MACH_PORT_NULL ||
-        hello.c != 0 ||
+        ((uint32_t)hello.c & ~XIOS_HELLO_CAP_STREAM_V2) != 0 ||
         hello.d != 0) {
         fprintf(stderr, "xios: bad handshake from fd=%d\n", fd);
         close(fd);
@@ -619,15 +832,35 @@ static void handle_client(int fd)
                         "using the real peer\n", (uint32_t)hello.a, (int) peer_pid);
     }
 
+    uint32_t caps = (uint32_t)hello.c;
+    if ((caps & XIOS_HELLO_CAP_STREAM_V2) &&
+        (s_output_count < 1 ||
+         (s_output_count > 1 &&
+          s_release_token_size != XIOS_GPU_FENCE_TOKEN_SIZE))) {
+        fprintf(stderr,
+                "xios: stream-v2 requested before swapchain/release timeline is ready\n");
+        close(fd);
+        return;
+    }
+
+    IOSurfaceRef outputs[XIOS_MAX_OUTPUTS] = { NULL };
+    unsigned output_count = 0;
     pthread_mutex_lock(&s_lock);
-    IOSurfaceRef surf = s_surface ? (IOSurfaceRef) CFRetain(s_surface) : NULL;
+    output_count = s_output_count;
+    for (unsigned i = 0; i < output_count; i++)
+        outputs[i] = s_outputs[i].surface
+            ? (IOSurfaceRef)CFRetain(s_outputs[i].surface) : NULL;
     int w = s_width, hgt = s_height, st = s_stride;
     unsigned gen = s_generation;
     pthread_mutex_unlock(&s_lock);
 
-    int status = deliver_surface_port((int) peer_pid, (uint32_t)hello.b, surf);
-    if (status != 0) {
-        if (surf) CFRelease(surf);
+    mach_port_t dst = extract_reply_port((int)peer_pid, (uint32_t)hello.b);
+    if (dst == MACH_PORT_NULL ||
+        deliver_surface_port(dst, outputs[0], 2000) != 0) {
+        if (dst != MACH_PORT_NULL)
+            mach_port_deallocate(mach_task_self(), dst);
+        for (unsigned i = 0; i < output_count; i++)
+            if (outputs[i]) CFRelease(outputs[i]);
         close(fd);
         return;
     }
@@ -638,24 +871,83 @@ static void handle_client(int fd)
                    w, hgt, st, (int32_t) XIOS_FMT_BGRA };
     if (write_full(fd, &h, sizeof(h)) != 0 ||
         (idlen && write_full(fd, s_compositor_id, idlen) != 0)) {
-        if (surf) CFRelease(surf);
+        mach_port_deallocate(mach_task_self(), dst);
+        for (unsigned i = 0; i < output_count; i++)
+            if (outputs[i]) CFRelease(outputs[i]);
         close(fd);
         return;
     }
-    if (surf) CFRelease(surf);
+
+    if (caps & XIOS_HELLO_CAP_STREAM_V2) {
+        uint32_t release_length =
+            s_release_token_size == XIOS_GPU_FENCE_TOKEN_SIZE
+                ? XIOS_GPU_FENCE_TOKEN_SIZE : 0;
+        xios_msg info = {
+            XIOS_MSG_MAGIC, XIOS_MSG_STREAM_INFO, 0, release_length,
+            (int32_t)output_count, 0, 0, 0
+        };
+        if (write_full(fd, &info, sizeof(info)) != 0 ||
+            (release_length &&
+             write_full(fd, s_release_token, release_length) != 0)) {
+            mach_port_deallocate(mach_task_self(), dst);
+            for (unsigned i = 0; i < output_count; i++)
+                if (outputs[i]) CFRelease(outputs[i]);
+            close(fd);
+            return;
+        }
+        for (unsigned i = 1; i < output_count; i++) {
+            xios_msg surface_msg = {
+                XIOS_MSG_MAGIC, XIOS_MSG_SURFACE,
+                XIOS_PRIMARY_SURFACE_ID + i, 0,
+                w, hgt, s_outputs[i].stride, 0
+            };
+            if (deliver_surface_port(dst, outputs[i], 2000) != 0 ||
+                write_full(fd, &surface_msg, sizeof(surface_msg)) != 0) {
+                mach_port_deallocate(mach_task_self(), dst);
+                for (unsigned j = 0; j < output_count; j++)
+                    if (outputs[j]) CFRelease(outputs[j]);
+                close(fd);
+                return;
+            }
+        }
+    }
+    for (unsigned i = 0; i < output_count; i++)
+        if (outputs[i]) CFRelease(outputs[i]);
     /* Damage notifications are non-blocking: a suspended/backed-up app must never
      * stall the X server's block handler. */
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    if (!add_client(fd, gen))
+    uint64_t client_serial = 0;
+    int client_slot = add_client(fd, dst, caps, gen, &client_serial);
+    if (client_slot < 0)
         return;
-    int *rfd = malloc(sizeof(*rfd));
-    if (rfd) {
-        *rfd = fd;
+    int read_fd = dup(fd);
+    if (read_fd < 0) {
+        pthread_mutex_lock(&s_lock);
+        drop_client_identity_locked(client_slot, fd, client_serial);
+        pthread_mutex_unlock(&s_lock);
+        return;
+    }
+    set_cloexec(read_fd);
+    struct client_reader_arg *reader_arg = malloc(sizeof(*reader_arg));
+    if (reader_arg) {
+        *reader_arg = (struct client_reader_arg) {
+            read_fd, fd, client_slot, client_serial
+        };
         pthread_t reader;
-        if (pthread_create(&reader, NULL, client_read_loop, rfd) == 0)
+        if (pthread_create(&reader, NULL, client_read_loop, reader_arg) == 0)
             pthread_detach(reader);
-        else
-            free(rfd);
+        else {
+            free(reader_arg);
+            close(read_fd);
+            pthread_mutex_lock(&s_lock);
+            drop_client_identity_locked(client_slot, fd, client_serial);
+            pthread_mutex_unlock(&s_lock);
+        }
+    } else {
+        close(read_fd);
+        pthread_mutex_lock(&s_lock);
+        drop_client_identity_locked(client_slot, fd, client_serial);
+        pthread_mutex_unlock(&s_lock);
     }
 }
 
@@ -753,13 +1045,25 @@ int xios_server_start(const char *sock_path, const char *json_path,
     return 0;
 }
 
-/* Swap-remove client index i (caller holds s_lock). */
 static void drop_client_locked(int i)
 {
+    if (i < 0 || i >= XIOS_MAX_CLIENTS || !s_clients[i].active)
+        return;
     fprintf(stderr, "xios: client fd=%d dropped\n", s_clients[i].fd);
+    shutdown(s_clients[i].fd, SHUT_RDWR);
     close(s_clients[i].fd);
-    s_clients[i] = s_clients[s_nclients - 1];
+    if (s_clients[i].dst != MACH_PORT_NULL)
+        mach_port_deallocate(mach_task_self(), s_clients[i].dst);
+    clear_client_pending_locked(i);
+    memset(&s_clients[i], 0, sizeof(s_clients[i]));
+    s_clients[i].fd = -1;
     s_nclients--;
+    if (s_nclients == 0) {
+        s_vblank_interval_us = 0;
+        s_vblank_rx_ms = 0;
+        s_vblank_deadline_ms = 0;
+        s_present_age_valid = 0;
+    }
 }
 
 /* Non-blocking send of a whole fixed record. Returns 1 = sent, 0 = would-block
@@ -775,22 +1079,195 @@ static int send_record(int fd, const void *buf, size_t len)
     return -1;   /* error or partial (desync) */
 }
 
-static int notify_dirty_internal(const void *shared_event_token,
+static struct output_surface *find_output_locked(uint32_t id)
+{
+    for (unsigned i = 0; i < s_output_count; i++)
+        if (s_outputs[i].id == id)
+            return &s_outputs[i];
+    return NULL;
+}
+
+static int find_output_index_locked(uint32_t id)
+{
+    for (unsigned i = 0; i < s_output_count; i++)
+        if (s_outputs[i].id == id)
+            return (int)i;
+    return -1;
+}
+
+static struct stream_surface *find_stream_surface_locked(uint32_t id)
+{
+    for (int i = 0; i < XIOS_MAX_STREAM_SURFACES; i++)
+        if (s_stream_surfaces[i].surface && s_stream_surfaces[i].id == id)
+            return &s_stream_surfaces[i];
+    return NULL;
+}
+
+static int send_stream_surface_locked(int slot, struct stream_surface *surface)
+{
+    if (!surface || slot < 0 || slot >= XIOS_MAX_CLIENTS ||
+        !s_clients[slot].active ||
+        !(s_clients[slot].caps & XIOS_HELLO_CAP_STREAM_V2))
+        return -1;
+    uint32_t bit = 1u << slot;
+    if (surface->sent_clients & bit)
+        return 0;
+
+    xios_msg msg = {
+        XIOS_MSG_MAGIC, XIOS_MSG_SURFACE, surface->id, 0,
+        surface->width, surface->height, surface->stride,
+        (int32_t)surface->flags
+    };
+    /* Control records cannot be dropped: a queued Mach port without its matching
+     * SURFACE record would make the next import bind the wrong allocation. Drop
+     * the connection on any backpressure and let a clean handshake recover. */
+    if (deliver_surface_port(s_clients[slot].dst, surface->surface, 0) != 0 ||
+        send_record(s_clients[slot].fd, &msg, sizeof(msg)) != 1)
+        return -1;
+    surface->sent_clients |= bit;
+    return 0;
+}
+
+int xios_output_acquire(void **iosurface, uint32_t *surface_id,
+                        unsigned *age, uint64_t *release_wait_value)
+{
+    if (iosurface) *iosurface = NULL;
+    if (surface_id) *surface_id = 0;
+    if (age) *age = 0;
+    if (release_wait_value) *release_wait_value = 0;
+
+    pthread_mutex_lock(&s_lock);
+    uint32_t v2_clients = stream_v2_client_mask_locked();
+    unsigned i = 0;
+    int acquired = xios_output_queue_acquire(
+        &s_output_queue, v2_clients != 0, &i, age, release_wait_value);
+    if (acquired) {
+        struct output_surface *out = &s_outputs[i];
+        s_surface = out->surface;
+        s_stride = out->stride;
+        if (iosurface) *iosurface = out->surface;
+        if (surface_id) *surface_id = out->id;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return acquired;
+}
+
+void xios_output_cancel(uint32_t surface_id)
+{
+    pthread_mutex_lock(&s_lock);
+    int index = find_output_index_locked(surface_id);
+    if (index >= 0)
+        xios_output_queue_cancel(&s_output_queue, (unsigned)index);
+    pthread_mutex_unlock(&s_lock);
+}
+
+uint32_t xios_stream_register_surface(void *iosurface, uint32_t flags)
+{
+    IOSurfaceRef surface = (IOSurfaceRef)iosurface;
+    if (!surface || (flags & ~XIOS_SURFACE_FLAG_FLIP_Y))
+        return 0;
+    pthread_mutex_lock(&s_lock);
+    for (int i = 0; i < XIOS_MAX_STREAM_SURFACES; i++) {
+        if (s_stream_surfaces[i].surface == surface) {
+            uint32_t id = s_stream_surfaces[i].id;
+            pthread_mutex_unlock(&s_lock);
+            return id;
+        }
+    }
+    int slot = -1;
+    for (int i = 0; i < XIOS_MAX_STREAM_SURFACES; i++)
+        if (!s_stream_surfaces[i].surface) {
+            slot = i;
+            break;
+        }
+    if (slot < 0) {
+        pthread_mutex_unlock(&s_lock);
+        return 0;
+    }
+    struct stream_surface *entry = &s_stream_surfaces[slot];
+    entry->surface = (IOSurfaceRef)CFRetain(surface);
+    entry->id = s_next_stream_surface_id++;
+    if (s_next_stream_surface_id < XIOS_DYNAMIC_SURFACE_ID_BASE)
+        s_next_stream_surface_id = XIOS_DYNAMIC_SURFACE_ID_BASE;
+    entry->flags = flags;
+    entry->width = (int)IOSurfaceGetWidth(surface);
+    entry->height = (int)IOSurfaceGetHeight(surface);
+    entry->stride = (int)IOSurfaceGetBytesPerRow(surface);
+    uint32_t id = entry->id;
+    pthread_mutex_unlock(&s_lock);
+    return id;
+}
+
+void xios_stream_unregister_surface(uint32_t surface_id)
+{
+    pthread_mutex_lock(&s_lock);
+    struct stream_surface *entry = find_stream_surface_locked(surface_id);
+    if (!entry) {
+        pthread_mutex_unlock(&s_lock);
+        return;
+    }
+    xios_msg msg = {
+        XIOS_MSG_MAGIC, XIOS_MSG_SURFACE_DROP, surface_id, 0, 0, 0, 0, 0
+    };
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++) {
+        uint32_t bit = 1u << i;
+        if (!s_clients[i].active || !(entry->sent_clients & bit))
+            continue;
+        if (send_record(s_clients[i].fd, &msg, sizeof(msg)) != 1)
+            drop_client_locked(i);
+    }
+    IOSurfaceRef surface = entry->surface;
+    memset(entry, 0, sizeof(*entry));
+    pthread_mutex_unlock(&s_lock);
+    CFRelease(surface);
+}
+
+uint64_t xios_stream_released_generation(uint32_t surface_id)
+{
+    uint64_t seq = 0;
+    pthread_mutex_lock(&s_lock);
+    struct stream_surface *entry =
+        find_stream_surface_locked(surface_id);
+    if (entry)
+        seq = entry->released_seq;
+    pthread_mutex_unlock(&s_lock);
+    return seq;
+}
+
+int xios_stream_v2_active(void)
+{
+    int active;
+    pthread_mutex_lock(&s_lock);
+    active = s_nclients == 1 && stream_v2_client_mask_locked() != 0;
+    pthread_mutex_unlock(&s_lock);
+    return active;
+}
+
+static int notify_dirty_internal(uint32_t surface_id,
+                                 const void *shared_event_token,
                                  size_t token_size,
-                                 uint64_t event_value)
+                                 uint64_t event_value,
+                                 uint64_t *seq_out)
 {
     if (!shared_event_token ||
         token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
         event_value == 0)
         return -1;
 
-    uint64_t seq;
     unsigned char wire[sizeof(xios_msg) + XIOS_GPU_FENCE_TOKEN_SIZE];
 
     pthread_mutex_lock(&s_lock);
-    seq = ++s_dirty_seq;
+    struct output_surface *output = find_output_locked(surface_id);
+    int output_index = output ? find_output_index_locked(surface_id) : -1;
+    struct stream_surface *stream = output ? NULL
+        : find_stream_surface_locked(surface_id);
+    if (!output && !stream) {
+        pthread_mutex_unlock(&s_lock);
+        return -1;
+    }
+    uint64_t seq = ++s_dirty_seq;
     xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_DIRTY,
-                     XIOS_DIRTY_FENCE_BROKER_TOKEN,
+                     surface_id,
                      XIOS_GPU_FENCE_TOKEN_SIZE,
                      (int32_t)(uint32_t)(seq & 0xffffffffu),
                      (int32_t)(uint32_t)(seq >> 32),
@@ -798,13 +1275,39 @@ static int notify_dirty_internal(const void *shared_event_token,
                      (int32_t)(uint32_t)(event_value >> 32) };
     memcpy(wire, &rec, sizeof(rec));
     memcpy(wire + sizeof(rec), shared_event_token, XIOS_GPU_FENCE_TOKEN_SIZE);
-    int i = 0;
-    while (i < s_nclients) {
+    uint32_t delivered = 0;
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++) {
+        if (!s_clients[i].active)
+            continue;
+        int v2 = !!(s_clients[i].caps & XIOS_HELLO_CAP_STREAM_V2);
+        if (!v2 && surface_id != XIOS_PRIMARY_SURFACE_ID)
+            continue;
+        if (stream && send_stream_surface_locked(i, stream) != 0) {
+            drop_client_locked(i);
+            continue;
+        }
         int ok = send_record(s_clients[i].fd, wire,
                              sizeof(rec) + XIOS_GPU_FENCE_TOKEN_SIZE);
-        if (ok >= 0) { i++; continue; }
-        drop_client_locked(i);
+        if (ok > 0)
+            delivered |= 1u << i;
+        else if (ok < 0)
+            drop_client_locked(i);
     }
+    if (output) {
+        /* A fixed one-buffer producer may negotiate stream-v2 only for the
+         * surface-addressed framing while retaining the legacy no-release
+         * contract (Mutter currently does this). Never park that sole output
+         * behind a RELEASED message the handshake gave the app no event with
+         * which to produce. Multi-buffer iosc always installs a release token
+         * before the server starts, so its ownership path remains mandatory. */
+        uint32_t pending_clients = s_release_token_size
+            ? delivered & stream_v2_client_mask_locked() : 0;
+        xios_output_queue_publish(
+            &s_output_queue, (unsigned)output_index, pending_clients, seq);
+    } else {
+        stream->last_seq = seq;
+    }
+    if (seq_out) *seq_out = seq;
     pthread_mutex_unlock(&s_lock);
     return 0;
 }
@@ -813,7 +1316,19 @@ int xios_notify_dirty_with_fence(const void *shared_event_token,
                                  size_t token_size,
                                  uint64_t event_value)
 {
-    return notify_dirty_internal(shared_event_token, token_size, event_value);
+    return notify_dirty_internal(XIOS_PRIMARY_SURFACE_ID,
+                                 shared_event_token, token_size,
+                                 event_value, NULL);
+}
+
+int xios_notify_surface_with_fence(uint32_t surface_id,
+                                   const void *shared_event_token,
+                                   size_t token_size,
+                                   uint64_t event_value,
+                                   uint64_t *seq_out)
+{
+    return notify_dirty_internal(surface_id, shared_event_token, token_size,
+                                 event_value, seq_out);
 }
 
 uint64_t xios_dirty_generation(void)
@@ -839,10 +1354,11 @@ void xios_notify_cursor(int x, int y, int visible, int shape_id)
     xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_CURSOR, 0, 0,
                      x, y, shape_id, visible ? 1 : 0 };
     pthread_mutex_lock(&s_lock);
-    int i = 0;
-    while (i < s_nclients) {
-        if (send_record(s_clients[i].fd, &rec, sizeof(rec)) >= 0) { i++; continue; }
-        drop_client_locked(i);
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++) {
+        if (!s_clients[i].active)
+            continue;
+        if (send_record(s_clients[i].fd, &rec, sizeof(rec)) < 0)
+            drop_client_locked(i);
     }
     pthread_mutex_unlock(&s_lock);
 }
@@ -1002,11 +1518,31 @@ int xios_read_output_region(int x, int y, int w, int h, void *dst, int dst_strid
 void xios_server_stop(void)
 {
     pthread_mutex_lock(&s_lock);
-    for (int i = 0; i < s_nclients; i++)
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++) {
+        if (!s_clients[i].active)
+            continue;
+        shutdown(s_clients[i].fd, SHUT_RDWR);
         close(s_clients[i].fd);
+        if (s_clients[i].dst != MACH_PORT_NULL)
+            mach_port_deallocate(mach_task_self(), s_clients[i].dst);
+        memset(&s_clients[i], 0, sizeof(s_clients[i]));
+        s_clients[i].fd = -1;
+    }
     s_nclients = 0;
     pthread_mutex_unlock(&s_lock);
 
     if (s_listen_fd >= 0) { close(s_listen_fd); s_listen_fd = -1; }
-    if (s_surface) { CFRelease(s_surface); s_surface = NULL; }
+    for (unsigned i = 0; i < s_output_count; i++) {
+        if (s_outputs[i].surface)
+            CFRelease(s_outputs[i].surface);
+        memset(&s_outputs[i], 0, sizeof(s_outputs[i]));
+    }
+    for (int i = 0; i < XIOS_MAX_STREAM_SURFACES; i++) {
+        if (s_stream_surfaces[i].surface)
+            CFRelease(s_stream_surfaces[i].surface);
+        memset(&s_stream_surfaces[i], 0, sizeof(s_stream_surfaces[i]));
+    }
+    s_output_count = 0;
+    xios_output_queue_reset(&s_output_queue, 0);
+    s_surface = NULL;
 }

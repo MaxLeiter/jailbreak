@@ -129,7 +129,12 @@ unsigned xios_egl_bind_pbuffer_texture(EGLSurface pb)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    eglBindTexImage(s_dpy, pb, EGL_BACK_BUFFER);
+    if (!eglBindTexImage(s_dpy, pb, EGL_BACK_BUFFER)) {
+        fprintf(stderr, "xios_egl: eglBindTexImage failed 0x%x\n",
+                eglGetError());
+        glDeleteTextures(1, &tex);
+        return 0;
+    }
     return tex;
 }
 

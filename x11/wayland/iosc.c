@@ -113,6 +113,8 @@ static void clipboard_selection_send_to_client(struct wl_client *client);
 static void recomposite_all_at(const char *reason, int line);   /* coalesced repaint */
 #define recomposite_all() recomposite_all_at(__func__, __LINE__)
 static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
+static void repaint_retry_soon(void);
+static void recomposite_reason_clear(void);
 static void surface_unmap(struct iosc_surface *s);
 static void native_mark_surface_dirty(struct iosc_surface *s);
 static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
@@ -232,6 +234,8 @@ struct iosc_surface {
     struct wl_resource *current_buffer;  /* committed buffer, retained for recompositing */
     struct wl_listener  buffer_destroy;  /* fires if the client destroys current_buffer */
     int                 buffer_listener_active;
+    uint64_t            direct_present_seq; /* app consumer-release gates old wl_buffer */
+    uint32_t            direct_surface_id;
     int                 sw, sh;          /* current buffer source dimensions */
     int                 gl_dirty;        /* wl_shm content changed since last GPU upload */
     int                 gl_dirty_rect_count;
@@ -303,6 +307,56 @@ struct iosc_frame {
     struct wl_resource *resource;
     struct wl_list      link;
 };
+
+struct direct_buffer_release {
+    struct wl_resource *buffer;
+    struct wl_listener destroy;
+    struct wl_list link;
+    uint32_t surface_id;
+    uint64_t seq;
+};
+static struct wl_list g_direct_buffer_releases;
+
+static void direct_buffer_destroyed(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct direct_buffer_release *release =
+        wl_container_of(listener, release, destroy);
+    wl_list_remove(&release->link);
+    free(release);
+}
+
+static void hold_direct_buffer_release(struct wl_resource *buffer,
+                                       uint32_t surface_id, uint64_t seq)
+{
+    struct direct_buffer_release *release = calloc(1, sizeof(*release));
+    if (!release) {
+        fprintf(stderr,
+                "iosc: out of memory deferring direct-present wl_buffer release; "
+                "leaving it busy for safety\n");
+        return;
+    }
+    release->buffer = buffer;
+    release->surface_id = surface_id;
+    release->seq = seq;
+    release->destroy.notify = direct_buffer_destroyed;
+    wl_resource_add_destroy_listener(buffer, &release->destroy);
+    wl_list_insert(g_direct_buffer_releases.prev, &release->link);
+}
+
+static void release_direct_buffers(void)
+{
+    struct direct_buffer_release *release, *tmp;
+    wl_list_for_each_safe(release, tmp, &g_direct_buffer_releases, link) {
+        if (xios_stream_released_generation(release->surface_id) <
+            release->seq)
+            continue;
+        wl_list_remove(&release->destroy.link);
+        wl_list_remove(&release->link);
+        wl_buffer_send_release(release->buffer);
+        free(release);
+    }
+}
 
 /* wl_region: union bbox of add()s; subtract() sets `complex` (a bbox can't hold a
  * hole). Used by wl_surface.set_opaque_region to gate the window opaque fast-path. */
@@ -423,6 +477,15 @@ static int g_last_present_damage_rect_count;
 static struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_last_present_damage_x0, g_last_present_damage_y0;
 static int g_last_present_damage_x1, g_last_present_damage_y1;
+struct output_damage_history {
+    int valid;
+    int count;
+    struct iosc_rect rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
+};
+static struct output_damage_history g_output_damage_history[3];
+static uint64_t g_output_damage_history_serial;
+static int g_direct_present_active;
+static int g_force_output_composite;
 static const char *g_recompose_reason;
 static int g_recompose_reason_line;
 static void keyboard_set_focus(struct iosc_surface *s);
@@ -853,6 +916,9 @@ static void frame_callbacks_after_repaint(void)
         presentation_present_surface(s);
         surface_send_frame_callbacks(s, t);
     }
+    /* Direct-present buffers are no longer sampled once the app has presented
+     * this generation (or the existing 100 ms dead-app valve fired). */
+    release_direct_buffers();
 }
 
 static int present_ack_timer_cb(void *data)
@@ -1202,6 +1268,55 @@ static int output_damage_consume(struct iosc_rect *rects, int max_rects,
     g_output_damage_coarse = 0;
     g_output_damage_rect_count = 0;
     return n;
+}
+
+static void output_damage_history_reset(void)
+{
+    memset(g_output_damage_history, 0, sizeof(g_output_damage_history));
+    g_output_damage_history_serial = 0;
+}
+
+static void output_damage_history_apply(unsigned age)
+{
+    if (age == 0) {
+        output_damage_add_full();
+        return;
+    }
+    /* age=1 already contains the immediately preceding frame. An older buffer
+     * needs every damage set since it was last used, exactly like
+     * EGL_EXT_buffer_age. */
+    for (unsigned back = 1; back < age; back++) {
+        if (back > 3 || g_output_damage_history_serial < back) {
+            output_damage_add_full();
+            return;
+        }
+        struct output_damage_history *history =
+            &g_output_damage_history[(g_output_damage_history_serial - back) % 3];
+        if (!history->valid) {
+            output_damage_add_full();
+            return;
+        }
+        for (int i = 0; i < history->count; i++) {
+            struct iosc_rect *r = &history->rects[i];
+            output_damage_add_px(r->x0, r->y0,
+                                 r->x1 - r->x0, r->y1 - r->y0);
+        }
+    }
+}
+
+static void output_damage_history_record(void)
+{
+    struct output_damage_history *history =
+        &g_output_damage_history[g_output_damage_history_serial % 3];
+    memset(history, 0, sizeof(*history));
+    if (g_last_present_damage_valid &&
+        g_last_present_damage_rect_count > 0) {
+        history->valid = 1;
+        history->count = g_last_present_damage_rect_count;
+        memcpy(history->rects, g_last_present_damage_rects,
+               (size_t)history->count * sizeof(history->rects[0]));
+    }
+    g_output_damage_history_serial++;
 }
 
 static int output_damage_intersects_surface(struct iosc_surface *s,
@@ -2137,7 +2252,66 @@ static void app_cursor_notify(void)
     xios_notify_cursor(g_cursor_x * os, g_cursor_y * os, g_cursor_visible, shape);
 }
 
-static int notify_gpu_frame(void)
+/* A true scanout-equivalent path for the common nested-desktop case: one opaque
+ * fullscreen IOSurface toplevel, with cursor already owned by the app overlay.
+ * The client's producer fence is forwarded unchanged, so iosc submits no draw
+ * at all; Xios samples the original allocation directly. */
+static int try_direct_present(void)
+{
+    if (g_force_output_composite || g_native_mode || g_slock.locked ||
+        !xios_stream_v2_active() || g_nmapped != 1 ||
+        g_dnd.active || !iosc_app_cursor())
+        return 0;
+    struct iosc_surface *surface = g_mapped[0];
+    if (!surface || !surface->mapped || surface->toplevel_minimized ||
+        !surface_fills_output(surface) || !surface_opaque_full(surface) ||
+        !surface->current_buffer ||
+        (surface->viewport &&
+         (surface->viewport->has_src || surface->viewport->has_dst)))
+        return 0;
+
+    uint32_t surface_id = 0;
+    const void *token = NULL;
+    size_t token_size = 0;
+    uint64_t event_value = 0;
+    if (!iosc_iosurface_buffer_peek_direct(surface->current_buffer,
+                                            &surface_id,
+                                            &token, &token_size,
+                                            &event_value))
+        return 0;
+
+    uint64_t seq = 0;
+    if (xios_notify_surface_with_fence(surface_id, token, token_size,
+                                       event_value, &seq) != 0) {
+        fprintf(stderr,
+                "iosc: FATAL: direct IOSurface frame publication failed\n");
+        if (g_display) wl_display_terminate(g_display);
+        return -1;
+    }
+    iosc_iosurface_buffer_consume_direct(surface->current_buffer, event_value);
+    surface->direct_present_seq = seq;
+    surface->direct_surface_id = surface_id;
+    surface->gl_dirty = 0;
+    surface->gl_dirty_rect_count = 0;
+
+    struct iosc_rect consumed[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
+    int x0, y0, x1, y1;
+    (void)output_damage_consume(consumed, IOSC_MAX_OUTPUT_DAMAGE_RECTS,
+                                &x0, &y0, &x1, &y1);
+    if (!g_direct_present_active) {
+        fprintf(stderr,
+                "iosc: direct IOSurface presentation enabled "
+                "(fullscreen opaque surface id=%u)\n",
+                surface_id);
+        iosc_status_set("present-path", "direct-iosurface");
+    }
+    g_direct_present_active = 1;
+    frame_callbacks_after_present();
+    recomposite_reason_clear();
+    return 1;
+}
+
+static int notify_gpu_frame(uint32_t surface_id)
 {
     const void *token = NULL;
     size_t token_size = 0;
@@ -2150,7 +2324,8 @@ static int notify_gpu_frame(void)
             wl_display_terminate(g_display);
         return -1;
     }
-    if (xios_notify_dirty_with_fence(token, token_size, event_value) == 0)
+    if (xios_notify_surface_with_fence(surface_id, token, token_size,
+                                       event_value, NULL) == 0)
         return 0;
 
     fprintf(stderr,
@@ -2187,11 +2362,63 @@ static void recomposite_now(void)
         return;
     }
     if (iosc_gl_ok()) {
+        int direct = try_direct_present();
+        if (direct != 0)
+            return;
+        if (g_direct_present_active) {
+            g_direct_present_active = 0;
+            output_damage_history_reset();
+            output_damage_add_full();
+            fprintf(stderr,
+                    "iosc: direct IOSurface presentation disabled; "
+                    "restoring composited output\n");
+            iosc_status_set("present-path", "composited-swapchain");
+        }
+
+        void *output_surface = NULL;
+        uint32_t output_surface_id = 0;
+        unsigned output_age = 0;
+        uint64_t release_wait_value = 0;
+        if (!xios_output_acquire(&output_surface, &output_surface_id,
+                                 &output_age, &release_wait_value)) {
+            /* The app has not submitted a release for any allocation yet. Keep
+             * damage intact and retry from the Wayland event loop instead of
+             * blocking this CPU or rendering into a surface still being sampled. */
+            repaint_retry_soon();
+            return;
+        }
+        /* Select/wrap the target before queuing its release wait. eglWaitSync
+         * inserts a server-side wait into ANGLE's current Metal stream; changing
+         * EGL draw surfaces after that insertion can force a command-buffer
+         * boundary on some ANGLE builds. Binding only creates/attaches wrappers
+         * and performs no writes, so the actual target draw remains protected by
+         * the wait that follows. */
+        if (iosc_gl_bind_output(output_surface, g_width, g_height) != 0) {
+            fprintf(stderr,
+                    "iosc: FATAL: output swapchain target bind failed "
+                    "(surface=%u age=%u)\n",
+                    output_surface_id, output_age);
+            if (g_display) wl_display_terminate(g_display);
+            return;
+        }
+        if (release_wait_value != 0 &&
+            !iosc_gl_wait_release(release_wait_value)) {
+            fprintf(stderr,
+                    "iosc: FATAL: output swapchain release wait failed "
+                    "(surface=%u value=%llu)\n",
+                    output_surface_id,
+                    (unsigned long long)release_wait_value);
+            if (g_display) wl_display_terminate(g_display);
+            return;
+        }
+        output_damage_history_apply(output_age);
+
         struct iosc_render_plan plan;
         iosc_render_plan_build(&plan, g_output_damage_valid, output_damage_consume);
         iosc_render_plan_log(&plan, g_recompose_reason, g_recompose_reason_line,
                              g_width, g_height);
         if (plan.damage_count == 0) {
+            xios_output_cancel(output_surface_id);
             recomposite_reason_clear();
             return;
         }
@@ -2208,8 +2435,9 @@ static void recomposite_now(void)
                 composite_cursor();
             }
             iosc_gl_end();
-            if (notify_gpu_frame() != 0)
+            if (notify_gpu_frame(output_surface_id) != 0)
                 return;
+            output_damage_history_record();
             frame_callbacks_after_present();
             if (iosc_debug())
                 fprintf(stderr, "iosc: recomposited (session locked; lock surface %s)\n",
@@ -2255,8 +2483,9 @@ static void recomposite_now(void)
             composite_cursor();
         }
         iosc_gl_end();
-        if (notify_gpu_frame() != 0)
+        if (notify_gpu_frame(output_surface_id) != 0)
             return;
+        output_damage_history_record();
         frame_callbacks_after_present();
         /* Validation (IOSC_DEBUG only — each readback is a synchronous GPU->CPU
          * stall): read every window's EXPOSED top-left corner (a lower window's
@@ -2350,6 +2579,21 @@ static int repaint_timer_cb(void *data)
         wl_event_source_timer_update(g_repaint_timer, 0);
     repaint_timer_fire();
     return 0;
+}
+
+static void repaint_retry_soon(void)
+{
+    struct wl_event_loop *loop =
+        g_display ? wl_display_get_event_loop(g_display) : NULL;
+    if (!loop)
+        return;
+    if (!g_repaint_timer)
+        g_repaint_timer = wl_event_loop_add_timer(loop, repaint_timer_cb, NULL);
+    if (g_repaint_timer &&
+        wl_event_source_timer_update(g_repaint_timer, 4) == 0) {
+        g_repaint_timer_armed = 1;
+        g_recompose_scheduled = 1;
+    }
 }
 
 static uint64_t now_ms64(void)
@@ -2493,7 +2737,10 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
         g_cursor_visible = 0;
         restore_cursor = 1;
     }
+    g_force_output_composite = 1;
+    output_damage_add_full();
     recomposite_now();          /* synchronous: the readback below needs THIS frame */
+    g_force_output_composite = 0;
 
     wl_shm_buffer_begin_access(shm);
     int rc = xios_read_output_region(f->x, f->y, f->w, f->h,
@@ -2503,7 +2750,9 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
     if (restore_cursor) {
         g_cursor_visible = 1;
         output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+        g_force_output_composite = 1;
         recomposite_now();
+        g_force_output_composite = 0;
     }
 
     if (rc != 0) { zwlr_screencopy_frame_v1_send_failed(f->resource); return; }
@@ -2660,7 +2909,17 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
             wl_list_remove(&s->buffer_destroy.link);
             s->buffer_listener_active = 0;
         }
-        if (send_release_on_old) wl_buffer_send_release(s->current_buffer);
+        if (send_release_on_old) {
+            if (s->direct_present_seq != 0 &&
+                xios_stream_released_generation(s->direct_surface_id) <
+                    s->direct_present_seq) {
+                hold_direct_buffer_release(s->current_buffer,
+                                           s->direct_surface_id,
+                                           s->direct_present_seq);
+            } else {
+                wl_buffer_send_release(s->current_buffer);
+            }
+        }
         if (iosc_env_truthy(getenv("IOSC_BUFFER_TRACE")))
             fprintf(stderr, "iosc: buffer window_id=%u attach=%p release_old=%p%s\n",
                     s->window_id, (void *) buf, (void *) s->current_buffer,
@@ -2670,6 +2929,10 @@ static void surface_set_buffer(struct iosc_surface *s, struct wl_resource *buf,
                 s->window_id, (void *) buf,
                 !s->current_buffer ? "first buffer" : "same buffer re-attached");
     }
+    if (s->current_buffer != buf)
+        s->direct_present_seq = 0;
+    if (s->current_buffer != buf)
+        s->direct_surface_id = 0;
     s->current_buffer = buf;
     s->sw = sw; s->sh = sh;
     if (!can_preserve_shm_damage)
@@ -4167,6 +4430,8 @@ static int output_reconfigure_px(int pw, int ph, int transform, int scale)
         g_height = ph;
         g_output_damage_valid = 0;
         g_output_damage_rect_count = 0;
+        output_damage_history_reset();
+        g_direct_present_active = 0;
         if (iosc_gl_resize(xios_get_output_iosurface(), pw, ph) != 0) {
             fprintf(stderr, "iosc: FATAL: GPU output rebind failed; terminating\n");
             if (g_display)
@@ -9224,9 +9489,14 @@ int main(int argc, char **argv)
     if (getenv("IOSC_NO_OUTPUT_TRANSFORM"))
         g_advertise_transform = 0;
 
-    /* 1) Output: one fullscreen BGRA IOSurface + the rendezvous the Xios app
-     *    already speaks. xios_server_start writes xios.json so the app finds us. */
+    /* 1) Output: classic mode uses a three-buffer IOSurface stream so iosc and
+     *    Xios never read/write the same allocation concurrently. Native mode
+     *    already has one canvas per window and keeps the fixed primary output. */
     int alloc = 0;
+    if (xios_set_output_buffer_count(g_native_mode ? 1u : 3u) != 0) {
+        fprintf(stderr, "iosc: invalid output swapchain configuration\n");
+        return 1;
+    }
     if (!xios_surface_create(g_width, g_height, &g_stride, &alloc)) {
         fprintf(stderr, "iosc: xios_surface_create failed (IOSurface entitlement?)\n");
         return 1;
@@ -9241,15 +9511,6 @@ int main(int argc, char **argv)
      * FrontBoard and has no environment of its own to read. Runtime knob, not a
      * build one — see docs/ios-platform-features.md §2. */
     xios_set_upscale_hint(getenv("IOSC_UPSCALE"));
-    if (xios_server_start(opts.ddx_sock, opts.json_path, g_width, g_height, g_stride) != 0) {
-        fprintf(stderr, "iosc: xios_server_start failed\n");
-        return 1;
-    }
-    fprintf(stderr, "iosc: output IOSurface %dx%d stride=%d; logical=%dx%d scale=%d dpi=%d; app socket=%s\n",
-            g_width, g_height, g_stride,
-            output_logical_width(), output_logical_height(), output_scale(), g_output_dpi,
-            opts.ddx_sock);
-
     /* 1b) GPU compositor: an ANGLE context whose render target is the output
      *     IOSurface, so commits are composited on the GPU (client IOSurfaces
      *     sampled zero-copy). Startup fails closed. */
@@ -9258,11 +9519,31 @@ int main(int argc, char **argv)
         xios_server_stop();
         return 1;
     }
+    const void *release_token = NULL;
+    size_t release_token_size = 0;
+    if (!iosc_gl_release_fence_token(&release_token, &release_token_size) ||
+        xios_set_release_fence_token(release_token, release_token_size) != 0) {
+        fprintf(stderr, "iosc: FATAL: output release timeline setup failed\n");
+        xios_server_stop();
+        return 1;
+    }
+    if (xios_server_start(opts.ddx_sock, opts.json_path,
+                          g_width, g_height, g_stride) != 0) {
+        fprintf(stderr, "iosc: xios_server_start failed\n");
+        return 1;
+    }
+    fprintf(stderr,
+            "iosc: output IOSurface %dx%d stride=%d buffers=%d; "
+            "logical=%dx%d scale=%d dpi=%d; app socket=%s\n",
+            g_width, g_height, g_stride, g_native_mode ? 1 : 3,
+            output_logical_width(), output_logical_height(), output_scale(),
+            g_output_dpi, opts.ddx_sock);
 
     /* 2) Wayland display + globals. */
     g_display = wl_display_create();
     if (!g_display) { fprintf(stderr, "iosc: wl_display_create failed\n"); return 1; }
     wl_list_init(&g_surfaces);
+    wl_list_init(&g_direct_buffer_releases);
 
     if (wl_display_add_socket(g_display, opts.sock_name) != 0) {
         fprintf(stderr, "iosc: wl_display_add_socket(%s) failed "

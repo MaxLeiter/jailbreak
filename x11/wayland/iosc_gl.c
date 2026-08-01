@@ -31,9 +31,25 @@ static int s_ow = 0, s_oh = 0;
 /* The display/config/context live in xios_egl (shared); iosc_gl caches the display
  * only for the one eglMakeCurrent in init. */
 static EGLDisplay s_dpy = EGL_NO_DISPLAY;
+/* Keep the context current on a tiny ordinary pbuffer. Output IOSurface
+ * pbuffers remain permanently bound as textures and are selected solely by
+ * changing the FBO attachment. Making a texture-bound pbuffer current again is
+ * illegal (EGL_BAD_ACCESS) and made a rotating output swapchain fail when it
+ * returned to an older target. */
+static EGLSurface s_context_pb = EGL_NO_SURFACE;
 static EGLSurface s_out_pb = EGL_NO_SURFACE;   /* pbuffer bound to output IOSurface */
 static GLuint     s_out_tex = 0;               /* output IOSurface as a GL texture   */
 static GLuint     s_fbo = 0;                   /* renders into s_out_tex             */
+
+#define IOSC_GL_OUTPUT_TARGETS 3
+struct output_target {
+    void *surface;
+    EGLSurface pb;
+    GLuint tex;
+    int w, h;
+};
+static struct output_target s_output_targets[IOSC_GL_OUTPUT_TARGETS];
+static int s_output_target_count;
 
 static GLuint s_prog = 0;
 static GLint  s_a_pos = -1, s_a_uv = -1, s_u_tex = -1, s_u_opaque = -1;
@@ -43,6 +59,8 @@ static int    s_scissor_active = 0;
 static const void *s_present_fence_token;
 static size_t s_present_fence_token_size;
 static uint64_t s_present_fence_value;
+static void *s_release_event;
+static unsigned char s_release_fence_token[XIOS_GPU_FENCE_TOKEN_SIZE];
 
 struct upload_stats {
     unsigned long long draws;
@@ -87,7 +105,13 @@ static int make_iosurface_tex_wh(void *iosurface, int w, int h,
 {
     EGLSurface pb = xios_egl_create_iosurface_pbuffer(iosurface, w, h);
     if (pb == EGL_NO_SURFACE) return -1;
-    *out_pb = pb; *out_tex = xios_egl_bind_pbuffer_texture(pb);
+    GLuint tex = xios_egl_bind_pbuffer_texture(pb);
+    if (!tex) {
+        xios_egl_destroy_pbuffer(pb);
+        return -1;
+    }
+    *out_pb = pb;
+    *out_tex = tex;
     return 0;
 }
 
@@ -219,18 +243,45 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
     EGLContext ctx = xios_egl_context(2);
     if (ctx == EGL_NO_CONTEXT) { fprintf(stderr, "iosc_gl: xios_egl_context failed\n"); return -1; }
 
-    /* The output IOSurface as a render target. Create the pbuffer FIRST, make the
-     * context current on it, THEN create the GL texture + FBO (GL calls need a
-     * current context, so this ordering matters). */
+    /* Keep GL current on a dedicated surface. The IOSurface pbuffers below are
+     * texture sources attached to our FBO; they must never become EGL draw/read
+     * surfaces after eglBindTexImage. */
+    const EGLint context_pb_attrs[] = {
+        EGL_WIDTH, 1, EGL_HEIGHT, 1, EGL_NONE
+    };
+    s_context_pb = eglCreatePbufferSurface(s_dpy, xios_egl_config(),
+                                           context_pb_attrs);
+    if (s_context_pb == EGL_NO_SURFACE) {
+        fprintf(stderr,
+                "iosc_gl: ERROR context pbuffer creation failed 0x%x; "
+                "GPU compositor unavailable\n",
+                eglGetError());
+        return -1;
+    }
+    if (!eglMakeCurrent(s_dpy, s_context_pb, s_context_pb, ctx)) {
+        fprintf(stderr, "iosc_gl: context eglMakeCurrent failed 0x%x\n",
+                eglGetError());
+        return -1;
+    }
+
+    /* The output IOSurface as a texture-backed render target. */
     s_out_pb = xios_egl_create_iosurface_pbuffer(output_iosurface, w, h);
     if (s_out_pb == EGL_NO_SURFACE) {
         fprintf(stderr, "iosc_gl: ERROR output IOSurface pbuffer failed; GPU compositor unavailable\n");
         return -1;
     }
-    if (!eglMakeCurrent(s_dpy, s_out_pb, s_out_pb, ctx)) {
-        fprintf(stderr, "iosc_gl: eglMakeCurrent failed 0x%x\n", eglGetError()); return -1; }
     fprintf(stderr, "iosc_gl: GL_RENDERER=%s\n", glGetString(GL_RENDERER));
     s_out_tex = xios_egl_bind_pbuffer_texture(s_out_pb);
+    if (!s_out_tex) {
+        fprintf(stderr,
+                "iosc_gl: ERROR output IOSurface texture bind failed; "
+                "GPU compositor unavailable\n");
+        return -1;
+    }
+    s_output_targets[0] = (struct output_target) {
+        output_iosurface, s_out_pb, s_out_tex, w, h
+    };
+    s_output_target_count = 1;
 
     glGenFramebuffers(1, &s_fbo);
     glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
@@ -264,7 +315,16 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 
     glGenTextures(1, &s_shm_tex);
 
-    fprintf(stderr, "iosc_gl: frame sync = brokered Metal shared event\n");
+    s_release_event = xios_metal_sync_create_event(
+        s_release_fence_token, sizeof(s_release_fence_token));
+    if (!s_release_event) {
+        fprintf(stderr,
+                "iosc_gl: ERROR output release timeline unavailable; "
+                "GPU compositor unavailable\n");
+        return -1;
+    }
+    fprintf(stderr,
+            "iosc_gl: frame sync = bidirectional brokered Metal shared events\n");
 
     s_ok = 1;
     fprintf(stderr, "iosc_gl: GPU compositor ready (output %dx%d)\n", w, h);
@@ -273,10 +333,73 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 
 int iosc_gl_ok(void) { return s_ok; }
 
+int iosc_gl_bind_output(void *iosurface, int w, int h)
+{
+    if (!s_ok || !iosurface || w <= 0 || h <= 0) {
+        fprintf(stderr,
+                "iosc_gl: invalid output bind state ok=%d surface=%p size=%dx%d\n",
+                s_ok, iosurface, w, h);
+        return -1;
+    }
+    struct output_target *target = NULL;
+    for (int i = 0; i < s_output_target_count; i++)
+        if (s_output_targets[i].surface == iosurface) {
+            target = &s_output_targets[i];
+            break;
+        }
+    if (!target) {
+        if (s_output_target_count >= IOSC_GL_OUTPUT_TARGETS) {
+            fprintf(stderr, "iosc_gl: output target cache overflow\n");
+            return -1;
+        }
+        EGLSurface pb = xios_egl_create_iosurface_pbuffer(iosurface, w, h);
+        if (pb == EGL_NO_SURFACE) {
+            fprintf(stderr,
+                    "iosc_gl: output target pbuffer creation failed "
+                    "(surface=%p size=%dx%d)\n",
+                    iosurface, w, h);
+            return -1;
+        }
+        GLuint tex = xios_egl_bind_pbuffer_texture(pb);
+        if (!tex) {
+            fprintf(stderr,
+                    "iosc_gl: output target texture binding failed "
+                    "(surface=%p)\n",
+                    iosurface);
+            xios_egl_destroy_pbuffer(pb);
+            return -1;
+        }
+        target = &s_output_targets[s_output_target_count++];
+        *target = (struct output_target) { iosurface, pb, tex, w, h };
+    }
+
+    s_out_pb = target->pb;
+    s_out_tex = target->tex;
+    s_ow = target->w;
+    s_oh = target->h;
+    glBindFramebuffer(GL_FRAMEBUFFER, s_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_2D, s_out_tex, 0);
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr,
+                "iosc_gl: output FBO incomplete 0x%x (surface=%p tex=%u)\n",
+                status, iosurface, s_out_tex);
+        return -1;
+    }
+    return 0;
+}
+
 int iosc_gl_bind_target(void *iosurface, int w, int h)
 {
     if (!s_ok) return -1;
     EGLContext ctx = xios_egl_context(2);
+    if (!eglMakeCurrent(s_dpy, s_context_pb, s_context_pb, ctx)) {
+        fprintf(stderr, "iosc_gl: context eglMakeCurrent failed 0x%x\n",
+                eglGetError());
+        s_ok = 0;
+        return -1;
+    }
 
     /* Bring up the NEW target first so a failure leaves the old one intact. */
     EGLSurface new_pb = xios_egl_create_iosurface_pbuffer(iosurface, w, h);
@@ -285,20 +408,32 @@ int iosc_gl_bind_target(void *iosurface, int w, int h)
         s_ok = 0;
         return -1;
     }
-    if (!eglMakeCurrent(s_dpy, new_pb, new_pb, ctx)) {
-        fprintf(stderr, "iosc_gl: target eglMakeCurrent failed 0x%x\n", eglGetError());
+    GLuint new_tex = xios_egl_bind_pbuffer_texture(new_pb);
+    if (!new_tex) {
+        fprintf(stderr, "iosc_gl: target texture binding failed\n");
         xios_egl_destroy_pbuffer(new_pb);
         s_ok = 0;
         return -1;
     }
-    GLuint new_tex = xios_egl_bind_pbuffer_texture(new_pb);
 
-    /* Old target: GL objects belong to the (shared, still-current) context, so
-     * they can be deleted with the new surface current. */
+    /* Old target(s): GL objects belong to the shared, still-current context. A
+     * classic-output swapchain may have three cached targets; native canvases
+     * intentionally return to the one-target replace behaviour. */
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (s_fbo) { glDeleteFramebuffers(1, &s_fbo); s_fbo = 0; }
-    if (s_out_tex) { glDeleteTextures(1, &s_out_tex); s_out_tex = 0; }
-    if (s_out_pb != EGL_NO_SURFACE) xios_egl_destroy_pbuffer(s_out_pb);
+    if (s_output_target_count > 0) {
+        for (int i = 0; i < s_output_target_count; i++) {
+            if (s_output_targets[i].tex)
+                glDeleteTextures(1, &s_output_targets[i].tex);
+            if (s_output_targets[i].pb != EGL_NO_SURFACE)
+                xios_egl_destroy_pbuffer(s_output_targets[i].pb);
+        }
+        memset(s_output_targets, 0, sizeof(s_output_targets));
+        s_output_target_count = 0;
+    } else {
+        if (s_out_tex) glDeleteTextures(1, &s_out_tex);
+        if (s_out_pb != EGL_NO_SURFACE) xios_egl_destroy_pbuffer(s_out_pb);
+    }
 
     s_out_pb = new_pb;
     s_out_tex = new_tex;
@@ -319,7 +454,13 @@ int iosc_gl_bind_target(void *iosurface, int w, int h)
 int iosc_gl_resize(void *output_iosurface, int w, int h)
 {
     int r = iosc_gl_bind_target(output_iosurface, w, h);
-    if (r == 0) fprintf(stderr, "iosc_gl: output rebound (%dx%d)\n", w, h);
+    if (r == 0) {
+        s_output_targets[0] = (struct output_target) {
+            output_iosurface, s_out_pb, s_out_tex, w, h
+        };
+        s_output_target_count = 1;
+        fprintf(stderr, "iosc_gl: output rebound (%dx%d)\n", w, h);
+    }
     return r;
 }
 
@@ -609,6 +750,25 @@ int iosc_gl_present_fence(const void **token, size_t *token_size,
 int iosc_gl_wait_shared_event(void *event, uint64_t value)
 {
     return xios_metal_sync_wait(s_dpy, event, value);
+}
+
+int iosc_gl_release_fence_token(const void **token, size_t *token_size)
+{
+    if (token) *token = NULL;
+    if (token_size) *token_size = 0;
+    if (!s_release_event)
+        return 0;
+    if (token) *token = s_release_fence_token;
+    if (token_size) *token_size = sizeof(s_release_fence_token);
+    return 1;
+}
+
+int iosc_gl_wait_release(uint64_t value)
+{
+    if (value == 0)
+        return 1;
+    return s_release_event &&
+           xios_metal_sync_wait(s_dpy, s_release_event, value);
 }
 
 uint32_t iosc_gl_read_center(void)

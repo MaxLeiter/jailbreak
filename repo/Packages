@@ -20,20 +20,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: angle
 Name: ANGLE (GLES via Metal)
-Version: 2.1.0+git20260630.a32d31d+es3-15
+Version: 2.1.0+git20260630.a32d31d+es3-16
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
-Installed-Size: 13508
+Installed-Size: 13512
 Depends: firmware (>= 15.0)
 Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/AGX).
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-15_iphoneos-arm64.deb
-Size: 3946506
-MD5sum: 1a51cd49d9c08db2eea24a5b5b93584e
-SHA1: 6a4ae4ad478753ba064a46353bf8d9f78660461f
-SHA256: 4fe50e3a5257ade5176cd414d0968cbde5d33e1680c5763178549a8b9ab615b2
+Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-16_iphoneos-arm64.deb
+Size: 3946928
+MD5sum: ed3710e7a7183167b0c310336a4ccec5
+SHA1: ac5af6e0d46315b101ece580a0e4123e24b4dc2c
+SHA256: ed7488b9714728c891a5dfe6cbb2ba895da842fb3b98e9e7fc25369a480d385d
 Icon: https://repo.maxleiter.com/icons/angle.png
 Depiction: https://repo.maxleiter.com/depictions/angle.html
 SileoDepiction: https://repo.maxleiter.com/depictions/angle.json
@@ -354,20 +354,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: com.max.xios
 Name: Xios
-Version: 0.1.9
+Version: 0.1.10
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.0), iosc (>= 0.9.37)
+Depends: firmware (>= 16.0), iosc (>= 0.9.39)
 MinimumOSVersion: 16.0.0
 Description: the display app for the Xios desktop
-Filename: debs/com.max.xios_0.1.9_iphoneos-arm64.deb
-Size: 765636
-MD5sum: f83e1c25d4e5eeef8dda40bc29a7fe14
-SHA1: 924726508caf34e553d787c364e1486821ea9387
-SHA256: 0af7db533e17481b005c735c986b00db214dfcc0d0ac8819f9ed7a12ad670fc5
+Filename: debs/com.max.xios_0.1.10_iphoneos-arm64.deb
+Size: 769510
+MD5sum: 677bcf884a9db6b8af5a20abeb7fdba3
+SHA1: 7a90792d4eaf6918aa6d63a4dbf6f5abb7bc025d
+SHA256: 79a0acbb85f4af3f0e3cd43ed4926371ba6dc0ea52a7e1378eca8d102083e071
 Icon: https://repo.maxleiter.com/icons/com.max.xios.png
 Depiction: https://repo.maxleiter.com/depictions/com.max.xios.html
 SileoDepiction: https://repo.maxleiter.com/depictions/com.max.xios.json
@@ -1456,21 +1456,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.43
+Version: 0.9.46
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-14), libwayland0, libxkbcommon0
+Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-16), libwayland0, libxkbcommon0
 Recommends: gnome-console
 Section: X11
 Priority: optional
-Installed-Size: 692
+Installed-Size: 712
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.43_iphoneos-arm64.deb
-Size: 156760
-MD5sum: e46d38ea4be9bf9c8c8cdb94797d604f
-SHA1: f6f90a742683e6d419f7c6789d3829a6a8864db3
-SHA256: 661132ef7f0958f29d7d8a7cd38f747d11f61cf235dee3792e8fc2e761d5fefb
+Filename: debs/iosc_0.9.46_iphoneos-arm64.deb
+Size: 164460
+MD5sum: 63e2f47303556958567c5dea91f5723c
+SHA1: cd6de7b2d19bfabf130ebf36f2b17a317a107337
+SHA256: 2cf942dd87c063c26be3ec6ebbf8ad79f001f3ef35df1e54c12e6df00505650f
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json

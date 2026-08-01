@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <IOSurface/IOSurfaceRef.h>
+#include "../../shared/XiosProtocol.h"
 
 /*
  * Client side of the Xios IOSurface hand-off. Connects to the X server's Unix
@@ -19,8 +20,13 @@ typedef struct XSurfaceConn XSurfaceConn;
  * holding frame and retry. */
 XSurfaceConn *xsurface_connect(const char *sock_path);
 
-/* Borrowed (+0) reference to the shared surface; valid until xsurface_close(). */
+/* Borrowed (+0) reference to the surface named by the latest complete DIRTY
+ * record (the primary output before the first DIRTY). */
 IOSurfaceRef xsurface_get(XSurfaceConn *c);
+uint32_t xsurface_surface_id(XSurfaceConn *c);
+uint32_t xsurface_surface_flags(XSurfaceConn *c);
+int xsurface_surface_width(XSurfaceConn *c);
+int xsurface_surface_height(XSurfaceConn *c);
 
 int xsurface_width(XSurfaceConn *c);
 int xsurface_height(XSurfaceConn *c);
@@ -66,6 +72,13 @@ int xsurface_pacing(XSurfaceConn *c, int32_t until_deadline_us,
  * pointer remains valid until xsurface_close(). */
 int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
                              size_t *token_size, uint64_t *value);
+
+/* Compositor-owned release timeline imported by the app. After committing the
+ * Metal command buffer, signal it at the DIRTY sequence and send RELEASED so the
+ * compositor can reuse that output by enqueuing a GPU wait (no CPU wait). */
+int xsurface_release_fence_token(XSurfaceConn *c, const void **token,
+                                 size_t *token_size);
+int xsurface_released(XSurfaceConn *c, uint32_t surface_id, uint64_t seq);
 
 /* Latest pointer state from the typed CURSOR stream. iosc's present-side cursor
  * overlay (IOSC_APP_CURSOR) stops compositing the cursor into the framebuffer and

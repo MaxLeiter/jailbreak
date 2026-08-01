@@ -759,6 +759,11 @@ __eglMustCastToProperFunctionPointerType eglGetProcAddress(const char *name)
     if (!strcmp(name, "eglChooseConfig"))                  return (void *)eglChooseConfig;
     if (!strcmp(name, "eglGetConfigAttrib"))               return (void *)eglGetConfigAttrib;
     if (!strcmp(name, "eglInitialize"))                    return (void *)eglInitialize;
+    /* EGL 1.5 core functions are not guaranteed to come back from the real
+     * driver's eglGetProcAddress. Publish our forwarder explicitly: iosc uses
+     * this to enqueue a Metal shared-event release wait without linking ANGLE
+     * directly, and the shim itself dlopens the real driver. */
+    if (!strcmp(name, "eglWaitSync"))                       return (void *)eglWaitSync;
     return REAL(eglGetProcAddress)(name);
 }
 
@@ -773,6 +778,10 @@ EGLBoolean eglInitialize(EGLDisplay d, EGLint *a, EGLint *b)
     return r;
 }
 EGLBoolean eglTerminate(EGLDisplay d){ return REAL(eglTerminate)(d); }
+EGLBoolean eglWaitSync(EGLDisplay d, EGLSync sync, EGLint flags)
+{
+    return REAL(eglWaitSync)(d, sync, flags);
+}
 EGLint eglGetError(void)
 {
     if (s_shim_error != EGL_SUCCESS) {

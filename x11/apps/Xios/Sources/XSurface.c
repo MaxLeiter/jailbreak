@@ -39,17 +39,33 @@ typedef struct {
     mach_msg_trailer_t trailer;
 } xios_port_msg;
 
+#define XSURFACE_MAX_SURFACES 128
+
+struct xsurface_item {
+    IOSurfaceRef surface;
+    uint32_t id;
+    uint32_t flags;
+    int width, height, stride;
+    int retired;
+};
+
 struct XSurfaceConn {
     int fd;
-    IOSurfaceRef surface;
+    mach_port_t reply_port;
+    struct xsurface_item surfaces[XSURFACE_MAX_SURFACES];
+    int surface_count;
+    uint32_t current_surface_id;
     int width, height, stride;
     char comp_id[32];          /* compositor id from the in-band HELLO ("iosc"/...) */
+    unsigned char release_token[XIOS_GPU_FENCE_TOKEN_SIZE];
+    uint32_t release_token_size;
     /* typed-stream parser state (records span multiple non-blocking reads) */
     unsigned char rxbuf[sizeof(xios_msg)];
     int rxlen;                 /* header bytes buffered so far */
     int skip;                  /* payload bytes still to discard after a header */
     uint32_t fence_rx_expected;
     uint32_t fence_rx_got;
+    uint32_t fence_rx_surface_id;
     uint64_t fence_rx_dirty_seq;
     uint64_t fence_rx_value;
     unsigned char fence_token[XIOS_GPU_FENCE_TOKEN_SIZE];
@@ -60,7 +76,91 @@ struct XSurfaceConn {
     int cur_x, cur_y, cur_vis, cur_shape;
     uint32_t cur_seq;          /* bumped per CURSOR record; 0 = none seen */
     uint64_t dirty_seq;        /* latest DIRTY present sequence from the compositor */
+    xios_msg pending_surface;
+    int has_pending_surface;
 };
+
+static struct xsurface_item *find_surface(XSurfaceConn *c, uint32_t id)
+{
+    if (!c) return NULL;
+    for (int i = 0; i < c->surface_count; i++)
+        if (c->surfaces[i].surface && c->surfaces[i].id == id)
+            return &c->surfaces[i];
+    return NULL;
+}
+
+static void remove_surface(XSurfaceConn *c, uint32_t id)
+{
+    struct xsurface_item *item = find_surface(c, id);
+    if (!item) return;
+    CFRelease(item->surface);
+    int index = (int)(item - c->surfaces);
+    c->surfaces[index] = c->surfaces[--c->surface_count];
+    memset(&c->surfaces[c->surface_count], 0,
+           sizeof(c->surfaces[c->surface_count]));
+}
+
+static int receive_surface_port(mach_port_t reply_port, uint32_t timeout_ms,
+                                IOSurfaceRef *surface_out)
+{
+    if (surface_out) *surface_out = NULL;
+    xios_port_msg msg;
+    memset(&msg, 0, sizeof(msg));
+    kern_return_t kr = mach_msg(&msg.header,
+                                MACH_RCV_MSG | MACH_RCV_TIMEOUT,
+                                0, sizeof(msg), reply_port,
+                                timeout_ms, MACH_PORT_NULL);
+    if (kr == MACH_RCV_TIMED_OUT)
+        return 0;
+    if (kr != KERN_SUCCESS ||
+        !(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX) ||
+        msg.body.msgh_descriptor_count != 1 ||
+        msg.port.type != MACH_MSG_PORT_DESCRIPTOR ||
+        msg.port.name == MACH_PORT_NULL) {
+        xlog("mach_msg recv failed kr=0x%x complex=%d descriptors=%u type=%u port=%u",
+             kr, (int)!!(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX),
+             msg.body.msgh_descriptor_count, msg.port.type, msg.port.name);
+        return -1;
+    }
+    IOSurfaceRef surface = IOSurfaceLookupFromMachPort(msg.port.name);
+    mach_port_deallocate(mach_task_self(), msg.port.name);
+    if (!surface) {
+        xlog("IOSurfaceLookupFromMachPort returned NULL");
+        return -1;
+    }
+    if (surface_out) *surface_out = surface;
+    else CFRelease(surface);
+    return 1;
+}
+
+static int add_surface(XSurfaceConn *c, uint32_t id, uint32_t flags,
+                       int width, int height, int stride, IOSurfaceRef surface)
+{
+    if (!c || !surface || id == 0 ||
+        (flags & ~XIOS_SURFACE_FLAG_FLIP_Y))
+        return -1;
+    struct xsurface_item *old = find_surface(c, id);
+    if (old) {
+        CFRelease(old->surface);
+        old->surface = surface;
+        old->flags = flags;
+        old->width = width;
+        old->height = height;
+        old->stride = stride;
+        old->retired = 0;
+        return 0;
+    }
+    if (c->surface_count >= XSURFACE_MAX_SURFACES)
+        return -1;
+    struct xsurface_item *item = &c->surfaces[c->surface_count++];
+    item->surface = surface;
+    item->id = id;
+    item->flags = flags;
+    item->width = width;
+    item->height = height;
+    item->stride = stride;
+    return 0;
+}
 
 static int read_full(int fd, void *buf, size_t n)
 {
@@ -96,7 +196,7 @@ static void destroy_reply_port(mach_port_t task, mach_port_t port)
     mach_port_mod_refs(task, port, MACH_PORT_RIGHT_RECEIVE, -1);
 }
 
-XSurfaceConn *xsurface_connect(const char *sock_path)
+static XSurfaceConn *xsurface_connect_caps(const char *sock_path, uint32_t caps)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { xlog("socket() failed errno=%d", errno); return NULL; }
@@ -136,34 +236,15 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
     hello.window_id = XIOS_PROTOCOL_VERSION;
     hello.a = (int32_t) getpid();       /* diagnostic only; server trusts peer pid */
     hello.b = (int32_t) r;
+    hello.c = (int32_t)caps;
     if (write_full(fd, &hello, sizeof(hello)) != 0) {
         destroy_reply_port(self, r); close(fd); return NULL;
     }
 
     /* Receive the IOSurface mach port the server delivers. */
-    xios_port_msg msg;
-    memset(&msg, 0, sizeof(msg));
-    /* MACH_RCV_TIMEOUT must be in the option mask or the timeout arg is ignored and
-     * this blocks forever (a server that never delivers would hang this thread). */
-    kern_return_t kr = mach_msg(&msg.header, MACH_RCV_MSG | MACH_RCV_TIMEOUT, 0,
-                                sizeof(msg), r, 5000 /*ms*/, MACH_PORT_NULL);
-    if (kr != KERN_SUCCESS ||
-        !(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX) ||
-        msg.body.msgh_descriptor_count != 1 ||
-        msg.port.type != MACH_MSG_PORT_DESCRIPTOR ||
-        msg.port.name == MACH_PORT_NULL) {
-        xlog("mach_msg recv failed kr=0x%x complex=%d descriptors=%u type=%u port=%u",
-             kr, (int) !!(msg.header.msgh_bits & MACH_MSGH_BITS_COMPLEX),
-             msg.body.msgh_descriptor_count, msg.port.type, msg.port.name);
+    IOSurfaceRef primary = NULL;
+    if (receive_surface_port(r, caps ? 1500 : 5000, &primary) != 1) {
         destroy_reply_port(self, r); close(fd); return NULL;
-    }
-    IOSurfaceRef surface = IOSurfaceLookupFromMachPort(msg.port.name);
-    /* The receive port has done its job; drop it. */
-    mach_port_deallocate(self, msg.port.name);
-    destroy_reply_port(self, r);
-    if (!surface) {
-        xlog("IOSurfaceLookupFromMachPort returned NULL");
-        close(fd); return NULL;
     }
 
     /* The server's HELLO is the first socket reply. The IOSurface itself remains
@@ -176,33 +257,117 @@ XSurfaceConn *xsurface_connect(const char *sock_path)
         h.length >= sizeof(((XSurfaceConn *)0)->comp_id)) {
         xlog("v%u HELLO missing/malformed (magic=0x%x type=%u version=%u)",
              XIOS_PROTOCOL_VERSION, h.magic, h.type, h.window_id);
-        CFRelease(surface); close(fd); return NULL;
+        CFRelease(primary); destroy_reply_port(self, r); close(fd); return NULL;
     }
     XSurfaceConn *c = calloc(1, sizeof(*c));
-    if (!c) { CFRelease(surface); close(fd); return NULL; }
+    if (!c) {
+        CFRelease(primary); destroy_reply_port(self, r); close(fd); return NULL;
+    }
     c->fd = fd;
-    c->surface = surface;
-    c->width = (int) IOSurfaceGetWidth(surface);
-    c->height = (int) IOSurfaceGetHeight(surface);
-    c->stride = (int) IOSurfaceGetBytesPerRow(surface);
+    c->reply_port = r;
+    c->width = (int) IOSurfaceGetWidth(primary);
+    c->height = (int) IOSurfaceGetHeight(primary);
+    c->stride = (int) IOSurfaceGetBytesPerRow(primary);
     if (h.a != c->width || h.b != c->height || h.c != c->stride ||
         (uint32_t)h.d != 0x42475241u) {
         xlog("HELLO geometry mismatch surface=%dx%d/%d wire=%dx%d/%d",
              c->width, c->height, c->stride, h.a, h.b, h.c);
-        CFRelease(surface); free(c); close(fd); return NULL;
+        CFRelease(primary); destroy_reply_port(self, r); free(c); close(fd); return NULL;
     }
+    if (add_surface(c, XIOS_PRIMARY_SURFACE_ID, 0,
+                    c->width, c->height, c->stride, primary) != 0) {
+        CFRelease(primary); destroy_reply_port(self, r); free(c); close(fd); return NULL;
+    }
+    c->current_surface_id = XIOS_PRIMARY_SURFACE_ID;
     uint32_t idlen = h.length;
     if (idlen && read_full(fd, c->comp_id, idlen) != 0) {
-        CFRelease(surface); free(c); close(fd); return NULL;
+        xsurface_close(c); return NULL;
     }
     c->comp_id[idlen] = '\0';
-    xlog("typed stream connected (compositor=%s)", c->comp_id);
+
+    if (caps & XIOS_HELLO_CAP_STREAM_V2) {
+        xios_msg info;
+        memset(&info, 0, sizeof(info));
+        if (read_full(fd, &info, sizeof(info)) != 0 ||
+            info.magic != XIOS_MSG_MAGIC ||
+            info.type != XIOS_MSG_STREAM_INFO ||
+            info.window_id != 0 ||
+            (info.length != XIOS_GPU_FENCE_TOKEN_SIZE &&
+             !(info.a == 1 && info.length == 0)) ||
+            info.a < 1 || info.a > 3 ||
+            (info.length &&
+             read_full(fd, c->release_token, info.length) != 0)) {
+            xlog("stream-v2 info missing/malformed");
+            xsurface_close(c);
+            return NULL;
+        }
+        c->release_token_size = info.length;
+
+        for (int i = 1; i < info.a; i++) {
+            IOSurfaceRef surface = NULL;
+            xios_msg surface_msg;
+            memset(&surface_msg, 0, sizeof(surface_msg));
+            if (receive_surface_port(r, 5000, &surface) != 1 ||
+                read_full(fd, &surface_msg, sizeof(surface_msg)) != 0 ||
+                surface_msg.magic != XIOS_MSG_MAGIC ||
+                surface_msg.type != XIOS_MSG_SURFACE ||
+                surface_msg.length != 0 ||
+                surface_msg.window_id != XIOS_PRIMARY_SURFACE_ID + (uint32_t)i ||
+                surface_msg.a != (int32_t)IOSurfaceGetWidth(surface) ||
+                surface_msg.b != (int32_t)IOSurfaceGetHeight(surface) ||
+                surface_msg.c != (int32_t)IOSurfaceGetBytesPerRow(surface) ||
+                add_surface(c, surface_msg.window_id, (uint32_t)surface_msg.d,
+                            surface_msg.a, surface_msg.b, surface_msg.c,
+                            surface) != 0) {
+                if (surface) CFRelease(surface);
+                xlog("stream-v2 output surface %d missing/malformed", i);
+                xsurface_close(c);
+                return NULL;
+            }
+        }
+        xlog("typed stream-v2 connected (compositor=%s outputs=%d)",
+             c->comp_id, info.a);
+    } else {
+        destroy_reply_port(self, c->reply_port);
+        c->reply_port = MACH_PORT_NULL;
+        xlog("typed legacy stream connected (compositor=%s)", c->comp_id);
+    }
 
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     return c;
 }
 
-IOSurfaceRef xsurface_get(XSurfaceConn *c) { return c ? c->surface : NULL; }
+XSurfaceConn *xsurface_connect(const char *sock_path)
+{
+    XSurfaceConn *c =
+        xsurface_connect_caps(sock_path, XIOS_HELLO_CAP_STREAM_V2);
+    return c ? c : xsurface_connect_caps(sock_path, 0);
+}
+
+IOSurfaceRef xsurface_get(XSurfaceConn *c)
+{
+    struct xsurface_item *item = find_surface(c, c ? c->current_surface_id : 0);
+    return item ? item->surface : NULL;
+}
+uint32_t xsurface_surface_id(XSurfaceConn *c)
+{
+    return c ? c->current_surface_id : 0;
+}
+uint32_t xsurface_surface_flags(XSurfaceConn *c)
+{
+    struct xsurface_item *item = find_surface(c, c ? c->current_surface_id : 0);
+    return item ? item->flags : 0;
+}
+int xsurface_surface_width(XSurfaceConn *c)
+{
+    struct xsurface_item *item = find_surface(c, c ? c->current_surface_id : 0);
+    return item ? item->width : 0;
+}
+int xsurface_surface_height(XSurfaceConn *c)
+{
+    struct xsurface_item *item = find_surface(c, c ? c->current_surface_id : 0);
+    return item ? item->height : 0;
+}
 int xsurface_width(XSurfaceConn *c)  { return c ? c->width : 0; }
 int xsurface_height(XSurfaceConn *c) { return c ? c->height : 0; }
 int xsurface_stride(XSurfaceConn *c) { return c ? c->stride : 0; }
@@ -217,6 +382,26 @@ int xsurface_drain(XSurfaceConn *c)
     if (!c) return -1;
     int dirty = 0;
     for (;;) {
+        if (c->has_pending_surface) {
+            IOSurfaceRef surface = NULL;
+            int rr = receive_surface_port(c->reply_port, 0, &surface);
+            if (rr == 0)
+                break;
+            if (rr < 0)
+                return -1;
+            xios_msg *m = &c->pending_surface;
+            if (m->a != (int32_t)IOSurfaceGetWidth(surface) ||
+                m->b != (int32_t)IOSurfaceGetHeight(surface) ||
+                m->c != (int32_t)IOSurfaceGetBytesPerRow(surface) ||
+                add_surface(c, m->window_id, (uint32_t)m->d,
+                            m->a, m->b, m->c, surface) != 0) {
+                CFRelease(surface);
+                xlog("dynamic SURFACE %u malformed", m->window_id);
+                return -1;
+            }
+            c->has_pending_surface = 0;
+            continue;
+        }
         if (c->fence_rx_expected > 0) {
             ssize_t r = recv(c->fd,
                              c->fence_token + c->fence_rx_got,
@@ -230,10 +415,21 @@ int xsurface_drain(XSurfaceConn *c)
                 c->fence_dirty_seq = c->fence_rx_dirty_seq;
                 c->fence_value = c->fence_rx_value;
                 c->dirty_seq = c->fence_rx_dirty_seq;
+                uint32_t previous_surface_id = c->current_surface_id;
+                c->current_surface_id = c->fence_rx_surface_id;
+                if (previous_surface_id != c->current_surface_id) {
+                    struct xsurface_item *previous =
+                        find_surface(c, previous_surface_id);
+                    if (previous && previous->retired)
+                        remove_surface(c, previous_surface_id);
+                }
                 c->fence_rx_expected = 0;
                 c->fence_rx_got = 0;
-                dirty = 1;
-                continue;
+                /* A swapchain DIRTY is an ownership transfer, not a coalescible
+                 * hint: every delivered buffer needs its own release submission.
+                 * Stop after one complete frame and leave later records queued for
+                 * subsequent display-link ticks. */
+                return 1;
             }
             if (r == 0) return -1;
             if (errno == EAGAIN || errno == EWOULDBLOCK) break;
@@ -265,18 +461,45 @@ int xsurface_drain(XSurfaceConn *c)
                 uint64_t seq = ((uint64_t)(uint32_t)m.b << 32) | (uint32_t)m.a;
                 uint64_t event_value =
                     ((uint64_t)(uint32_t)m.d << 32) | (uint32_t)m.c;
-                if (m.window_id != XIOS_DIRTY_FENCE_BROKER_TOKEN ||
+                if (!find_surface(c, m.window_id) ||
                     m.length != XIOS_GPU_FENCE_TOKEN_SIZE ||
                     event_value == 0) {
-                    xlog("invalid broker fence kind=%u length=%u value=%llu",
+                    xlog("invalid broker fence surface=%u length=%u value=%llu",
                          m.window_id, m.length,
                          (unsigned long long)event_value);
                     return -1;
                 }
                 c->fence_rx_expected = m.length;
                 c->fence_rx_got = 0;
+                c->fence_rx_surface_id = m.window_id;
                 c->fence_rx_dirty_seq = seq;
                 c->fence_rx_value = event_value;
+                break;
+            }
+            case XIOS_MSG_SURFACE:
+                if (m.window_id < XIOS_DYNAMIC_SURFACE_ID_BASE ||
+                    m.length != 0 || m.a <= 0 || m.b <= 0 || m.c <= 0 ||
+                    ((uint32_t)m.d & ~XIOS_SURFACE_FLAG_FLIP_Y) != 0 ||
+                    find_surface(c, m.window_id)) {
+                    xlog("invalid dynamic SURFACE id=%u", m.window_id);
+                    return -1;
+                }
+                c->pending_surface = m;
+                c->has_pending_surface = 1;
+                break;
+            case XIOS_MSG_SURFACE_DROP:
+            {
+                if (m.length != 0) return -1;
+                struct xsurface_item *item = find_surface(c, m.window_id);
+                if (!item || m.window_id < XIOS_DYNAMIC_SURFACE_ID_BASE)
+                    return -1;
+                /* Keep the currently displayed allocation until a later DIRTY
+                 * switches away; Metal may still retain it for the last drawable. */
+                if (m.window_id == c->current_surface_id) {
+                    item->retired = 1;
+                } else {
+                    remove_surface(c, m.window_id);
+                }
                 break;
             }
             case XIOS_MSG_CURSOR:
@@ -321,6 +544,18 @@ int xsurface_gpu_fence_token(XSurfaceConn *c, const void **token,
     if (token) *token = c->fence_token;
     if (token_size) *token_size = c->fence_token_size;
     if (value) *value = c->fence_value;
+    return 1;
+}
+
+int xsurface_release_fence_token(XSurfaceConn *c, const void **token,
+                                 size_t *token_size)
+{
+    if (token) *token = NULL;
+    if (token_size) *token_size = 0;
+    if (!c || c->release_token_size != XIOS_GPU_FENCE_TOKEN_SIZE)
+        return 0;
+    if (token) *token = c->release_token;
+    if (token_size) *token_size = c->release_token_size;
     return 1;
 }
 
@@ -381,6 +616,20 @@ int xsurface_pacing(XSurfaceConn *c, int32_t until_deadline_us,
     return send_msg(c, &m);
 }
 
+int xsurface_released(XSurfaceConn *c, uint32_t surface_id, uint64_t seq)
+{
+    if (!c || c->fd < 0 || surface_id == 0 || seq == 0)
+        return -1;
+    xios_msg m;
+    memset(&m, 0, sizeof(m));
+    m.magic = XIOS_MSG_MAGIC;
+    m.type = XIOS_MSG_RELEASED;
+    m.window_id = surface_id;
+    m.a = (int32_t)(uint32_t)(seq & 0xffffffffu);
+    m.b = (int32_t)(uint32_t)(seq >> 32);
+    return send_msg(c, &m);
+}
+
 uint32_t xsurface_cursor(XSurfaceConn *c, int *x, int *y, int *visible, int *shape_id)
 {
     if (!c) return 0;
@@ -396,7 +645,10 @@ const char *xsurface_compositor_id(XSurfaceConn *c) { return c ? c->comp_id : ""
 void xsurface_close(XSurfaceConn *c)
 {
     if (!c) return;
-    if (c->surface) CFRelease(c->surface);
+    for (int i = 0; i < c->surface_count; i++)
+        if (c->surfaces[i].surface)
+            CFRelease(c->surfaces[i].surface);
+    destroy_reply_port(mach_task_self(), c->reply_port);
     if (c->fd >= 0) close(c->fd);
     free(c);
 }

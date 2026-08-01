@@ -2,7 +2,9 @@
  * XiosProtocol.h — the single private host/compositor wire contract.
  *
  * There are no released third-party consumers, so every in-tree endpoint speaks
- * exactly this version. A mismatch is fatal; there are no compatibility modes.
+ * exactly this version. A version mismatch is fatal. Presentation extensions
+ * are capability-negotiated inside that version so fixed-output producers can
+ * retain the original one-surface contract while iosc uses stream-v2.
  */
 #ifndef XIOS_PROTOCOL_H
 #define XIOS_PROTOCOL_H
@@ -61,6 +63,25 @@ enum {
      * a delta needs no shared epoch — the receiver stamps its own clock on
      * arrival. */
     XIOS_MSG_PACING = 0x06,
+    /* Server -> app stream extensions negotiated by XIOS_HELLO_CAP_STREAM_V2:
+     *
+     * STREAM_INFO follows the server HELLO. `a` is the output-buffer count and
+     * the payload is the compositor-owned release MTLSharedEvent broker token.
+     *
+     * SURFACE is preceded by one IOSurface Mach-port message on the HELLO reply
+     * port. window_id is a stream-local surface id; a/b/c are width/height/stride
+     * and d is XIOS_SURFACE_FLAG_*.
+     *
+     * SURFACE_DROP retires a dynamically exported surface id.
+     *
+     * RELEASED is app -> compositor after the app has committed a Metal command
+     * buffer which signals the release timeline at the DIRTY sequence in a/b.
+     * The compositor may immediately enqueue a GPU wait for that value; neither
+     * CPU blocks on the other GPU queue. */
+    XIOS_MSG_SURFACE = 0x07,
+    XIOS_MSG_SURFACE_DROP = 0x08,
+    XIOS_MSG_RELEASED = 0x09,
+    XIOS_MSG_STREAM_INFO = 0x0a,
 
     XIOS_MSG_BIND = 0x40,
     XIOS_MSG_RESIZE = 0x41,
@@ -81,6 +102,10 @@ enum {
  * contract. A second HELLO, another version, or an unknown message is fatal.
  */
 #define XIOS_DIRTY_FENCE_BROKER_TOKEN 1u
+#define XIOS_HELLO_CAP_STREAM_V2      (1u << 0)
+#define XIOS_SURFACE_FLAG_FLIP_Y      (1u << 0)
+#define XIOS_PRIMARY_SURFACE_ID       1u
+#define XIOS_DYNAMIC_SURFACE_ID_BASE  0x100u
 #define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
 
 /*

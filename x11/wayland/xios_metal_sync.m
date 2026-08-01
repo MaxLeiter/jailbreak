@@ -167,6 +167,27 @@ int xios_metal_sync_signal(EGLDisplay display,
     return 1;
 }
 
+void *xios_metal_sync_create_event(void *token_out, size_t token_size)
+{
+    if (!token_out || token_size != XIOS_GPU_FENCE_TOKEN_SIZE)
+        return NULL;
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (!device)
+        return NULL;
+    id<MTLSharedEvent> event = [device newSharedEvent];
+    [device release];
+    if (!event)
+        return NULL;
+    MTLSharedEventHandle *handle = [event newSharedEventHandle];
+    int published = xios_metal_event_broker_publish(handle, token_out);
+    [handle release];
+    if (!published) {
+        [event release];
+        return NULL;
+    }
+    return event;
+}
+
 void *xios_metal_sync_import_event(const void *token, size_t token_size)
 {
     if (!token || token_size != XIOS_GPU_FENCE_TOKEN_SIZE)
@@ -237,11 +258,35 @@ int xios_metal_sync_wait(EGLDisplay display, void *event_ptr, uint64_t value)
     EGLSync sync = eglCreateSync(display,
                                  EGL_SYNC_METAL_SHARED_EVENT_ANGLE,
                                  attributes);
-    if (sync == EGL_NO_SYNC)
+    if (sync == EGL_NO_SYNC) {
+        fprintf(stderr,
+                "xios_metal_sync: release wait sync creation failed 0x%x "
+                "(value=%llu)\n",
+                eglGetError(), (unsigned long long)value);
         return 0;
+    }
+
+    /* The Xios libEGL shim explicitly publishes the EGL 1.5 core entry point
+     * through eglGetProcAddress. Calling through it keeps this helper usable in
+     * the shim itself (which dlopens ANGLE rather than linking libEGL) while
+     * still queuing a GPU wait in ANGLE's Metal stream. */
     PFNEGLWAITSYNCPROC wait_sync =
         (PFNEGLWAITSYNCPROC)eglGetProcAddress("eglWaitSync");
-    EGLBoolean waited = wait_sync ? wait_sync(display, sync, 0) : EGL_FALSE;
+    if (!wait_sync) {
+        fprintf(stderr,
+                "xios_metal_sync: eglWaitSync unavailable from libEGL shim "
+                "(value=%llu)\n",
+                (unsigned long long)value);
+        eglDestroySync(display, sync);
+        return 0;
+    }
+    EGLBoolean waited = wait_sync(display, sync, 0);
+    EGLint wait_error = waited == EGL_TRUE ? EGL_SUCCESS : eglGetError();
     eglDestroySync(display, sync);
+    if (waited != EGL_TRUE)
+        fprintf(stderr,
+                "xios_metal_sync: release wait enqueue failed 0x%x "
+                "(value=%llu)\n",
+                wait_error, (unsigned long long)value);
     return waited == EGL_TRUE;
 }

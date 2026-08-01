@@ -20,6 +20,8 @@
 # mandatory broker-fence contract and removes legacy version negotiation.
 # -15 revision: shares the one process-wide ANGLE Metal display between
 # QtWayland's facade and nested compositor requests.
+# -16 revision: exports and returns the EGL 1.5 eglWaitSync core entry point so
+# iosc can enqueue the Xios consumer-release event on ANGLE's Metal stream.
 set -euo pipefail
 _xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
@@ -44,7 +46,7 @@ BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
-VER="2.1.0+git20260630.a32d31d+es3-15"
+VER="2.1.0+git20260630.a32d31d+es3-16"
 DEB="angle_${VER}_$XIOS_DEB_ARCH.deb"
 
 rm -rf "$STAGEROOT"

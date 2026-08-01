@@ -37,6 +37,11 @@ int  iosc_gl_resize(void *output_iosurface, int w, int h);
  * canvas. It is also the implementation behind iosc_gl_resize(). */
 int  iosc_gl_bind_target(void *iosurface, int w, int h);
 
+/* Fast output-swapchain bind. Unlike the general/native target hook, keeps up
+ * to three output IOSurface pbuffers/textures live and only switches the current
+ * attachment, avoiding per-frame EGL/GL object churn. */
+int  iosc_gl_bind_output(void *iosurface, int w, int h);
+
 /* Begin a frame: bind the output FBO and clear to black. */
 void iosc_gl_begin(void);
 
@@ -85,6 +90,12 @@ int iosc_gl_present_fence(const void **token, size_t *token_size,
 /* Import-side counterpart used by IOSurface-backed Wayland clients: enqueue a
  * GPU wait before sampling a buffer produced on another Metal command queue. */
 int iosc_gl_wait_shared_event(void *event, uint64_t value);
+
+/* Consumer-release timeline for the output swapchain. The Xios app signals the
+ * exported event after sampling an output; iosc enqueues a GPU wait before
+ * rendering into that allocation again. */
+int iosc_gl_release_fence_token(const void **token, size_t *token_size);
+int iosc_gl_wait_release(uint64_t value);
 
 /* Read one composited output pixel (BGRA) at top-left coord (x,y) — validation
  * (proves a given window's content landed at its placement). Call after iosc_gl_end. */

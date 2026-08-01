@@ -21,6 +21,12 @@ int xios_metal_sync_signal(EGLDisplay display,
                            size_t *token_size,
                            uint64_t *value);
 
+/* Create a compositor-owned MTLSharedEvent timeline and publish its handle
+ * through the broker. The returned opaque event is retained and can be passed
+ * to xios_metal_sync_wait(), then released with
+ * xios_metal_sync_release_event(). */
+void *xios_metal_sync_create_event(void *token_out, size_t token_size);
+
 /* Fetch the handle for a broker token and recreate/release its shared event. */
 void *xios_metal_sync_import_event(const void *token, size_t token_size);
 void xios_metal_sync_release_event(void *event);

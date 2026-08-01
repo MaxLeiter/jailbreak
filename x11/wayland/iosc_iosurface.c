@@ -26,8 +26,11 @@ struct iosc_iosurface_buffer {
     int   flip_v;    /* 1 = GL-origin client IOSurface; 0 = already top-left */
     void *acquire_event;       /* retained id<MTLSharedEvent>, opaque to C */
     uint64_t acquire_value;    /* next producer value the compositor must wait for */
+    int acquire_pending;       /* fence belongs to a newly submitted client frame */
+    int compositor_waited;     /* current value already ordered on iosc's GPU queue */
     unsigned char acquire_token[XIOS_GPU_FENCE_TOKEN_SIZE];
     size_t acquire_token_size;
+    uint32_t stream_id;
 };
 
 static void iosurface_buffer_destroy(struct wl_client *c, struct wl_resource *r)
@@ -51,6 +54,8 @@ static void iosurface_buffer_resource_destroy(struct wl_resource *r)
 {
     struct iosc_iosurface_buffer *ib = wl_resource_get_user_data(r);
     if (!ib) return;
+    if (ib->stream_id)
+        xios_stream_unregister_surface(ib->stream_id);
     if (ib->surface) {
         iosc_gl_forget_iosurface(ib->surface);   /* drop the cached GL texture/pbuffer */
         xios_release_client_iosurface(ib->surface);
@@ -94,13 +99,16 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
         return 0;
     maybe_probe_client_buffer(ib);
     if (ib->surface) {
-        if (!ib->acquire_event || ib->acquire_value == 0 ||
-            !iosc_gl_wait_shared_event(ib->acquire_event, ib->acquire_value)) {
+        if ((!ib->compositor_waited &&
+             (!ib->acquire_event || ib->acquire_value == 0 ||
+              !iosc_gl_wait_shared_event(ib->acquire_event,
+                                         ib->acquire_value)))) {
             fprintf(stderr,
                     "iosc: refusing to sample IOSurface without a valid GPU acquire wait\n");
             return 1;
         }
-        ib->acquire_value = 0;
+        ib->compositor_waited = 1;
+        ib->acquire_pending = 0;
         iosc_gl_draw_iosurface(ib->surface, ib->w, ib->h, sx, sy, src_w, src_h,
                                dx, dy, dw, dh, ib->flip_v);
     }
@@ -115,6 +123,41 @@ int iosc_iosurface_buffer_get_size(struct wl_resource *buf, int *w, int *h)
     if (w) *w = ib->w;
     if (h) *h = ib->h;
     return 1;
+}
+
+int iosc_iosurface_buffer_peek_direct(struct wl_resource *buf,
+                                      uint32_t *surface_id,
+                                      const void **token, size_t *token_size,
+                                      uint64_t *value)
+{
+    if (surface_id) *surface_id = 0;
+    if (token) *token = NULL;
+    if (token_size) *token_size = 0;
+    if (value) *value = 0;
+    struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);
+    if (!ib || !ib->surface || !ib->acquire_event ||
+        ib->acquire_token_size != XIOS_GPU_FENCE_TOKEN_SIZE ||
+        ib->acquire_value == 0 || !ib->acquire_pending)
+        return 0;
+    if (!ib->stream_id) {
+        uint32_t flags = ib->flip_v ? XIOS_SURFACE_FLAG_FLIP_Y : 0;
+        ib->stream_id = xios_stream_register_surface(ib->surface, flags);
+        if (!ib->stream_id)
+            return 0;
+    }
+    if (surface_id) *surface_id = ib->stream_id;
+    if (token) *token = ib->acquire_token;
+    if (token_size) *token_size = ib->acquire_token_size;
+    if (value) *value = ib->acquire_value;
+    return 1;
+}
+
+void iosc_iosurface_buffer_consume_direct(struct wl_resource *buf,
+                                          uint64_t value)
+{
+    struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);
+    if (ib && value != 0 && ib->acquire_value == value)
+        ib->acquire_pending = 0;
 }
 
 static void iosurface_factory_create_buffer(struct wl_client *client,
@@ -195,6 +238,8 @@ static void iosurface_factory_set_acquire_fence(
         ib->acquire_token_size = token->size;
     }
     ib->acquire_value = value;
+    ib->acquire_pending = 1;
+    ib->compositor_waited = 0;
 }
 
 static const struct iosc_iosurface_interface iosurface_factory_impl = {

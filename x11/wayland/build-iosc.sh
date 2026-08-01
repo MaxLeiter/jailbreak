@@ -42,6 +42,12 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
     "$HERE/iosc_util.c" \
     -o "$IOSC_PLAN_TEST_DIR/iosc-render-plan-test"
   "$IOSC_PLAN_TEST_DIR/iosc-render-plan-test"
+  echo "==> testing xios output ownership scheduler"
+  cc -std=c11 -Wall -Wextra -Werror \
+    -I"$X11_DIR/linux-build/patches/xios" \
+    "$HERE/xios-output-queue-test.c" \
+    -o "$IOSC_PLAN_TEST_DIR/xios-output-queue-test"
+  "$IOSC_PLAN_TEST_DIR/xios-output-queue-test"
   rm -rf "$IOSC_PLAN_TEST_DIR"
   mkdir -p "$HERE/out"
 

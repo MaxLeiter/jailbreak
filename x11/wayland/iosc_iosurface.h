@@ -1,6 +1,7 @@
 #ifndef IOSC_IOSURFACE_H
 #define IOSC_IOSURFACE_H
 
+#include <stddef.h>
 #include <stdint.h>
 #include <wayland-server.h>
 
@@ -13,5 +14,14 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
                                int sx, int sy, int src_w, int src_h,
                                int dx, int dy, int dw, int dh);
 int iosc_iosurface_buffer_get_size(struct wl_resource *buf, int *w, int *h);
+
+/* Direct-present metadata for an IOSurface wl_buffer. Peek does not consume the
+ * producer acquire fence; call consume only after the app DIRTY was queued. */
+int iosc_iosurface_buffer_peek_direct(struct wl_resource *buf,
+                                      uint32_t *surface_id,
+                                      const void **token, size_t *token_size,
+                                      uint64_t *value);
+void iosc_iosurface_buffer_consume_direct(struct wl_resource *buf,
+                                          uint64_t value);
 
 #endif
