@@ -12917,7 +12917,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-launcher-tools
 Name: Xios Home Screen launcher tools
-Version: 0.1.8
+Version: 0.1.9
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -12926,13 +12926,13 @@ Suggests: com.max.xios, iosc-shell, xios-session
 Section: X11
 Priority: optional
 MinimumOSVersion: 16.5.0
-Installed-Size: 844
+Installed-Size: 864
 Description: on-device iPad Home Screen app sync for Xios
-Filename: debs/xios-launcher-tools_0.1.8_iphoneos-arm64.deb
-Size: 199146
-MD5sum: 69cd65d4153ed7da48ac4cf2061e455e
-SHA1: da2fafd3e60231da7865c85a4a5f8c048f95fd7e
-SHA256: 44dd9a97bc51e4bd91db2e1f5afa3b95c349b90bf3602ecac00ea24dd216a52f
+Filename: debs/xios-launcher-tools_0.1.9_iphoneos-arm64.deb
+Size: 201584
+MD5sum: 88298a13717213567a05d29124cce3d2
+SHA1: c16cab58a0e930eb3cc1dbd582cf85195b3a33d4
+SHA256: 972fa38ce6ef8484e5bffd681eb0bfe589c743b69fa58fb71eb9d6ff4e907ac4
 Icon: https://repo.maxleiter.com/icons/xios-launcher-tools.png
 Depiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.json
