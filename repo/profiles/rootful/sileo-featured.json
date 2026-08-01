@@ -1,0 +1,12 @@
+{
+  "class": "FeaturedBannersView",
+  "itemSize": "{263, 148}",
+  "itemCornerRadius": 8,
+  "banners": [
+    {
+      "title": "Ladybird",
+      "package": "ladybird-app",
+      "url": "https://repo.maxleiter.com/profiles/rootful/banners/ladybird-app.png"
+    }
+  ]
+}

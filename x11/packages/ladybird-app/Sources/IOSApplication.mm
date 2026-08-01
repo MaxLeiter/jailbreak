@@ -6,7 +6,8 @@
  *     as the "ladybird binary path". LibWebView::application_directory() then returns the
  *     bundle root, so get_paths_for_helper_process()'s ALWAYS-compiled same-dir candidate
  *     ("<app_dir>/WebContent", Utilities.cpp:111) resolves to
- *     /var/jb/Applications/Ladybird.app/WebContent — the helper we ship in the bundle root.
+ *     <bundle>/WebContent - the helper we ship beside the UI executable on both
+ *     rootless and rootful jailbreaks.
  *   - The iOS resource path default (find_prefix(app_dir)/share/Lagom) points OUTSIDE the
  *     bundle, so we override it explicitly to <bundle>/share/Lagom after boot.
  *   - App-mode IPC uses the Mach bootstrap transport on iOS too. That is what lets the
@@ -17,6 +18,7 @@
 #import "IOSApplication.h"
 #import "BrowserViewController.h"
 #import "IOSEventLoop.h"
+#import "LBPaths.h"
 #import "LBTrace.h"
 
 #include <AK/ByteString.h>
@@ -135,12 +137,10 @@ int main(int argc, char* argv[])
         // the posix_spawn'd helpers (WebContent/WebWorker/RequestServer/ImageDecoder/Compositor)
         // inherit the same writable environment.
         @autoreleasepool {
-            // Use /var/jb/tmp/ladybird as the writable root: the app has the /var/jb read-write
-            // file exception and provably writes there (the boot log lives there), whereas the
-            // fakesigned app's sandbox container is not reliably writable. Pre-create every XDG
-            // dir (mkdir in LibWebView is not recursive) so launch_services()'s data-dir + DB
-            // creation succeeds.
-            NSString* root = @"/var/jb/tmp/ladybird";
+            // Use the active jailbreak scheme's writable temp root. The fakesigned app's
+            // sandbox container is not reliably writable. Pre-create every XDG dir (mkdir in
+            // LibWebView is not recursive) so launch_services()'s data-dir + DB creation succeeds.
+            NSString* root = lb_runtime_path_ns(@"ladybird");
             NSDictionary* xdg = @{
                 @"HOME": root,
                 @"XDG_DATA_HOME": [root stringByAppendingPathComponent:@"data"],

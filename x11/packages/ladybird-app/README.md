@@ -69,14 +69,15 @@ must be bundled inside the `.app` and spawned.
   `"<app_dir>/<HelperName>"` is always compiled** (line 111). We make `application_directory()`
   return the bundle root by passing `[NSBundle mainBundle].bundlePath` to `WebView::Application`
   as the "ladybird binary path". So `WebContent` etc. resolve to
-  `/var/jb/Applications/Ladybird.app/WebContent`, where we ship them.
+  `<Ladybird.app>/WebContent`, where both package variants ship them.
 - Resources: the iOS default resource root (`find_prefix(app_dir)/share/Lagom`) points
   *outside* the bundle, so `IOSApplication::boot` **explicitly reinstalls**
   `Core::ResourceImplementationFile` at `<bundle>/share/Lagom`. No engine source patch needed.
 
-**Bundle layout** (self-contained):
+**Bundle layout** (self-contained). Rootless uses `/var/jb/Applications`; rootful uses
+`/Applications`:
 ```
-/var/jb/Applications/Ladybird.app/
+<application root>/Ladybird.app/
   Ladybird        UI exe (statically links the engine)
   WebContent RequestServer ImageDecoder WebWorker Compositor
   share/Lagom/…   engine resources (resource root overridden here at boot)
@@ -86,20 +87,20 @@ must be bundled inside the `.app` and spawned.
 ### Signing / entitlements
 AMFI checks entitlements **per binary**, so the UI exe and each helper are signed
 separately (Mac `ldid`, DER entitlements, via `xsign`):
-- `entitlements/ladybird-app.entitlements` — `can-allow-non-platform` (load /var/jb
+- `entitlements/ladybird-app.entitlements` — `can-allow-non-platform` (load jailbreak
   fakesigned dylibs), `get-task-allow`, the GPU/IOSurface IOKit user clients (Metal present,
-  same set as Xios.app), `/var/jb` + `/tmp` file exceptions.
+  same set as Xios.app), and target-rendered filesystem exceptions.
 - `entitlements/ladybird-helper.entitlements` — shared by the five helpers:
   `can-allow-non-platform`, `get-task-allow`, IOSurface user clients for the Compositor's
   shared front buffer, the internal GPU user clients for ANGLE/EGL/GLES probes, and
-  `/var/jb` + `/tmp` file exceptions.
+  target-rendered install-prefix + `/tmp` file exceptions.
 
 ### Single-process fallback
 There is **no** in-process mode in Ladybird, so there is no code fallback. If `posix_spawn`
 of a helper were ever blocked under the JB, the fallback is operational, not architectural:
-ship the helpers at FHS `/var/jb/libexec/ladybird/` and rely on the (also-compiled) libexec
-candidate instead of same-dir — but spawning from `/var/jb` is already proven, so this is a
-non-issue.
+ship the helpers at an FHS libexec path and rely on the (also-compiled) libexec candidate
+instead of same-dir — but spawning the helpers from either application bundle is the supported
+design.
 
 ## Language choice: Objective-C++ (.mm), not Swift
 
@@ -119,9 +120,23 @@ The current production path is:
    `LB_APP_CPU_DIAGNOSTIC=1` explicitly selects the non-release CPU/trap-stub build.
 2. `linux-build/build-ladybird-app-bundle.sh` assembles the self-contained `.app` deb inside
    the Linux container. This package is only preliminarily signed.
-3. `packages/ladybird-app/resign-ladybird-app-deb.sh <deb> <out-dir>` must run on macOS before
-   install or publish. The host `xsign`/`ldid` pass emits DER entitlements; without that,
+3. `packages/ladybird-app/package-ladybird-app-targets.sh <deb> <out-root>` runs on macOS and
+   emits `iphoneos-arm64` rootless and `iphoneos-arm` rootful packages with the same package id
+   and version. The host `xsign`/`ldid` pass emits DER entitlements; without that,
    `IOSurfaceCreate()` returns `NULL` on device even though `ldid -e` prints the XML keys.
+
+The two payloads are one user-facing package, not two products:
+
+| Target | App path | Architecture |
+|---|---|---|
+| `rootless-1900` | `/var/jb/Applications/Ladybird.app` | `iphoneos-arm64` |
+| `rootful-1900` | `/Applications/Ladybird.app` | `iphoneos-arm` |
+
+The app and helper Mach-Os are generic arm64 and shared between the variants. Packaging adds the
+scheme-correct `libiosexec` rpath, renders the filesystem entitlements, moves the bundle to the
+correct application root, and registers that exact path with `uicache`. Both variants require
+iOS/iPadOS 16.0 or newer. Both profiles are publishable after their host package audits pass;
+release notes must state when physical-device runtime validation is still pending.
 
 `build-ladybird-app.sh` remains a lower-level packaging driver for prebuilt artifacts. It
 expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBIRD_UI_BIN`
@@ -144,8 +159,8 @@ expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBI
   the CPU `--force-cpu-painting` flag, and has on-device WebGL smoke evidence under
   `artifacts/device-runs/ladybird-webgl-screenshot-20260706-125805/`. The remaining work is
   broader page coverage, not first-light GPU enablement.
-- Non-jailbroken/App Store builds. The current app relies on rootless `/var/jb`, fakesigned
-  dylibs, helper spawning, and private IOKit entitlements.
+- Non-jailbroken/App Store builds. The current app relies on jailbreak fakesigning, helper
+  spawning, `libiosexec`, and private IOKit entitlements.
 
 ## UI/ frontend inventory + toolkit versions (for the later desktop-flavor pick)
 - **AppKit** — macOS Cocoa + Metal (the port reference; unusable as-is on UIKit).

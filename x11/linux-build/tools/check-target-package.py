@@ -81,11 +81,21 @@ def unpack_deb(path: Path, dest: Path) -> None:
         target = dest / sub if sub else dest
         target.mkdir(parents=True, exist_ok=True)
         with tarfile.open(fileobj=io.BytesIO(raw), mode=mode) as tf:
+            safe_members = []
             for m in tf.getmembers():
                 m.name = m.name.lstrip("./") or "."
                 if m.name.startswith("/") or ".." in Path(m.name).parts:
                     continue  # never let a crafted archive escape the temp dir
-            tf.extractall(target, filter="data")
+                safe_members.append(m)
+            try:
+                # Python 3.12+ rejects unsafe link/path members through the
+                # standard data filter. Older macOS Pythons do not accept the
+                # filter keyword; names were normalized and traversal-checked
+                # above, so retain the host checker there as a compatibility
+                # fallback for locally built packages.
+                tf.extractall(target, members=safe_members, filter="data")
+            except TypeError:
+                tf.extractall(target, members=safe_members)
 
 
 def load_target(target_id: str) -> dict[str, str]:

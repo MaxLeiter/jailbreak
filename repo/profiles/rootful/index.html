@@ -1,0 +1,220 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a0b">
+<title>Max&#x27;s Repo · iOS jailbreak and xiOS packages</title>
+<meta name="description" content="Rootful jailbreak packages for 64-bit iPhone and iPad on iOS or iPadOS 16 and newer.">
+<link rel="canonical" href="https://repo.maxleiter.com/profiles/rootful/">
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Max&#x27;s Repo">
+<meta property="og:title" content="Max&#x27;s Repo · iOS jailbreak and xiOS packages">
+<meta property="og:description" content="Rootful jailbreak packages for 64-bit iPhone and iPad on iOS or iPadOS 16 and newer.">
+<meta property="og:url" content="https://repo.maxleiter.com/profiles/rootful/">
+<meta property="og:image" content="https://repo.maxleiter.com/profiles/rootful/CydiaIcon.png">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48"><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="icon" href="favicon-32x32.png" sizes="32x32" type="image/png"><link rel="apple-touch-icon" href="apple-touch-icon.png"><link rel="manifest" href="site.webmanifest"><link rel="stylesheet" href="site.css">
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (t !== "light" && t !== "dark")
+        t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) {}
+  })();
+</script>
+</head>
+<body><div class="wrap">
+  <header class="mast reveal" style="--i:0">
+    <div class="mast-top"><a class="micro" href="https://maxleiter.com">maxleiter.com</a><div class="theme-picker" role="group" aria-label="Theme"><button type="button" data-theme="system" aria-label="Follow system theme" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="12" rx="1"/><path d="M8 21h8M12 17v4"/></svg></button><button type="button" data-theme="light" aria-label="Light theme" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg></button><button type="button" data-theme="dark" aria-label="Dark theme" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div></div>
+    <h1>Max&#x27;s Repo</h1>
+  </header>
+  <div class="install reveal" style="--i:1">
+    <label class="vh" for="repo">Repository URL</label>
+    <div class="field">
+      <input id="repo" readonly value="" aria-label="Repository URL">
+      <button class="btn copy" id="copyBtn" type="button">Copy</button>
+    </div>
+    <div class="managers">
+      <a class="btn primary" id="sileo" href="#">Add to Sileo</a>
+      <a class="btn" id="zebra" href="#">Add to Zebra</a>
+      <a class="btn" id="cydia" href="#">Add to Cydia</a>
+    </div>
+  </div>
+  <div class="search reveal" style="--i:2">
+    <label class="vh" for="q">Search packages</label>
+    <input id="q" type="search" placeholder="Search 1 packages" autocomplete="off" spellcheck="false">
+    <span class="micro" id="searchN" hidden></span>
+  </div>
+  <nav class="tabs reveal" style="--i:2" role="tablist" aria-label="Package groups">
+    <button class="tab" id="tab-tweaks" data-tab="tweaks" type="button" role="tab" aria-selected="true" aria-controls="panel-tweaks">Tweaks<span class="tab-n">1</span></button>
+    <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="false" aria-controls="panel-xios" tabindex="-1">xiOS<span class="tab-n">0</span></button>
+  </nav>
+  <section class="panel" id="panel-tweaks" role="tabpanel" aria-labelledby="tab-tweaks">
+    <p class="lede reveal" style="--i:3">Apps and packages built for rootful jailbreaks on iOS and iPadOS 16 or newer.</p>
+    <div class="list solo">
+        <a class="row reveal" style="--i:3" href="depictions/ladybird-app.html">
+          <span class="n">Ladybird</span>
+          <span class="t">The Ladybird browser for iPhone and iPad</span>
+          <span class="v">v0.1.25+ios1</span>
+        </a></div>
+  </section>
+  <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios" hidden>
+    <p class="lede">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS. <strong>Install one flavor</strong> and it pulls in everything it needs.</p>
+
+
+  </section>
+  <p class="no-results" id="noResults">No matching packages.</p>
+  <footer><a href="https://maxleiter.com">maxleiter.com</a><span>iphoneos-arm</span></footer>
+</div>
+<script>
+  var u = location.origin + location.pathname.replace(/index\.html$/, "");
+  document.getElementById("repo").value = u;
+  document.getElementById("sileo").href = "sileo://source/" + u;
+  document.getElementById("zebra").href = "zbra://sources/add/" + u;
+  document.getElementById("cydia").href = "cydia://url/https://cydia.saurik.com/api/share#?source=" + u;
+  // Which manager people actually add the repo with. The href is a custom URL
+  // scheme, so the navigation never reaches us as a page view -- the click is
+  // the only place to count it.
+  ["sileo", "zebra", "cydia"].forEach(function (id) {
+    document.getElementById(id).addEventListener("click", function () {
+      window.va("event", { name: "add-repo", data: { manager: id } });
+    });
+  });
+
+  var b = document.getElementById("copyBtn");
+  b.addEventListener("click", function () {
+    window.va("event", { name: "copy-repo-url" });
+    navigator.clipboard.writeText(u).then(function () {
+      var prev = b.textContent;
+      b.textContent = "Copied";
+      b.classList.add("ok");
+      setTimeout(function () { b.textContent = prev; b.classList.remove("ok"); }, 1400);
+    });
+  });
+
+  var tabs = [].slice.call(document.querySelectorAll(".tab"));
+  function showTab(name) {
+    if (!tabs.some(function (t) { return t.dataset.tab === name; })) name = "tweaks";
+    tabs.forEach(function (t) {
+      var on = t.dataset.tab === name;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById("panel-" + t.dataset.tab).hidden = !on;
+    });
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () {
+      showTab(t.dataset.tab);
+      try { history.replaceState(null, "", "#" + t.dataset.tab); } catch (e) {}
+    });
+    t.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      var next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      next.focus(); next.click();
+    });
+  });
+  addEventListener("hashchange", function () { showTab(location.hash.slice(1)); });
+  if (location.hash) showTab(location.hash.slice(1));
+
+  // live search across both tabs ("/" focuses, Esc clears)
+  var qInput = document.getElementById("q");
+  var searchN = document.getElementById("searchN");
+  var noRes = document.getElementById("noResults");
+  var panels = tabs.map(function (t) { return document.getElementById("panel-" + t.dataset.tab); });
+  var cats = [].slice.call(document.querySelectorAll("details.cat"));
+  var solos = [].slice.call(document.querySelectorAll(".list.solo"));
+  var rows = [].slice.call(document.querySelectorAll(".row"));
+  rows.forEach(function (r) {
+    var pid = (r.getAttribute("href") || "").replace(/^depictions\//, "").replace(/\.html$/, "");
+    r.dataset.k = (r.textContent + " " + pid).toLowerCase();
+  });
+  var searching = false;
+  function anyVisible(el) {
+    return [].slice.call(el.querySelectorAll(".row")).some(function (r) { return !r.hidden; });
+  }
+  function applySearch() {
+    var terms = qInput.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    var on = terms.length > 0;
+    if (on && !searching)
+      cats.forEach(function (c) { c.dataset.wasOpen = c.open ? "1" : ""; });
+    searching = on;
+    document.body.classList.toggle("searching", on);
+    if (!on) {
+      rows.forEach(function (r) { r.hidden = false; });
+      cats.forEach(function (c) { c.open = !!c.dataset.wasOpen; c.style.display = ""; });
+      solos.forEach(function (l) { l.style.display = ""; });
+      searchN.hidden = true;
+      noRes.classList.remove("show");
+      var cur = tabs.filter(function (t) { return t.getAttribute("aria-selected") === "true"; })[0];
+      showTab(cur ? cur.dataset.tab : "tweaks");
+      return;
+    }
+    panels.forEach(function (p) { p.hidden = false; });
+    var total = 0;
+    rows.forEach(function (r) {
+      var hit = terms.every(function (t) { return r.dataset.k.indexOf(t) !== -1; });
+      r.hidden = !hit;
+      if (hit) total++;
+    });
+    cats.forEach(function (c) {
+      var m = anyVisible(c);
+      c.style.display = m ? "" : "none";
+      c.open = m;
+    });
+    solos.forEach(function (l) { l.style.display = anyVisible(l) ? "" : "none"; });
+    searchN.textContent = total + (total === 1 ? " match" : " matches");
+    searchN.hidden = false;
+    noRes.classList.toggle("show", !total);
+  }
+  qInput.addEventListener("input", applySearch);
+  qInput.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") { qInput.value = ""; applySearch(); qInput.blur(); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) {
+      e.preventDefault(); qInput.focus();
+    }
+  });
+</script>
+
+<script>
+  (function () {
+    var btns = [].slice.call(document.querySelectorAll(".theme-picker button"));
+    if (!btns.length) return;
+    var root = document.documentElement;
+    var mq = matchMedia("(prefers-color-scheme: light)");
+    function pref() {
+      try {
+        var t = localStorage.getItem("theme");
+        if (t === "light" || t === "dark") return t;
+      } catch (e) {}
+      return "system";
+    }
+    function apply() {
+      var p = pref();
+      root.setAttribute("data-theme", p === "system" ? (mq.matches ? "light" : "dark") : p);
+      btns.forEach(function (b) {
+        b.setAttribute("aria-pressed", String(b.dataset.theme === p));
+      });
+    }
+    btns.forEach(function (b) {
+      b.addEventListener("click", function () {
+        try {
+          if (b.dataset.theme === "system") localStorage.removeItem("theme");
+          else localStorage.setItem("theme", b.dataset.theme);
+        } catch (e) {}
+        apply();
+      });
+    });
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else if (mq.addListener) mq.addListener(apply);
+    apply();
+  })();
+</script>
+
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+</body></html>

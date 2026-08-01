@@ -128,22 +128,27 @@ if [ "$REPUBLISH_METADATA" = 1 ] \
 fi
 republish_note=""
 [ "$REPUBLISH_METADATA" = 1 ] && republish_note=" republish-metadata"
-echo "==> target=$TARGET index-source=$SOURCE${ONLY:+ only=$ONLY}$republish_note"
-
-# This script publishes the flat rootless repo. Other profiles can be generated
-# locally (XIOS_REPO_PROFILE=rootful bin/lib/make-repo.py writes an independent
-# tree under repo/profiles/), but publishing one needs its own domain, project
-# and Blob prefix, and per the migration plan must not happen before a real
-# rootful device has passed install and launch smoke tests.
-if [ "${XIOS_REPO_PROFILE:-rootless}" != "rootless" ]; then
-  echo "ERROR: publishing the '$XIOS_REPO_PROFILE' profile is not wired up." >&2
-  echo "       Generate it locally for inspection instead:" >&2
-  echo "         XIOS_REPO_PROFILE=$XIOS_REPO_PROFILE .repo-venv/bin/python bin/lib/make-repo.py" >&2
-  echo "       See x11/docs/rootless-rootful-cfver-migration-plan.md, Phase 5." >&2
-  exit 2
-fi
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PROFILE="${XIOS_REPO_PROFILE:-rootless}"
+case "$PROFILE" in
+  rootless)
+    PROFILE_REPO_REL=""
+    PROFILE_URL_PATH=""
+    BLOB_PREFIX="debs"
+    ;;
+  rootful)
+    PROFILE_REPO_REL="profiles/rootful"
+    PROFILE_URL_PATH="/profiles/rootful"
+    BLOB_PREFIX="profiles/rootful/debs"
+    ;;
+  *)
+    echo "ERROR: unsupported repo profile: $PROFILE (expected rootless or rootful)" >&2
+    exit 2
+    ;;
+esac
+PROFILE_REPO_DIR="$REPO_ROOT/repo${PROFILE_REPO_REL:+/$PROFILE_REPO_REL}"
+PROFILE_PACKAGES_GIT_PATH="repo${PROFILE_REPO_REL:+/$PROFILE_REPO_REL}/Packages"
+echo "==> target=$TARGET profile=$PROFILE index-source=$SOURCE${ONLY:+ only=$ONLY}$republish_note"
 LOCKDIR="${TMPDIR:-/tmp}/maxleiter-repo-publish.lock"
 SCOPE="${VERCEL_SCOPE:-maxleiters-team}"
 PROD_DOMAIN="${PROD_REPO_DOMAIN:-repo.maxleiter.com}"
@@ -165,8 +170,9 @@ REPO_KEY="repo@maxleiter.com"
 # flag exists to avoid. Enforce it instead of documenting it.
 if [ "$TARGET" = prod ] && [ "$SOURCE" = index ]; then
   repo_root_for_git="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  if ! git -C "$repo_root_for_git" diff --quiet HEAD -- repo/Packages 2>/dev/null; then
-    echo "ERROR: repo/Packages differs from HEAD, so --from-index would not publish what is committed." >&2
+  if ! git -C "$repo_root_for_git" ls-files --error-unmatch "$PROFILE_PACKAGES_GIT_PATH" >/dev/null 2>&1 \
+     || ! git -C "$repo_root_for_git" diff --quiet HEAD -- "$PROFILE_PACKAGES_GIT_PATH" 2>/dev/null; then
+    echo "ERROR: $PROFILE_PACKAGES_GIT_PATH differs from HEAD, so --from-index would not publish what is committed." >&2
     echo "       This is the normal state right after a staging publish (it regenerates the" >&2
     echo "       index from every deb in repo/debs). Pick one:" >&2
     echo "         git add repo/Packages && git commit    # ship it: review the diff first" >&2
@@ -194,12 +200,13 @@ fi
 trap 'rm -rf "$LOCKDIR"' EXIT
 
 snapshot_debs() {
-  find "$REPO_ROOT/repo/debs" -type f -name '*.deb' -print0 \
+  find "$PROFILE_REPO_DIR/debs" -type f -name '*.deb' -print0 \
     | sort -z \
     | xargs -0 shasum -a 256
 }
 
 finalize_x11_graphics_debs() {
+  [ "$PROFILE" = rootless ] || return 0
   local signer="$REPO_ROOT/x11/linux-build/resign-graphics-packages.py"
   local gpu_ent="$REPO_ROOT/x11/linux-build/build_info/iosc-gpu-client-ent.xml"
   local gl_ent="$REPO_ROOT/x11/linux-build/build_info/iosc-gl-ent.xml"
@@ -232,7 +239,7 @@ finalize_x11_graphics_debs() {
   [ -n "${ONLY:-}" ] && scope=(--only "$ONLY")
 
   echo "==> DER-signing X11 graphics packages in repo/debs${ONLY:+ (scoped: $ONLY)}"
-  python3 "$signer" "$REPO_ROOT/repo/debs" \
+  python3 "$signer" "$PROFILE_REPO_DIR/debs" \
     --ldid "$ldid_bin" \
     --gpu-ent "$gpu_ent" \
     --gl-ent "$gl_ent" \
@@ -257,9 +264,31 @@ sign_index() {
   fi
 }
 
+# Rootless and rootful are independent APT suites but share one static Vercel
+# deployment. Refresh every sibling suite from its committed Packages manifest
+# before uploading the tree so publishing one profile can never leave another
+# profile with Release hashes or signatures from an older generation.
+refresh_sibling_profiles() {
+  local sibling sibling_dir
+  for sibling in rootless rootful; do
+    [ "$sibling" = "$PROFILE" ] && continue
+    if [ "$sibling" = rootless ]; then
+      sibling_dir="$REPO_ROOT/repo"
+    else
+      sibling_dir="$REPO_ROOT/repo/profiles/$sibling"
+    fi
+    [ -s "$sibling_dir/Packages" ] || continue
+    echo "==> Refreshing sibling $sibling metadata from its Packages manifest"
+    XIOS_REPO_PROFILE="$sibling" "$PY" "$REPO_ROOT/bin/lib/make-repo.py" --from-index
+    "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$sibling_dir/Packages"
+    "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$sibling_dir" --no-payloads
+    sign_index "$sibling_dir"
+  done
+}
+
 deploy_static_repo() {
   local project="$1" config_name="$2" domain="$3" mode="${4:-prod}"
-  local deploy_root
+  local deploy_root index_dir published_path
   deploy_root="$(mktemp -d "${TMPDIR:-/tmp}/maxleiter-repo-deploy.XXXXXX")"
   cleanup_deploy_root() { rm -rf "$deploy_root"; }
   trap cleanup_deploy_root RETURN
@@ -274,6 +303,8 @@ deploy_static_repo() {
     --exclude '.vercel/' \
     --exclude '.env' --exclude '.env.*' \
     "$REPO_ROOT/repo/" "$deploy_root/repo/"
+  index_dir="$deploy_root/repo${PROFILE_REPO_REL:+/$PROFILE_REPO_REL}"
+  published_path="https://$domain$PROFILE_URL_PATH"
 
   # Never ship a credential. Belt to the .gitignore/.vercelignore braces, because
   # this one is unrecoverable: a token served once from a public URL is burned.
@@ -289,10 +320,10 @@ deploy_static_repo() {
   # --only: serve the target's current index with just the named packages swapped
   # in. Done here, on the throwaway copy, so repo/ keeps its full (staging) index.
   if [ -n "$ONLY" ]; then
-    echo "==> Scoping the index to: $ONLY (against https://$domain/Packages)"
+    echo "==> Scoping the $PROFILE index to: $ONLY (against $published_path/Packages)"
     local scope_args=(
-      --repo "$deploy_root/repo"
-      --live "https://$domain/Packages"
+      --repo "$index_dir"
+      --live "$published_path/Packages"
       --only "$ONLY"
     )
     [ "$REPUBLISH_METADATA" = 1 ] && scope_args+=(--allow-noop)
@@ -301,9 +332,9 @@ deploy_static_repo() {
     # Re-check solvability on what we are ACTUALLY publishing. The full-tree check
     # earlier passed because the tree has everything; prod may not. This is the
     # gate that catches publishing one half of a package pair.
-    "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$deploy_root/repo/Packages"
+    "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$index_dir/Packages"
     echo "==> Re-signing the scoped index"
-    sign_index "$deploy_root/repo"
+    sign_index "$index_dir"
 
     # make-repo.py prunes depictions/icons/banners for packages that left the
     # tree's index. A scoped deploy serves the LIVE index, which can still name a
@@ -313,8 +344,8 @@ deploy_static_repo() {
     # worth a line of output.
     local dangling
     dangling="$(comm -23 \
-      <(awk '/^Package: /{print $2}' "$deploy_root/repo/Packages" | sort -u) \
-      <(ls "$deploy_root/repo/depictions" 2>/dev/null | sed -n 's/\.html$//p' | sort -u))"
+      <(awk '/^Package: /{print $2}' "$index_dir/Packages" | sort -u) \
+      <(ls "$index_dir/depictions" 2>/dev/null | sed -n 's/\.html$//p' | sort -u))"
     if [ -n "$dangling" ]; then
       echo "   WARNING: the scoped index names $(echo "$dangling" | wc -l | tr -d ' ') package(s) with no depiction in this upload:" >&2
       echo "$dangling" | sed 's/^/     /' >&2
@@ -327,7 +358,7 @@ deploy_static_repo() {
   # serving and only apt notices, on every device at once.
   local missing=""
   for f in Packages Packages.gz Release InRelease Release.gpg; do
-    [ -s "$deploy_root/repo/$f" ] || missing="$missing $f"
+    [ -s "$index_dir/$f" ] || missing="$missing $f"
   done
   if [ -n "$missing" ]; then
     echo "ERROR: the deploy copy is missing apt metadata:$missing" >&2
@@ -344,12 +375,12 @@ deploy_static_repo() {
   local base
   if [ "$mode" = prod ]; then
     vercel "${args[@]}"
-    base="https://$domain"
+    base="$published_path"
     echo "==> Live at $base"
   else
     # Preview: the deployment URL is the whole point, so capture it. Vercel prints
     # progress to stderr and the URL to stdout.
-    base="$(vercel "${args[@]}")"
+    base="$(vercel "${args[@]}")$PROFILE_URL_PATH"
     echo "==> Preview at $base"
   fi
 
@@ -386,8 +417,8 @@ verify_published() {
 # (Blob filenames are immutable) and publishing one that is behind would roll
 # devices back, so check both before touching anything.
 case "$TARGET" in
-  prod)    DRIFT_REF="https://$PROD_DOMAIN/Packages" ;;
-  staging) DRIFT_REF="https://$STAGING_DOMAIN/Packages" ;;
+  prod)    DRIFT_REF="https://$PROD_DOMAIN$PROFILE_URL_PATH/Packages" ;;
+  staging) DRIFT_REF="https://$STAGING_DOMAIN$PROFILE_URL_PATH/Packages" ;;
   preview) DRIFT_REF="" ;;
 esac
 
@@ -395,8 +426,10 @@ if [ "$SOURCE" = index ]; then
   echo "==> Metadata-only publish: committed repo/Packages is authoritative"
   echo "    (payload gates skipped: DER signing, Blob upload, Procursus shadow check)"
   "$PY" "$REPO_ROOT/bin/lib/make-repo.py" --from-index
-  "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
-  "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo" --no-payloads
+  "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$PROFILE_REPO_DIR/Packages"
+  audit_args=(--repo "$PROFILE_REPO_DIR" --no-payloads)
+  [ -n "$ONLY" ] && audit_args+=(--only "$ONLY")
+  "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" "${audit_args[@]}"
   BEFORE=""
 else
   finalize_x11_graphics_debs
@@ -404,12 +437,16 @@ else
 
   echo "==> Regenerating index (Packages / Release / depictions / assets)"
   "$PY" "$REPO_ROOT/bin/lib/make-repo.py"
-  "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$REPO_ROOT/repo/Packages"
-  "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$REPO_ROOT/repo"
+  "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$PROFILE_REPO_DIR/Packages"
+  audit_args=(--repo "$PROFILE_REPO_DIR")
+  [ -n "$ONLY" ] && audit_args+=(--only "$ONLY")
+  "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" "${audit_args[@]}"
   # Drop-in-superset gate for debs shadowing Procursus package names (soname/file
   # parity + upstream-version pinning + -dev runtime-dylib lint). Waivers with
   # reasons in bin/lib/shadow-waivers.json. Born from the 2026-07-08 device brick.
-  "$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
+  if [ "$PROFILE" = rootless ]; then
+    "$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
+  fi
 
   AFTER_INDEX="$(snapshot_debs)"
   if [ "$BEFORE" != "$AFTER_INDEX" ]; then
@@ -432,14 +469,17 @@ if [ -n "$DRIFT_REF" ]; then
     # what ships here -- and used to fail the run anyway, which meant one session's
     # un-bumped package blocked every other session's unrelated hotfix.
     "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
+      --index "$PROFILE_REPO_DIR/Packages" \
       --against "$DRIFT_REF" --only "$ONLY" --warn-regressions
   else
-    "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" --against "$DRIFT_REF"
+    "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
+      --index "$PROFILE_REPO_DIR/Packages" --against "$DRIFT_REF"
   fi
 fi
 
 echo "==> Signing the index (InRelease + Release.gpg)"
-sign_index "$REPO_ROOT/repo"
+sign_index "$PROFILE_REPO_DIR"
+refresh_sibling_profiles
 
 if [ "$SOURCE" = debs ]; then
   AFTER_SIGN="$(snapshot_debs)"
@@ -449,7 +489,12 @@ if [ "$SOURCE" = debs ]; then
   fi
 
   echo "==> Uploading package payloads to Vercel Blob"
-  BLOB_ONLY="$ONLY" "$REPO_ROOT/bin/upload-debs-to-blob.sh"
+  DEBS_DIR="$PROFILE_REPO_DIR/debs" \
+  BLOB_INDEX="$PROFILE_REPO_DIR/Packages" \
+  BLOB_PAYLOAD_ROOT="$PROFILE_REPO_DIR" \
+  BLOB_DEB_PREFIX="$BLOB_PREFIX" \
+  BLOB_ONLY="$ONLY" \
+    "$REPO_ROOT/bin/upload-debs-to-blob.sh"
 
   AFTER_UPLOAD="$(snapshot_debs)"
   if [ "$BEFORE" != "$AFTER_UPLOAD" ]; then

@@ -1,18 +1,18 @@
 Package: ladybird-app
 Name: Ladybird
 Version: @VER@
-Architecture: iphoneos-arm64
+Architecture: @ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libicu78 (>= 78.3), libiosexec1 (>= 1.3.1)
+Depends: @DEPENDS@
 Section: Apps
 Priority: optional
-MinimumOSVersion: 16.0
+MinimumOSVersion: @MIN_IOS@
 Description: The Ladybird browser for iPhone and iPad
  Ladybird (https://ladybird.org) is a new web browser with its own engine, written
  from scratch rather than built on WebKit or Chromium. This package installs it as a
  normal home-screen app: tap the icon and the browser opens.
  .
- Works on both root and rootless jailbreaks. iPad is the tested setup; the app
- installs and runs on iPhone too, but that is untested, so the toolbar is tight and
- the keyboard can cover the bottom of the page.
+ The same package id is available as scheme-specific rootless and rootful builds
+ for 64-bit devices on iOS 16 or later. iPad is tested; iPhone is declared but
+ remains untested, so the toolbar is tight and the keyboard can cover the page.

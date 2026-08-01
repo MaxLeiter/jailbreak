@@ -1,25 +1,28 @@
 // LBTrace.h — dead-simple file-based boot tracer for on-device bring-up debugging.
 // FrontBoard-launched apps have no accessible stdout without USB, so we append timestamped
-// lines to /var/jb/tmp/ladybird-boot.log.
+// lines to the active jailbreak scheme's temporary directory.
 //
 // SHIPPING DEFAULT: silent. Tracing is gated on a sentinel file so a release build writes
 // nothing unless a debugger explicitly opts in. To enable on-device:
-//     touch /var/jb/tmp/ladybird-trace        # then (re)launch the app
-// and to silence again: rm /var/jb/tmp/ladybird-trace. The check is cached on first call
+//     touch /var/jb/tmp/ladybird-trace        # rootless
+//     touch /tmp/ladybird-trace               # rootful
+// and remove the same file to silence again. The check is cached on first call
 // so it costs one stat() per process, not one per trace line.
 #pragma once
+#include "LBPaths.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <time.h>
 #include <unistd.h>
 
-#define LB_TRACE_SENTINEL "/var/jb/tmp/ladybird-trace"
-
 static inline int lb_trace_enabled(void)
 {
     static int cached = -1;
-    if (cached < 0)
-        cached = (access(LB_TRACE_SENTINEL, F_OK) == 0) ? 1 : 0;
+    if (cached < 0) {
+        char sentinel[128];
+        lb_runtime_path(sentinel, sizeof(sentinel), "ladybird-trace");
+        cached = (access(sentinel, F_OK) == 0) ? 1 : 0;
+    }
     return cached;
 }
 
@@ -27,7 +30,9 @@ static inline void lb_trace(char const* fmt, ...)
 {
     if (!lb_trace_enabled())
         return;
-    FILE* f = fopen("/var/jb/tmp/ladybird-boot.log", "a");
+    char log_path[128];
+    lb_runtime_path(log_path, sizeof(log_path), "ladybird-boot.log");
+    FILE* f = fopen(log_path, "a");
     if (!f)
         return;
     struct timespec ts;

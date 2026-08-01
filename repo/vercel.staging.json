@@ -6,6 +6,11 @@
   "trailingSlash": false,
   "redirects": [
     {
+      "source": "/profiles/rootful/debs/:path*",
+      "destination": "https://j7lqamqsi8q1vmg4.public.blob.vercel-storage.com/profiles/rootful/debs/:path*",
+      "permanent": false
+    },
+    {
       "source": "/debs/:path*",
       "destination": "https://j7lqamqsi8q1vmg4.public.blob.vercel-storage.com/debs/:path*",
       "permanent": false
@@ -23,6 +28,12 @@
     },
     {
       "source": "/debs/(.*)",
+      "headers": [
+        { "key": "Content-Type", "value": "application/x-debian-package" }
+      ]
+    },
+    {
+      "source": "/profiles/rootful/debs/(.*)",
       "headers": [
         { "key": "Content-Type", "value": "application/x-debian-package" }
       ]
