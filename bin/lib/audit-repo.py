@@ -77,7 +77,13 @@ def main() -> int:
         action="store_true",
         help="skip checks that need repo/debs/*.deb (for CI checkouts)",
     )
+    parser.add_argument(
+        "--only",
+        default="",
+        help="comma-separated package ids to audit during a scoped publish",
+    )
     args = parser.parse_args()
+    only = {item.strip() for item in args.only.split(",") if item.strip()}
 
     packages = os.path.join(args.repo, "Packages")
     if not os.path.exists(packages):
@@ -86,7 +92,16 @@ def main() -> int:
 
     errors: list[str] = []
     seen: set[str] = set()
-    for stanza in parse_stanzas(packages):
+    stanzas = parse_stanzas(packages)
+    if only:
+        present = {stanza.get("Package") for stanza in stanzas}
+        missing = only - present
+        if missing:
+            print(f"ERROR: --only package(s) absent from index: {', '.join(sorted(missing))}",
+                  file=sys.stderr)
+            return 1
+        stanzas = [stanza for stanza in stanzas if stanza.get("Package") in only]
+    for stanza in stanzas:
         filename = stanza.get("Filename")
         ident = f"{stanza.get('Package', '?')} {stanza.get('Version', '?')}"
         if not filename:
@@ -122,7 +137,7 @@ def main() -> int:
     # stanza (index is stale).
     make_repo = _load_make_repo()
     indexed_version: dict[str, str] = {}
-    for stanza in parse_stanzas(packages):
+    for stanza in stanzas:
         pkg, ver = stanza.get("Package"), stanza.get("Version")
         if pkg and ver:
             indexed_version[pkg] = ver
@@ -137,6 +152,8 @@ def main() -> int:
             errors.append(f"unindexed deb (unparseable name): debs/{name}")
             continue
         pkg, ver = parts[0], parts[1]
+        if only and pkg not in only:
+            continue
         if pkg not in indexed_version:
             errors.append(f"unindexed deb (package not in index): debs/{name}")
         elif make_repo.compare_deb_versions(ver, indexed_version[pkg]) > 0:

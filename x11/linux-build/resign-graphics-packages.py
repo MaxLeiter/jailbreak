@@ -15,6 +15,7 @@ IOGPUDeviceUserClient / IOSurface*). Each graphics binary is first classified
 and validated against one of four hardware profiles:
 
   * gpu-client: unplatformed AGX/IOGPU + IOSurface client.
+  * platform-gpu-client: platformized app/helper without task-port privileges.
   * platform-gl: platform/task-port AGX/IOGPU + IOSurface compositor/helper.
   * iosurface-ipc: unplatformed IOSurface-only IPC helper.
   * platform-iosurface: platform/task-port IOSurface-only host.
@@ -119,8 +120,13 @@ GPU_MARKERS = GPU_ACCEL_MARKERS + IOSURFACE_MARKERS + ("IOSurfaceAcceleratorClie
 # IOSurfaces). These distinguish iosc-gl-ent.xml from iosc-gpu-client-ent.xml.
 COMPOSITOR_MARKERS = ("platform-application", "task_for_pid-allow",
                       "com.apple.system-task-ports")
+TASK_PORT_MARKERS = ("task_for_pid-allow", "com.apple.system-task-ports")
 GPU_CLIENT_REQUIRED = ("com.apple.private.amfi.can-allow-non-platform",
                        "get-task-allow")
+PLATFORM_GPU_CLIENT_REQUIRED = ("platform-application",
+                                "com.apple.private.amfi.can-allow-non-platform",
+                                "com.apple.private.skip-library-validation",
+                                "get-task-allow")
 PLATFORM_GL_REQUIRED = ("platform-application",
                         "com.apple.private.amfi.can-allow-non-platform",
                         "com.apple.private.skip-library-validation",
@@ -271,12 +277,15 @@ def tier(ents: str) -> str | None:
     ents = strip_xml_comments(ents)
     if not any(m in ents for m in GPU_MARKERS):
         return None
-    has_platform = any(m in ents for m in COMPOSITOR_MARKERS)
+    has_platform = "platform-application" in ents
+    has_task_ports = any(m in ents for m in TASK_PORT_MARKERS)
     has_gpu_accel = any(m in ents for m in GPU_ACCEL_MARKERS)
-    if has_platform and has_gpu_accel:
+    if has_platform and has_task_ports and has_gpu_accel:
         return "platform-gl"
-    if has_platform:
+    if has_platform and has_task_ports:
         return "platform-iosurface"
+    if has_platform:
+        return "platform-gpu-client" if has_gpu_accel else "platform-iosurface-client"
     return "gpu-client" if has_gpu_accel else "iosurface-ipc"
 
 
@@ -293,7 +302,7 @@ def validate_graphics_profile(ents: str, path: str) -> str | None:
     if kind is None:
         return None
     bad = [m for m in FORBIDDEN_GRAPHICS_MARKERS if m in ents]
-    if bad and kind in ("platform-gl", "gpu-client"):
+    if bad and kind in ("platform-gl", "platform-gpu-client", "gpu-client"):
         raise SystemExit(
             f"ERROR: {path} matches graphics profile {kind} but carries forbidden "
             f"entitlement marker(s): {', '.join(bad)}")
@@ -302,7 +311,7 @@ def validate_graphics_profile(ents: str, path: str) -> str | None:
         raise SystemExit(
             f"ERROR: {path} matches graphics profile {kind} but is missing "
             f"IOSurface marker(s): {', '.join(missing)}")
-    if kind in ("platform-gl", "gpu-client"):
+    if kind in ("platform-gl", "platform-gpu-client", "gpu-client"):
         missing = missing_markers(ents, GPU_ACCEL_MARKERS)
         if missing:
             raise SystemExit(
@@ -310,19 +319,27 @@ def validate_graphics_profile(ents: str, path: str) -> str | None:
                 f"GPU acceleration marker(s): {', '.join(missing)}")
     if kind == "platform-gl":
         required = PLATFORM_GL_REQUIRED
+    elif kind == "platform-gpu-client":
+        required = PLATFORM_GPU_CLIENT_REQUIRED
     elif kind == "platform-iosurface":
         required = PLATFORM_IOSURFACE_REQUIRED
     elif kind == "gpu-client":
         required = GPU_CLIENT_REQUIRED
-    else:
+    elif kind == "iosurface-ipc":
         required = IOSURFACE_IPC_REQUIRED
+    else:
+        required = ("platform-application",
+                    "com.apple.private.amfi.can-allow-non-platform")
     missing = missing_markers(ents, required)
     if missing:
         raise SystemExit(
             f"ERROR: {path} matches graphics profile {kind} but is missing "
             f"required marker(s): {', '.join(missing)}")
-    if kind in ("gpu-client", "iosurface-ipc"):
+    if kind in ("platform-gpu-client", "platform-iosurface-client",
+                "gpu-client", "iosurface-ipc"):
         accidental = [m for m in COMPOSITOR_MARKERS if m in ents]
+        if kind.startswith("platform-"):
+            accidental = [m for m in accidental if m != "platform-application"]
         if accidental:
             raise SystemExit(
                 f"ERROR: {path} matches {kind} but carries platform/task "

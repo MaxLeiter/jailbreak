@@ -1,0 +1,22 @@
+Package: ladybird-app
+Name: Ladybird
+Version: 0.1.25+ios1
+Architecture: iphoneos-arm
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1
+Section: Apps
+Priority: optional
+MinimumOSVersion: 16.0
+Description: The Ladybird browser for iPhone and iPad
+Installed-Size: 207824
+Filename: debs/ladybird-app_0.1.25+ios1_iphoneos-arm.deb
+Size: 69895870
+MD5sum: 705b0a1c9590cce390ab88dff7ed6e39
+SHA1: ec722d260119e943d6dd2ba854b5614b0218336b
+SHA256: 91885337d233ff690cad3b0501fc5abb60890a9208c51da7722889eea01ecbcf
+Icon: https://repo.maxleiter.com/profiles/rootful/icons/ladybird-app.png
+Depiction: https://repo.maxleiter.com/profiles/rootful/depictions/ladybird-app.html
+SileoDepiction: https://repo.maxleiter.com/profiles/rootful/depictions/ladybird-app.json
+Native Depiction: https://repo.maxleiter.com/profiles/rootful/depictions/ladybird-app.json
+Homepage: https://ladybird.org

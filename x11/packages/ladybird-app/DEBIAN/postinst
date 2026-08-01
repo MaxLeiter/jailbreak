@@ -4,7 +4,7 @@ set -e
 case "$1" in
   configure|install|"")
     if command -v uicache >/dev/null 2>&1; then
-      uicache -p /var/jb/Applications/Ladybird.app || true
+      uicache -p @APP_INSTALL@ || true
     fi
     ;;
 esac

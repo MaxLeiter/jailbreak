@@ -40,6 +40,12 @@ repo/Release.gpg
 repo/InRelease
 repo/Packages.pv
 repo/Packages.sha
+repo/profiles/*/Packages.gz
+repo/profiles/*/Release
+repo/profiles/*/Release.gpg
+repo/profiles/*/InRelease
+repo/profiles/*/Packages.pv
+repo/profiles/*/Packages.sha
 
 # Generated Xios outputs
 x11/artifacts/

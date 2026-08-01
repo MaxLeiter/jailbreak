@@ -176,27 +176,27 @@ if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   fi
 
   mkdir -p "$ANGLE_PC_DIR"
-  cat > "$ANGLE_PC_DIR/egl.pc" <<'EOF'
+  cat > "$ANGLE_PC_DIR/egl.pc" <<EOF
 prefix=$XIOS_PREFIX
-libdir=${prefix}/lib/angle
-includedir=${prefix}/usr/include
+libdir=\${prefix}/lib/angle
+includedir=\${prefix}/usr/include
 
 Name: EGL
 Description: ANGLE EGL (Metal) for the Ladybird iOS app
 Version: 1.5
-Libs: ${libdir}/libEGL.angle.dylib
-Cflags: -I${includedir}
+Libs: \${libdir}/libEGL.angle.dylib
+Cflags: -I\${includedir}
 EOF
-  cat > "$ANGLE_PC_DIR/glesv2.pc" <<'EOF'
+  cat > "$ANGLE_PC_DIR/glesv2.pc" <<EOF
 prefix=$XIOS_PREFIX
-libdir=${prefix}/lib/angle
-includedir=${prefix}/usr/include
+libdir=\${prefix}/lib/angle
+includedir=\${prefix}/usr/include
 
 Name: glesv2
 Description: ANGLE OpenGL ES 2/3 over Metal for the Ladybird iOS app
 Version: 2.1
-Libs: ${libdir}/libGLESv2.dylib
-Cflags: -I${includedir}
+Libs: \${libdir}/libGLESv2.dylib
+Cflags: -I\${includedir}
 EOF
 fi
 
@@ -218,15 +218,20 @@ if [ "$APP_GPU_ENABLED" -eq 1 ]; then
 fi
 cd "$WORK"
 # reuse ladybird-build's CMakeCache (incremental); cmake re-run picks up the new UI/iOS + Compositor
+CONFIG_LOG=/out/ladybird-app-configure.log
 cmake "${CMAKE_UNSET_ARGS[@]}" -GNinja -B "$BUILD" -S "$WORK" \
   -DCMAKE_TOOLCHAIN_FILE=/work/recipes-ladybird/ios-toolchain.cmake \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DENABLE_GUI_TARGETS=ON \
   -DENABLE_INSTALL_HEADERS=OFF -DENABLE_NETWORK_DOWNLOADS=ON -DENABLE_CLANG_PLUGINS=OFF \
   -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
-  -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -6
+  -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tee "$CONFIG_LOG" | tail -20
 cfg=${PIPESTATUS[0]}
 echo "configure exit: $cfg"
-[ "$cfg" -eq 0 ] || exit "$cfg"
+if [ "$cfg" -ne 0 ]; then
+  echo "---- configure failure context ($CONFIG_LOG) ----" >&2
+  tail -100 "$CONFIG_LOG" >&2
+  exit "$cfg"
+fi
 cd "$BUILD"
 
 # ---- Compositor EGL/GLES link path ---------------------------------------------------------

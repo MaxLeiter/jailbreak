@@ -30,7 +30,7 @@ OTOOL=/root/cctools/bin/aarch64-apple-darwin-otool
 INT=/root/cctools/bin/aarch64-apple-darwin-install_name_tool
 LDID=/root/cctools/bin/ldid
 STAGE=/out/app-stage
-VER="${LADYBIRD_APP_VERSION:-0.1.24+ios1}"
+VER="${LADYBIRD_APP_VERSION:-0.1.25+ios1}"
 APPROOT=/tmp/lbapp
 APP=$APPROOT$XIOS_PREFIX/Applications/Ladybird.app
 BINS="Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor"
@@ -188,18 +188,24 @@ echo "preliminary signature markers on Ladybird:"; "$LDID" -e "$APP/Ladybird" 2>
 step "package deb"
 mkdir -p "$APPROOT/DEBIAN"
 INSTALLED_KB=$(du -sk "$APPROOT${XIOS_PREFIX:-/usr}" | cut -f1)
-sed -e "s/@VER@/$VER/" /work/ladybird-app/DEBIAN/control > "$APPROOT/DEBIAN/control"
+sed -e "s/@VER@/$VER/" \
+    -e "s/@ARCH@/$XIOS_DEB_ARCH/" \
+    -e "s/@MIN_IOS@/16.0/" \
+    -e "s/@DEPENDS@/libiosexec1/" \
+    /work/ladybird-app/DEBIAN/control > "$APPROOT/DEBIAN/control"
 # Self-contained: every leaf is bundled EXCEPT libiosexec (ships as .tbd link-stub only; resolved
 # at runtime from /var/jb/usr/lib via the fallback rpath). So the only real external dep is
 # libiosexec1; drop libicu78 et al (bundled) so the deb installs cleanly without pulling the
 # system icu/font/codec stack.
-sed -i 's/^Depends:.*/Depends: libiosexec1/' "$APPROOT/DEBIAN/control"
 grep -q '^Installed-Size' "$APPROOT/DEBIAN/control" || echo "Installed-Size: $INSTALLED_KB" >> "$APPROOT/DEBIAN/control"
-cp /work/ladybird-app/DEBIAN/postinst "$APPROOT/DEBIAN/postinst"; chmod 0755 "$APPROOT/DEBIAN/postinst"
+sed "s|@APP_INSTALL@|$XIOS_PREFIX/Applications/Ladybird.app|" \
+    /work/ladybird-app/DEBIAN/postinst > "$APPROOT/DEBIAN/postinst"
+cp /work/ladybird-app/DEBIAN/postrm "$APPROOT/DEBIAN/postrm"
+chmod 0755 "$APPROOT/DEBIAN/postinst" "$APPROOT/DEBIAN/postrm"
 DEB=/out/ladybird-app_${VER}_$XIOS_DEB_ARCH.deb
 dpkg-deb -Zxz -b "$APPROOT" "$DEB" && echo "== packaged $DEB ==" && ls -la "$DEB"
 echo "app tree:"; find "$APP" -maxdepth 1 | sed 's/^/  /'
 echo
 echo "!! final step required on the macOS host:"
-echo "   packages/ladybird-app/resign-ladybird-app-deb.sh $DEB <out-dir>"
+echo "   packages/ladybird-app/package-ladybird-app-targets.sh $DEB /out"
 echo; echo "########## BUNDLE done (self-contained) ##########"

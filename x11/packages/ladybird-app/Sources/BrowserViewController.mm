@@ -4,6 +4,7 @@
  * is an NSToolbar + LocationSearchField). Multi-tab is deferred (see README).
  */
 #import "BrowserViewController.h"
+#import "LBPaths.h"
 #import "LBTrace.h"
 
 #include <stdlib.h>
@@ -16,7 +17,7 @@ static NSString* lb_initial_url()
         candidate = [NSString stringWithUTF8String:env];
 
     if (!candidate.length)
-        candidate = [NSString stringWithContentsOfFile:@"/var/jb/tmp/ladybird-start-url" encoding:NSUTF8StringEncoding error:nil];
+        candidate = [NSString stringWithContentsOfFile:lb_runtime_path_ns(@"ladybird-start-url") encoding:NSUTF8StringEncoding error:nil];
 
     candidate = [candidate stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     return candidate.length ? candidate : @"https://example.com/";

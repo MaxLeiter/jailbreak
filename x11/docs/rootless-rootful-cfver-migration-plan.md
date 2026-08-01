@@ -20,9 +20,8 @@ the concrete migration checklist and acceptance criteria.
   - `linux-build/tools/stamp-minos.py` computes Mach-O and dependency-closure
     `MinimumOSVersion` fields.
   - flavor metas use `firmware (>= ...)` and `MinimumOSVersion`.
-- Rootful support is only planned. No rootful artifacts should be published
-  until the target matrix, package generation, repo separation, and device smoke
-  tests exist.
+- Rootful support is package-scoped. Ladybird is the first published rootful
+  package; broader Xios stacks remain gated on target conversion and validation.
 
 ## Goals
 
@@ -41,7 +40,7 @@ the concrete migration checklist and acceptance criteria.
 - Non-Procursus bootstraps as first-class targets.
 - Full GNOME/KDE/rootful matrix on day one.
 - A standalone replacement for Procursus.
-- Publishing rootful packages before a real rootful-device validation pass.
+- Treating one published standalone rootful app as validation of the broader desktop stack.
 
 ## Target Model
 
@@ -169,6 +168,14 @@ Current partial implementation:
 - `linux-build/build.sh` renders the `Xios` entitlement path exceptions from
   the selected target prefix, so a rootful build does not generate `/var/jb`
   exceptions in `xios-ent.xml`.
+- `ladybird-app 0.1.25+ios1` builds its generic arm64 engine/frontend once, then
+  `packages/ladybird-app/package-ladybird-app-targets.sh` emits two packages with the same
+  package id and version: rootless `iphoneos-arm64` at `/var/jb/Applications/Ladybird.app`
+  and rootful `iphoneos-arm` at `/Applications/Ladybird.app`. Runtime state selects
+  `/var/jb/tmp` or `/tmp` from the installed bundle, while the packager normalizes
+  `libiosexec` rpaths, filesystem entitlements, maintainer scripts, and bundled dylib load
+  paths. Both artifacts pass `tools/check-target-package.py` and publish through separate APT
+  profiles; physical rootful runtime validation remains follow-up evidence.
 - `apps/iosc-desktop/src/ioscd.c` now derives its temp dir, install prefix,
   helper paths, session/a11y status files, compositor sockets, and launcher-sync
   paths at runtime. Rootless stays on `/var/jb/tmp`; rootful defaults to
@@ -390,9 +397,8 @@ Acceptance criteria:
 
 - Existing rootless publish flow remains available -- verified by generating
   with both the old and new generator and diffing `Packages`: byte-identical.
-- Rootful publish flow can generate metadata locally but is blocked from
-  production until device validation passes -- `bin/publish-repo.sh` refuses any
-  non-rootless `XIOS_REPO_PROFILE` and points at the local generation command.
+- Rootful publish flow generates, signs, uploads, scopes, and verifies the independent
+  `repo/profiles/rootful` suite through `XIOS_REPO_PROFILE=rootful`.
 - Repo audit catches package/version/architecture collisions across profiles --
   covered by the payload guard above.
 
@@ -406,14 +412,16 @@ with `XIOS_REPO_ALLOW_SHRINK=1`.
 
 Treat CFVER as a target dimension, not just an iOS marketing version.
 
-Add target descriptors as needed:
+The active release scope is iOS/iPadOS 16 and newer only, using CFVER 1900:
 
 ```text
-rootless-1800.env
 rootless-1900.env
-rootful-1700.env
 rootful-1900.env
 ```
+
+Older CFVER 1600/1700/1800 targets are explicitly deferred. Supporting them
+would require rebuilding and validating the dependency closure rather than
+lowering package metadata on the existing binaries.
 
 Policy:
 
@@ -491,8 +499,8 @@ Acceptance criteria:
 
 - Rootless smoke tests pass on the current iPad before any rootful migration is
   considered complete.
-- Rootful smoke tests must pass on a real rootful Procursus device before
-  rootful repo publication is enabled.
+- Rootful smoke tests remain required before calling the broader rootful Xios stack validated;
+  standalone packages may publish with the missing runtime evidence disclosed.
 
 ## Suggested Work Order
 
@@ -506,7 +514,7 @@ Acceptance criteria:
    rootless/rootful handling.
 7. Add repo profile plumbing in dry-run mode.
 8. Build rootless packages from templates and compare against current packages.
-9. Add rootful target generation, but keep publish blocked.
+9. Add rootful target generation and independent profile publishing.
 10. Validate rootful server/font smoke set on hardware.
 11. Expand to Wayland/iosc, then desktop stacks.
 
@@ -518,12 +526,13 @@ Rootless profile can publish when:
 - repo audit passes
 - current iPad smoke evidence is captured
 
-Rootful profile can publish when:
+Rootful packages can publish when:
 
 - rootful package set is generated from templates
 - no rootless payload paths leak into rootful packages
 - rootful metadata lives in a separate profile/suite
-- a real rootful Procursus device has passed install and launch smoke tests
+- host package, load-path, signature, and dependency audits pass
+- release metadata discloses any missing physical-device runtime validation
 
 Additional CFVER targets can publish when:
 

@@ -50,7 +50,7 @@ xsign() {
         local ent_prefix="${XIOS_PREFIX:-${XIOS_SUBPREFIX:-/usr}}"
         sed -e "s|/var/jb/tmp|${XIOS_RUNTIME_TMP:-/var/tmp}|g" \
             -e "s|<string>/var/jb/</string>|<string>$ent_prefix/</string>|g" \
-            -e "s|<string>/private/var/jb/</string>|<string>$ent_prefix/</string>|g" \
+            -e "s|.*<string>/private/var/jb/</string>.*||g" \
             -e "s|/var/jb/|$ent_prefix/|g" "$ents" > "$rendered"
         echo "xsign: rendered $ents for prefix ${XIOS_PREFIX:-/}" >&2
         ents="$rendered"

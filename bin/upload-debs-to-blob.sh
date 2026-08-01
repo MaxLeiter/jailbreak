@@ -7,6 +7,7 @@
 #
 # Optional:
 #   BLOB_DEB_PREFIX=debs
+#   BLOB_PAYLOAD_ROOT=repo
 #   BLOB_ONLY=package-a,package-b
 #   BLOB_CACHE_CONTROL_MAX_AGE=31536000
 #   BLOB_DRY_RUN=1
@@ -19,6 +20,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEBS_DIR="${DEBS_DIR:-$REPO_ROOT/repo/debs}"
 VERCEL_CWD="${VERCEL_CWD:-$REPO_ROOT/repo}"
+PAYLOAD_ROOT="${BLOB_PAYLOAD_ROOT:-$VERCEL_CWD}"
 PREFIX="${BLOB_DEB_PREFIX:-debs}"
 CACHE_CONTROL_MAX_AGE="${BLOB_CACHE_CONTROL_MAX_AGE:-31536000}"
 PUBLIC_BASE_URL="${BLOB_PUBLIC_BASE_URL:-https://j7lqamqsi8q1vmg4.public.blob.vercel-storage.com}"
@@ -176,7 +178,7 @@ if [ -n "$ONLY" ]; then
         print $2
     }
   ' "$INDEX" | while IFS= read -r filename; do
-    deb="$VERCEL_CWD/$filename"
+    deb="$PAYLOAD_ROOT/$filename"
     [ -f "$deb" ] || {
       echo "ERROR: indexed payload missing for scoped upload: $filename" >&2
       exit 1

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Remove the SpringBoard registration after uninstalling either package variant.
+set -e
+case "$1" in
+  remove|purge|"")
+    if command -v uicache >/dev/null 2>&1; then
+      uicache -u com.max.ladybird || true
+    fi
+    ;;
+esac
+exit 0

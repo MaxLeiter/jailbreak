@@ -13,8 +13,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 X11="$(cd "$HERE/../.." && pwd)"
 . "$X11/lib/xlib.sh"
 
-VER="${LADYBIRD_APP_VERSION:-0.1.24+ios1}"
-ARCH="iphoneos-arm64"
+VER="${LADYBIRD_APP_VERSION:-0.1.25+ios1}"
+ARCH="$XIOS_DEB_ARCH"
 ENGINE_STAGE="${LADYBIRD_ENGINE_STAGE:-}"     # dir with WebContent/RequestServer/... + share/Lagom
 UI_BIN="${LADYBIRD_UI_BIN:-}"                 # the built UIKit `Ladybird` Mach-O (step 1 output)
 OUT="${OUT:-$HERE/out}"
@@ -50,6 +50,30 @@ cp "$HERE/Resources/Info.plist" "$APP/Info.plist"
 [ -f "$HERE/Resources/AppIcon.png" ] && cp "$HERE/Resources/AppIcon.png" "$APP/AppIcon.png"
 chmod +x "$APP/Ladybird" "$APP/WebContent" "$APP/RequestServer" "$APP/ImageDecoder" "$APP/WebWorker" "$APP/Compositor"
 
+# libiosexec is the one external dylib. Its install name is @rpath-based, so
+# give each target its scheme-correct package prefix before signing.
+for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor; do
+    for stale_rpath in /var/jb/usr/lib /usr/lib; do
+        if [ "$stale_rpath" != "$XIOS_INSTALL_PREFIX/lib" ] && \
+           otool -l "$APP/$b" | grep -A2 LC_RPATH | grep -Fq "path $stale_rpath "; then
+            install_name_tool -delete_rpath "$stale_rpath" "$APP/$b"
+        fi
+    done
+    if ! otool -l "$APP/$b" | grep -A2 LC_RPATH | grep -Fq "path $XIOS_INSTALL_PREFIX/lib "; then
+        install_name_tool -add_rpath "$XIOS_INSTALL_PREFIX/lib" "$APP/$b"
+    fi
+done
+for dylib in "$APP"/lib/*.dylib; do
+    [ -e "$dylib" ] || break
+    for stale_rpath in /var/jb/usr/lib /usr/lib; do
+        if [ "$stale_rpath" != "$XIOS_INSTALL_PREFIX/lib" ] && \
+           otool -l "$dylib" | grep -A2 LC_RPATH | grep -Fq "path $stale_rpath "; then
+            install_name_tool -delete_rpath "$stale_rpath" "$dylib"
+        fi
+    done
+    xsign "$dylib"
+done
+
 # --- Step 3: sign (Mac ldid, DER ents; xsign verifies markers) ---
 xsign "$APP/Ladybird" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
 for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
@@ -58,9 +82,15 @@ done
 
 # --- Step 4: control + deb ---
 mkdir -p "$STAGE/DEBIAN"
-sed "s/@VER@/$VER/" "$HERE/DEBIAN/control" > "$STAGE/DEBIAN/control"
-cp "$HERE/DEBIAN/postinst" "$STAGE/DEBIAN/postinst"
-chmod 0755 "$STAGE/DEBIAN/postinst"
+sed -e "s/@VER@/$VER/" \
+    -e "s/@ARCH@/$ARCH/" \
+    -e "s/@MIN_IOS@/$XIOS_DEFAULT_MIN_IOS/" \
+    -e "s/@DEPENDS@/libicu78 (>= 78.3), libiosexec1 (>= 1.3.1)/" \
+    "$HERE/DEBIAN/control" > "$STAGE/DEBIAN/control"
+sed "s|@APP_INSTALL@|$XIOS_PREFIX/Applications/Ladybird.app|" \
+    "$HERE/DEBIAN/postinst" > "$STAGE/DEBIAN/postinst"
+cp "$HERE/DEBIAN/postrm" "$STAGE/DEBIAN/postrm"
+chmod 0755 "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/postrm"
 
 mkdir -p "$OUT"
 xmkdeb "$STAGE" "$OUT"

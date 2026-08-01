@@ -61,7 +61,10 @@ APP_SECTION_PACKAGES = {
 }
 
 # ── identity / theme ─────────────────────────────────────────────────────────
-BASE_URL    = os.environ.get("XIOS_REPO_BASE_URL", "https://repo.maxleiter.com")
+DEFAULT_BASE_URL = "https://repo.maxleiter.com"
+if PROFILE != "rootless":
+    DEFAULT_BASE_URL += f"/profiles/{PROFILE}"
+BASE_URL    = os.environ.get("XIOS_REPO_BASE_URL", DEFAULT_BASE_URL)
 REPO_NAME   = "Max's Repo"
 ORIGIN      = REPO_NAME
 DESCRIPTION = "Jailbreak packages by Max"
@@ -1327,8 +1330,15 @@ def write_index(pkgs):
     tweak_rows = "".join(row(p, min(3 + j, 16))
                          for j, p in enumerate(sorted(tweaks, key=lambda p: name(p).lower())))
 
-    index_description = ("Rootless jailbreak packages and xiOS desktop apps for iPad, "
-                         "including GIMP, GNOME, KDE Plasma, X11, and Wayland software.")
+    if PROFILE == "rootless":
+        index_description = ("Rootless jailbreak packages and xiOS desktop apps for iPad, "
+                             "including GIMP, GNOME, KDE Plasma, X11, and Wayland software.")
+        tweak_lede = "Small quality-of-life tweaks and companion apps for iPadOS on rootless jailbreaks."
+    else:
+        index_description = (f"{PROFILE.title()} jailbreak packages for 64-bit iPhone and iPad "
+                             "on iOS or iPadOS 16 and newer.")
+        tweak_lede = (f"Apps and packages built for {PROFILE} jailbreaks on "
+                      "iOS and iPadOS 16 or newer.")
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0a0b">
@@ -1371,13 +1381,13 @@ def write_index(pkgs):
     <button class="tab" id="tab-xios" data-tab="xios" type="button" role="tab" aria-selected="false" aria-controls="panel-xios" tabindex="-1">xiOS<span class="tab-n">{len(xios)}</span></button>
   </nav>
   <section class="panel" id="panel-tweaks" role="tabpanel" aria-labelledby="tab-tweaks">
-    <p class="lede reveal" style="--i:3">Small quality-of-life tweaks and companion apps for iPadOS on rootless jailbreaks.</p>
+    <p class="lede reveal" style="--i:3">{html.escape(tweak_lede)}</p>
     <div class="list solo">{tweak_rows}</div>
   </section>
   <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios" hidden>
     <p class="lede">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS. <strong>Install one flavor</strong> and it pulls in everything it needs.</p>
-    {flavors_html}
-    {sections_html}
+{flavors_html}
+{sections_html}
   </section>
   <p class="no-results" id="noResults">No matching packages.</p>
   <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>

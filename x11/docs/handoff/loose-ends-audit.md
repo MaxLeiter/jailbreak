@@ -102,7 +102,7 @@ These versions intentionally do not reuse published filenames:
 | `xios-a11y-tools` | 0.2.15 | Cross-built, audited, and live in staging |
 | `libmutter-14-0/-dev` | 46.0+ios5 | Package-only rebuild owns plugin `.so` aliases and refuses a runtime without `MetaBackendIOS` plus linked `xios_glue`; runtime package installed and GNOME startup passed on-device |
 | `xios-kde` | 0.1.9 | Built with the final iosc/session/KWin/Workspace/Mobile/KScreen floors and live in staging |
-| `ladybird-app` | 0.1.24+ios1 | GPU/Metal is the default fail-closed release path; full engine/bundle build and host DER re-sign passed; installed package passed direct startup and helper dyld smoke, while FrontBoard Metal-frame proof still needs an awake screen |
+| `ladybird-app` | 0.1.25+ios1 | One generic arm64 app build emits rootless `iphoneos-arm64` and rootful `iphoneos-arm` packages under the same package id; both pass host target/load-path/signing audits and are published in separate APT profiles. Rootless regression and the first physical rootful install/helper/Metal-frame proof remain follow-up evidence. |
 | `libgtop-2.0-11` | 2.41.3+ios2 | Built; real Darwin process backend; device smoke pending |
 | `xios-session-stubs` | 0.2.7 | Installed and device-smoked with package-owned GNOME descriptors/`xios-setsid`, a private runtime dir, package-time Shell entitlement verification, and honest unsupported process/power operations |
 | `xios-desktop-stublibs` | 0.1.1 | Built; expanded pwquality behavior; device smoke pending |
@@ -146,10 +146,13 @@ was no longer running at final validation; its outcome was not assessed as part 
    deferred revision.
 7. **Xwayland WM polish:** `WM_NORMAL_HINTS`, client-requested `_NET_WM_STATE`/activation, and
    fuller resize semantics remain TODOs. Basic mapping/input works; these affect desktop polish.
-8. **Ladybird:** `0.1.24+ios1` is fully built, bundled, host DER-signed, and installed.
-   Direct mobile-user startup reaches `main`, and every helper passes a dyld smoke after fixing
-   the bundle resolver to select gettext's real `libintl.8` instead of the GLib proxy. The
-   remaining gate is a normal FrontBoard launch with an awake screen and an actual Metal frame.
+8. **Ladybird:** `0.1.25+ios1` is fully built as a scheme-neutral arm64 UIKit app and packaged
+   twice under the same `ladybird-app` id: rootless `/var/jb/Applications` (`iphoneos-arm64`)
+   and rootful `/Applications` (`iphoneos-arm`). Both packages pass the target checker with
+   target-correct maintainer scripts, rpaths, entitlements, and no foreign load paths. The prior
+   rootless version reached `main` and passed every helper dyld smoke. `0.1.25+ios1` ships in
+   separate rootless and rootful APT profiles; the rootless regression and first physical
+   rootful install/helper/Metal-frame smoke remain follow-up evidence.
 
 ## Intentional shims, not loose ends
 
@@ -190,6 +193,6 @@ evidence alone:
     five-button mouse chords, discrete wheel, continuous trackpad scroll/stop, click-drag,
     pointer lock/confinement, and named/custom cursor hotspot behavior.
 
-Production publication is intentionally not part of this offline sweep. Staging is regenerated,
-audited, signed, published, and independently fetched; device proof remains the gate before any
-production promotion.
+Ladybird `0.1.25+ios1` is the explicit exception to this offline sweep's earlier publication
+policy: both profiles were promoted after host audit, with missing physical rootful proof called
+out rather than enforced as a publisher block. Other packages retain their existing gates.
