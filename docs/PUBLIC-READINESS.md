@@ -1,13 +1,16 @@
 # Public Readiness
 
-Status as of 2026-08-01: complete. The repository is public, the history cleanup is
-complete, the MIT `LICENSE` is at the root, the artifact policy is enforced by
-`.gitignore`, Blob hosting is live, and CI runs the PR checks below.
+Status as of 2026-08-01: the public refs are clean, but one external cleanup
+remains. GitHub Support must purge the cached, now-unreachable pre-rewrite
+commit before the history cleanup is complete. Everything else on the original
+list is done.
 
-## History Cleanup (completed 2026-08-01)
+## Current Blocker
 
-The public history was purged of these copied proprietary assets, private material,
-and reproducible source archives:
+The old archival branch was deleted after its active descendants had already
+been rewritten. No branch, tag, or pull-request ref reaches the old history, but
+GitHub still serves the former archival tip directly by commit URL. Ask GitHub
+Support to purge that cached view and its unreachable objects, which contain:
 
 - `x11/apps/iosc-shell/design/.sf/SFNS.ttf` — Apple's proprietary San Francisco font
   (redistribution violates Apple's license).
@@ -18,8 +21,10 @@ and reproducible source archives:
   loss. Curated header subdirs (`dbus-headers/`, `libei-1.3.0/src/`) stay tracked as build
   inputs — do **not** purge those paths.
 
-The final reachable history passed `git filter-repo --analyze`, a targeted path scan,
-and a Gitleaks scan across all public refs.
+The final reachable history passed `git filter-repo --analyze`, a targeted path
+scan, and a Gitleaks scan across all public refs. After GitHub confirms the
+cache purge, verify that the former archival commit URL returns `404` and mark
+this checklist complete.
 
 ## Settled
 

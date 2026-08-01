@@ -9,6 +9,13 @@ repo tooling, and the Xios X11/Wayland-on-iOS desktop stack.
 > **[maxleiter.com/blog/xios](https://maxleiter.com/blog/xios)**. Wiki:
 > **[xios.maxleiter.com](https://xios.maxleiter.com)**.
 
+## Public development
+
+Public contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md)
+before opening a PR and [`docs/PUBLIC-READINESS.md`](docs/PUBLIC-READINESS.md)
+for the final GitHub history-cache cleanup. Package publication, APT signing,
+Vercel deployment, and device verification remain maintainer-controlled.
+
 ## Reference Device
 
 | Field | Value |
