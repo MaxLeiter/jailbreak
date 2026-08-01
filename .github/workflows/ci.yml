@@ -106,8 +106,14 @@ jobs:
               --against https://repo.maxleiter.com/Packages \
               --against https://dev.repo.maxleiter.com/Packages
           else
+            # Production must never be newer than main: publishing this index
+            # would roll devices back. Staging is deliberately allowed to be
+            # ahead while a package is under device test, but same-version,
+            # different-byte collisions there must still fail.
             python bin/lib/check-version-collisions.py \
-              --against https://repo.maxleiter.com/Packages \
+              --against https://repo.maxleiter.com/Packages
+            python bin/lib/check-version-collisions.py \
+              --warn-regressions \
               --against https://dev.repo.maxleiter.com/Packages
           fi
 
