@@ -12510,20 +12510,20 @@ SileoDepiction: https://repo.maxleiter.com/depictions/waybar.json
 Native Depiction: https://repo.maxleiter.com/depictions/waybar.json
 
 Package: wayland-protocols
-Version: 1.44+ios1
+Version: 1.49+ios1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://wayland.freedesktop.org
 Description: Wayland protocol extension definitions
-Installed-Size: 1188
+Installed-Size: 1248
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/wayland-protocols_1.44+ios1_iphoneos-arm64.deb
-Size: 143666
-MD5sum: 74e78752f70f5e6934e588d9b2ee4d98
-SHA1: 0b1fe07fd1a9d1bcb6a9f451151f4a43ad3f3bdf
-SHA256: 0f45814fa752bcfafeb71837b26b9fe7c209331f9f8442b363fedd0c11f2d200
+Filename: debs/wayland-protocols_1.49+ios1_iphoneos-arm64.deb
+Size: 155512
+MD5sum: 851d9f455e6af2962e7a6544b37299fd
+SHA1: 70bb64e9dee14293e71b0c8a4bfb9116e1c0068b
+SHA256: 16bdf602e69ac9a3ccb7cc354bb438e0649b79c422536a048d920aa333672240
 Icon: https://repo.maxleiter.com/icons/wayland-protocols.png
 Depiction: https://repo.maxleiter.com/depictions/wayland-protocols.html
 SileoDepiction: https://repo.maxleiter.com/depictions/wayland-protocols.json

@@ -1,0 +1,95 @@
+{
+  "rules": [
+    {
+      "match": "linux-build/recipes/qt*.mk:*_VERSION",
+      "track": "6.6",
+      "hold": "Qt 6.6 is the validated iOS toolchain and KDE ABI cohort; upgrade it as one lane."
+    },
+    {
+      "match": [
+        "linux-build/recipes/ark.mk:*_VERSION",
+        "linux-build/recipes/dolphin.mk:*_VERSION",
+        "linux-build/recipes/gwenview.mk:*_VERSION",
+        "linux-build/recipes/kate.mk:*_VERSION",
+        "linux-build/recipes/kcalc.mk:*_VERSION",
+        "linux-build/recipes/konsole.mk:*_VERSION",
+        "linux-build/recipes/kwrite.mk:*_VERSION",
+        "linux-build/recipes/okular.mk:*_VERSION",
+        "linux-build/recipes/poppler.mk:*_VERSION",
+        "linux-build/recipes/poppler-qt6.mk:*_VERSION"
+      ],
+      "track": "24.08",
+      "hold": "KDE release-service applications must move together with the Qt/KF6 cohort."
+    },
+    {
+      "match": "linux-build/recipes/mozjs*.mk:*_VERSION",
+      "track": "115",
+      "hold": "SpiderMonkey 115 is the GNOME 46 ESR/toolchain cohort."
+    },
+    {
+      "match": "linux-build/recipes/webkitgtk.mk:WEBKITGTK_VERSION",
+      "track": "2.44",
+      "hold": "2.46 and newer require C++23 features unsupported by the current iOS Clang 14 lane."
+    },
+    {
+      "match": "linux-build/recipes/xwayland.mk:XWAYLAND_VERSION",
+      "track": "23.2",
+      "hold": "Xwayland is coupled to the existing Xserver patch and Procursus ABI lane."
+    },
+    {
+      "match": "linux-build/recipes/ffmpeg.mk:FFMPEG_VERSION",
+      "track": "5.1",
+      "hold": "FFmpeg is an ABI-sensitive shared dependency; upgrade its consumers as a cohort."
+    },
+    {
+      "match": "linux-build/recipes/krita.mk:KRITA_*",
+      "ignore": "Krita is an intentional date-stamped upstream development snapshot."
+    },
+    {
+      "match": "linux-build/recipes/luajit.mk:LUAJIT_COMMIT",
+      "ignore": "LuaJIT is commit-pinned; update only with its patch/build lane."
+    },
+    {
+      "match": "linux-build/recipes/*:XIOS_*_VERSION",
+      "ignore": "Xios-owned package version, not an upstream dependency."
+    }
+  ],
+  "overrides": {
+    "linux-build/recipes/qt6-common.mk:QT6_VERSION": {
+      "track": "6.6",
+      "hold": "Qt 6.6 is the validated iOS toolchain and KDE ABI cohort; upgrade it as one lane.",
+      "source": {
+        "kind": "git",
+        "url": "https://code.qt.io/qt/qt5.git",
+        "regex": "v(?P<version>6\\.[0-9]+\\.[0-9]+)"
+      }
+    },
+    "linux-build/recipes/kf6-common.mk:KF6_VERSION": {
+      "track": "6.3",
+      "hold": "KF6 6.3 is the validated Plasma 6.1 and Qt 6.6 cohort.",
+      "source": {
+        "kind": "git",
+        "url": "https://invent.kde.org/frameworks/extra-cmake-modules.git",
+        "regex": "v(?P<version>6\\.[0-9]+\\.[0-9]+)"
+      }
+    },
+    "linux-build/recipes/kf6-common.mk:PLASMA_VERSION": {
+      "track": "6.1",
+      "hold": "Plasma 6.1 is the validated KF6 6.3 and Qt 6.6 cohort.",
+      "source": {
+        "kind": "git",
+        "url": "https://invent.kde.org/plasma/plasma-workspace.git",
+        "regex": "v(?P<version>6\\.[0-9]+\\.[0-9])"
+      }
+    },
+    "linux-build/recipes/kf6-common.mk:PWP_VERSION": {
+      "track": "1.13",
+      "hold": "Plasma Wayland protocols are part of the validated Plasma 6.1 build cohort.",
+      "source": {
+        "kind": "html",
+        "url": "https://download.kde.org/stable/plasma-wayland-protocols/",
+        "regex": "plasma-wayland-protocols-(?P<version>[0-9]+\\.[0-9]+\\.[0-9]+)\\.tar\\.xz"
+      }
+    }
+  }
+}

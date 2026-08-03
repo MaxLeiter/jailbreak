@@ -108,7 +108,11 @@ COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
 TARGETS="${TARGETS:-epoll-shim-package wayland-package wayland-protocols-package libxkbcommon-package}"
 
 target_requests() {
-  [[ " $TARGETS " == *" $1"* ]]
+  local requested
+  for requested in $TARGETS; do
+    [ "$requested" = "$1" ] && return 0
+  done
+  return 1
 }
 
 stage_required_patch_stack() {
@@ -137,6 +141,28 @@ if target_requests wayland; then
   fi
 fi
 
+# Procursus's EXTRACT_TAR and .build_complete cache are keyed by package name,
+# not version. Without an explicit fingerprint, changing FOO_VERSION can
+# silently package the old source tree. Invalidate only requested W0 packages
+# when their recipe (or staged patch series) changes.
+for pkg in epoll-shim wayland wayland-protocols libxkbcommon; do
+  target_requests "$pkg" || target_requests "$pkg-package" || continue
+  work="build_work/$XIOS_TRIPLE/$pkg"
+  stage="build_stage/$XIOS_TRIPLE/$pkg"
+  stamp="$work/.xios_recipe.sha256"
+  inputs=("/work/recipes/$pkg.mk")
+  if [ -f "/work/ports/$pkg/patches/series" ]; then
+    inputs+=("/work/ports/$pkg/patches/series" /work/ports/"$pkg"/patches/*.patch)
+  fi
+  fingerprint="$(sha256sum "${inputs[@]}" | sha256sum | awk '{print $1}')"
+  old_fingerprint="$(cat "$stamp" 2>/dev/null || true)"
+  if [ -d "$work" ] && [ "$fingerprint" != "$old_fingerprint" ]; then
+    echo "==> wiping stale $pkg build after recipe/version changes"
+    rm -rf "$work" "$stage"
+  fi
+  RECIPE_FINGERPRINTS="${RECIPE_FINGERPRINTS:-}$pkg=$fingerprint "
+done
+
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
@@ -144,6 +170,14 @@ done
 if [ -d "$WAYLAND_W" ] && [ -n "${WAYLAND_FP:-}" ]; then
   printf '%s\n' "$WAYLAND_FP" > "$WAYLAND_F"
 fi
+for pair in ${RECIPE_FINGERPRINTS:-}; do
+  pkg="${pair%%=*}"
+  fingerprint="${pair#*=}"
+  work="build_work/$XIOS_TRIPLE/$pkg"
+  if [ -d "$work" ]; then
+    printf '%s\n' "$fingerprint" > "$work/.xios_recipe.sha256"
+  fi
+done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
