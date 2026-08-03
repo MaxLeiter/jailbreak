@@ -93,6 +93,33 @@ declined" and "this GPU has no spatial scaler" are both visible in the UI.
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
+- 2026-08-02 dead-pin release (`com.max.xios 0.1.11`): KDE taps were reported
+  dead on-device. The compositor side was healthy — the live `kde` session was
+  `up` with `iosc`, `kwin_wayland --scale 2.75` and `plasmashell` alive on
+  `/var/jb/tmp/iosc-{ddx,input}.sock`. The app was pinned to a **long-dead slot**:
+  `xios-debug.txt` reported `ddx_socket=/var/jb/tmp/iosc-codex-gles-ddx.sock` and
+  `iosc_input=/var/jb/tmp/iosc-codex-gles-input.sock`, and neither path existed
+  (nor did that slot's `xios-codex-gles.json`). With `input-not-connected` every
+  UIKit path bails at `guard inputConnected`, so *no* tap reached any compositor
+  — the desktop looked live only because the app was still holding its last
+  frame. Restarting KDE does not clear it: the app survived a full session
+  restart still bound to the dead sockets.
+  Root cause: `userPinned`/`selectedConfigPath` were only ever released by the
+  app's own Stop/Remove rows (`unpinIfShowing`, 2026-07-28). A slot stopped over
+  SSH or reaped after a crash deletes its config and sockets without those rows
+  running, so the pin outlived its compositor and every reload path
+  (`tick`'s watchdog and holding-frame poll, `teardownIOSurface`) is gated on
+  `!userPinned`. The pin is not persisted, so a relaunch of the app clears it —
+  which is why this reads as intermittent.
+  Fix: `releasePinIfDisplayGone()` polls the pinned display on the same ~1.5s
+  cadence and drops the pin once its config or DDX socket has been gone for 3
+  consecutive polls (a restarting slot is tolerated), then falls back to the live
+  `xios.json` through `reloadRuntimeConfig()`. `xios-debug.txt` now also reports
+  `config=<path> pinned=<bool>`; its absence is what made this hard to see.
+  Release-iphoneos build and the `bin/install-app.sh x11/apps/Xios` sideload
+  pass. The device could not be re-foregrounded over SSH (the FrontBoard
+  `uiopen` gate recorded below), so the physical tap-through confirmation is
+  the user's Home Screen `X11` tap.
 - 2026-08-01 host-only repository release (`com.max.xios 0.1.10`; published to
   staging and production, not installed on-device): `0.1.9` was packaged before
   the final stream-v2 C client sources,

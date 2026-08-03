@@ -37,6 +37,10 @@ final class XScreenView: UIView {
     // newer load() superseded it, so switching displays can't adopt a stale surface.
     private var loadGeneration = 0
     private var userPinned = false              // user picked a display → stop auto-reloading xios.json
+    // Consecutive config polls that found the pinned display dead. A slot can be
+    // restarting, so the pin is only dropped once it has been gone for a few polls.
+    private var pinnedDeadPolls = 0
+    private static let pinnedDeadPollsToRelease = 3
     private weak var pickerOverlay: UIView?
     private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
     private var sessionStatusPath: String { XiosRuntimePaths.firstExisting("xios-session-status.json") }
@@ -1150,9 +1154,12 @@ final class XScreenView: UIView {
             // instance that kept old state after a kill+relaunch). Every ~1.5s re-check
             // xios.json; if it now names a different socket or surface size, teardown +
             // re-adopt the CURRENT one (adoptIOSurface then re-fits via resetZoom).
-            if tickCount % 30 == 0, !userPinned, ddxConfigChanged() {
-                teardownIOSurface()
-                return
+            if tickCount % 30 == 0 {
+                if releasePinIfDisplayGone() { return }
+                if !userPinned, ddxConfigChanged() {
+                    teardownIOSurface()
+                    return
+                }
             }
             guard let conn = xconn else { return }
             var r: Int32 = 0
@@ -1210,6 +1217,7 @@ final class XScreenView: UIView {
 
         // Poll for the IOSurface backend. Reached only while the holding frame is live.
         if tickCount % 30 == 0 {
+            if releasePinIfDisplayGone() { return }
             if !userPinned { _ = loadConfig() }   // auto mode picks up xios.json; a manual
                                               // pick keeps its own display/backend choice
             let testWidth = awaitingCompositor ? 1 : fbWidth
@@ -1813,6 +1821,9 @@ final class XScreenView: UIView {
             "view=\(Int(bounds.width))x\(Int(bounds.height)) drawable=\(Int(ds.width))x\(Int(ds.height)) scale=\(metalLayer.contentsScale)",
             "native=\(Int(nb.width))x\(Int(nb.height)) zoom=\(Int((zoomScale * 100).rounded())) pan=\(Int(panOffset.x)),\(Int(panOffset.y))",
             "input=\(inputConnected ? "connected" : "not-connected") backend=\(inputBackendName())",
+            // Which config the app is actually following. A pin outliving its
+            // compositor reads as a frozen, tap-deaf desktop, so name it explicitly.
+            "config=\(configPath) pinned=\(userPinned)",
             "ddx_socket=\(ddxSockPath)",
             "iosc_input=\(ioscInputSock ?? "(none)")",
             "iosc_clipboard=\(ioscClipboardSock ?? "(none)")",
@@ -3101,9 +3112,48 @@ final class XScreenView: UIView {
     /// fall back to whatever xios.json points at.
     private func unpinIfShowing(_ d: XDisplayInfo) {
         guard d.configPath != nil, d.configPath == selectedConfigPath else { return }
+        releasePin(reason: nil)
+    }
+
+    private func releasePin(reason: String?) {
         userPinned = false
         selectedConfigPath = nil
+        pinnedDeadPolls = 0
+        if let reason {
+            lastToolMessage = reason
+            toolMessageLabel?.text = reason
+        }
         reloadRuntimeConfig()
+    }
+
+    /// A pinned display can also go away without the app ever being told: a slot
+    /// stopped over SSH (or reaped after a crash) has its config and sockets deleted,
+    /// and Stop/Remove in Advanced — the only paths that dropped the pin — never ran.
+    /// The pin then outlived its compositor, so every config reload read a dead path:
+    /// the app held its last frame forever with `input-not-connected`, which on the
+    /// glass looks exactly like a desktop that stopped responding to taps.
+    /// Poll the pinned display and fall back to the live session once it is gone.
+    /// Returns true when the pin was dropped (the caller's poll state is now stale).
+    private func releasePinIfDisplayGone() -> Bool {
+        guard userPinned, let path = selectedConfigPath else {
+            pinnedDeadPolls = 0
+            return false
+        }
+        let fm = FileManager.default
+        // The launcher deletes a stopped slot's config; a crash can leave it behind,
+        // but never its DDX socket. Either one missing means nothing is serving it.
+        var gone = true
+        if let obj = readConfig(path: path) {
+            gone = DDXFields(obj).socket.map { !fm.fileExists(atPath: $0) } ?? true
+        }
+        guard gone else {
+            pinnedDeadPolls = 0
+            return false
+        }
+        pinnedDeadPolls += 1
+        guard pinnedDeadPolls >= Self.pinnedDeadPollsToRelease else { return false }
+        releasePin(reason: "Pinned display went away — following the current desktop")
+        return true
     }
 
     // MARK: picker chrome
