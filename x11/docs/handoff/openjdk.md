@@ -177,15 +177,39 @@ as black blocks. Everything not routed through a VolatileImage is correct.
 
 Reproduced identically with `-Dsun.java2d.xrender=false`,
 `-Dsun.java2d.pmoffscreen=false`, and
-`-Dswing.volatileImageBufferEnabled=false`, so it is not XRender-specific and
-no property-level workaround is known yet. Not yet isolated to either the JDK
-build or the X server; re-running the probe under a non-Xvfb server with
-exclusive device access is the next step.
+`-Dswing.volatileImageBufferEnabled=false`.
+
+**Workaround: switch Java2D to the OpenGL pipeline.**
+
+    java -Dsun.java2d.opengl=true ...
+
+The default X11/XRender pipeline gives `sun.java2d.xr.XRGraphicsConfig` and a
+VolatileImage that fills `000000`. With the OpenGL pipeline the same probe
+reports `OpenGL pipeline enabled for default config on screen 0`, gives
+`sun.java2d.opengl.GLXGraphicsConfig`, and the VolatileImage fills correctly.
+Metal L&F buttons then paint their real gradient instead of black blocks, and
+the on-screen window contents paint correctly too (the Robot capture goes from
+the unpainted `eeeeee` background to the app's own `1a202c`).
+
+So the bug is confined to the X pixmap/XRender offscreen path, not Java2D
+generally. The underlying XRender defect is still unfixed and still unattributed
+between the JDK build and the X server — the OpenGL route simply avoids it.
+
+Caveat before making this the default: under Xvfb, GLX resolves to llvmpipe
+software rendering, so this trades a correctness bug for CPU-side rasterisation.
+It should be re-measured under Xwayland before being baked in. See
+`../xwayland-plan.md` — client-side desktop GL is software today, and a gl4es
+(MIT) GL→GLES-on-ANGLE shim built *with* its GLX layer is the path to making
+this pipeline hardware-accelerated. Note that Amethyst's `libgl4es_114.dylib`
+exports 1222 GL entry points but **zero** `glX*`, so it is not reusable as-is
+for X11 clients.
 
 ## Remaining work
 
-- Fix the black accelerated-VolatileImage path described above; until then
-  Swing UIs relying on Metal gradients render incorrectly.
+- Fix the black accelerated-VolatileImage path in the XRender pipeline, or
+  decide to default the AWT variant to `sun.java2d.opengl=true`. Measure the
+  OpenGL pipeline under Xwayland first: it is correct but software-rasterised
+  until a GLX-capable gl4es lands, so defaulting it today may cost throughput.
 - Get an X client's window actually *presented* in a live iosc session, so AWT
   output is visible on the panel and not only verifiable in captured pixels.
 - OpenJDK still reports `os.name=Mac OS X` because the iOS target reuses the
