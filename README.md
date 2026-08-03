@@ -11,11 +11,10 @@ repo tooling, and the Xios X11/Wayland-on-iOS desktop stack.
 
 ## Public development
 
-This repo is being prepared for public development. Read
-[`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a PR and
-[`docs/PUBLIC-READINESS.md`](docs/PUBLIC-READINESS.md) for the remaining launch
-checklist. Package publication, APT signing, Vercel deployment, and device
-verification remain maintainer-controlled.
+Public contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md)
+before opening a PR and [`docs/PUBLIC-READINESS.md`](docs/PUBLIC-READINESS.md)
+for the final GitHub history-cache cleanup. Package publication, APT signing,
+Vercel deployment, and device verification remain maintainer-controlled.
 
 ## Reference Device
 
@@ -41,50 +40,6 @@ Because this is a **rootless** jailbreak, every tweak builds with
 - `ldid`, `xz` (via Homebrew) — signing + packaging
 - `libimobiledevice` (via Homebrew) — USB device tools (`idevicesyslog`, `ideviceinfo`)
 - `THEOS=$HOME/theos` exported in your shell
-
-## Layout
-
-```
-jailbreak/
-├── apps/                 # companion iOS apps (SwiftUI, built unsigned)
-├── bin/
-│   ├── build.sh          # build a tweak's .deb
-│   ├── install.sh        # build + install a tweak to the iPad over SSH, then respring
-│   ├── uninstall.sh      # recovery: remove a tweak by package id + respring
-│   ├── install-app.sh    # build + push an apps/<Name> bundle over SSH + uicache
-│   ├── package-app.sh    # build an apps/<Name> bundle into an installable .deb
-│   ├── sim.sh            # build a tweak for the iOS Simulator + load via simject
-│   ├── sim-app.sh        # build + launch an app in the Simulator + screenshot it
-│   ├── logs.sh           # live device console over USB (idevicesyslog)
-│   ├── publish-repo.sh   # deploy the APT repo (--staging for dev.repo, --only to scope)
-│   ├── publish-staging.sh # same as publish-repo.sh --staging
-│   ├── upload-debs-to-blob.sh # push package payloads to Vercel Blob
-│   ├── setup-repo-guards.sh # once per clone: index merge driver + agent guardrails
-│   └── lib/              # repo-pipeline internals (make-repo, index scoping, solvability, audit)
-├── docs/                 # public-readiness and process notes
-├── repo/                 # generated static APT repo site and metadata
-├── tweaks/               # Theos tweak projects
-└── x11/                  # Xios: X11/Wayland desktop stack for iOS
-```
-
-`AGENTS.md` holds the working conventions for this tree (including for coding
-agents); each subproject has its own README and, where it matters, its own
-`AGENTS.md`.
-
-### What's in here
-
-| Tweak | What it does |
-|---|---|
-| [`tweaks/PullToRespring2`](tweaks/PullToRespring2) | Pull down at the top of Settings to respring. Rootless refresh of NoahSaso's PullToRespring. |
-| [`tweaks/KioskMode`](tweaks/KioskMode) | Keeps one chosen app frontmost; volume-button escape. Paired with `apps/KioskMode`. |
-| [`tweaks/AutoLockPicker`](tweaks/AutoLockPicker) | Replaces the Auto-Lock preset list with a real time picker. |
-| [`tweaks/XiosPrefs`](tweaks/XiosPrefs) | Settings pane for Xios Home Screen app sync. |
-
-| App | What it is |
-|---|---|
-| [`apps/KitchenHub`](apps/KitchenHub) | Wall-mounted kitchen dashboard: timers, weather, recipes, Sonos, Apple TV remote. |
-| [`apps/TaskManager`](apps/TaskManager) | Activity-Monitor-style process monitor with kill actions. |
-| [`apps/KioskMode`](apps/KioskMode) | Onboarding + dashboard that configures the KioskMode tweak. |
 
 ## Workflow
 
@@ -238,17 +193,6 @@ ssh-copy-id -o StrictHostKeyChecking=accept-new root@<device-hostname>
 If the device still uses a default root password, change it before putting it on
 an untrusted network.
 
-## Anatomy of a tweak
-
-- **`Tweak.x`** — Logos source. `%hook ClassName` ... `%end` intercepts methods;
-  `%orig` calls the original. `.x` = ObjC + Logos, `.xm` = ObjC++ + Logos.
-- **`<Name>.plist`** — the *filter*: which processes get the dylib injected.
-  `Bundles = ( "com.apple.springboard" )` injects into SpringBoard;
-  use an app's bundle id to target a specific app.
-- **`control`** — Debian package metadata (id, version, deps).
-- **`Makefile`** — build config: `TARGET`, `TWEAK_NAME`, frameworks, and
-  `THEOS_PACKAGE_SCHEME = rootless`.
-
 ## Finding things to hook
 
 - **Headers:** dump with `class-dump`, or use community headers
@@ -257,12 +201,3 @@ an untrusted network.
 - **Class/method discovery:** Look at the target binary in a disassembler, or
   use `cycript`/`Frida` on-device, or browse existing tweak source for the same app.
 - **Logging:** `NSLog(@"[Name] ...")` then `bin/logs.sh Name`.
-
-## Notes / gotchas
-
-- A10 is `arm64`; the build also emits an `arm64e` slice (harmless — the iPad
-  uses the `arm64` one).
-- Run `make clean` when switching package schemes.
-- This is standard Dopamine `/var/jb` rootless. A different fork, **roothide**,
-  uses a *relocated* jbroot and needs `roothide/Developer`'s Theos fork instead —
-  not applicable here.
