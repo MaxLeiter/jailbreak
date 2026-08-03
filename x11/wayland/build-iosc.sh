@@ -343,6 +343,7 @@ if [ "${IOSC_SHIM_ONLY:-0}" != "1" ]; then
 # compositor (iosc_gl.c: GLES->Metal composite onto the output IOSurface) + frameworks.
 $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc.c" \
+    "$X11/wayland/iosc_text_input.c" \
     "$X11/wayland/iosc_options.c" \
     "$X11/wayland/iosc_render_plan.c" \
     "$X11/wayland/iosc_util.c" \

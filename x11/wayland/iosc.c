@@ -63,6 +63,7 @@
 #include "iosc-clipboard-bridge.h"   /* Linux<->iOS clipboard sync over the dedicated socket */
 #include "iosc_xwm.h"                /* rootless Xwayland X window manager (opt-in via IOSC_XWAYLAND) */
 #include "iosc_status.h"             /* shared runtime-visibility channel (docs/ios-platform-features.md §0) */
+#include "iosc_internal.h"           /* shared core: surface/output types, globals, module entry points */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,228 +86,41 @@ char *display = "9";
 
 /* ---- output -------------------------------------------------------------- */
 
-static struct wl_display *g_display;
+/* The output/surface types, the globals below, and the core helpers
+ * (now_ms/output_scale/output_logical_*) are declared in iosc_internal.h so the
+ * protocol modules split out of this file can reach them. */
+struct wl_display *g_display;
 /* Default is the supersampled ~1.5 effective-scale desktop (Max-approved on the
  * iPad 7's 2160x1620 panel): the output IOSurface is 2880x2160 at scale 2, so the
  * logical desktop is 1440x1080 and HiDPI apps render crisply at 2x (2880x2160
  * buffers). The Xios app aspect-fits that oversized surface down onto the 2160x1620
  * panel (a 0.75 downscale = supersampling), giving net logical->physical = 1.5
  * (2160/1440). Override with -logical WxH (preferred) or -g WxH + -scale N. */
-static int               g_width  = 2880;  /* output IOSurface = logical * scale */
-static int               g_height = 2160;
-static int               g_stride;    /* real bytes-per-row (IOSurface-padded) */
-static int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
-static int               g_output_scale = 2; /* logical -> physical output pixels */
-static int               g_native_mode;
-static int               g_fullscreen_toplevels;
-static int               g_output_transform;         /* wl_output transform */
-static int               g_natural_lw, g_natural_lh; /* launch logical size */
-static int               g_advertise_transform = 1;
+int               g_width  = 2880;  /* output IOSurface = logical * scale */
+int               g_height = 2160;
+int               g_stride;    /* real bytes-per-row (IOSurface-padded) */
+int               g_output_dpi = 96; /* logical desktop DPI for GTK/Pango */
+int               g_output_scale = 2; /* logical -> physical output pixels */
+int               g_native_mode;
+int               g_fullscreen_toplevels;
+int               g_output_transform;         /* wl_output transform */
+int               g_natural_lw, g_natural_lh; /* launch logical size */
+int               g_advertise_transform = 1;
 
-#define IOSC_MAX_OUTPUT_RES 32
-static struct wl_resource *g_output_res[IOSC_MAX_OUTPUT_RES];     static int g_noutput_res;
-static struct wl_resource *g_xdg_output_res[IOSC_MAX_OUTPUT_RES]; static int g_nxdg_output_res;
+struct wl_resource *g_output_res[IOSC_MAX_OUTPUT_RES];     int g_noutput_res;
+struct wl_resource *g_xdg_output_res[IOSC_MAX_OUTPUT_RES]; int g_nxdg_output_res;
 
-/* M1 presents one toplevel; remember it so a configure can size it fullscreen. */
-struct iosc_surface;
 static void clipboard_selection_send_to_client(struct wl_client *client);
-static void recomposite_all_at(const char *reason, int line);   /* coalesced repaint */
-#define recomposite_all() recomposite_all_at(__func__, __LINE__)
-static void recomposite_now(void);   /* synchronous repaint (callers that read the output back) */
-static void repaint_retry_soon(void);
-static void recomposite_reason_clear(void);
-static void surface_unmap(struct iosc_surface *s);
-static void native_mark_surface_dirty(struct iosc_surface *s);
-static int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
-static void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
-static void output_send_state(struct wl_resource *r);
 
-/* Stable identifier for our single output. Reported identically via wl_output v4
- * name, zxdg_output_v1 name, kde_output_device_v2 name+uuid, kde_output_order_v1
- * and kde_primary_output_v1 so KDE tooling can cross-reference the one output. */
-#define IOSC_OUTPUT_NAME "IOSC-1"
-
-/* Broadcast helpers used by the runtime reconfigure path; defined with the
- * fractional-scale / KDE output-management code further down. */
-static void fractional_scale_broadcast(void);   /* re-notify wp_fractional_scale_v1 clients */
-static void kde_output_broadcast(void);          /* kde device bursts + order + primary */
-static void broadcast_output_all(void);          /* wl_output + xdg_output + the two above */
-
-static uint32_t now_ms(void)
+uint32_t now_ms(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
 
-static int output_px_to_mm(int px)
-{
-    int dpi = g_output_dpi > 0 ? g_output_dpi : 96;
-    return (px * 254 + dpi * 5) / (dpi * 10);
-}
-
-static int output_scale(void)
-{
-    return g_output_scale > 0 ? g_output_scale : 1;
-}
-
-static int output_logical_width(void)
-{
-    int s = output_scale();
-    return (g_width + s - 1) / s;
-}
-
-static int output_logical_height(void)
-{
-    int s = output_scale();
-    return (g_height + s - 1) / s;
-}
-
-static int buffer_to_logical(int px, int scale)
-{
-    int s = scale > 0 ? scale : 1;
-    return (px + s - 1) / s;
-}
-
-static int physical_to_logical(int px)
-{
-    return px / output_scale();
-}
-
 /* ---- per-surface state --------------------------------------------------- */
 
-enum iosc_role {
-    IOSC_ROLE_NONE = 0,
-    IOSC_ROLE_TOPLEVEL,
-    IOSC_ROLE_POPUP,
-    IOSC_ROLE_SUBSURFACE,
-    IOSC_ROLE_LAYER,
-    IOSC_ROLE_LOCK,      /* ext-session-lock-v1 lock surface (never in g_mapped) */
-};
-
-struct iosc_positioner {
-    int size_w, size_h;
-    int anchor_x, anchor_y, anchor_w, anchor_h;
-    uint32_t anchor, gravity;
-    uint32_t constraint;
-    int off_x, off_y;
-};
-
-struct iosc_viewport {
-    struct wl_resource *resource;
-    struct iosc_surface *surface;
-    int has_src;
-    int src_x, src_y, src_w, src_h;
-    int has_dst;
-    int dst_w, dst_h;
-};
-
-struct iosc_subsurface {
-    struct wl_resource *resource;
-    struct iosc_surface *surface;
-    struct iosc_surface *parent;
-    int x, y;
-    int sync;             /* wl_subsurface default is synchronized (spec) */
-    int cache_pending;    /* committed while sync: the surface's existing
-                           * pending_buffer/buffer_attached/gl-dirty state is left
-                           * un-applied (it IS the single-level cache) until the
-                           * parent's own state next applies; see
-                           * surface_apply_sync_children(). */
-};
-
-struct iosc_presentation_feedback {
-    struct wl_resource *resource;
-    struct iosc_surface *surface;
-    struct wl_list link;
-};
-
-#define IOSC_MAX_SHM_DIRTY_RECTS 16
-#define IOSC_MAX_VISIBLE_RECTS 32
-
-struct iosc_layer_state;
-
-struct iosc_surface {
-    uint32_t            window_id;       /* compositor id for native per-window input/present */
-    struct wl_list      surface_link;    /* all live wl_surface resources */
-    struct wl_resource *resource;        /* wl_surface */
-    struct wl_resource *pending_buffer;  /* last wl_surface.attach (may be NULL) */
-    int                 buffer_attached; /* attach was called this cycle */
-    struct wl_resource *current_buffer;  /* committed buffer, retained for recompositing */
-    struct wl_listener  buffer_destroy;  /* fires if the client destroys current_buffer */
-    int                 buffer_listener_active;
-    uint64_t            direct_present_seq; /* app consumer-release gates old wl_buffer */
-    uint32_t            direct_surface_id;
-    int                 sw, sh;          /* current buffer source dimensions */
-    int                 gl_dirty;        /* wl_shm content changed since last GPU upload */
-    int                 gl_dirty_rect_count;
-    int                 gl_dirty_rects[IOSC_MAX_SHM_DIRTY_RECTS * 4]; /* x,y,w,h in buffer px */
-    uint64_t            damage_events;
-    uint64_t            damage_surface_events;
-    uint64_t            damage_buffer_events;
-    uint64_t            damage_full_events;
-    uint64_t            damage_pixels;
-    int                 dx, dy;          /* placement (top-left) on the output */
-    int                 native_canvas_w, native_canvas_h, native_canvas_stride;
-    int                 native_canvas_live;
-    int                 native_canvas_dirty;
-    int                 pending_buffer_scale;
-    int                 current_buffer_scale;
-    int                 pending_scale_dirty;
-    int                 mapped;          /* present in the z-order list */
-    int                 is_xwayland;     /* adopted X11 window (no xdg role; XWM drives close/focus) */
-    enum iosc_role      role;
-    struct iosc_surface *parent;         /* subsurface/popup parent, OR xdg_toplevel.set_parent (transient/modal) */
-    int                 rel_x, rel_y;
-    /* wl_surface.set_opaque_region bbox (surface-local logical px). The window
-     * composite path uses it to keep fully-opaque windows on the fast opaque path
-     * and alpha-blend the rest (CSD shadow margins). opaque_set=0 => none declared. */
-    int                 opaque_set;
-    int                 opaque_x0, opaque_y0, opaque_x1, opaque_y1;
-    struct wl_resource *xdg_surface;     /* xdg_surface role, or NULL */
-    struct wl_resource *xdg_toplevel;    /* xdg_toplevel role, or NULL */
-    struct wl_resource *xdg_decoration;  /* zxdg_toplevel_decoration_v1, or NULL */
-    struct wl_resource *xdg_popup;       /* xdg_popup role, or NULL */
-    int                 toplevel_maximized;
-    int                 toplevel_fullscreen;
-    int                 toplevel_minimized;
-    int                 toplevel_resizing;
-    struct wl_resource *ftl_handles[8];  /* zwlr_foreign_toplevel_handle_v1 per manager */
-    int                 ftl_nhandles;
-    struct iosc_subsurface *subsurface;
-    struct iosc_viewport *viewport;
-    struct iosc_layer_state *layer;      /* allocated when role == LAYER */
-    char                title[256];      /* xdg_toplevel.set_title (foreign-toplevel) */
-    char                app_id[256];     /* xdg_toplevel.set_app_id (foreign-toplevel) */
-    int                 configured;      /* sent the initial xdg configure */
-    /* wl_surface.frame is double-buffered surface state: requests enter the
-     * pending list and become compositor-visible only with wl_surface.commit. */
-    struct wl_list      pending_frame_callbacks;
-    struct wl_list      frame_callbacks; /* committed wl_callback resources */
-    struct wl_list      presentation_feedbacks;
-    /* xdg_surface.set_window_geometry: double-buffered like the rest of the
-     * surface state, latched on commit. geo_set=0 falls back to the whole
-     * display-sized buffer (spec default when unset). Coordinates are
-     * surface-local (same space as opaque/input regions), i.e. already
-     * comparable to surface_display_size()'s w/h. */
-    int                 pending_geo_set;
-    int                 pending_geo_x, pending_geo_y, pending_geo_w, pending_geo_h;
-    int                 geo_set;
-    int                 geo_x, geo_y, geo_w, geo_h;
-    /* xdg_surface.get_popup positioner snapshot. A layer-shell popup's xdg_surface
-     * parent is NULL per protocol (zwlr_layer_surface_v1.get_popup supplies the
-     * real parent afterward, before the client's first commit); keep the
-     * positioner's VALUE (not a pointer -- the client may destroy the positioner
-     * object right after xdg_surface.get_popup) so the deferred placement in
-     * layer_surface_get_popup() has something to place with. */
-    struct iosc_positioner popup_positioner;
-    int                 popup_positioner_set;
-};
-
-/* a queued frame-callback resource */
-struct iosc_frame {
-    struct wl_resource *resource;
-    struct wl_list      link;
-};
 
 struct direct_buffer_release {
     struct wl_resource *buffer;
@@ -358,37 +172,29 @@ static void release_direct_buffers(void)
     }
 }
 
-/* wl_region: union bbox of add()s; subtract() sets `complex` (a bbox can't hold a
- * hole). Used by wl_surface.set_opaque_region to gate the window opaque fast-path. */
-struct iosc_region { int has, complex, x0, y0, x1, y1; };
-
 /* The per-toplevel window size is logical, so high-DPI clients lay out like a
  * normal desktop while the compositor still presents into a native IOSurface. */
-static int default_window_w(void)
+int default_window_w(void)
 {
     int w = output_logical_width() - 80;
     return w > 1 ? w : output_logical_width();
 }
 
-static int default_window_h(void)
+int default_window_h(void)
 {
     int h = output_logical_height() - 80;
     return h > 1 ? h : output_logical_height();
 }
 
-/* Mapped surfaces in z-order: [0] = bottom, [g_nmapped-1] = top. The compositor
- * recomposites this whole list (back to front) on every commit. */
-#define IOSC_MAX_SURFACES 64
-static struct iosc_surface *g_mapped[IOSC_MAX_SURFACES];
-static int g_nmapped = 0;
+struct iosc_surface *g_mapped[IOSC_MAX_SURFACES];
+int g_nmapped = 0;
 static uint32_t g_next_window_id = 1;
-static struct wl_list g_surfaces;
+struct wl_list g_surfaces;
 
-/* Input focus (set by the seat code below; (un)map adjusts it). */
-static struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
-static struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
-static struct iosc_surface *g_cursor_surface;
-static int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
+struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
+struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
+struct iosc_surface *g_cursor_surface;
+int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
 /* Last absolute sample from UIKit. Kept separate from the visible cursor so a
  * locked pointer can produce incremental deltas while the cursor stays frozen. */
 static int g_motion_input_valid, g_motion_input_x, g_motion_input_y;
@@ -466,7 +272,7 @@ static int g_frame_clock_armed;
 static struct wl_event_source *g_repaint_timer;
 static int g_repaint_timer_armed;
 static int g_recompose_scheduled;        /* a coalesced repaint is already pending */
-static uint32_t g_present_interval_us = 16667;   /* refresh, for presentation-time feedback */
+uint32_t g_present_interval_us = 16667;   /* refresh, for presentation-time feedback */
 static int g_output_damage_valid;
 static int g_output_damage_coarse;
 static int g_output_damage_rect_count;
@@ -485,17 +291,11 @@ struct output_damage_history {
 static struct output_damage_history g_output_damage_history[3];
 static uint64_t g_output_damage_history_serial;
 static int g_direct_present_active;
-static int g_force_output_composite;
+int g_force_output_composite;
 static const char *g_recompose_reason;
 static int g_recompose_reason_line;
-static void keyboard_set_focus(struct iosc_surface *s);
-static void keyboard_send_mods(uint32_t depressed, uint32_t locked);
-static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
-static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surface *next);
-static void input_method_update_active(void);
-static void input_clients_send_traits(void);
-static void surface_raise(struct iosc_surface *s);
-static void toplevel_send_configure(struct iosc_surface *s, int w, int h);
+/* text-input-v3 / input-method-v2 / virtual-keyboard-v1 live in
+ * iosc_text_input.c; their entry points are declared in iosc_internal.h. */
 /* foreign-toplevel (zwlr_foreign_toplevel_management_v1) — taskbar/window list */
 static void ftl_toplevel_mapped(struct iosc_surface *s);
 static void ftl_toplevel_closed(struct iosc_surface *s);
@@ -512,42 +312,10 @@ static int  pointer_locked_for(struct iosc_surface *s);
 static void constraints_update_focus(struct iosc_surface *newfocus);
 static int  confine_point(struct iosc_surface *s, int *x, int *y);
 static void constraints_surface_gone(struct iosc_surface *s);
-/* idle (ext_idle_notify_v1 + zwp_idle_inhibit_manager_v1) */
-static void idle_note_activity(void);
 /* primary selection (zwp_primary_selection_device_manager_v1) */
 static void primary_selection_send_to_client(struct wl_client *client);
 
-static int clampi(int v, int lo, int hi)
-{
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
-
-static uint8_t u32_fraction_to_u8(uint32_t v)
-{
-    return (uint8_t)(((uint64_t)v * 255u + 0x7FFFFFFFu) / 0xFFFFFFFFu);
-}
-
 /* ---- layer-shell state (zwlr_layer_shell_v1) ----------------------------- */
-
-/* Per-surface state for a wlr layer-shell surface (role == IOSC_ROLE_LAYER).
- * Double-buffered state is simplified: requests store straight into this struct
- * and take effect at the commit-driven configure/placement (a panel sets its
- * anchor/size once before the initial commit, so atomicity is a non-issue). */
-struct iosc_layer_state {
-    struct wl_resource *resource;   /* zwlr_layer_surface_v1 */
-    uint32_t layer;                 /* 0 background,1 bottom,2 top,3 overlay */
-    uint32_t anchor;                /* ZWLR_LAYER_SURFACE_V1_ANCHOR_* bitfield */
-    int32_t  excl_zone;             /* set_exclusive_zone */
-    int32_t  margin_t, margin_r, margin_b, margin_l;
-    uint32_t kbd_interactivity;     /* none/exclusive/on_demand */
-    int32_t  req_w, req_h;          /* set_size (0 = compositor decides) */
-    int      cfg_w, cfg_h;          /* size last sent in a configure */
-    int      acked;                 /* client acked a configure */
-    int      configured;            /* we sent the initial configure */
-    char     namespace[64];
-};
 
 /* Accumulated exclusive zones per output edge (the work area = output minus
  * these). Recomputed whenever a layer surface maps/unmaps or changes zone. */
@@ -1618,7 +1386,7 @@ static struct iosc_surface *native_owner_toplevel(struct iosc_surface *s)
     return s;
 }
 
-static void native_mark_surface_dirty(struct iosc_surface *s)
+void native_mark_surface_dirty(struct iosc_surface *s)
 {
     if (!g_native_mode) return;
     struct iosc_surface *owner = native_owner_toplevel(s);
@@ -2220,7 +1988,7 @@ static int active_session_allows_classic_iosc(void)
  * Set IOSC_APP_CURSOR=0/1 to force either path. Client-supplied cursor
  * surfaces deliberately fall back to compositor rendering so their real
  * bitmap/hotspot is preserved; named cursors retain the zero-repaint overlay. */
-static int iosc_app_cursor(void)
+int iosc_app_cursor(void)
 {
     static int v = -2;   /* -2 unparsed, -1 auto, 0/1 forced */
     if (v == -2) {
@@ -2243,7 +2011,7 @@ static int iosc_app_cursor(void)
  * Coordinates are sent in PHYSICAL
  * output pixels (g_cursor_x/y are logical): the app's overlay maps against the
  * IOSurface, which is the physical framebuffer, so it needs no scale knowledge. */
-static void app_cursor_notify(void)
+void app_cursor_notify(void)
 {
     int shape = !g_cursor_visible ? 0
               : g_named_cursor ? (int)g_named_cursor
@@ -2336,7 +2104,7 @@ static int notify_gpu_frame(uint32_t surface_id)
     return -1;
 }
 
-static void recomposite_reason_clear(void)
+void recomposite_reason_clear(void)
 {
     g_recompose_reason = NULL;
     g_recompose_reason_line = 0;
@@ -2346,7 +2114,7 @@ static void recomposite_reason_clear(void)
  * Synchronous: paints immediately. Most callers should use recomposite_all()
  * (coalesced) instead; recomposite_now() is for paths that read the output back
  * in the same call (screencopy). */
-static void recomposite_now(void)
+void recomposite_now(void)
 {
     /* Callers that read the output back (screencopy) paint synchronously. Retire any
      * vblank-paced repaint we had deferred: the frame it was going to draw is the
@@ -2581,7 +2349,7 @@ static int repaint_timer_cb(void *data)
     return 0;
 }
 
-static void repaint_retry_soon(void)
+void repaint_retry_soon(void)
 {
     struct wl_event_loop *loop =
         g_display ? wl_display_get_event_loop(g_display) : NULL;
@@ -2653,7 +2421,7 @@ static int repaint_delay_ms(void)
     return (int)delay;
 }
 
-static void recomposite_all_at(const char *reason, int line)
+void recomposite_all_at(const char *reason, int line)
 {
     if (g_recompose_scheduled) return;
     if (!g_native_mode && !g_output_damage_valid) {
@@ -3132,7 +2900,7 @@ static void surface_map(struct iosc_surface *s)
              s->layer->kbd_interactivity != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
         keyboard_set_focus(s);         /* on_demand/exclusive layer takes focus */
 }
-static void surface_unmap(struct iosc_surface *s)
+void surface_unmap(struct iosc_surface *s)
 {
     /* A surface leaving mid-drag: a gone destination just drops the drag focus; a
      * gone origin/icon cancels the whole drag. Checked before the mapped gate
@@ -3770,7 +3538,7 @@ static void fractional_scale_resource_destroy(struct wl_resource *r)
         if (g_frac_res[i] == r) { g_frac_res[i] = g_frac_res[--g_nfrac_res]; break; }
 }
 /* Re-notify every live fractional-scale client after a runtime output-scale change. */
-static void fractional_scale_broadcast(void)
+void fractional_scale_broadcast(void)
 {
     uint32_t pref = (uint32_t)(output_scale() * 120);
     for (int i = 0; i < g_nfrac_res; i++)
@@ -4302,7 +4070,7 @@ static const struct xdg_popup_interface popup_impl = {
     .destroy = popup_destroy, .grab = popup_grab, .reposition = popup_reposition,
 };
 
-static void toplevel_send_configure(struct iosc_surface *s, int w, int h)
+void toplevel_send_configure(struct iosc_surface *s, int w, int h)
 {
     if (!s || !s->xdg_toplevel || !s->xdg_surface) return;
     struct wl_array states;
@@ -4838,7 +4606,7 @@ static void output_send_done(struct wl_resource *r)
         wl_output_send_done(r);
 }
 
-static void output_send_state(struct wl_resource *r)
+void output_send_state(struct wl_resource *r)
 {
     uint32_t version = wl_resource_get_version(r);
     int mode_w = g_width, mode_h = g_height;
@@ -5038,7 +4806,7 @@ static void kde_output_device_bind(struct wl_client *client, void *data,
 
 /* Broadcast the KDE view of the output to every bound device/order/primary
  * resource (device property bursts + order list + primary name). */
-static void kde_output_broadcast(void)
+void kde_output_broadcast(void)
 {
     for (int i = 0; i < g_nkde_device_res; i++) {
         struct iosc_kde_device *dev = wl_resource_get_user_data(g_kde_device_res[i]);
@@ -5056,7 +4824,7 @@ static void kde_output_broadcast(void)
  * fractional-scale, and the KDE family. Called by the reconfigure core on every
  * applied change, and by the KDE configuration apply path only for a no-op apply
  * (so a real change broadcasts exactly once). */
-static void broadcast_output_all(void)
+void broadcast_output_all(void)
 {
     for (int i = 0; i < g_nxdg_output_res; i++) {
         zxdg_output_v1_send_logical_position(g_xdg_output_res[i], 0, 0);
@@ -5356,7 +5124,7 @@ static struct wl_resource *g_kbd[IOSC_MAX_SEATRES]; static int g_nkbd;
 static struct wl_resource *g_ptr[IOSC_MAX_SEATRES]; static int g_nptr;
 static struct wl_resource *g_tch[IOSC_MAX_SEATRES]; static int g_ntch;
 
-static int g_keymap_fd = -1;               /* xkb keymap, sent to each wl_keyboard */
+int g_keymap_fd = -1;               /* xkb keymap, sent to each wl_keyboard */
 static int g_have_keyboard = 0;            /* keymap loaded => advertise KEYBOARD cap */
 static uint32_t g_kbd_mods_depressed = 0;  /* last depressed mask sent to focus     */
 static uint32_t g_kbd_mods_locked = 0;     /* Caps/Num lock mask sent to focus      */
@@ -5412,537 +5180,6 @@ static void surface_local_coords(struct iosc_surface *s, int x, int y,
     *sy = wl_fixed_from_double(ly);
 }
 
-/* ---- text input ----------------------------------------------------------- */
-
-#define IOSC_MAX_TEXT_INPUTS 64
-
-struct iosc_text_input {
-    struct wl_resource *resource;
-    struct wl_client *client;
-    struct iosc_surface *focus_surface;
-    int pending_enabled;
-    int enabled;
-    char *surrounding;
-    int32_t cursor, anchor;
-    uint32_t change_cause;
-    uint32_t content_hint, content_purpose;
-    int32_t rect_x, rect_y, rect_w, rect_h;
-    uint32_t serial;
-};
-
-static struct iosc_text_input *g_text_inputs[IOSC_MAX_TEXT_INPUTS];
-static int g_ntext_inputs;
-
-struct iosc_input_popup {
-    struct wl_resource *resource;
-    struct iosc_surface *surface;
-};
-
-struct iosc_input_method {
-    struct wl_resource *resource;
-    int active;
-    uint32_t done_count;
-    char *commit_text;
-    char *preedit_text;
-    int32_t preedit_begin, preedit_end;
-    uint32_t delete_before, delete_after;
-    struct wl_resource *keyboard_grab;
-    struct iosc_input_popup *popups[8];
-    int npopups;
-};
-
-struct iosc_virtual_keyboard {
-    struct wl_resource *resource;
-    int has_keymap;
-};
-
-static struct iosc_input_method *g_input_method;
-
-static void text_input_reset_state(struct iosc_text_input *ti)
-{
-    if (!ti) return;
-    ti->pending_enabled = 0;
-    ti->enabled = 0;
-    free(ti->surrounding);
-    ti->surrounding = NULL;
-    ti->cursor = 0;
-    ti->anchor = 0;
-    ti->change_cause = ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_INPUT_METHOD;
-    ti->content_hint = ZWP_TEXT_INPUT_V3_CONTENT_HINT_NONE;
-    ti->content_purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
-    ti->rect_x = ti->rect_y = ti->rect_w = ti->rect_h = 0;
-}
-
-static void text_input_focus_surface(struct iosc_surface *old, struct iosc_surface *next)
-{
-    struct wl_client *old_client = old ? wl_resource_get_client(old->resource) : NULL;
-    struct wl_client *next_client = next ? wl_resource_get_client(next->resource) : NULL;
-    for (int i = 0; i < g_ntext_inputs; i++) {
-        struct iosc_text_input *ti = g_text_inputs[i];
-        if (!ti || !ti->resource) continue;
-        if (old && ti->focus_surface == old && ti->client == old_client) {
-            zwp_text_input_v3_send_leave(ti->resource, old->resource);
-            ti->focus_surface = NULL;
-            text_input_reset_state(ti);
-        }
-        if (next && ti->client == next_client) {
-            ti->focus_surface = next;
-            zwp_text_input_v3_send_enter(ti->resource, next->resource);
-        }
-    }
-    input_method_update_active();
-    input_clients_send_traits();
-}
-
-static struct iosc_text_input *text_input_for_focus(void)
-{
-    if (!g_kbd_focus) return NULL;
-    struct wl_client *client = wl_resource_get_client(g_kbd_focus->resource);
-    for (int i = 0; i < g_ntext_inputs; i++) {
-        struct iosc_text_input *ti = g_text_inputs[i];
-        if (ti && ti->client == client && ti->focus_surface == g_kbd_focus && ti->enabled)
-            return ti;
-    }
-    return NULL;
-}
-
-static int text_input_commit_text(const char *text, size_t len)
-{
-    struct iosc_text_input *ti = text_input_for_focus();
-    if (!ti || !text || len == 0) return 0;
-    char *copy = malloc(len + 1);
-    if (!copy) return -1;
-    memcpy(copy, text, len);
-    copy[len] = 0;
-    zwp_text_input_v3_send_commit_string(ti->resource, copy);
-    zwp_text_input_v3_send_done(ti->resource, ti->serial);
-    free(copy);
-    return 1;
-}
-
-static void input_method_clear_pending(struct iosc_input_method *im)
-{
-    if (!im) return;
-    free(im->commit_text);
-    free(im->preedit_text);
-    im->commit_text = NULL;
-    im->preedit_text = NULL;
-    im->preedit_begin = im->preedit_end = 0;
-    im->delete_before = im->delete_after = 0;
-}
-
-static void input_method_send_done(struct iosc_input_method *im)
-{
-    if (!im || !im->resource) return;
-    zwp_input_method_v2_send_done(im->resource);
-    im->done_count++;
-}
-
-static void input_method_send_state(struct iosc_input_method *im, struct iosc_text_input *ti, int activate)
-{
-    if (!im || !im->resource || !ti) return;
-    if (activate) zwp_input_method_v2_send_activate(im->resource);
-    zwp_input_method_v2_send_surrounding_text(im->resource, ti->surrounding ? ti->surrounding : "",
-                                              (uint32_t)ti->cursor, (uint32_t)ti->anchor);
-    zwp_input_method_v2_send_text_change_cause(im->resource, ti->change_cause);
-    zwp_input_method_v2_send_content_type(im->resource, ti->content_hint, ti->content_purpose);
-    input_method_send_done(im);
-    for (int i = 0; i < im->npopups; i++) {
-        struct iosc_input_popup *p = im->popups[i];
-        if (p && p->resource)
-            zwp_input_popup_surface_v2_send_text_input_rectangle(p->resource, ti->rect_x, ti->rect_y,
-                                                                 ti->rect_w, ti->rect_h);
-    }
-}
-
-static void input_method_update_active(void)
-{
-    if (!g_input_method || !g_input_method->resource) return;
-    struct iosc_text_input *ti = text_input_for_focus();
-    if (ti) {
-        input_method_send_state(g_input_method, ti, !g_input_method->active);
-        g_input_method->active = 1;
-    } else if (g_input_method->active) {
-        zwp_input_method_v2_send_deactivate(g_input_method->resource);
-        input_method_send_done(g_input_method);
-        g_input_method->active = 0;
-        input_method_clear_pending(g_input_method);
-    }
-}
-
-static void input_method_commit_string(struct wl_client *c, struct wl_resource *r, const char *text)
-{ (void)c;
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    if (!im) return;
-    char *copy = strdup(text ? text : "");
-    if (!copy) { wl_client_post_no_memory(c); return; }
-    free(im->commit_text);
-    im->commit_text = copy;
-}
-
-static void input_method_set_preedit_string(struct wl_client *c, struct wl_resource *r,
-                                            const char *text, int32_t begin, int32_t end)
-{ (void)c;
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    if (!im) return;
-    char *copy = strdup(text ? text : "");
-    if (!copy) { wl_client_post_no_memory(c); return; }
-    free(im->preedit_text);
-    im->preedit_text = copy;
-    im->preedit_begin = begin;
-    im->preedit_end = end;
-}
-
-static void input_method_delete_surrounding_text(struct wl_client *c, struct wl_resource *r,
-                                                 uint32_t before, uint32_t after)
-{ (void)c;
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    if (!im) return;
-    im->delete_before = before;
-    im->delete_after = after;
-}
-
-static void input_method_commit(struct wl_client *c, struct wl_resource *r, uint32_t serial)
-{ (void)c;
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    struct iosc_text_input *ti = text_input_for_focus();
-    if (!im || !ti || !im->active || serial != im->done_count) {
-        input_method_clear_pending(im);
-        return;
-    }
-    int sent = 0;
-    if (im->delete_before || im->delete_after) {
-        zwp_text_input_v3_send_delete_surrounding_text(ti->resource, im->delete_before, im->delete_after);
-        sent = 1;
-    }
-    if (im->commit_text && im->commit_text[0]) {
-        zwp_text_input_v3_send_commit_string(ti->resource, im->commit_text);
-        sent = 1;
-    }
-    if (im->preedit_text) {
-        zwp_text_input_v3_send_preedit_string(ti->resource, im->preedit_text,
-                                              im->preedit_begin, im->preedit_end);
-        sent = 1;
-    }
-    if (sent) zwp_text_input_v3_send_done(ti->resource, ti->serial);
-    input_method_clear_pending(im);
-}
-
-static void input_popup_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static const struct zwp_input_popup_surface_v2_interface input_popup_impl = {
-    .destroy = input_popup_destroy,
-};
-
-static void input_popup_resource_destroy(struct wl_resource *r)
-{
-    struct iosc_input_popup *p = wl_resource_get_user_data(r);
-    if (!p) return;
-    if (g_input_method) {
-        for (int i = 0; i < g_input_method->npopups; i++)
-            if (g_input_method->popups[i] == p) {
-                g_input_method->popups[i] = g_input_method->popups[--g_input_method->npopups];
-                break;
-            }
-    }
-    free(p);
-}
-
-static void input_method_get_popup_surface(struct wl_client *c, struct wl_resource *r,
-                                           uint32_t id, struct wl_resource *surface)
-{
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    if (!im || im->npopups >= 8) { wl_client_post_no_memory(c); return; }
-    struct iosc_input_popup *p = calloc(1, sizeof(*p));
-    if (!p) { wl_client_post_no_memory(c); return; }
-    p->surface = wl_resource_get_user_data(surface);
-    p->resource = wl_resource_create(c, &zwp_input_popup_surface_v2_interface,
-                                     wl_resource_get_version(r), id);
-    if (!p->resource) { free(p); wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(p->resource, &input_popup_impl, p,
-                                   input_popup_resource_destroy);
-    im->popups[im->npopups++] = p;
-}
-
-static void input_method_grab_release(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static const struct zwp_input_method_keyboard_grab_v2_interface input_method_grab_impl = {
-    .release = input_method_grab_release,
-};
-
-static void input_method_grab_destroy(struct wl_resource *r)
-{
-    if (g_input_method && g_input_method->keyboard_grab == r)
-        g_input_method->keyboard_grab = NULL;
-}
-
-static void input_method_grab_keyboard(struct wl_client *c, struct wl_resource *r, uint32_t id)
-{
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    if (!im) { wl_client_post_no_memory(c); return; }
-    struct wl_resource *grab = wl_resource_create(c, &zwp_input_method_keyboard_grab_v2_interface,
-                                                  wl_resource_get_version(r), id);
-    if (!grab) { wl_client_post_no_memory(c); return; }
-    if (im->keyboard_grab) wl_resource_destroy(im->keyboard_grab);
-    im->keyboard_grab = grab;
-    wl_resource_set_implementation(grab, &input_method_grab_impl, NULL, input_method_grab_destroy);
-    if (g_keymap_fd >= 0)
-        zwp_input_method_keyboard_grab_v2_send_keymap(grab, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
-                                                      g_keymap_fd, iosc_input_keymap_size());
-    zwp_input_method_keyboard_grab_v2_send_repeat_info(grab, 25, 600);
-}
-
-static void input_method_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static const struct zwp_input_method_v2_interface input_method_impl = {
-    .commit_string = input_method_commit_string,
-    .set_preedit_string = input_method_set_preedit_string,
-    .delete_surrounding_text = input_method_delete_surrounding_text,
-    .commit = input_method_commit,
-    .get_input_popup_surface = input_method_get_popup_surface,
-    .grab_keyboard = input_method_grab_keyboard,
-    .destroy = input_method_destroy,
-};
-
-static void input_method_resource_destroy(struct wl_resource *r)
-{
-    struct iosc_input_method *im = wl_resource_get_user_data(r);
-    if (!im) return;
-    if (im->keyboard_grab) wl_resource_destroy(im->keyboard_grab);
-    while (im->npopups > 0)
-        wl_resource_destroy(im->popups[im->npopups - 1]->resource);
-    input_method_clear_pending(im);
-    if (g_input_method == im) g_input_method = NULL;
-    free(im);
-}
-
-static void input_method_manager_get_input_method(struct wl_client *c, struct wl_resource *r,
-                                                  struct wl_resource *seat, uint32_t id)
-{ (void)seat;
-    struct iosc_input_method *im = calloc(1, sizeof(*im));
-    if (!im) { wl_client_post_no_memory(c); return; }
-    struct wl_resource *res = wl_resource_create(c, &zwp_input_method_v2_interface,
-                                                 wl_resource_get_version(r), id);
-    if (!res) { free(im); wl_client_post_no_memory(c); return; }
-    im->resource = res;
-    wl_resource_set_implementation(res, &input_method_impl, im, input_method_resource_destroy);
-    if (g_input_method) {
-        zwp_input_method_v2_send_unavailable(res);
-        return;
-    }
-    g_input_method = im;
-    input_method_update_active();
-}
-
-static void input_method_manager_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static const struct zwp_input_method_manager_v2_interface input_method_manager_impl = {
-    .get_input_method = input_method_manager_get_input_method,
-    .destroy = input_method_manager_destroy,
-};
-
-static void input_method_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(client, &zwp_input_method_manager_v2_interface,
-                                               version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &input_method_manager_impl, NULL, NULL);
-}
-
-static void virtual_keyboard_keymap(struct wl_client *c, struct wl_resource *r,
-                                    uint32_t format, int32_t fd, uint32_t size)
-{ (void)c; (void)format; (void)size;
-    struct iosc_virtual_keyboard *vk = wl_resource_get_user_data(r);
-    if (vk) vk->has_keymap = 1;
-    if (fd >= 0) close(fd);
-}
-
-static void virtual_keyboard_key(struct wl_client *c, struct wl_resource *r,
-                                 uint32_t time, uint32_t key, uint32_t state)
-{ (void)c;
-    struct iosc_virtual_keyboard *vk = wl_resource_get_user_data(r);
-    if (!vk || !vk->has_keymap) {
-        wl_resource_post_error(r, ZWP_VIRTUAL_KEYBOARD_V1_ERROR_NO_KEYMAP,
-                               "virtual keyboard key before keymap");
-        return;
-    }
-    keyboard_send_raw_key(time ? time : now_ms(), key, state);
-}
-
-static void virtual_keyboard_modifiers(struct wl_client *c, struct wl_resource *r,
-                                       uint32_t depressed, uint32_t latched,
-                                       uint32_t locked, uint32_t group)
-{ (void)c; (void)group;
-    struct iosc_virtual_keyboard *vk = wl_resource_get_user_data(r);
-    if (!vk || !vk->has_keymap) {
-        wl_resource_post_error(r, ZWP_VIRTUAL_KEYBOARD_V1_ERROR_NO_KEYMAP,
-                               "virtual keyboard modifiers before keymap");
-        return;
-    }
-    keyboard_send_mods(depressed | latched, locked);
-}
-
-static void virtual_keyboard_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static const struct zwp_virtual_keyboard_v1_interface virtual_keyboard_impl = {
-    .keymap = virtual_keyboard_keymap,
-    .key = virtual_keyboard_key,
-    .modifiers = virtual_keyboard_modifiers,
-    .destroy = virtual_keyboard_destroy,
-};
-
-static void virtual_keyboard_resource_destroy(struct wl_resource *r)
-{
-    free(wl_resource_get_user_data(r));
-}
-
-static void virtual_keyboard_manager_create(struct wl_client *c, struct wl_resource *r,
-                                            struct wl_resource *seat, uint32_t id)
-{ (void)seat;
-    struct iosc_virtual_keyboard *vk = calloc(1, sizeof(*vk));
-    if (!vk) { wl_client_post_no_memory(c); return; }
-    vk->resource = wl_resource_create(c, &zwp_virtual_keyboard_v1_interface,
-                                      wl_resource_get_version(r), id);
-    if (!vk->resource) { free(vk); wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(vk->resource, &virtual_keyboard_impl, vk,
-                                   virtual_keyboard_resource_destroy);
-}
-
-static const struct zwp_virtual_keyboard_manager_v1_interface virtual_keyboard_manager_impl = {
-    .create_virtual_keyboard = virtual_keyboard_manager_create,
-};
-
-static void virtual_keyboard_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(client, &zwp_virtual_keyboard_manager_v1_interface,
-                                               version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &virtual_keyboard_manager_impl, NULL, NULL);
-}
-
-static void text_input_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static void text_input_enable(struct wl_client *c, struct wl_resource *r)
-{ (void)c; struct iosc_text_input *ti = wl_resource_get_user_data(r); if (ti) ti->pending_enabled = 1; }
-
-static void text_input_disable(struct wl_client *c, struct wl_resource *r)
-{ (void)c; struct iosc_text_input *ti = wl_resource_get_user_data(r); if (ti) ti->pending_enabled = 0; }
-
-static void text_input_set_surrounding_text(struct wl_client *c, struct wl_resource *r,
-                                            const char *text, int32_t cursor, int32_t anchor)
-{ (void)c;
-    struct iosc_text_input *ti = wl_resource_get_user_data(r);
-    if (!ti) return;
-    char *copy = strdup(text ? text : "");
-    if (!copy) { wl_client_post_no_memory(c); return; }
-    free(ti->surrounding);
-    ti->surrounding = copy;
-    ti->cursor = cursor;
-    ti->anchor = anchor;
-}
-
-static void text_input_set_text_change_cause(struct wl_client *c, struct wl_resource *r, uint32_t cause)
-{ (void)c; struct iosc_text_input *ti = wl_resource_get_user_data(r); if (ti) ti->change_cause = cause; }
-
-static void text_input_set_content_type(struct wl_client *c, struct wl_resource *r,
-                                        uint32_t hint, uint32_t purpose)
-{ (void)c;
-    struct iosc_text_input *ti = wl_resource_get_user_data(r);
-    if (!ti) return;
-    ti->content_hint = hint;
-    ti->content_purpose = purpose;
-}
-
-static void text_input_set_cursor_rectangle(struct wl_client *c, struct wl_resource *r,
-                                            int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)c;
-    struct iosc_text_input *ti = wl_resource_get_user_data(r);
-    if (!ti) return;
-    ti->rect_x = x;
-    ti->rect_y = y;
-    ti->rect_w = w;
-    ti->rect_h = h;
-}
-
-static void text_input_commit(struct wl_client *c, struct wl_resource *r)
-{ (void)c;
-    struct iosc_text_input *ti = wl_resource_get_user_data(r);
-    if (!ti) return;
-    ti->enabled = ti->pending_enabled;
-    zwp_text_input_v3_send_done(r, ++ti->serial);
-    input_method_update_active();
-    input_clients_send_traits();
-}
-
-static const struct zwp_text_input_v3_interface text_input_impl = {
-    .destroy = text_input_destroy,
-    .enable = text_input_enable,
-    .disable = text_input_disable,
-    .set_surrounding_text = text_input_set_surrounding_text,
-    .set_text_change_cause = text_input_set_text_change_cause,
-    .set_content_type = text_input_set_content_type,
-    .set_cursor_rectangle = text_input_set_cursor_rectangle,
-    .commit = text_input_commit,
-};
-
-static void text_input_resource_destroy(struct wl_resource *r)
-{
-    struct iosc_text_input *ti = wl_resource_get_user_data(r);
-    if (!ti) return;
-    for (int i = 0; i < g_ntext_inputs; i++)
-        if (g_text_inputs[i] == ti) {
-            g_text_inputs[i] = g_text_inputs[--g_ntext_inputs];
-            break;
-        }
-    free(ti->surrounding);
-    free(ti);
-    input_method_update_active();
-    input_clients_send_traits();
-}
-
-static void text_input_manager_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static void text_input_manager_get_text_input(struct wl_client *c, struct wl_resource *r,
-                                              uint32_t id, struct wl_resource *seat)
-{ (void)seat;
-    if (g_ntext_inputs >= IOSC_MAX_TEXT_INPUTS) { wl_client_post_no_memory(c); return; }
-    struct iosc_text_input *ti = calloc(1, sizeof(*ti));
-    if (!ti) { wl_client_post_no_memory(c); return; }
-    ti->client = c;
-    ti->change_cause = ZWP_TEXT_INPUT_V3_CHANGE_CAUSE_INPUT_METHOD;
-    ti->content_purpose = ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL;
-    ti->resource = wl_resource_create(c, &zwp_text_input_v3_interface,
-                                      wl_resource_get_version(r), id);
-    if (!ti->resource) { free(ti); wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(ti->resource, &text_input_impl, ti,
-                                   text_input_resource_destroy);
-    g_text_inputs[g_ntext_inputs++] = ti;
-    if (g_kbd_focus && wl_resource_get_client(g_kbd_focus->resource) == c) {
-        ti->focus_surface = g_kbd_focus;
-        zwp_text_input_v3_send_enter(ti->resource, g_kbd_focus->resource);
-    }
-}
-
-static const struct zwp_text_input_manager_v3_interface text_input_manager_impl = {
-    .destroy = text_input_manager_destroy,
-    .get_text_input = text_input_manager_get_text_input,
-};
-
-static void text_input_manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(client, &zwp_text_input_manager_v3_interface,
-                                               version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &text_input_manager_impl, NULL, NULL);
-}
-
 /* ---- keyboard ------------------------------------------------------------- */
 
 static void input_release(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
@@ -5977,7 +5214,7 @@ static void kbd_send_enter(struct iosc_surface *s)
  * accelerators fire but typed text goes nowhere; a deferred re-enter, once the widget
  * has realized, makes GTK focus the actual text widget. (Subsequent windows already
  * focus their content correctly, but re-asserting is harmless.) */
-static void keyboard_set_focus(struct iosc_surface *s)
+void keyboard_set_focus(struct iosc_surface *s)
 {
     /* Session locked: all keyboard focus belongs to the lock surface (or nothing
      * until it maps); windows mapping/unmapping underneath can't steal it. */
@@ -6030,7 +5267,7 @@ static int refocus_cb(void *data)
 }
 
 /* Send one modifiers mask to the focused client's keyboards (only on change). */
-static void keyboard_send_mods(uint32_t depressed, uint32_t locked)
+void keyboard_send_mods(uint32_t depressed, uint32_t locked)
 {
     if (!g_kbd_focus ||
         (depressed == g_kbd_mods_depressed && locked == g_kbd_mods_locked)) return;
@@ -6043,7 +5280,7 @@ static void keyboard_send_mods(uint32_t depressed, uint32_t locked)
             wl_keyboard_send_modifiers(g_kbd[i], serial, depressed, 0, locked, 0);
 }
 
-static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state)
+void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state)
 {
     if (!g_kbd_focus) return;
     struct wl_client *fc = wl_resource_get_client(g_kbd_focus->resource);
@@ -6051,17 +5288,6 @@ static void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state)
     for (int i = 0; i < g_nkbd; i++)
         if (wl_resource_get_client(g_kbd[i]) == fc)
             wl_keyboard_send_key(g_kbd[i], serial, time, key, state);
-}
-
-static int input_method_forward_grab_key(uint32_t time, uint32_t key, uint32_t state,
-                                         uint32_t depressed, uint32_t locked)
-{
-    if (!g_input_method || !g_input_method->active || !g_input_method->keyboard_grab) return 0;
-    struct wl_resource *grab = g_input_method->keyboard_grab;
-    uint32_t serial = wl_display_next_serial(g_display);
-    zwp_input_method_keyboard_grab_v2_send_modifiers(grab, serial, depressed, 0, locked, 0);
-    zwp_input_method_keyboard_grab_v2_send_key(grab, serial, time, key, state);
-    return 1;
 }
 
 /* evdev KEY_LEFTSHIFT; xkb keycode 50 - 8. */
@@ -6106,10 +5332,9 @@ static void handle_key(uint32_t keysym, uint32_t state, uint32_t appmods)
                 keysym, evdev, wl_state, depressed, locked, nk);
     }
     uint32_t t = now_ms();
-    if (g_input_method && g_input_method->active && g_input_method->keyboard_grab) {
-        input_method_forward_grab_key(t, evdev, wl_state, depressed, locked);
+    /* A bound input-method with an active grab swallows the key. */
+    if (input_method_forward_grab_key(t, evdev, wl_state, depressed, locked))
         return;
-    }
 
     /* A shifted keysym needs a REAL Shift key transition, not just the
      * wl_keyboard.modifiers event, because not every client trusts that event.
@@ -6295,7 +5520,7 @@ static void surface_raise_children(struct iosc_surface *s, int depth)
     for (int i = 0; i < nk; i++) surface_raise_children(kids[i], depth - 1);
 }
 
-static void surface_raise(struct iosc_surface *s)
+void surface_raise(struct iosc_surface *s)
 {
     surface_raise_children(s, IOSC_MAX_SURFACES);
 }
@@ -7862,12 +7087,12 @@ static void iosc_input_record(const xios_msg *m, const char *text,
  *    connects mid-session learns the current field state without waiting for an edit.
  * v2 (deferred): an additive XIOS_IN_CARET record with ti->rect_* in output px on
  * the same commits, so the app can pan the focused field above the keyboard. */
-static void input_clients_send_traits(void)
+void input_clients_send_traits(void)
 {
-    struct iosc_text_input *ti = text_input_for_focus();
+    uint32_t hint = 0, purpose = 0; int enabled = 0;
+    text_input_focus_traits(&hint, &purpose, &enabled);
     xios_msg msg = xios_input_message(
-        XIOS_IN_TRAITS, 0, 0, ti ? ti->content_hint : 0,
-        ti ? ti->content_purpose : 0, ti ? (uint32_t)ti->enabled : 0);
+        XIOS_IN_TRAITS, 0, 0, hint, purpose, (uint32_t)enabled);
     if (g_improxy_traits_valid) {
         msg.c = (int32_t)g_improxy_hint;
         msg.window_id = g_improxy_purpose;
@@ -9169,7 +8394,7 @@ static int idle_timer_cb(void *data)
     if (!n->idled) { n->idled = 1; ext_idle_notification_v1_send_idled(n->resource); }
     return 0;
 }
-static void idle_note_activity(void)
+void idle_note_activity(void)
 {
     g_idle_last_activity_ms = now_ms();   /* timers check this lazily when they fire */
     for (int i = 0; i < g_nidle_notifs; i++) {
