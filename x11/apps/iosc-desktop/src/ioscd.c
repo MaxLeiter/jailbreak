@@ -1921,7 +1921,18 @@ int main(void)
         }
         if (pfds[0].revents & POLLIN) {
             int cfd = accept(lfd, NULL, NULL);
-            if (cfd >= 0) { handle_conn(cfd); close(cfd); }
+            if (cfd >= 0) {
+                /* Close-on-exec, or the session child (and the whole desktop
+                 * tree it leaves running) inherits this connection across
+                 * execl and the client never sees EOF: it reads
+                 * SESSION_STARTED, then blocks to its own recv timeout and
+                 * reports "ioscd timed out" for a session that came up fine.
+                 * handle_session forks WITHOUT waiting, so the fd would
+                 * otherwise stay open for the life of the desktop. */
+                fcntl(cfd, F_SETFD, FD_CLOEXEC);
+                handle_conn(cfd);
+                close(cfd);
+            }
         }
     }
     return 0;

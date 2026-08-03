@@ -1490,8 +1490,14 @@ final class XScreenView: UIView {
     }
 
     /// Blocking worker primitive. UI actions dispatch this through requestIOSCD.
+    /// `stopAtNewline` returns as soon as one complete line is in hand instead
+    /// of reading to EOF. Single-reply verbs (SESSION) use it so the picker
+    /// never waits on the daemon closing the connection — a session child that
+    /// inherits the socket would otherwise stall the reply to the recv timeout.
+    /// Streaming verbs (APPS_LIST/APPS_SYNC) still need the read-to-EOF path.
     private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20,
-                                  timeout: TimeInterval = 2.0) -> String? {
+                                  timeout: TimeInterval = 2.0,
+                                  stopAtNewline: Bool = false) -> String? {
         let fd = xiosConnectUnixSocket(ioscdSocketPath, timeout: timeout)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
@@ -1507,6 +1513,7 @@ final class XScreenView: UIView {
             }
             if n > 0 {
                 data.append(buf, count: Int(n))
+                if stopAtNewline, data.contains(UInt8(ascii: "\n")) { break }
             } else if n < 0 && errno == EINTR {
                 continue
             } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -1520,11 +1527,13 @@ final class XScreenView: UIView {
 
     private func requestIOSCD(_ line: String, maxBytes: Int = 1 << 20,
                               timeout: TimeInterval = 2.0,
+                              stopAtNewline: Bool = false,
                               completion: @escaping (String?) -> Void) {
         ioscdRequestQueue.async { [weak self] in
             guard let self else { return }
             let response = self.sendIOSCDRequest(
-                line, maxBytes: maxBytes, timeout: timeout)
+                line, maxBytes: maxBytes, timeout: timeout,
+                stopAtNewline: stopAtNewline)
             DispatchQueue.main.async {
                 completion(response)
             }
@@ -1585,7 +1594,7 @@ final class XScreenView: UIView {
         }
 
         let line = sessionRequestLine(preset, app: app, display: display, slot: slot)
-        requestIOSCD(line, maxBytes: 4096) { [weak self] rawResponse in
+        requestIOSCD(line, maxBytes: 4096, stopAtNewline: true) { [weak self] rawResponse in
             guard let self else { return }
             self.sessionRequestInFlight = false
             let response = rawResponse?.trimmingCharacters(in: .whitespacesAndNewlines)
