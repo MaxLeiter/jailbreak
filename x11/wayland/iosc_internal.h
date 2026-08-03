@@ -53,6 +53,12 @@ extern int g_nxdg_output_res;
 
 uint32_t now_ms(void);
 
+/* IOSC_DEBUG=1 turns on the per-frame validation readbacks + logs. They call
+ * glReadPixels (a synchronous GPU->CPU stall) and fprintf every recompose, so
+ * they must stay OFF in normal operation. Event-driven logs (focus, drag, lock,
+ * tablet) are not gated by this — only the per-frame spam is. Cached once. */
+int iosc_debug(void);
+
 static inline int clampi(int v, int lo, int hi)
 {
     if (v < lo) return lo;
@@ -311,8 +317,26 @@ void recomposite_reason_clear(void);
 
 extern uint32_t g_present_interval_us;   /* refresh, for presentation-time feedback */
 extern int g_force_output_composite;
+/* Nonzero once the output damage accumulator holds a valid region for the next
+ * present; a repaint requested before that has nothing to compose. */
+extern int g_output_damage_valid;
 
 void output_damage_add_rect(int x0, int y0, int x1, int y1);
+void output_damage_add_full(void);
+int  rect_intersects_rect(const struct iosc_rect *a, const struct iosc_rect *b);
+
+/* The damage region of the last completed present. wlr-screencopy's
+ * with_damage capture rides on this rather than tracking its own. */
+extern int g_last_present_damage_valid;
+extern int g_last_present_damage_rect_count;
+extern struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
+
+/* ===========================================================================
+ * wlr-screencopy-v1  (iosc_screencopy.c)
+ * ======================================================================== */
+
+void screencopy_mgr_bind(struct wl_client *client, void *data,
+                         uint32_t version, uint32_t id);
 
 /* ===========================================================================
  * Input focus + seat
@@ -397,6 +421,29 @@ void reslist_remove(struct wl_resource **arr, int *n, struct wl_resource *r);
 void handle_motion(int x, int y);
 void surface_output_size(struct iosc_surface *s, int *w, int *h);
 void output_damage_add_cursor_at(int x, int y);
+
+/* ===========================================================================
+ * xdg-activation-v1  (iosc_activation.c)
+ * ======================================================================== */
+
+void activation_bind(struct wl_client *client, void *data,
+                     uint32_t version, uint32_t id);
+
+/* ===========================================================================
+ * tablet-v2 / Apple Pencil  (iosc_tablet.c)
+ * ======================================================================== */
+
+/* One pencil sample off the app input socket (IOSC_IN_TABLET). */
+void handle_pencil(int phase, int x, int y, uint32_t pressure, int tiltx, int tilty);
+void pen_leave(uint32_t t);
+void pen_surface_gone(struct iosc_surface *s);   /* drop the pen grab on unmap */
+void tablet_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id);
+
+/* Hit-testing + focus helpers the pencil path shares with the pointer path. */
+struct iosc_surface *surface_at(int x, int y);
+void surface_local_coords(struct iosc_surface *s, int x, int y,
+                          wl_fixed_t *sx, wl_fixed_t *sy);
+void press_focus(struct iosc_surface *hit);
 
 /* Route one real key transition to a bound input-method's keyboard grab.
  * Returns 1 if an active grab consumed the key (the caller must NOT also deliver

@@ -238,7 +238,6 @@ static uint32_t g_button_serial_code;
 static int g_button_down;
 static void touch_surface_gone(struct iosc_surface *s);   /* drop touch grabs on unmap */
 static void touch_cancel_all(void);
-static void pen_surface_gone(struct iosc_surface *s);     /* drop the pen grab on unmap */
 
 /* ext-session-lock-v1. While locked, the output shows ONLY the lock surface
  * (blank black until it maps) and all input is confined to it: surface_at()
@@ -273,14 +272,14 @@ static struct wl_event_source *g_repaint_timer;
 static int g_repaint_timer_armed;
 static int g_recompose_scheduled;        /* a coalesced repaint is already pending */
 uint32_t g_present_interval_us = 16667;   /* refresh, for presentation-time feedback */
-static int g_output_damage_valid;
+int g_output_damage_valid;
 static int g_output_damage_coarse;
 static int g_output_damage_rect_count;
 static struct iosc_rect g_output_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_output_damage_x0, g_output_damage_y0, g_output_damage_x1, g_output_damage_y1;
-static int g_last_present_damage_valid;
-static int g_last_present_damage_rect_count;
-static struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
+int g_last_present_damage_valid;
+int g_last_present_damage_rect_count;
+struct iosc_rect g_last_present_damage_rects[IOSC_MAX_OUTPUT_DAMAGE_RECTS];
 static int g_last_present_damage_x0, g_last_present_damage_y0;
 static int g_last_present_damage_x1, g_last_present_damage_y1;
 struct output_damage_history {
@@ -892,7 +891,7 @@ static int rects_touch_or_overlap(const struct iosc_rect *a, const struct iosc_r
            a->y1 >= b->y0 && a->y0 <= b->y1;
 }
 
-static int rect_intersects_rect(const struct iosc_rect *a, const struct iosc_rect *b)
+int rect_intersects_rect(const struct iosc_rect *a, const struct iosc_rect *b)
 {
     return a->x1 > b->x0 && a->x0 < b->x1 &&
            a->y1 > b->y0 && a->y0 < b->y1;
@@ -994,7 +993,7 @@ static void output_damage_add_px(int x, int y, int w, int h)
     output_damage_set_coarse_union();
 }
 
-static void output_damage_add_full(void)
+void output_damage_add_full(void)
 {
     output_damage_add_px(0, 0, g_width, g_height);
 }
@@ -1935,7 +1934,7 @@ static char probe_ch(uint32_t p)
  * glReadPixels (a synchronous GPU->CPU stall) and fprintf every recompose, so
  * they must stay OFF in normal operation. Event-driven logs (focus, drag, lock,
  * tablet) are not gated by this — only the per-frame spam is. Cached once. */
-static int iosc_debug(void)
+int iosc_debug(void)
 {
     static int v = -1;
     if (v < 0) v = getenv("IOSC_DEBUG") ? 1 : 0;
@@ -2450,195 +2449,6 @@ void recomposite_all_at(const char *reason, int line)
         return;
     }
     g_recompose_scheduled = 1;
-}
-
-/* ---- wlr-screencopy-v1: screenshots (SOFTWARE readback; GPU-blit later) --- *
- * A client (grim, xdg-desktop-portal, spectacle) binds the manager, asks to
- * capture the output (or a sub-region), receives a `buffer` event advertising the
- * format/size/stride to allocate, allocates a wl_shm buffer, and calls copy().
- * We read the composited output IOSurface back into that buffer via
- * xios_read_output_region() -- the SOFTWARE path. The clean seam for a future GPU
- * blit (output IOSurface -> the client's IOSurface-backed buffer, no CPU
- * round-trip) is xios_read_output_region()'s body plus a fast-path here; the
- * protocol code below stays unchanged. */
-
-struct iosc_screencopy_frame {
-    struct wl_resource *resource;
-    int      x, y, w, h;       /* capture rect in output (physical) px */
-    int      stride;           /* advertised buffer stride (w*4) */
-    uint32_t format;           /* advertised wl_shm format */
-    int      with_cursor;      /* overlay_cursor: include the pointer in the shot */
-    int      used;             /* copy() may be called at most once */
-};
-
-static void screencopy_frame_res_destroy(struct wl_resource *r)
-{ free(wl_resource_get_user_data(r)); }
-
-static void screencopy_frame_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-/* Read the composited output into the client's wl_shm buffer, honouring
- * overlay_cursor by recompositing without the pointer when it isn't wanted. */
-static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resource *buffer)
-{
-    struct wl_shm_buffer *shm = wl_shm_buffer_get(buffer);
-    if (!shm ||
-        wl_shm_buffer_get_format(shm) != f->format ||
-        wl_shm_buffer_get_width(shm)  != f->w ||
-        wl_shm_buffer_get_height(shm) != f->h ||
-        wl_shm_buffer_get_stride(shm) != f->stride) {
-        zwlr_screencopy_frame_v1_send_failed(f->resource);
-        return;
-    }
-
-    int restore_cursor = 0;
-    if (!f->with_cursor && g_cursor_visible) {
-        output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
-        g_cursor_visible = 0;
-        restore_cursor = 1;
-    }
-    g_force_output_composite = 1;
-    output_damage_add_full();
-    recomposite_now();          /* synchronous: the readback below needs THIS frame */
-    g_force_output_composite = 0;
-
-    wl_shm_buffer_begin_access(shm);
-    int rc = xios_read_output_region(f->x, f->y, f->w, f->h,
-                                     wl_shm_buffer_get_data(shm), f->stride);
-    wl_shm_buffer_end_access(shm);
-
-    if (restore_cursor) {
-        g_cursor_visible = 1;
-        output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
-        g_force_output_composite = 1;
-        recomposite_now();
-        g_force_output_composite = 0;
-    }
-
-    if (rc != 0) { zwlr_screencopy_frame_v1_send_failed(f->resource); return; }
-
-    /* Top-left origin, no transform: no y-invert. Then report ready. */
-    zwlr_screencopy_frame_v1_send_flags(f->resource, 0);
-    struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
-    uint64_t sec = (uint64_t)ts.tv_sec;
-    zwlr_screencopy_frame_v1_send_ready(f->resource,
-        (uint32_t)(sec >> 32), (uint32_t)sec, (uint32_t)ts.tv_nsec);
-}
-
-static void screencopy_frame_copy(struct wl_client *c, struct wl_resource *r,
-                                  struct wl_resource *buffer)
-{ (void)c;
-    struct iosc_screencopy_frame *f = wl_resource_get_user_data(r);
-    if (!f) return;
-    if (f->used) {
-        wl_resource_post_error(r, ZWLR_SCREENCOPY_FRAME_V1_ERROR_ALREADY_USED,
-                               "screencopy frame already used");
-        return;
-    }
-    f->used = 1;
-    screencopy_do_copy(f, buffer);
-}
-
-static void screencopy_send_damage(struct iosc_screencopy_frame *f)
-{
-    struct iosc_rect frame = { f->x, f->y, f->x + f->w, f->y + f->h };
-    if (!g_last_present_damage_valid || g_last_present_damage_rect_count <= 0) {
-        zwlr_screencopy_frame_v1_send_damage(f->resource, 0, 0, f->w, f->h);
-        return;
-    }
-    for (int i = 0; i < g_last_present_damage_rect_count; i++) {
-        struct iosc_rect r = g_last_present_damage_rects[i];
-        if (!rect_intersects_rect(&r, &frame))
-            continue;
-        if (r.x0 < frame.x0) r.x0 = frame.x0;
-        if (r.y0 < frame.y0) r.y0 = frame.y0;
-        if (r.x1 > frame.x1) r.x1 = frame.x1;
-        if (r.y1 > frame.y1) r.y1 = frame.y1;
-        if (r.x1 <= r.x0 || r.y1 <= r.y0)
-            continue;
-        zwlr_screencopy_frame_v1_send_damage(f->resource,
-            r.x0 - f->x, r.y0 - f->y, r.x1 - r.x0, r.y1 - r.y0);
-    }
-}
-
-static void screencopy_frame_copy_with_damage(struct wl_client *c, struct wl_resource *r,
-                                              struct wl_resource *buffer)
-{
-    (void)c;
-    struct iosc_screencopy_frame *f = wl_resource_get_user_data(r);
-    if (!f) return;
-    if (f->used) {
-        wl_resource_post_error(r, ZWLR_SCREENCOPY_FRAME_V1_ERROR_ALREADY_USED,
-                               "screencopy frame already used");
-        return;
-    }
-    f->used = 1;
-    screencopy_send_damage(f);
-    screencopy_do_copy(f, buffer);
-}
-
-static const struct zwlr_screencopy_frame_v1_interface screencopy_frame_impl = {
-    .copy = screencopy_frame_copy,
-    .destroy = screencopy_frame_destroy,
-    .copy_with_damage = screencopy_frame_copy_with_damage,
-};
-
-/* Create + advertise a frame for the given capture rect (already clamped). */
-static void screencopy_new_frame(struct wl_client *c, struct wl_resource *mgr,
-                                 uint32_t id, int overlay_cursor,
-                                 int x, int y, int w, int h)
-{
-    struct iosc_screencopy_frame *f = calloc(1, sizeof(*f));
-    if (!f) { wl_client_post_no_memory(c); return; }
-    f->x = x; f->y = y; f->w = w; f->h = h;
-    f->stride = w * 4;
-    f->format = WL_SHM_FORMAT_XRGB8888;    /* opaque BGRA8 in memory == our output */
-    f->with_cursor = overlay_cursor;
-    f->resource = wl_resource_create(c, &zwlr_screencopy_frame_v1_interface,
-                                     wl_resource_get_version(mgr), id);
-    if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(f->resource, &screencopy_frame_impl, f,
-                                   screencopy_frame_res_destroy);
-    zwlr_screencopy_frame_v1_send_buffer(f->resource, f->format,
-                                         (uint32_t)w, (uint32_t)h, (uint32_t)f->stride);
-    if (wl_resource_get_version(f->resource) >= ZWLR_SCREENCOPY_FRAME_V1_BUFFER_DONE_SINCE_VERSION)
-        zwlr_screencopy_frame_v1_send_buffer_done(f->resource);
-}
-
-static void screencopy_capture_output(struct wl_client *c, struct wl_resource *mgr,
-                                      uint32_t id, int32_t overlay_cursor,
-                                      struct wl_resource *output)
-{ (void)output;
-    screencopy_new_frame(c, mgr, id, overlay_cursor, 0, 0, g_width, g_height);
-}
-
-static void screencopy_capture_output_region(struct wl_client *c, struct wl_resource *mgr,
-                                             uint32_t id, int32_t overlay_cursor,
-                                             struct wl_resource *output,
-                                             int32_t x, int32_t y, int32_t w, int32_t h)
-{ (void)output;
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > g_width)  w = g_width  - x;
-    if (y + h > g_height) h = g_height - y;
-    if (w <= 0 || h <= 0) { x = 0; y = 0; w = 1; h = 1; }   /* degenerate -> 1px */
-    screencopy_new_frame(c, mgr, id, overlay_cursor, x, y, w, h);
-}
-
-static void screencopy_mgr_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-
-static const struct zwlr_screencopy_manager_v1_interface screencopy_mgr_impl = {
-    .capture_output = screencopy_capture_output,
-    .capture_output_region = screencopy_capture_output_region,
-    .destroy = screencopy_mgr_destroy,
-};
-
-static void screencopy_mgr_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(client, &zwlr_screencopy_manager_v1_interface, version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &screencopy_mgr_impl, NULL, NULL);
 }
 
 static void on_buffer_destroyed(struct wl_listener *l, void *data)
@@ -3662,141 +3472,6 @@ static void decoration_manager_bind(struct wl_client *client, void *data,
     wl_resource_set_implementation(r, &decoration_manager_impl, NULL, NULL);
 }
 
-/* ---- xdg-activation ------------------------------------------------------ */
-
-struct iosc_activation_token {
-    int used;
-    uint32_t serial;
-    struct wl_resource *seat;
-    struct wl_resource *surface;
-    char app_id[256];
-};
-
-static uint32_t g_activation_token_id;
-
-struct iosc_activation_record {
-    char token[32];
-    char app_id[256];
-    struct iosc_surface *surface;
-    uint32_t serial;
-};
-
-#define IOSC_ACTIVATION_RECORDS 64
-static struct iosc_activation_record g_activation_records[IOSC_ACTIVATION_RECORDS];
-static unsigned g_activation_record_next;
-
-static void activation_remember(const char *token, const struct iosc_activation_token *tok)
-{
-    struct iosc_activation_record *rec =
-        &g_activation_records[g_activation_record_next++ % IOSC_ACTIVATION_RECORDS];
-    memset(rec, 0, sizeof(*rec));
-    snprintf(rec->token, sizeof(rec->token), "%s", token ? token : "");
-    snprintf(rec->app_id, sizeof(rec->app_id), "%s", tok && tok->app_id[0] ? tok->app_id : "");
-    rec->surface = tok && tok->surface ? wl_resource_get_user_data(tok->surface) : NULL;
-    rec->serial = tok ? tok->serial : 0;
-}
-
-static const struct iosc_activation_record *activation_find(const char *token)
-{
-    if (!token || !*token) return NULL;
-    for (unsigned i = 0; i < IOSC_ACTIVATION_RECORDS; i++) {
-        const struct iosc_activation_record *rec = &g_activation_records[i];
-        if (rec->token[0] && strcmp(rec->token, token) == 0) return rec;
-    }
-    return NULL;
-}
-
-static void activation_token_destroy_resource(struct wl_resource *r)
-{
-    free(wl_resource_get_user_data(r));
-}
-
-static void activation_token_set_serial(struct wl_client *c, struct wl_resource *r,
-                                        uint32_t serial, struct wl_resource *seat)
-{
-    (void)c;
-    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
-    if (tok) { tok->serial = serial; tok->seat = seat; }
-}
-static void activation_token_set_app_id(struct wl_client *c, struct wl_resource *r,
-                                        const char *app_id)
-{
-    (void)c;
-    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
-    if (tok) snprintf(tok->app_id, sizeof(tok->app_id), "%s", app_id ? app_id : "");
-}
-static void activation_token_set_surface(struct wl_client *c, struct wl_resource *r,
-                                         struct wl_resource *surface)
-{
-    (void)c;
-    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
-    if (tok) tok->surface = surface;
-}
-static void activation_token_commit(struct wl_client *c, struct wl_resource *r)
-{
-    (void)c;
-    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
-    if (tok->used) {
-        wl_resource_post_error(r, XDG_ACTIVATION_TOKEN_V1_ERROR_ALREADY_USED,
-                               "activation token already committed");
-        return;
-    }
-    tok->used = 1;
-    char token[32];
-    snprintf(token, sizeof(token), "iosc-%u", ++g_activation_token_id);
-    activation_remember(token, tok);
-    xdg_activation_token_v1_send_done(r, token);
-}
-static void activation_token_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static const struct xdg_activation_token_v1_interface activation_token_impl = {
-    .set_serial = activation_token_set_serial,
-    .set_app_id = activation_token_set_app_id,
-    .set_surface = activation_token_set_surface,
-    .commit = activation_token_commit,
-    .destroy = activation_token_destroy,
-};
-
-static void activation_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static void activation_get_token(struct wl_client *c, struct wl_resource *r, uint32_t id)
-{
-    struct iosc_activation_token *tok = calloc(1, sizeof(*tok));
-    if (!tok) { wl_client_post_no_memory(c); return; }
-    struct wl_resource *tr = wl_resource_create(c, &xdg_activation_token_v1_interface,
-                                                wl_resource_get_version(r), id);
-    if (!tr) { free(tok); wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(tr, &activation_token_impl, tok,
-                                   activation_token_destroy_resource);
-}
-static void activation_activate(struct wl_client *c, struct wl_resource *r,
-                                const char *token, struct wl_resource *surface)
-{
-    (void)c; (void)r;
-    const struct iosc_activation_record *rec = activation_find(token);
-    if (iosc_debug() && rec) {
-        fprintf(stderr, "iosc: xdg-activation token=%s app_id=\"%s\" serial=%u\n",
-                token ? token : "", rec->app_id, rec->serial);
-    }
-    struct iosc_surface *s = wl_resource_get_user_data(surface);
-    if (!s || !s->mapped) return;
-    surface_raise(s);
-    keyboard_set_focus(s);
-    if (g_output_damage_valid) recomposite_all();
-}
-static const struct xdg_activation_v1_interface activation_impl = {
-    .destroy = activation_destroy,
-    .get_activation_token = activation_get_token,
-    .activate = activation_activate,
-};
-static void activation_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{
-    (void)data;
-    struct wl_resource *r = wl_resource_create(client, &xdg_activation_v1_interface,
-                                               version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &activation_impl, NULL, NULL);
-}
 
 /* ---- xdg_shell ----------------------------------------------------------- */
 
@@ -4710,7 +4385,7 @@ void reslist_remove(struct wl_resource **arr, int *n, struct wl_resource *r)
 /* Surface-local pointer coords helper + top-most surface under an output point. */
 static struct iosc_surface *g_native_input_scope;
 
-static struct iosc_surface *surface_at(int x, int y)
+struct iosc_surface *surface_at(int x, int y)
 {
     /* Session locked: input may reach only the (fullscreen, at 0,0) lock surface. */
     if (g_slock.locked)
@@ -4736,7 +4411,7 @@ static struct iosc_surface *surface_at(int x, int y)
  * is stretched to the whole output (see composite_surface_at), so its surface-local
  * space is scaled by surface_logical/output_logical. All pointer/touch/tablet/dnd
  * paths route through this so input lands where the client actually drew. */
-static void surface_local_coords(struct iosc_surface *s, int x, int y,
+void surface_local_coords(struct iosc_surface *s, int x, int y,
                                  wl_fixed_t *sx, wl_fixed_t *sy)
 {
     double lx = (double)(x - s->dx), ly = (double)(y - s->dy);
@@ -5100,7 +4775,7 @@ void surface_raise(struct iosc_surface *s)
  * (layer surface with keyboard_interactivity=none) must never steal focus or
  * reorder — it still gets its input events; anything else is raised, takes
  * keyboard focus, and triggers a recomposite if it wasn't already on top. */
-static void press_focus(struct iosc_surface *hit)
+void press_focus(struct iosc_surface *hit)
 {
     if (hit->role == IOSC_ROLE_LAYER && hit->layer &&
         hit->layer->kbd_interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE)
@@ -5336,199 +5011,6 @@ static void handle_touch(int id, int phase, int x, int y)
     }
 }
 
-/* ---- tablet-v2 (Apple Pencil; fed by IOSC_IN_TABLET) ----------------------- *
- * One virtual tablet ("Apple Pencil") with one PEN tool advertising PRESSURE +
- * TILT, announced to every zwp_tablet_seat_v2 as it is created. The iPad 7 has
- * no hover, so each stroke is bracketed proximity_in .. down .. motion ..
- * up .. proximity_out; like touch, the surface under the pen at `down` owns
- * the whole stroke. */
-
-#define IOSC_PEN_UP     0     /* wire phases in iosc_in_msg.state */
-#define IOSC_PEN_DOWN   1
-#define IOSC_PEN_MOTION 2
-#define IOSC_PEN_CANCEL 3
-
-#define IOSC_MAX_TABLET_SEATS 16
-struct iosc_tablet_seat {          /* one per zwp_tablet_seat_v2 resource */
-    struct wl_resource *seat;
-    struct wl_resource *tablet;    /* zwp_tablet_v2 announced on it */
-    struct wl_resource *tool;      /* zwp_tablet_tool_v2 (the pen) */
-};
-static struct iosc_tablet_seat *g_tablet_seats[IOSC_MAX_TABLET_SEATS];
-static int g_ntablet_seats;
-
-static struct iosc_surface *g_pen_focus;   /* surface owning the current stroke */
-static int g_pen_down;
-
-static struct iosc_tablet_seat *tablet_seat_for_client(struct wl_client *cl)
-{
-    for (int i = 0; i < g_ntablet_seats; i++)
-        if (g_tablet_seats[i] && g_tablet_seats[i]->seat &&
-            wl_resource_get_client(g_tablet_seats[i]->seat) == cl)
-            return g_tablet_seats[i];
-    return NULL;
-}
-
-/* End the current stroke: up (if the tip is down) + proximity_out. */
-static void pen_leave(uint32_t t)
-{
-    if (!g_pen_focus) return;
-    struct iosc_tablet_seat *ts =
-        tablet_seat_for_client(wl_resource_get_client(g_pen_focus->resource));
-    if (ts && ts->tool) {
-        if (g_pen_down)
-            zwp_tablet_tool_v2_send_up(ts->tool);
-        zwp_tablet_tool_v2_send_proximity_out(ts->tool);
-        zwp_tablet_tool_v2_send_frame(ts->tool, t);
-    }
-    g_pen_focus = NULL;
-    g_pen_down = 0;
-}
-
-static void pen_surface_gone(struct iosc_surface *s)
-{
-    if (g_pen_focus == s) pen_leave(now_ms());
-}
-
-static void pen_send_axes(struct iosc_tablet_seat *ts, struct iosc_surface *s,
-                          int x, int y, uint32_t pressure, int tiltx, int tilty)
-{
-    wl_fixed_t px, py; surface_local_coords(s, x, y, &px, &py);
-    zwp_tablet_tool_v2_send_motion(ts->tool, px, py);
-    zwp_tablet_tool_v2_send_pressure(ts->tool, pressure > 65535u ? 65535u : pressure);
-    zwp_tablet_tool_v2_send_tilt(ts->tool, wl_fixed_from_int(tiltx),
-                                 wl_fixed_from_int(tilty));
-}
-
-static void handle_pencil(int phase, int x, int y, uint32_t pressure, int tiltx, int tilty)
-{
-    idle_note_activity();
-    uint32_t t = now_ms();
-    if (phase == IOSC_PEN_CANCEL) { pen_leave(t); return; }
-    if (phase == IOSC_PEN_DOWN) {
-        struct iosc_surface *hit = surface_at(x, y);   /* honors session lock */
-        if (hit != g_pen_focus) pen_leave(t);
-        if (!hit) return;
-        press_focus(hit);
-        int entering = (g_pen_focus != hit);
-        g_pen_focus = hit;
-        g_pen_down = 1;
-        struct iosc_tablet_seat *ts =
-            tablet_seat_for_client(wl_resource_get_client(hit->resource));
-        if (!ts || !ts->tool || !ts->tablet) return;   /* client has no tablet seat */
-        if (entering)
-            zwp_tablet_tool_v2_send_proximity_in(ts->tool, wl_display_next_serial(g_display),
-                                                 ts->tablet, hit->resource);
-        pen_send_axes(ts, hit, x, y, pressure, tiltx, tilty);
-        zwp_tablet_tool_v2_send_down(ts->tool, wl_display_next_serial(g_display));
-        zwp_tablet_tool_v2_send_frame(ts->tool, t);
-        return;
-    }
-    /* MOTION / UP belong to the stroke's grab surface. */
-    if (!g_pen_focus) return;
-    struct iosc_tablet_seat *ts =
-        tablet_seat_for_client(wl_resource_get_client(g_pen_focus->resource));
-    if (!ts || !ts->tool) {
-        if (phase == IOSC_PEN_UP) { g_pen_focus = NULL; g_pen_down = 0; }
-        return;
-    }
-    if (phase == IOSC_PEN_MOTION) {
-        pen_send_axes(ts, g_pen_focus, x, y, pressure, tiltx, tilty);
-        zwp_tablet_tool_v2_send_frame(ts->tool, t);
-    } else if (phase == IOSC_PEN_UP) {
-        pen_leave(t);   /* up + proximity_out + frame */
-    }
-}
-
-/* -- protocol plumbing: manager / seat / tablet / tool objects -------------- */
-
-static void tablet_tool_set_cursor(struct wl_client *c, struct wl_resource *r, uint32_t serial,
-                                   struct wl_resource *surf, int32_t hx, int32_t hy)
-{ (void)c; (void)r; (void)serial; (void)surf; (void)hx; (void)hy; }   /* pen has no cursor here */
-static void tablet_obj_destroy_req(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static const struct zwp_tablet_tool_v2_interface tablet_tool_impl = {
-    .set_cursor = tablet_tool_set_cursor,
-    .destroy = tablet_obj_destroy_req,
-};
-static const struct zwp_tablet_v2_interface tablet_impl = {
-    .destroy = tablet_obj_destroy_req,
-};
-
-static void tablet_tool_res_destroy(struct wl_resource *r)
-{
-    struct iosc_tablet_seat *ts = wl_resource_get_user_data(r);
-    if (ts && ts->tool == r) ts->tool = NULL;
-}
-static void tablet_res_destroy(struct wl_resource *r)
-{
-    struct iosc_tablet_seat *ts = wl_resource_get_user_data(r);
-    if (ts && ts->tablet == r) ts->tablet = NULL;
-}
-static void tablet_seat_res_destroy(struct wl_resource *r)
-{
-    struct iosc_tablet_seat *ts = wl_resource_get_user_data(r);
-    if (!ts) return;
-    /* Disarm surviving child resources so their destructors don't touch us. */
-    if (ts->tool)   wl_resource_set_user_data(ts->tool, NULL);
-    if (ts->tablet) wl_resource_set_user_data(ts->tablet, NULL);
-    for (int i = 0; i < g_ntablet_seats; i++)
-        if (g_tablet_seats[i] == ts) {
-            g_tablet_seats[i] = g_tablet_seats[--g_ntablet_seats];
-            break;
-        }
-    free(ts);
-}
-
-static const struct zwp_tablet_seat_v2_interface tablet_seat_impl = {
-    .destroy = tablet_obj_destroy_req,
-};
-
-static void tablet_mgr_get_tablet_seat(struct wl_client *c, struct wl_resource *r,
-                                       uint32_t id, struct wl_resource *seat)
-{ (void)seat;
-    if (g_ntablet_seats >= IOSC_MAX_TABLET_SEATS) { wl_client_post_no_memory(c); return; }
-    struct iosc_tablet_seat *ts = calloc(1, sizeof(*ts));
-    if (!ts) { wl_client_post_no_memory(c); return; }
-    uint32_t v = wl_resource_get_version(r);
-    ts->seat   = wl_resource_create(c, &zwp_tablet_seat_v2_interface, v, id);
-    ts->tablet = wl_resource_create(c, &zwp_tablet_v2_interface, v, 0);
-    ts->tool   = wl_resource_create(c, &zwp_tablet_tool_v2_interface, v, 0);
-    if (!ts->seat || !ts->tablet || !ts->tool) {
-        if (ts->seat)   wl_resource_destroy(ts->seat);
-        if (ts->tablet) wl_resource_destroy(ts->tablet);
-        if (ts->tool)   wl_resource_destroy(ts->tool);
-        free(ts);
-        wl_client_post_no_memory(c);
-        return;
-    }
-    wl_resource_set_implementation(ts->seat,   &tablet_seat_impl, ts, tablet_seat_res_destroy);
-    wl_resource_set_implementation(ts->tablet, &tablet_impl,      ts, tablet_res_destroy);
-    wl_resource_set_implementation(ts->tool,   &tablet_tool_impl, ts, tablet_tool_res_destroy);
-    g_tablet_seats[g_ntablet_seats++] = ts;
-    /* Announce the pencil: tablet first, then the pen tool with its axes. */
-    zwp_tablet_seat_v2_send_tablet_added(ts->seat, ts->tablet);
-    zwp_tablet_v2_send_name(ts->tablet, "Apple Pencil");
-    zwp_tablet_v2_send_path(ts->tablet, "iosc/pencil");
-    zwp_tablet_v2_send_done(ts->tablet);
-    zwp_tablet_seat_v2_send_tool_added(ts->seat, ts->tool);
-    zwp_tablet_tool_v2_send_type(ts->tool, ZWP_TABLET_TOOL_V2_TYPE_PEN);
-    zwp_tablet_tool_v2_send_capability(ts->tool, ZWP_TABLET_TOOL_V2_CAPABILITY_PRESSURE);
-    zwp_tablet_tool_v2_send_capability(ts->tool, ZWP_TABLET_TOOL_V2_CAPABILITY_TILT);
-    zwp_tablet_tool_v2_send_done(ts->tool);
-    fprintf(stderr, "iosc: tablet seat created (now %d)\n", g_ntablet_seats);
-}
-
-static const struct zwp_tablet_manager_v2_interface tablet_mgr_impl = {
-    .get_tablet_seat = tablet_mgr_get_tablet_seat,
-    .destroy = tablet_obj_destroy_req,
-};
-static void tablet_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(c, &zwp_tablet_manager_v2_interface, version, id);
-    if (!r) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(r, &tablet_mgr_impl, NULL, NULL);
-}
 
 /* ---- wl_pointer / wl_keyboard / wl_touch resources ------------------------ */
 
