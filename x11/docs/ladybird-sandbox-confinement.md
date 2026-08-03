@@ -288,7 +288,28 @@ Neither is caused by any of the above; both block launching a freshly built
    Related: `--force-fontconfig` is broken on iOS, because patch 0008 only installs the
    CoreText `SkFontMgr` when the provider is *not* FontConfig and its `#elif AK_OS_IOS` branch
    is a comment, so `VERIFY(font_manager)` fires at `TypefaceSkia.cpp:105`.
-2. **A fresh build lacks the `ladybird-tls` rpath.** The committed build script defaults to
+2. **SHIPPED BROKEN: `ladybird-wayland` 0.1.0+wl4 lacks the `ladybird-tls` rpath.**
+   Confirmed 2026-08-02 against the published deb's installed payload: `WebContent` and
+   `ladybird` carry only `@executable_path/../lib`, so `libcrypto` resolves to the base
+   3.2.1 and every helper dies at dyld on `_EVP_PKEY_sign_message_init`. **The wayland
+   browser cannot start a renderer for anyone who installs it.** It fails closed, so it is
+   not a weak-crypto exposure -- it is a dead browser.
+
+   Not a build-script bug: `prepend_tls_rpath` is correct and fails closed per binary, and
+   it landed in 879cfd7c *before* the wl4 bump in 1a5655b6. The deb simply reached users
+   without anything re-checking the property on the artifact. `bin/lib/check-ladybird-tls-rpath.py`
+   is now a publish gate for exactly that, and flags these binaries.
+
+   The `.app` flavor is unaffected: it links `@executable_path/lib/libcrypto.3.dylib` by
+   path and bundles OpenSSL 3.5.3 inside the bundle, so no rpath search happens.
+
+   Remedy is a rebuild + republish as `wl5` -- the packaging script needs no change. Do not
+   hand-patch the deb. Testing-only workaround meanwhile:
+   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:/var/jb/lib/angle`;
+   do not put that on a global launcher path, since the whole point of ladybird-tls is that
+   the private OpenSSL 3.5 shadows nothing.
+
+   (Original note, now superseded by the above.) **A fresh build lacks the `ladybird-tls` rpath.** The committed build script defaults to
    `0.1.0+wl1` and does not do the rpath prepend that published `wl2` has, so `libcrypto`
    resolves to base OpenSSL 3.2.1 and `_EVP_PKEY_sign_message_init` is missing at launch.
    Workaround for testing only:
