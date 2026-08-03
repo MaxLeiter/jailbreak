@@ -35,6 +35,12 @@ ifneq ($(wildcard $(BUILD_WORK)/boost-games/.build_complete),)
 boost-games:
 	@echo "Using previously built Boost game libraries."
 else
+# NOTE: keep every line of the cmake invocation below free of '#' comments. The
+# backslashes join it into ONE shell command, so a comment line silently eats
+# every argument after it -- which once dropped BOOST_INCLUDE_LIBRARIES, built
+# all of Boost, and failed in libs/process on wordexp being unavailable on iOS.
+# Wesnoth's find_package requires the graph component, and a subset build only
+# creates targets for the libraries named there.
 boost-games: boost-games-setup
 	cd $(BUILD_WORK)/boost-games/build && cmake .. -G Ninja \
 		$(DEFAULT_CMAKE_FLAGS) \
@@ -45,9 +51,28 @@ boost-games: boost-games-setup
 		-DCMAKE_CXX_STANDARD=17 \
 		-DCMAKE_CXX_STANDARD_REQUIRED=ON \
 		-DBOOST_ENABLE_CMAKE=ON \
-		-DBOOST_INCLUDE_LIBRARIES="atomic;chrono;context;coroutine;date_time;filesystem;iostreams;locale;program_options;random;regex;system;thread"
+		-DBOOST_INCLUDE_LIBRARIES="atomic;chrono;context;coroutine;date_time;filesystem;graph;iostreams;locale;program_options;random;regex;system;thread"
 	+ninja -C $(BUILD_WORK)/boost-games/build
 	+DESTDIR="$(BUILD_STAGE)/boost-games" ninja -C $(BUILD_WORK)/boost-games/build install
+	# A subset build installs headers ONLY for the libraries it compiles, but
+	# consumers pull in far more of Boost than they link. Wesnoth alone wanted
+	# process/v1/search_path.hpp, circular_buffer.hpp and logic/tribool.hpp, all
+	# header-only and none of them link components. Chasing those one build at a
+	# time is a treadmill, and adding them to BOOST_INCLUDE_LIBRARIES is worse:
+	# Boost.Process's compiled part cannot build for iOS at all
+	# (libs/process/src/shell.cpp uses wordexp/wordfree, both unavailable).
+	# So install every header and keep only the COMPILED set restricted, which
+	# is what an ordinary Boost distribution looks like. Headers cost build time
+	# nothing.
+	find $(BUILD_WORK)/boost-games/libs -type d -path '*/include/boost' | \
+		while read -r headers; do \
+			cp -a "$$headers/." \
+				$(BUILD_STAGE)/boost-games$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/boost/; \
+		done
+	for header in process/v1/search_path.hpp circular_buffer.hpp logic/tribool.hpp; do \
+		test -f "$(BUILD_STAGE)/boost-games$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/boost/$$header" || \
+			{ echo "ERROR: boost header $$header not staged" >&2; exit 1; }; \
+	done
 	$(call AFTER_BUILD,copy)
 endif
 

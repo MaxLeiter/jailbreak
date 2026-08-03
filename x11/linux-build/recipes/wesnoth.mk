@@ -5,16 +5,24 @@ endif
 SUBPROJECTS     += wesnoth
 WESNOTH_VERSION := 1.18.5
 DEB_WESNOTH_V   ?= $(WESNOTH_VERSION)+ios1
+# Bump when the patch series changes, so an existing source tree is
+# re-extracted and re-patched without needing a deb-version bump. Same
+# mechanism as OPENTTD_PATCH_REV.
+WESNOTH_PATCH_REV := 5
 
 wesnoth-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://downloads.sourceforge.net/project/wesnoth/wesnoth-1.18/wesnoth-$(WESNOTH_VERSION)/wesnoth-$(WESNOTH_VERSION).tar.bz2)
-	if [ ! -f "$(BUILD_WORK)/wesnoth/.xios_setup_$(DEB_WESNOTH_V)" ]; then \
+	if [ ! -f "$(BUILD_WORK)/wesnoth/.xios_setup_$(DEB_WESNOTH_V)_p$(WESNOTH_PATCH_REV)" ]; then \
 		rm -rf $(BUILD_WORK)/wesnoth $(BUILD_WORK)/wesnoth-$(WESNOTH_VERSION); \
 		cd $(BUILD_WORK) && \
 			tar -xf $(BUILD_SOURCE)/wesnoth-$(WESNOTH_VERSION).tar.bz2 && \
 			mv wesnoth-$(WESNOTH_VERSION) wesnoth; \
 		$(call DO_PATCH,wesnoth,wesnoth,-p1); \
-		touch "$(BUILD_WORK)/wesnoth/.xios_setup_$(DEB_WESNOTH_V)"; \
+		for probe in 'src/tls_root_store.cpp:!defined(__IPHONEOS__)' 'src/desktop/notifications.cpp:!defined(WESNOTH_XIOS)' 'src/desktop/battery_info.cpp:!defined(WESNOTH_XIOS)' 'src/desktop/version.cpp:!defined(WESNOTH_XIOS)' 'src/video.cpp:!defined(WESNOTH_XIOS)'; do \
+			grep -q "$${probe#*:}" "$(BUILD_WORK)/wesnoth/$${probe%%:*}" || \
+				{ echo "ERROR: wesnoth patch series did not apply to $${probe%%:*}" >&2; exit 1; }; \
+		done; \
+		touch "$(BUILD_WORK)/wesnoth/.xios_setup_$(DEB_WESNOTH_V)_p$(WESNOTH_PATCH_REV)"; \
 	fi
 	mkdir -p $(BUILD_WORK)/wesnoth/build
 

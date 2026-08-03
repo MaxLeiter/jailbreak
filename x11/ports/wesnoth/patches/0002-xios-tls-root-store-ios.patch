@@ -1,0 +1,33 @@
+Route the TLS root store to OpenSSL's default paths on iOS.
+
+Wesnoth's Apple branch calls SecTrustCopyAnchorCertificates() to enumerate the
+system trust store. That API is macOS-only -- it does not exist on iOS, where the
+build fails outright with "use of undeclared identifier". The Security framework
+header is fine to include; only this entry point is absent.
+
+The existing #else branch already does the portable thing, ctx.set_default_
+verify_paths(), so iOS takes that rather than growing a third implementation.
+Note the consequence: certificate verification then uses OpenSSL's configured CA
+bundle instead of the iOS system trust store, which is the same posture every
+other OpenSSL consumer in Xios already has.
+
+--- a/src/tls_root_store.cpp
++++ b/src/tls_root_store.cpp
+@@ -18,7 +18,7 @@
+ 
+ #ifdef _WIN32
+ #include <wincrypt.h>
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(__IPHONEOS__)
+ #include <Security/Security.h>
+ #endif
+ 
+@@ -53,7 +53,7 @@
+ 	CertCloseStore(hStore, 0);
+ 
+ 	SSL_CTX_set_cert_store(ctx.native_handle(), store);
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(__IPHONEOS__)
+ 	X509_STORE *store = X509_STORE_new();
+ 	CFArrayRef certs = NULL;
+ 	// copy all system certs

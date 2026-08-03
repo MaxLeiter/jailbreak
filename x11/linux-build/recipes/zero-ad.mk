@@ -29,11 +29,25 @@ zero-ad:
 	@echo "Using previously built 0 A.D."
 else
 zero-ad: zero-ad-setup sdl2 boost-games enet openal-soft
+	# premake and update-workspaces build HOST tools, so they must use the host
+	# compiler. Setting it in the environment is not enough: this recipe runs
+	# with CC=/CXX= as make COMMAND-LINE variables, which travel through
+	# MAKEFLAGS into every nested make and outrank the environment there. The
+	# bootstrap therefore compiled premake with the iOS cross clang and died on
+	# "'system' is unavailable: not available on iOS" -- a host tool failing a
+	# target restriction, which reads as a source problem rather than a leak.
+	# Clearing MAKEFLAGS/MFLAGS is what actually makes CC=/usr/bin/cc stick.
+	# The cross CFLAGS/CXXFLAGS/LDFLAGS are exported too, so the host compiler
+	# still received -miphoneos-version-min and refused it. Blank them for the
+	# host steps, the same way openttd.mk builds its host tools.
 	cd $(BUILD_WORK)/zero-ad/libraries/source/premake-core && \
-		env OS=Linux CC=/usr/bin/cc CXX=/usr/bin/c++ MAKE=/usr/bin/make \
+		env -u MAKEFLAGS -u MFLAGS \
+			OS=Linux CC=/usr/bin/cc CXX=/usr/bin/c++ MAKE=/usr/bin/make \
+			CFLAGS= CXXFLAGS= CPPFLAGS= LDFLAGS= \
 			JOBS=-j$(JOBS) ./build.sh
 	cd $(BUILD_WORK)/zero-ad/build/workspaces && \
-		env OS=Linux ./update-workspaces.sh \
+		env -u MAKEFLAGS -u MFLAGS \
+			CFLAGS= CXXFLAGS= CPPFLAGS= LDFLAGS= OS=Linux ./update-workspaces.sh \
 			--xios \
 			--gles \
 			--with-system-mozjs \

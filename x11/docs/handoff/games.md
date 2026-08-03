@@ -19,8 +19,21 @@ Xios app, iosc, SDL, and audio layers.
 
 ### Shared SDL foundation
 
-- `libsdl3-0 3.2.30+ios2`, `libsdl2-2.0-0 2.32.10+ios2`, and
-  `xios-sdl-smoke 1.0.1` are installed on the physical iPad.
+- **SDL2 is VENDORED as `xios-sdl2`, not shipped as `libsdl2-2.0-0`
+  (2026-08-02).** Built Wayland-only, it exports 836 symbols but none of
+  `_SDL_UIKitRunApp` or
+  `_SDL_OnApplicationDidChangeStatusBarOrientation`, both of which Procursus's
+  2.0.14 exports -- and `libsdl2-2.0-0` has Procursus reverse-dependencies
+  (`ffmpeg`, `libavdevice59`, and `powder`, a UIKit SDL app). Publishing under
+  that name would replace theirs repo-wide, the shape of the openssl incident.
+  It installs to `/var/jb/usr/lib/xios-sdl2` and the game wrappers reach it
+  through `DYLD_LIBRARY_PATH`; nothing else can resolve to it.
+  Proven by removing `libsdl2-2.0-0` from the iPad entirely and watching
+  OpenTTD still reach its menu: `game-openttd-vendored-sdl2/compositor.png`.
+  Do not re-add a `libsdl2-2.0-0` waiver; see `bin/lib/shadow-waivers.json`.
+- `libsdl3-0 3.2.30+ios2` needs no such treatment -- Procursus ships no SDL3.
+- `libsdl3-0 3.2.30+ios2` and `xios-sdl2 2.32.10+ios3` are installed on the
+  physical iPad.
 - SDL3 reached iosc/Wayland and ANGLE Metal with touch input:
   `api=SDL3 driver=wayland renderer=ANGLE (Apple, ANGLE Metal Renderer:
   Apple A10 GPU) version=OpenGL ES 3.0 touch=3`.
@@ -63,17 +76,40 @@ Xios app, iosc, SDL, and audio layers.
 
 ### Warzone 2100
 
-- `4.7.0+ios1` recipe, package, launcher, and target patch exist.
+- **Builds and runs on device (2026-08-02).** `4.7.0+ios2` cross-builds,
+  packages, host-DER signs, installs, and reaches its full 3D main menu on
+  hardware GLES: `OpenGL Renderer: ANGLE (Apple, ANGLE Metal Renderer: Apple
+  A10 GPU)`, zero-copy IOSurface, cross-process GPU fence, instanced rendering.
+  Evidence: `game-warzone2100-proof/compositor.png`.
 - The patch disables the macOS bundle/AppKit path while retaining the Darwin
   ABI and selects the Unix SDL3/GLES path.
-- Required local dependency recipes include OpenAL Soft and PhysicsFS.
-- Build and device proof remain open.
+- `+ios2` fixes a packaging bug that made `+ios1` unusable as installed:
+  `warzone2100.real` lives in `libexec/games`, so the data search it derives
+  from its own location never reaches `share/warzone2100` and the game aborted
+  with "Could not find game data" despite the 358 MB of data being installed
+  correctly. The wrapper now passes `--datadir` (override: `WZ2100_DATADIR`).
+- Needed `libvorbisfile3`, which came from **Procursus** -- do not install the
+  local `+ios1` rebuild, see the shadow note below.
+- OPEN: `+ios2` has not been launched on device yet (`+ios1` was, with the flag
+  passed by hand). OPEN: it renders but stutters audibly; thermal pressure is 0
+  and nothing else is running, so the live lead is the 2048x1536 render surface
+  -- the compositor forces fullscreen toplevels and ignores
+  `--window --resolution`.
 
 ### Battle for Wesnoth
 
 - `1.18.5+ios1` recipe, package, launcher, and target patch exist.
 - SDL2_image 2.8.12, SDL2_mixer 2.8.2, and compiled Boost game-library
   recipes cover its additional closure.
+- SDL2_image needed two fixes: the `os/object.h` sendable backport (it compiles
+  `IMG_ImageIO.m`, so any Foundation include pulls the newer `xpc/session.h`),
+  and `-DSDL2IMAGE_BACKEND_IMAGEIO=OFF`, because the Apple backend links
+  macOS-only `ApplicationServices`. System libpng/libjpeg cover the formats.
+- Boost must build at C++17 (ICU 78's headers use `std::is_same_v` and
+  `if constexpr`) and must include the `graph` component, which Wesnoth's
+  `find_package` requires.
+- Source is a 462 MB bz2 and truncated repeatedly on a flaky connection; see
+  the download gotcha below.
 - Build and device proof remain open.
 
 ### 0 A.D.
@@ -119,6 +155,32 @@ does not count as game proof: require a non-black compositor capture plus a
 game-specific startup log or visible main menu.
 
 ## Gotchas
+
+- **Never publish the `+ios1` stamps of stock Procursus recipes.**
+  `build-games.sh` blanket-stamps `+ios1` onto libogg, libvorbis, libopus,
+  libtheora, libsodium, libzip and openssl. The device already has every one of
+  those from Procursus at the same upstream version, so each is a shadow at a
+  bumped deb revision that adds nothing -- including an openssl one, the exact
+  package whose shadow bricked `sshd`/`apt` before. Warzone runs fine against
+  the stock Procursus versions; they are build-time conveniences only.
+- **A dropped download does not fail, it truncates.** Procursus'
+  `DOWNLOAD_FILES` neither verifies nor re-fetches and skips any file that
+  already exists, so an interrupted transfer leaves a partial archive that tar
+  unpacks *partially* and every later run reuses. Boost presented as a CMake
+  subset-build misconfiguration (`Boost::config` not found, because
+  `libs/config` was never written) and Wesnoth as a bz2 error. `build-games.sh`
+  now integrity-tests every cached archive up front and deletes the bad ones,
+  but on an unreliable link prefer fetching large sources on the host with
+  `curl --retry ... --speed-limit` and copying them into the volume.
+- **Do not put `#` comments inside a recipe's `cmake` invocation.** The
+  backslashes join it into one shell command, so a comment line silently eats
+  every argument after it. One in `boost-games.mk` dropped
+  `BOOST_INCLUDE_LIBRARIES`, built all of Boost, and surfaced as `wordexp is
+  unavailable` in `libs/process` -- a failure that invites patching the wrong
+  thing entirely.
+- Collection into `linux-build/out/` happens *after* the whole target loop, so
+  a run that dies on a late target leaves every earlier package stranded in the
+  volume. Re-run with only the already-built targets to collect them.
 
 - Do not run two containers against `procursus-vol-wayland`. Dependency staging
   changes header mtimes and invalidates live precompiled headers.
