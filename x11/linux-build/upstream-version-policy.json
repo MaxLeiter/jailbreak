@@ -3,7 +3,12 @@
     {
       "match": "linux-build/recipes/qt*.mk:*_VERSION",
       "track": "6.6",
-      "hold": "Qt 6.6 is the validated iOS toolchain and KDE ABI cohort; upgrade it as one lane."
+      "hold": "Qt 6.6 is the validated iOS toolchain and KDE ABI cohort; upgrade it as one lane.",
+      "source": {
+        "kind": "git",
+        "url": "https://code.qt.io/qt/qt5.git",
+        "regex": "v(?P<version>6\\.[0-9]+\\.[0-9]+)"
+      }
     },
     {
       "match": [
@@ -40,6 +45,14 @@
       "match": "linux-build/recipes/ffmpeg.mk:FFMPEG_VERSION",
       "track": "5.1",
       "hold": "FFmpeg is an ABI-sensitive shared dependency; upgrade its consumers as a cohort."
+    },
+    {
+      "match": [
+        "linux-build/recipes-ladybird/openssl.mk:OPENSSL_VERSION",
+        "linux-build/recipes-ladybird/curl.mk:CURL_VERSION",
+        "linux-build/recipes-ladybird/nghttp2.mk:NGHTTP2_VERSION"
+      ],
+      "note": "Security-relevant: keep updating, but this TLS stack is VENDORED as ladybird-tls precisely so it stops shadowing base openssl (a base libssl3 3.5.x once broke sshd and apt on device). A bump must stay vendored and keep resolving via DYLD_LIBRARY_PATH, and must not reintroduce a Procursus shadow."
     },
     {
       "match": "linux-build/recipes/krita.mk:KRITA_*",
