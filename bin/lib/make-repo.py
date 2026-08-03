@@ -1390,7 +1390,7 @@ def write_index(pkgs):
 {sections_html}
   </section>
   <p class="no-results" id="noResults">No matching packages.</p>
-  <footer><a href="https://maxleiter.com">maxleiter.com</a><span>{ARCH}</span></footer>
+  <footer><a href="https://maxleiter.com">maxleiter.com</a></footer>
 </div>{INDEX_JS}{THEME_JS}{ANALYTICS_JS}</body></html>"""
     open(os.path.join(REPO, "index.html"), "w").write(page)
 
