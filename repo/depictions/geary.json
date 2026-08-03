@@ -10,6 +10,13 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
+          "markdown": "**Security notice.** Geary renders HTML email through `libwebkit2gtk-4.1-0`, pinned to WebKitGTK **2.44** \u2014 a series upstream no longer issues security fixes for. Every WebKitGTK advisory since the 2.46 branch is unapplied.\n\nHTML email is attacker-chosen content that arrives unsolicited, so this is a lower bar to clear than visiting a bad site. The pin exists because 2.46+ need C++23 features the iOS Clang 14 toolchain does not have.\n\nIf you use it, prefer plain-text display and be wary of mail from senders you do not know."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionMarkdownView",
           "markdown": "Geary email client for the Xios GNOME desktop\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/geary)"
         },
         {
