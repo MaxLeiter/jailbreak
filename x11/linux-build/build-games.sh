@@ -51,7 +51,7 @@ EOF
 chmod +x /usr/local/bin/wayland-scanner
 
 echo "==> installing game recipes, controls, and patches"
-for recipe in sdl2.mk sdl3.mk sdl2-image.mk sdl2-mixer.mk openal-soft.mk physfs.mk boost-games.mk enet.mk fribidi.mk openttd.mk warzone2100.mk wesnoth.mk zero-ad.mk xios-sdl-smoke.mk; do
+for recipe in sdl2.mk sdl3.mk sdl2-image.mk sdl2-mixer.mk openal-soft.mk physfs.mk boost-games.mk enet.mk fribidi.mk libsodium.mk openttd.mk warzone2100.mk wesnoth.mk zero-ad.mk xios-sdl-smoke.mk; do
   cp -v "/work/recipes/$recipe" makefiles/
 done
 # These are stock Procursus recipes whose source is already portable. Mark the
@@ -64,6 +64,15 @@ sed -E -i 's|^(DEB_LIBTHEORA_V[[:space:]]+\?=[[:space:]]+\$\(LIBTHEORA_VERSION\)
 sed -E -i 's|^(DEB_LIBSODIUM_V[[:space:]]+\?=[[:space:]]+\$\(LIBSODIUM_VERSION\))$|\1+ios1|' makefiles/libsodium.mk
 sed -E -i 's|^(DEB_LIBZIP_V[[:space:]]+\?=[[:space:]]+\$\(LIBZIP_VERSION\))$|\1+ios1|' makefiles/libzip.mk
 sed -E -i 's|^(DEB_OPENSSL_V[[:space:]]+\?=[[:space:]]+\$\(OPENSSL_VERSION\))$|\1+ios1|' makefiles/openssl.mk
+# The original libzip host is not reliably reachable from the arm64 build
+# container, and OpenSSL's old source URL now redirects through its GitHub
+# release assets. Use the projects' official GitHub release payloads directly.
+sed -E -i \
+  's|https://libzip\.org/download/libzip-\$\(LIBZIP_VERSION\)\.tar\.gz|https://github.com/nih-at/libzip/releases/download/v$(LIBZIP_VERSION)/libzip-$(LIBZIP_VERSION).tar.gz|' \
+  makefiles/libzip.mk
+sed -E -i \
+  's|https://www\.openssl\.org/source/openssl-\$\(OPENSSL_VERSION\)\.tar\.gz|https://github.com/openssl/openssl/releases/download/openssl-$(OPENSSL_VERSION)/openssl-$(OPENSSL_VERSION).tar.gz|' \
+  makefiles/openssl.mk
 for recipe in libogg libvorbis libopus libtheora libsodium libzip openssl; do
   grep -Eq '^DEB_[A-Z0-9_]+_V[[:space:]]+\?=.*\+ios1$' "makefiles/$recipe.mk"
 done
@@ -84,7 +93,7 @@ cp -v /work/recipes/build_info/xios-sdl-smoke.control \
   /work/recipes/build_info/0ad.control \
   /work/recipes/build_info/0ad.desktop \
   build_info/
-for package in sdl2 sdl3 openttd warzone2100 wesnoth 0ad; do
+for package in sdl2 sdl3 physfs openttd warzone2100 wesnoth 0ad; do
   bash /work/recipes/stage-port-patches.sh "$package" /work/ports build_patch
 done
 
@@ -171,6 +180,34 @@ exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
+# --- iOS SDK os/object.h fix (unblocks Apple ObjC framework probes) ----------
+# Same backport build-wayland-apps.sh already carries, needed here because
+# SDL2_image compiles IMG_ImageIO.m: any Foundation -> NSXPCConnection include
+# pulls the newer xpc/session.h, whose OS_OBJECT_DECL_SENDABLE_* macros this
+# 16.5 SDK's os/object.h predates. Without them xpc_session_t is never declared
+# and every ObjC translation unit fails with "unknown type name". Alias to the
+# non-sendable forms (identical expansion on the C/ObjC, non-Swift path). Only
+# the ephemeral container's SDK copy is touched; --rm discards it. Idempotent.
+OSOBJ=/root/cctools/SDK/iPhoneOS16.5.sdk/usr/include/os/object.h
+if [ -f "$OSOBJ" ] && ! grep -q OS_OBJECT_DECL_SENDABLE_CLASS "$OSOBJ"; then
+  echo "==> backporting OS_OBJECT_DECL_SENDABLE_* into $OSOBJ"
+  cat >> "$OSOBJ" <<'EOF'
+
+/* XIOS: backport OS_OBJECT_DECL_SENDABLE_* (this 16.5 SDK os/object.h predates
+ * them, but its newer xpc/session.h requires them; alias to the non-sendable
+ * forms -- identical C/ObjC path). */
+#ifndef OS_OBJECT_DECL_SENDABLE_CLASS
+#define OS_OBJECT_DECL_SENDABLE_CLASS(name) OS_OBJECT_DECL_CLASS(name)
+#endif
+#ifndef OS_OBJECT_DECL_SENDABLE_SWIFT
+#define OS_OBJECT_DECL_SENDABLE_SWIFT(name) OS_OBJECT_DECL_SWIFT(name)
+#endif
+#ifndef OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT
+#define OS_OBJECT_DECL_SENDABLE_SUBCLASS_SWIFT(name, super) OS_OBJECT_DECL_SUBCLASS_SWIFT(name, super)
+#endif
+EOF
+fi
+
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
   CC=/work/Procursus/build_tools/cc-nounused \
   CXX=/work/Procursus/build_tools/cxx-nounused"
@@ -186,8 +223,16 @@ fi
 if [ "${FORCE_GAME_DEPS_REBUILD:-0}" = "1" ]; then
   rm -f \
     "$XIOS_BUILD_WORK/openal-soft/.build_complete" \
-    "$XIOS_BUILD_WORK/physfs/.build_complete"
+    "$XIOS_BUILD_WORK/physfs/.build_complete" \
+    "$XIOS_BUILD_WORK/enet/.build_complete" \
+    "$XIOS_BUILD_WORK/boost-games/.build_complete"
 fi
+# Surgical resume: rebuild only the named subprojects after a recipe fix,
+# without discarding the rest of an expensive dependency wave.
+for subproject in ${FORCE_REBUILD:-}; do
+  echo "==> forcing rebuild of $subproject"
+  rm -f "$XIOS_BUILD_WORK/$subproject/.build_complete"
+done
 
 for target in $TARGETS; do
   if [ "$target" = "sdl2-image-package" ]; then

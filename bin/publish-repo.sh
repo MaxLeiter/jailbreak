@@ -455,6 +455,10 @@ else
   if [ "$PROFILE" = rootless ]; then
     "$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
   fi
+  # Ladybird's @rpath OpenSSL must resolve to the vendored ladybird-tls 3.5, not the
+  # base 3.2.1. Born from wl4, which shipped without the rpath prepend and could not
+  # start a renderer at all. Both profiles: it no-ops when no ladybird debs are staged.
+  "$PY" "$REPO_ROOT/bin/lib/check-ladybird-tls-rpath.py" --debs "$PROFILE_REPO_DIR/debs"
 
   AFTER_INDEX="$(snapshot_debs)"
   if [ "$BEFORE" != "$AFTER_INDEX" ]; then

@@ -51,7 +51,16 @@
     </array>
 
     <!-- FS closure the helpers touch: engine resources (/var/jb/share/Lagom or the in-bundle
-         copy), TLS certs, the IPC socket dir, cookie/cache stores. -->
+         copy), TLS certs, the IPC socket dir, cookie/cache stores.
+
+         READ THIS AS DOCUMENTATION, NOT AS A BOUNDARY. `com.apple.security.exception.*` keys
+         are App Sandbox *exceptions*: they widen a profile that is already applied. No profile
+         is applied to these helpers (see docs/ladybird-sandbox-confinement.md), so this key
+         grants nothing and restricts nothing -- the helpers simply run with everything the
+         `mobile` user can reach. Narrowing this list therefore buys no confinement on its own;
+         it only stops being a lie once a profile is actually applied. The real exposure is
+         that a WebContent compromise can write anywhere under /var/jb, which is a persistence
+         primitive for the whole desktop stack. -->
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
         <string>/var/jb/</string>

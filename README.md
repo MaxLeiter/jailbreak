@@ -16,8 +16,7 @@ opening a PR.
 
 It's largely rootless only. Everything builds with
 `THEOS_PACKAGE_SCHEME = rootless`, installs under `/var/jb`, and is packaged as
-`iphoneos-arm64`. I test on an iPad running iPadOS 17.6.1, so that's the setup I
-know works.
+`iphoneos-arm64`. I test on an iPad running iPadOS 17.6.1.
 
 ## What you need
 

@@ -14,7 +14,7 @@ done
 
 X11DIR="$(cd "$PKGDIR/../.." && pwd)"
 OUT="${OUT:-$X11DIR/linux-build/out}"
-VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl4}"
+VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl5}"
 INSTALL_ROOT="${LADYBIRD_WAYLAND_INSTALL_ROOT:-$OUT/ladybird-wayland-install}"
 APP_ENTS="$X11DIR/linux-build/build_info/iosc-gpu-client-ent.xml"
 ICON_SRC="$X11DIR/packages/ladybird-app/Resources/AppIcon.png"

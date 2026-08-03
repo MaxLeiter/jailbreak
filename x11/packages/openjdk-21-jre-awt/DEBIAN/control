@@ -1,6 +1,6 @@
 Package: openjdk-21-jre-awt
 Name: OpenJDK 21 AWT/X11 Runtime
-Version: 21.0.12+ios1
+Version: 21.0.12+ios2
 Architecture: iphoneos-arm64
 Depends: libiosexec1 (>= 1.3.1), libx11-6, libxext6, libxrender1, libxi6, libxtst6, libfontconfig1
 Recommends: xwayland, libxrandr2, libxinerama1, libxcomposite1
