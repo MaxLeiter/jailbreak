@@ -289,3 +289,131 @@ Anything Max is meant to install, or that a flavor depends on, goes out as the p
   while the separate app record became `kwrite/submitted`. Physical UIKit
   tap-through remains open because the app foreground attempt stayed at
   `holding-frame awaiting iosurface` / `input-not-connected`.
+
+## 2026-08-03 iPadOS system integration: App Intents + share sheet — BUILDS, NOT DEVICE VERIFIED
+
+Wires the app into two iPadOS integration points so the desktop stops being a
+sealed box: Shortcuts/Siri in, and the share sheet in. Both are clients of the
+control paths that already existed — no new launch mechanism, and the
+"socket clients never supply executable text" invariant is preserved.
+
+**Status: host-built and packaged (`com.max.xios 0.1.12`), NOT verified on the
+iPad.** The device was unreachable for this work (no USB, no Bonjour, nothing on
+`10.0.0.0/24:22`), so nothing below has been exercised with real Siri, a real
+share, or a real appex process. `x11/artifacts/device-runs/` has no bundle for
+this change on purpose — see "What device verification must still answer".
+
+### Half A — App Intents (`Sources/XiosIntents.swift`)
+
+Three intents, plus `AppShortcutsProvider` phrases:
+- **Open Desktop** — optional `DesktopFlavor` parameter (iosc / gnome / kde /
+  mutter / native). With a flavor it sends plain `SESSION` (an explicit user
+  switch). With no flavor it does NOT tear anything down: if a session is already
+  `up`/`compositor-only` it just foregrounds the app, otherwise it starts `iosc`
+  with `SESSION_ENSURE`.
+- **Open App on Desktop** — `DesktopAppEntity` backed by a live `APPS_LIST`
+  query, so the app list comes from the device rather than a hardcoded set.
+  `EntityStringQuery` lets the user say the display name. Sends `LAUNCH\t<app_id>`.
+- **Desktop Status** — reads `xios-session-status.json` for which flavor is up,
+  and ioscd `STATUS` for pacing/upscale. Distinguishes "no desktop" from "no
+  daemon", which are very different problems.
+
+**THE LOAD-BEARING DESIGN DECISION: these are in-process intents, NOT an App
+Intents Extension.** ioscd's `peer_is_xios_app()` resolves the connecting process
+with `proc_pidpath` and accepts it only if the path ends `/Xios.app/Xios`. An
+extension is a different process at `.../Xios.app/PlugIns/<Name>.appex/<Name>`,
+which does not match, so it would silently fall back to ENSURE semantics: "open
+the GNOME desktop" while KDE was healthy would return
+`ERR active session is healthy` and the intent would appear to work while doing
+nothing. Compiling the intents into the app keeps the socket peer the binary
+ioscd already trusts to speak for the user. **Do not "clean this up" by moving
+the intents into an extension.**
+
+### Half B — share extension (`XiosShare/`)
+
+A `com.apple.share-services` appex accepting a web URL, a file, or text.
+
+`LAUNCH` structurally cannot carry a URL: `xios_desktop_entry_argv()`
+deliberately drops the `%f`/`%u` field codes because a Home Screen tap supplies
+no files. So ioscd gained a new verb rather than a new field:
+
+```
+OPEN_URL\t<url>\n   ->  OPENED\n | ERR <msg>\n
+```
+
+The invariant is kept because the URL is data, never a command:
+- the handler is a FIXED path (`<jbroot>/usr/bin/xdg-open`), never named by the
+  client, and trust-checked (regular file, root-owned, not group/other-writable)
+  the same way a `.desktop` is;
+- it is `execv`'d, so no shell parses the string;
+- the URL is one argv element, and the scheme allowlist (http/https/file/mailto)
+  guarantees it cannot start with `-` and be read as an option.
+
+A client sending `http://x; rm -rf ~` gets that literal text handed to a browser
+as a bad URL, not a command.
+
+### The appex sandbox question — probed at RUNTIME, both outcomes handled
+
+An appex is a separate process with its own sandbox and does NOT inherit the
+app's entitlements, so its ability to reach `/var/jb/tmp/ioscd.sock` had to be
+granted separately in `XiosShare/entitlements.plist`. That file is a near-copy of
+`iosc-desktop/launcher-ent.xml` — the minimal device-proven set for "a mobile-uid
+process whose only privileged act is connecting to the ioscd socket"
+(`com.apple.private.security.no-container` plus the absolute-path exceptions).
+It deliberately does NOT copy the app's entitlements: the extension has no
+business holding camera/mic TCC or the GPU IOKit user-client classes.
+
+**Whether `no-container` is honored for an *extension* is unverified.** Rather
+than betting on it, `XiosShare/XiosSandboxProbe.swift` answers it at runtime on
+every share and the extension takes one of two routes:
+1. **direct** — connect and send `OPEN_URL`. No app switch.
+2. **fallback** — hand the URL to the app via `xios://open?url=…` through
+   `NSExtensionContext.open`; `AppDelegate.handleXiosURL` makes the same call
+   from the process that can reach the socket.
+
+The probe separates EPERM/EACCES (sandbox denial — forces the fallback) from
+ENOENT/ECONNREFUSED (ioscd simply not running), writes its report into the share
+sheet's own view, and `os_log`s it, so a device run produces evidence either way.
+The fallback is not dead weight even if the direct path works: ioscd being down
+lands there too.
+
+### Packaging fix (this was a real latent bug)
+
+`bin/lib/build-app.sh` only ldid-signed the top-level Mach-O, and
+`bin/package-app.sh` chmod'd only the top-level binary 0755 — so ANY nested
+`.appex` would have shipped unsigned and non-executable. Neither fails the build
+or the install; the extension just never loads and never appears in the share
+sheet. Both are fixed: nested bundles are signed first (each with its own
+entitlements, resolved from `<app_dir>/<Ext>/entitlements.plist`), then the outer
+app, and staged appex binaries get 0755.
+
+Verified on the built artifact: `XiosShare.appex/XiosShare` is 0755, its
+signature carries `no-container` + the `/var/jb/tmp/` exceptions and none of the
+app's camera/GPU entitlements, and both survive `dpkg-deb -x` round-trip.
+
+### What device verification must still answer
+
+1. **The gating one:** does the appex reach `/var/jb/tmp/ioscd.sock`? Share a
+   Safari URL and read the probe verdict in the sheet (or
+   `idevicesyslog | grep com.max.xios.share`). If it says SANDBOXED, the direct
+   path is dead and the fallback is the only route — which is already the
+   shipped behavior, but the doc should then say so definitively.
+2. **Siri phrases.** The build emits `Metadata.appintents/` with
+   `extract.actionsdata`, but no `nlu/` or `root.ssu.yaml` — there is no
+   `AppIntentsSSUTraining` phase in the generated project. Intents should still
+   enumerate in the Shortcuts app; whether *spoken* phrases match is unverified.
+   If they don't, that phase is the thing to add.
+3. **`xdg-open` presence.** No `xdg-utils` deb exists in `repo/debs/`, and the
+   control file does not depend on it. If `/var/jb/usr/bin/xdg-open` is absent,
+   `OPEN_URL` answers `ERR no trusted xdg-open on this device` (graceful, but the
+   feature does nothing). Check the device; consider a `Recommends:`.
+4. Destructive-switch authority actually holding for an intent run from Siri
+   while a *different* healthy desktop is up — the whole reason the intents are
+   in-process. `/var/jb/tmp/ioscd.log` records the peer path per request.
+5. FrontBoard relaunch throttle: intents foreground the app
+   (`openAppWhenRun`), so repeated Shortcuts runs are exactly the pattern that
+   trips it. `sbreload` clears it.
+
+Nothing here has been published. `bin/package-app.sh x11/apps/Xios` produced
+`repo/debs/com.max.xios_0.1.12_iphoneos-arm64.deb`; publishing is a separate,
+explicit step.

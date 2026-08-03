@@ -31,6 +31,42 @@ build_app() {
   app="$app_dir/build/Build/Products/Release-iphoneos/${app_name}.app"
   [ -d "$app" ] || { echo "build_app: build did not produce $app" >&2; return 1; }
 
+  # Nested bundles first, outer app last. An app extension is a SEPARATE Mach-O
+  # that AMFI validates on its own: an unsigned .appex does not fail the build and
+  # does not fail the install — it silently never loads (no share sheet entry, no
+  # crash log), which is a miserable thing to debug. Each .appex gets its own
+  # entitlements, because it is its own sandboxed process and does not inherit the
+  # host app's.
+  #
+  # Entitlements for PlugIns/<Ext>.appex are looked up as, in order:
+  #   <app_dir>/<Ext>/entitlements.plist   (per-extension source dir — preferred)
+  #   <app_dir>/<Ext>.entitlements
+  # An extension with neither is signed bare (ldid -S) rather than inheriting the
+  # app's: the app's entitlements name app-only things (camera/mic TCC, GPU IOKit
+  # user clients) that an extension has no business carrying.
+  if [ -d "$app/PlugIns" ]; then
+    for appex in "$app"/PlugIns/*.appex; do
+      [ -d "$appex" ] || continue
+      local ext_name ext_bin ext_ent cand
+      ext_name="$(basename "$appex" .appex)"
+      ext_bin="$appex/$ext_name"
+      [ -f "$ext_bin" ] || { echo "build_app: $appex has no $ext_name binary" >&2; return 1; }
+
+      ext_ent=""
+      for cand in "$app_dir/$ext_name/entitlements.plist" "$app_dir/$ext_name.entitlements"; do
+        [ -f "$cand" ] && { ext_ent="$cand"; break; }
+      done
+
+      if [ -n "$ext_ent" ]; then
+        echo "==> Pseudo-signing extension $ext_name (${ext_ent##*/})" >&2
+        ldid -S"$ext_ent" "$ext_bin" >&2
+      else
+        echo "==> Pseudo-signing extension $ext_name (no entitlements)" >&2
+        ldid -S "$ext_bin" >&2
+      fi
+    done
+  fi
+
   echo "==> Pseudo-signing with ldid" >&2
   if [ -f "$app_dir/entitlements.plist" ]; then
     ldid -S"$app_dir/entitlements.plist" "$app/${app_name}" >&2

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Entitlements for the share extension (XiosShare.appex).
+
+         An app extension is its OWN process with its OWN sandbox and it does NOT
+         inherit the host app's entitlements, so the ability to reach the ioscd
+         control socket has to be granted here separately. This is deliberately a
+         near-copy of iosc-desktop/launcher-ent.xml — the minimal, device-proven
+         set for "a mobile-uid process whose only privileged act is connect()ing
+         to /var/jb/tmp/ioscd.sock".
+
+         It is NOT a copy of the app's entitlements.plist: the extension has no
+         business carrying the camera/microphone TCC grants or the GPU IOKit user
+         classes, because it never renders and never captures.
+
+         OPEN QUESTION until device-probed: whether no-container is honored for an
+         *extension* at all. XiosSandboxProbe answers this at runtime and the
+         extension falls back to routing through the host app if not. -->
+
+    <!-- ldid pseudo-signs this; AMFI needs to be told to run the non-platform binary. -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <key>get-task-allow</key>
+    <true/>
+
+    <!-- Without these the extension's sandbox blocks connect() to the socket.
+         Path exceptions cover rootless /var/jb/tmp and rootful /var/tmp, with the
+         /private aliases because that is what the kernel actually resolves. -->
+    <key>com.apple.private.security.no-container</key>
+    <true/>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/jb/tmp/</string>
+        <string>/private/var/jb/tmp/</string>
+        <string>/var/tmp/</string>
+        <string>/private/var/tmp/</string>
+    </array>
+</dict>
+</plist>

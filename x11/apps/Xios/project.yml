@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.11"
+    MARKETING_VERSION: "0.1.12"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -40,6 +40,9 @@ targets:
     settings:
       base:
         TARGETED_DEVICE_FAMILY: "2"          # iPad
+    dependencies:
+      - target: XiosShare
+        embed: true
     sources:
       - path: Sources
       - path: ../shared/XiosHardwareKeyboard.swift
@@ -55,8 +58,18 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.11"
+        CFBundleShortVersionString: "0.1.12"
         UILaunchScreen: {}
+        # Fallback route for the share extension. An appex cannot reach the host
+        # app's memory, and if its sandbox denies /var/jb/tmp it cannot reach
+        # ioscd either — so it hands the URL back through this scheme and the app
+        # (which can reach the socket) performs the OPEN_URL. See
+        # XiosShare/ShareViewController.swift and AppDelegate's handler.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.max.xios.open
+            CFBundleTypeRole: Viewer
+            CFBundleURLSchemes:
+              - xios
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
         UIViewControllerBasedStatusBarAppearance: false
@@ -71,3 +84,57 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+
+  # Share sheet -> Linux desktop. A SEPARATE PROCESS with a separate sandbox and
+  # its own entitlements (XiosShare/entitlements.plist); it reaches the desktop
+  # only through /var/jb/tmp/ioscd.sock, never through the app's memory.
+  #
+  # It re-uses the app's socket/paths/models sources rather than duplicating them.
+  # Listing individual files (not `path: Sources`) keeps the appex from pulling in
+  # XScreen.swift and the whole UIKit compositor surface.
+  #
+  # bin/lib/build-app.sh pseudo-signs this nested bundle with its own entitlements
+  # before signing the outer app; bin/package-app.sh chmods its binary 0755. An
+  # appex that is unsigned or non-executable does not error — it silently never
+  # loads and simply never appears in the share sheet.
+  XiosShare:
+    type: app-extension
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "2"          # iPad
+        PRODUCT_BUNDLE_IDENTIFIER: com.max.xios.share
+        PRODUCT_NAME: XiosShare
+        CODE_SIGN_ENTITLEMENTS: XiosShare/entitlements.plist
+        # The app target's bridging header and IOSurface/Metal/MetalFX link flags
+        # are meaningless here; reset them so the extension links lean.
+        SWIFT_OBJC_BRIDGING_HEADER: ""
+        OTHER_LDFLAGS: ""
+    sources:
+      # excludes: these are build INPUTS, not payload. Without this xcodegen puts
+      # them in Copy Bundle Resources and the signed .appex ships its own
+      # entitlements file inside itself.
+      - path: XiosShare
+        excludes:
+          - entitlements.plist
+          - Info.generated.plist
+      - path: Sources/XiosSocket.swift
+      - path: Sources/XiosRuntimePaths.swift
+      - path: Sources/XiosControl.swift
+      - path: Sources/XiosDisplayModels.swift
+    info:
+      path: XiosShare/Info.generated.plist
+      properties:
+        CFBundleDisplayName: Open on Desktop
+        CFBundleShortVersionString: "0.1.12"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          # @objc(ShareViewController) pins the ObjC name, so no module prefix.
+          NSExtensionPrincipalClass: ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              # A link from Safari, or a file from Files. Text is accepted too
+              # because a shared string is often just a URL.
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsFileWithMaxCount: 1
+              NSExtensionActivationSupportsText: true

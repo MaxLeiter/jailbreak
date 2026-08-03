@@ -71,6 +71,17 @@ EOF
 find "$STAGE" -type d -exec chmod 0755 {} +
 find "$STAGE/var" -type f -exec chmod 0644 {} +
 chmod 0755 "$STAGE/var/jb/Applications/${APP_NAME}.app/${APP_NAME}"
+# Nested app-extension binaries need +x too. The blanket 0644 above would
+# otherwise ship every .appex non-executable, which (like an unsigned appex)
+# fails silently: the extension simply never appears in the share sheet.
+STAGED_APP="$STAGE/var/jb/Applications/${APP_NAME}.app"
+if [ -d "$STAGED_APP/PlugIns" ]; then
+  for appex in "$STAGED_APP"/PlugIns/*.appex; do
+    [ -d "$appex" ] || continue
+    ext_bin="$appex/$(basename "$appex" .appex)"
+    [ -f "$ext_bin" ] && chmod 0755 "$ext_bin"
+  done
+fi
 chmod 0755 "$STAGE/DEBIAN/postinst" "$STAGE/DEBIAN/postrm"
 
 # Build the .deb into repo/debs/ (xmkdeb picks dpkg-deb-as-root or the container).

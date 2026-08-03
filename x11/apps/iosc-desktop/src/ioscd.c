@@ -19,6 +19,10 @@
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
  *     APP_DISABLE\t<app_id>\n             -> status + APPS_END\t<status>\n
  *     A11Y_STATE\t<0|1>\n                 -> A11Y_OK\n | ERR <msg>\n
+ *     OPEN_URL\t<url>\n                   -> OPENED\n | ERR <msg>\n
+ *                                            (share-sheet handoff; scheme
+ *                                             allowlisted, exec'd via a trusted
+ *                                             xdg-open as one argv element)
  *     STATUS\n                            -> <producer>\t<key>\t<value> lines
  *                                            + STATUS_END\t<count>\n
  *
@@ -132,6 +136,7 @@ static char g_xios_session_bin[PATH_MAX];
 static char g_xios_session_bin_fallback[PATH_MAX];
 static char g_xios_launcher_sync[PATH_MAX];
 static char g_uiopen_bin[PATH_MAX];
+static char g_xdg_open[PATH_MAX];
 static char g_bash_bin[PATH_MAX];
 static char g_dbus_run[PATH_MAX];
 static char g_dbus_daemon[PATH_MAX];
@@ -243,6 +248,7 @@ static void init_paths(void)
     prefixed_path(g_xios_session_bin_fallback, sizeof(g_xios_session_bin_fallback), "/usr/bin/xios-session");
     prefixed_path(g_xios_launcher_sync, sizeof(g_xios_launcher_sync), "/usr/local/bin/xios-launcher-sync");
     prefixed_path(g_uiopen_bin, sizeof(g_uiopen_bin), "/usr/bin/uiopen");
+    prefixed_path(g_xdg_open, sizeof(g_xdg_open), "/usr/bin/xdg-open");
     prefixed_path(g_bash_bin, sizeof(g_bash_bin), "/usr/bin/bash");
     prefixed_path(g_dbus_run, sizeof(g_dbus_run), "/usr/bin/dbus-run-session");
     prefixed_path(g_dbus_daemon, sizeof(g_dbus_daemon), "/usr/bin/dbus-daemon");
@@ -1693,6 +1699,161 @@ static int peer_can_launch(const struct peer_info *peer)
     return peer->uid == 0 || peer->uid == mobile_uid;
 }
 
+/*
+ * OPEN_URL — the iOS share sheet handing the Linux desktop a link or a file.
+ *
+ * THE INVARIANT THIS MUST NOT BREAK: a socket client never supplies executable
+ * text. LAUNCH honors that by taking an app id and resolving it to a trusted
+ * root-owned .desktop itself; note that xios_desktop_entry_argv deliberately
+ * DROPS the %f/%u field codes, so LAUNCH structurally cannot carry a URL. That
+ * is why this is a separate verb rather than an extra field on LAUNCH.
+ *
+ * The URL here is DATA, never a command:
+ *   - the handler is a FIXED path (<jbroot>/usr/bin/xdg-open), never named by
+ *     the client, and it is trust-checked (root-owned, not group/other-writable)
+ *     the same way a desktop entry is;
+ *   - it is exec'd with execv, so no shell ever parses the string;
+ *   - the URL is passed as exactly ONE argv element, and the scheme allowlist
+ *     below guarantees it cannot begin with '-', so it can never be read as an
+ *     option to xdg-open.
+ * A client that sends "http://x; rm -rf ~" gets one argv element containing that
+ * literal text handed to a browser, which is a bad URL — not a command.
+ */
+/* Defined just below handle_launch_request, used here for the log line. */
+static void sanitized_copy(char *dst, size_t dst_len, const char *src);
+
+static const char *const g_url_schemes[] = { "http", "https", "file", "mailto", NULL };
+
+static int url_is_openable(const char *url)
+{
+    size_t len = strlen(url);
+    if (len == 0 || len >= 4096) return 0;
+
+    /* Control characters, raw whitespace and shell-looking bytes have no place
+     * in a percent-encoded URL. Rejecting them keeps anything surprising out of
+     * the log line below, and out of argv. */
+    for (const unsigned char *p = (const unsigned char *)url; *p; p++)
+        if (*p < 0x21 || *p == 0x7f) return 0;
+
+    for (int i = 0; g_url_schemes[i]; i++) {
+        size_t n = strlen(g_url_schemes[i]);
+        if (strncasecmp(url, g_url_schemes[i], n) == 0 && url[n] == ':')
+            return 1;
+    }
+    return 0;
+}
+
+/* Regular file, root-owned, not writable by group or other — the same bar
+ * xios-desktop-entry.c holds a .desktop to before trusting its Exec. */
+static int handler_is_trusted(const char *path)
+{
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    if (!S_ISREG(st.st_mode)) return 0;
+    if (st.st_uid != 0) return 0;
+    if (st.st_mode & (S_IWGRP | S_IWOTH)) return 0;
+    if (!(st.st_mode & S_IXUSR)) return 0;
+    return 1;
+}
+
+/* Same client environment as launch_client, minus remember_app: a URL open is
+ * one-shot, so it must not occupy a slot in the app_id -> pid raise table. */
+static pid_t spawn_url_handler(const char *url, int native)
+{
+    const struct mode_cfg *mode = mode_cfg(native);
+    const char *busdir = g_ioscd_bus_dir;
+    char bus_addr[256];
+    int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
+    ensure_native_helpers_for_bus(busdir, bus_addr, have_bus);
+
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        setsid();
+        child_stdio(g_ioscd_client_log, 1);
+        set_wayland_client_env(mode, busdir, have_bus, bus_addr, 0);
+        if (drop_to_mobile() != 0) _exit(126);
+
+        char *argv[4];
+        size_t n = 0;
+        if (!have_bus) {
+            char *run_argv[6];
+            size_t m = 0;
+            run_argv[m++] = "dbus-run-session";
+            run_argv[m++] = "--";
+            run_argv[m++] = g_xdg_open;
+            run_argv[m++] = (char *)url;
+            run_argv[m] = NULL;
+            execv(g_dbus_run, run_argv);
+        }
+        argv[n++] = g_xdg_open;
+        argv[n++] = (char *)url;
+        argv[n] = NULL;
+        execv(g_xdg_open, argv);
+        _exit(127);
+    }
+    return pid;
+}
+
+static void handle_open_url_request(int fd, char *payload,
+                                    const struct peer_info *peer)
+{
+    char *url = payload;
+    url[strcspn(url, "\r\n")] = 0;
+    if (strchr(url, '\t')) {
+        reply(fd, "ERR malformed\n");
+        return;
+    }
+    if (!peer_can_launch(peer)) {
+        reply(fd, "ERR unauthorized peer\n");
+        return;
+    }
+    if (!url_is_openable(url)) {
+        /* Deliberately does not echo the URL back: the reply goes to a share
+         * extension that will surface it to the user. */
+        fprintf(stderr, "ioscd: reject open-url: scheme not allowed or malformed\n");
+        reply(fd, "ERR only http, https, file and mailto URLs can be opened\n");
+        return;
+    }
+    if (!handler_is_trusted(g_xdg_open)) {
+        fprintf(stderr, "ioscd: reject open-url: %s missing or not trusted\n", g_xdg_open);
+        reply(fd, "ERR no trusted xdg-open on this device\n");
+        return;
+    }
+
+    reap_children();
+
+    /* A URL needs somewhere to land: bring the compositor up and show it, the
+     * same preconditions a launch has. Share targets the classic desktop — the
+     * native flavor has no single surface to open into. */
+    int ensure_rc = ensure_iosc(0);
+    if (ensure_rc != 0) {
+        if (ensure_rc == -2) {
+            reply(fd, "ERR active session is not iosc\n");
+            return;
+        }
+        fprintf(stderr, "ioscd: open-url: iosc failed to start (see %s)\n", g_iosc_log);
+        reply(fd, "ERR iosc start failed\n");
+        return;
+    }
+    foreground_xios();
+
+    pid_t pid = spawn_url_handler(url, 0);
+    if (pid <= 0) {
+        reply(fd, "ERR fork failed\n");
+        return;
+    }
+
+    {
+        char who[384], clean[1024];
+        format_peer(peer, who, sizeof(who));
+        sanitized_copy(clean, sizeof(clean), url);
+        fprintf(stderr, "ioscd: open-url pid=%d peer=%s url=\"%s\"\n",
+                (int)pid, who, clean);
+    }
+    reply(fd, "OPENED\n");
+}
+
 static void handle_launch_request(int fd, const char *verb, char *payload,
                                   const struct peer_info *peer)
 {
@@ -1862,6 +2023,10 @@ static void handle_conn(int fd)
     }
     if (strcmp(verb, "A11Y_STATE") == 0) {
         handle_a11y_state(fd, t1 + 1);
+        return;
+    }
+    if (strcmp(verb, "OPEN_URL") == 0) {
+        handle_open_url_request(fd, t1 + 1, &peer);
         return;
     }
 
