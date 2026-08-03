@@ -1,13 +1,14 @@
 # Confining Ladybird helpers with iOS's precompiled sandbox profiles
 
-**Conclusion: impossible, and not for a fixable reason. Do not retry this.**
+**Conclusion for `com.apple.WebKit.WebContent`: impossible, and not for a fixable reason.
+Do not retry that profile.** The `container` profile is a separate, still-open question —
+see [Reopening `container`](#reopening-container) below.
 
 `com.apple.WebKit.WebContent` denies `poll()`, `select()` **and** `kevent()`. Ladybird's
 `Core::EventLoop` waits on file descriptors, so a confined helper cannot wait for events at
 all. There is no call site, no patch, and no alternative event-loop backend that gets around
 it: the profile forbids descriptor waiting outright, because Apple's real WebContent waits on
-Mach messages instead. The other available profile, `container`, leaves the network reachable
-and so removes nothing worth having from a renderer.
+Mach messages instead.
 
 Everything below was measured on iPad7,12 (A10 / T8010, iPadOS 17.6.1, Dopamine rootless)
 with fakesigned throwaway binaries, as both `root` and `mobile`. Probes are in
@@ -87,6 +88,43 @@ trap that cost a build cycle is this:
 > someone else will", and nobody ever does. WebContent hangs on startup with no output. The
 > catch-up must therefore ring unconditionally rather than consulting that helper.
 
+## Reopening `container`
+
+The original write-up dismissed the other available profile in one line: `container` "leaves
+the network reachable and so removes nothing worth having from a renderer." That weighs the
+wrong axis, and the matrix above contradicts it. Under `container`, `poll`, `select`,
+`kevent`, `pipe()` and both socket families are **permitted** — every primitive that made
+`com.apple.WebKit.WebContent` unusable — while the `/var/jb/tmp` write is **denied**.
+
+Network egress is not what a renderer compromise is worth on this device. Write access under
+`/var/jb` is: overwrite a dylib in `/var/jb/usr/lib` or a binary in `/var/jb/usr/bin` and you
+have persistent code execution across the entire desktop stack, not just the browser. And
+WebContent does not do its own networking — RequestServer does, in a separate process that
+would stay unconfined either way. So "leaves the network reachable" costs little, and "denies
+writes" may remove the single most valuable thing an attacker gets.
+
+That makes it worth measuring rather than assuming, in both directions:
+
+- **Does the write denial generalise?** `/var/jb/tmp` is one path. The persistence-relevant
+  ones are `/var/jb/usr/lib`, `/var/jb/usr/bin`, the engine tree, and `/var/jb/etc`. If
+  `container` only sandboxes writes to some of those, it buys much less than it looks like.
+- **Does a WebContent-shaped process stay functional?** The matrix rows were measured on a
+  probe, not on a helper: reading engine resources and fonts, operating on Mach rights held
+  from before confinement, and `bootstrap_look_up` (recorded as "not retested" for this
+  profile) all still need checking. A denied `bootstrap_look_up` is not a blocker — it just
+  forces the same ordering as before, confine *after* the Mach handshake.
+
+`probes-ladybird-sandbox/sbprobe5.c` asks exactly these questions and is written to be run in
+both `none` and `confined` modes so the delta is the result. It compiles for
+`iphoneos`/arm64 but **has not been run on device** — nothing here is a measurement yet.
+
+Scope, if it does pan out: **WebContent and ImageDecoder only.** RequestServer needs the
+network by definition. Compositor's IOSurface path is unmeasured under this profile, and
+headless runs use in-process raster, so it was never exercised. Confining two of five helpers
+is still worth doing — they are the two whose entire job is parsing untrusted input.
+
+If the probe says no, write the numbers into the matrix above and close this for good.
+
 ## What to do instead: entitlement minimisation
 
 The fallback named in `ios-platform-features.md` is uid separation, `setrlimit`, and
@@ -118,6 +156,16 @@ with it too, so nothing GPU- or write-related can be narrowed until there are pe
   WebContent has no runtime write requirement at all (the Skia cache directory the macOS
   profile grants read-write has no writer anywhere in the tree). RequestServer is the only
   helper that genuinely writes, for the HTTP disk cache and alt-svc cache.
+
+  **But do not expect trimming this one to restrict anything by itself.** The distinction the
+  paragraph above draws — entitlements as a real restriction rather than a cosmetic one —
+  holds for `task_for_pid-allow`, which AMFI checks directly and independently of any sandbox.
+  It does not hold for `com.apple.security.exception.*`, which are App Sandbox *exception*
+  keys: they widen a profile that is already applied, and no profile is applied here. Removing
+  this key from an unconfined helper changes nothing about what it can write; the helper keeps
+  everything the `mobile` user can reach. It is worth splitting per helper so the file stops
+  describing a boundary that does not exist, and so it is already correct if `container` (see
+  above) turns out to be usable — but on its own it is documentation, not mitigation.
 - The AGX/IOGPU IOKit classes, which only Compositor needs. Removing them from the shared file
   today would break the `.app` flavor's WebGL, since that flavor signs Compositor with this
   file.
