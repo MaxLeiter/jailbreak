@@ -2105,6 +2105,23 @@ final class XScreenView: UIView {
         text.withCString { iosc_input_text($0) }
     }
 
+    /// Text path, but with Return and Tab broken out as real key events.
+    /// The desktop side commits a TEXT record into the focused field verbatim, so a
+    /// committed "\n" lands as a literal newline character: the iOS keyboard's
+    /// Done/Go key would type into a browser address bar instead of submitting it,
+    /// and Tab would insert whitespace instead of moving focus. Everything the iOS
+    /// keyboard is actually good at (emoji, dictation, autocorrect replacements)
+    /// still rides the text path.
+    fileprivate func sendTextWithKeyBreaks(_ text: String) {
+        var run = ""
+        for ch in text {
+            guard ch == "\n" || ch == "\r" || ch == "\t" else { run.append(ch); continue }
+            if !run.isEmpty { sendText(run); run = "" }
+            sendKeysym(ch == "\t" ? 0xff09 : 0xff0d, ctrl: false, alt: false, shift: false)
+        }
+        if !run.isEmpty { sendText(run) }
+    }
+
     private func sendClick(_ button: Int32) {
         guard inputConnected else { return }
         let p = lastTouchPt ?? (Int32(fbWidth / 2), Int32(fbHeight / 2))
@@ -4861,7 +4878,7 @@ extension XScreenView: UIKeyInput {
         guard inputConnected else { return }
         if hardwareKeyboard.isLikelyUIKitEcho() { return }
         if usingIosc && !modCtrl && !modAlt && !modShift {
-            sendText(text)
+            sendTextWithKeyBreaks(text)
             return
         }
         for ch in text {

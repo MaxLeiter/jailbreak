@@ -901,6 +901,21 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         text.withCString { iosc_input_text(h, $0) }
     }
 
+    /// Text path, but with Return and Tab broken out as real key events. A TEXT
+    /// record is committed into the focused field verbatim, so a committed "\n"
+    /// lands as a literal newline: the iOS keyboard's Done/Go key would type into a
+    /// browser address bar instead of submitting it. Same reasoning as XScreen's
+    /// copy; emoji/dictation/autocorrect still ride the text path.
+    fileprivate func sendTextWithKeyBreaks(_ text: String) {
+        var run = ""
+        for ch in text {
+            guard ch == "\n" || ch == "\r" || ch == "\t" else { run.append(ch); continue }
+            if !run.isEmpty { sendText(run); run = "" }
+            sendKeysym(ch == "\t" ? 0xff09 : 0xff0d, ctrl: false, alt: false, shift: false)
+        }
+        if !run.isEmpty { sendText(run) }
+    }
+
     fileprivate func clearStickyMods() { modCtrl = false; modAlt = false; modShift = false }
 
     // Accessory row: esc/tab/ctrl/alt/shift/arrows, same idea as XScreen's modRow.
@@ -990,7 +1005,7 @@ extension HostScreenView: UIKeyInput {
     var hasText: Bool { true }
     func insertText(_ text: String) {
         if hardwareKeyboard.isLikelyUIKitEcho() { return }
-        if !modCtrl && !modAlt && !modShift { sendText(text); return }
+        if !modCtrl && !modAlt && !modShift { sendTextWithKeyBreaks(text); return }
         for ch in text where keysym(for: ch) != nil {
             sendKeysym(keysym(for: ch)!, ctrl: modCtrl, alt: modAlt, shift: modShift)
         }
