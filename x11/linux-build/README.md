@@ -46,6 +46,17 @@ The `+rootless1`-revision debs are the rootless variants to publish.
 bash x11/linux-build/run.sh
 ```
 
+Before starting an upgrade wave, refresh the recipe inventory against official
+upstream release sources:
+
+```bash
+python3 x11/linux-build/tools/audit-upstream-versions.py --refresh
+```
+
+The report distinguishes same-track update candidates from deliberate
+toolchain/ABI/cohort holds. See [`../docs/upstream-updates.md`](../docs/upstream-updates.md)
+for policy, the weekly report, and the build/package/device verification loop.
+
 What `run.sh` (Mac side) does:
 
 1. Stages the iOS SDK into `sdk/iPhoneOS.sdk` (once; `rsync` only if missing).
