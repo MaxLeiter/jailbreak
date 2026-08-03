@@ -68,6 +68,9 @@ wesnoth-package: wesnoth-stage
 		'export SDL_VIDEODRIVER="$${SDL_VIDEODRIVER:-wayland}"' \
 		'export SDL_AUDIODRIVER="$${SDL_AUDIODRIVER:-pulseaudio}"' \
 		'export PANGOCAIRO_BACKEND="$${PANGOCAIRO_BACKEND:-fontconfig}"' \
+		'# xios-sdl2 is vendored in a private directory so it never stands in for' \
+		'# Procursus SDL2. This is the only thing that puts it on the search path.' \
+		'export DYLD_LIBRARY_PATH="$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/xios-sdl2$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"' \
 		'exec $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec/games/wesnoth.real "$$@"' \
 		> $(BUILD_DIST)/wesnoth/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/wesnoth
 	chmod 0755 $(BUILD_DIST)/wesnoth/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/wesnoth

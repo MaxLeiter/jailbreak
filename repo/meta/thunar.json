@@ -1,6 +1,6 @@
 {
   "name": "Thunar",
-  "tagline": "The Xfce file manager, running on iPad",
+  "tagline": "The Xfce file manager, rebuilt for iOS",
   "seoTitle": "Thunar file manager for iOS and iPad (jailbreak) · xiOS",
   "seoDescription": "Run the Thunar desktop file manager on a jailbroken iPad with xiOS and browse the device filesystem through a familiar GTK interface.",
   "developer": "The Xfce Project",
@@ -10,7 +10,7 @@
   "operatingSystem": "iOS on a jailbroken iPad",
   "projectPage": "https://xios.maxleiter.com/apps/thunar",
   "canonicalUrl": "https://xios.maxleiter.com/apps/thunar",
-  "description": "**Thunar** is the Xfce desktop file manager, rebuilt for arm64 iOS and running through xiOS.\n\n- Icon and list views with normal desktop file operations\n- Path navigation and access to the mobile home directory\n- Runs inside a xiOS desktop or an individual iPadOS host window\n\nA compatible rootless jailbreak is required.",
+  "description": "**Thunar** is the Xfce file manager, rebuilt for arm64 iOS and running through xiOS.\n\n- Icon and list views with normal desktop file operations\n- Path navigation and access to the mobile home directory\n- Runs inside a xiOS desktop, or in its own iPadOS host window\n\nA compatible rootless jailbreak is required.",
   "screenshots": [
     {
       "src": "screenshots/thunar/01-thunar.jpg",

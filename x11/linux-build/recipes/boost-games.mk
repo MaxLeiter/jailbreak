@@ -42,6 +42,8 @@ boost-games: boost-games-setup
 		-DCMAKE_INSTALL_PREFIX=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
 		-DBUILD_SHARED_LIBS=ON \
 		-DBUILD_TESTING=OFF \
+		-DCMAKE_CXX_STANDARD=17 \
+		-DCMAKE_CXX_STANDARD_REQUIRED=ON \
 		-DBOOST_ENABLE_CMAKE=ON \
 		-DBOOST_INCLUDE_LIBRARIES="atomic;chrono;context;coroutine;date_time;filesystem;iostreams;locale;program_options;random;regex;system;thread"
 	+ninja -C $(BUILD_WORK)/boost-games/build

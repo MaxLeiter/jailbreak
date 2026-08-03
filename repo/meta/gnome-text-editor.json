@@ -3,7 +3,7 @@
   "developer": "The GNOME Project",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "square.and.pencil",
-  "description": "**GNOME Text Editor** is the default GNOME editor for Xios: clean, fast, built on GTK4/libadwaita, and backed by GtkSourceView syntax highlighting.\n\nIt renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- Syntax highlighting for common languages (GtkSourceView 5)\n- Session restore, split view, and dark mode\n- libadwaita styling",
+  "description": "**GNOME Text Editor** is the default GNOME editor for Xios, built on GTK4/libadwaita with GtkSourceView syntax highlighting.\n\nIt renders into the Xios display server and uses San Francisco by default when the `x11-fonts-sf` package is installed.\n\n- Syntax highlighting for common languages (GtkSourceView 5)\n- Session restore, split view, and dark mode\n- libadwaita styling",
   "changelog": [
     { "version": "46.3", "date": "2026-06-30", "notes": "- First release: GNOME Text Editor 46 for Xios\n- GTK4 + libadwaita + GtkSourceView 5.12" }
   ]

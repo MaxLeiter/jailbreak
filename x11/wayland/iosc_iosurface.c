@@ -210,9 +210,17 @@ static void iosurface_factory_create_buffer(struct wl_client *client,
                                    iosurface_buffer_resource_destroy);
 
     if (!surf) {
-        wl_resource_post_error(res, IOSC_IOSURFACE_ERROR_IMPORT_FAILED,
-                               "IOSurface import failed (pid=%d port=0x%x)",
-                               (int)pid, mach_port_name);
+        /* Deliberately NOT a protocol error. post_error kills the connection, and
+         * for a nested compositor that is the entire desktop: one unimportable
+         * cursor buffer took down kwin_wayland and every Plasma client with it
+         * (2026-08-02). The buffer stays alive with no backing surface instead --
+         * buffer_draw and peek_direct both no-op on surface == NULL, so the client
+         * loses that one frame and keeps running. xios_import_client_iosurface has
+         * already logged which step failed (task_for_pid / extract_right / lookup),
+         * which is the line to grep when this shows up. */
+        fprintf(stderr, "iosc: IOSurface import failed (pid=%d port=0x%x); "
+                        "buffer kept empty, frame dropped\n",
+                (int)pid, mach_port_name);
         return;
     }
     fprintf(stderr, "iosc: imported client IOSurface as wl_buffer %dx%d (pid=%d)\n",

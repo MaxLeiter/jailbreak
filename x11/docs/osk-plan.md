@@ -197,6 +197,31 @@ Frozen, the app relies on it:
 - Snapshot to every new input-socket client (already done via the
   client-count check in `input_sock_readable`).
 
+## App-side contract: Return and Tab are keys, not text
+
+The iOS keyboard reports its return key (Done/Go/Send, whatever the traits
+picked) to `UIKeyInput.insertText` as `"\n"`, exactly like a typed
+character. Committing that as a TEXT record is wrong on every flavor: a
+TEXT record ends up in `commit_string` (KDE, via ios-inputd) or
+`text_input_v3.commit_string` (native/GNOME), and a committed newline is a
+literal newline CHARACTER in the field, not an activation. Symptom that
+found it: in Ladybird under KDE, Done typed a newline into the address bar
+instead of loading the URL.
+
+So both hosts (`XScreen.swift`, `HostScreenView.swift`) run
+`sendTextWithKeyBreaks()` on the no-modifier text path: contiguous runs go
+out as TEXT (emoji, dictation, autocorrect replacements all keep working),
+while `\n`/`\r` become an `XK_Return` (0xff0d) tap and `\t` an `XK_Tab`
+(0xff09) tap on the KEY path. KEY records never go through the IM proxy;
+they take iosc's normal keyboard route, which is the same one Backspace,
+Esc and the arrow keys have always used, so KWin delivers them to the
+focused client as real key events.
+
+Corollary for anyone touching `in_dispatch_text()`: a TEXT record arriving
+from the keyboard path no longer contains newlines. Do not "fix" the
+newline case there by splitting records; the split belongs where the key
+identity is still known.
+
 ## v2: keyboard occlusion (deferred)
 
 When the keyboard is up it covers the bottom half of the output and can

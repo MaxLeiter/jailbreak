@@ -4,7 +4,7 @@ endif
 
 SUBPROJECTS        += warzone2100
 WARZONE2100_VERSION := 4.7.0
-DEB_WARZONE2100_V  ?= $(WARZONE2100_VERSION)+ios1
+DEB_WARZONE2100_V  ?= $(WARZONE2100_VERSION)+ios2
 
 warzone2100-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/Warzone2100/warzone2100/releases/download/$(WARZONE2100_VERSION)/warzone2100_src.tar.xz)
@@ -65,7 +65,11 @@ warzone2100-package: warzone2100-stage
 		'export SDL_AUDIODRIVER="$${SDL_AUDIODRIVER:-pulseaudio}"' \
 		'export ALSOFT_DRIVERS="$${ALSOFT_DRIVERS:-pulse}"' \
 		'export ANGLE_REAL_LIBEGL="$${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"' \
-		'exec $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec/games/warzone2100.real "$$@"' \
+		'# warzone2100.real sits in libexec/games, so the data search it derives from' \
+		'# its own location never reaches share/warzone2100 and the game aborts at' \
+		'# startup with "Could not find game data". Name the packaged data outright.' \
+		'exec $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec/games/warzone2100.real \' \
+		'  --datadir="$${WZ2100_DATADIR:-$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/share/warzone2100}" "$$@"' \
 		> $(BUILD_DIST)/warzone2100/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/warzone2100
 	chmod 0755 $(BUILD_DIST)/warzone2100/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/warzone2100
 	cp $(BUILD_INFO)/warzone2100.desktop \

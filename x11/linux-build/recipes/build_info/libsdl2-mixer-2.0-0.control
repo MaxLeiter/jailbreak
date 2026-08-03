@@ -5,6 +5,6 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/libsdl-org/SDL_mixer
-Depends: libsdl2-2.0-0, libogg0, libvorbis0a, libvorbisfile3
+Depends: xios-sdl2, libogg0, libvorbis0a, libvorbisfile3
 Description: SDL2 audio mixer library for Xios games
  SDL2_mixer with WAV and Ogg Vorbis decoding over Xios SDL2 and PulseAudio.

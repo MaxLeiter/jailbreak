@@ -84,6 +84,9 @@ zero-ad-package: zero-ad-stage
 		'export SDL_AUDIODRIVER="$${SDL_AUDIODRIVER:-pulseaudio}"' \
 		'export ALSOFT_DRIVERS="$${ALSOFT_DRIVERS:-pulse}"' \
 		'export ANGLE_REAL_LIBEGL="$${ANGLE_REAL_LIBEGL:-/var/jb/lib/angle/libEGL.angle.dylib}"' \
+		'# xios-sdl2 is vendored in a private directory so it never stands in for' \
+		'# Procursus SDL2. This is the only thing that puts it on the search path.' \
+		'export DYLD_LIBRARY_PATH="$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/xios-sdl2$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"' \
 		'exec $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec/games/0ad.real "$$@"' \
 		> $(BUILD_DIST)/0ad/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/0ad
 	chmod 0755 $(BUILD_DIST)/0ad/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/0ad

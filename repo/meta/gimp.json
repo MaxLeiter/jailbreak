@@ -1,6 +1,6 @@
 {
   "name": "GIMP",
-  "tagline": "GIMP 3.2, running locally on a jailbroken iPad",
+  "tagline": "GIMP 3.2, running locally on jailbroken iOS",
   "seoTitle": "GIMP 3.2 for iOS and iPad (jailbreak) · xiOS",
   "seoDescription": "Run the full desktop GIMP 3.2 image editor locally on a jailbroken iPad with xiOS. Native arm64 iOS build, not streaming or a web wrapper.",
   "developer": "The GIMP team",
@@ -10,7 +10,7 @@
   "operatingSystem": "iOS on a jailbroken iPad",
   "projectPage": "https://xios.maxleiter.com/apps/gimp",
   "canonicalUrl": "https://xios.maxleiter.com/apps/gimp",
-  "description": "**GIMP 3.2 for iOS** is the full desktop image editor rebuilt for arm64 iOS and running locally through xiOS. It is not a remote desktop, web wrapper, or App Store impersonator.\n\n- Standard GIMP toolbox, docks, layers, filters, and color tools\n- Bundled brushes, plug-ins, and image-format support\n- GTK3 desktop interface rendered through Wayland and Metal\n- Touch, pointer, and hardware-keyboard input through xiOS\n\nA compatible rootless jailbreak and a xiOS desktop flavor are required. Install `gimp-native` as well if you want a Home Screen launcher and individual iPadOS host window.",
+  "description": "**GIMP 3.2** is the desktop image editor, rebuilt for arm64 iOS. It runs locally through xiOS: not a remote desktop and not a web wrapper.\n\n- Standard GIMP toolbox, docks, layers, filters, and color tools\n- Bundled brushes, plug-ins, and image-format support\n- GTK3 desktop interface rendered through Wayland and Metal\n- Touch, pointer, and hardware-keyboard input through xiOS\n\nA compatible rootless jailbreak and a xiOS desktop flavor are required. Install `gimp-native` as well if you want a Home Screen launcher and its own iPadOS host window.",
   "screenshots": [
     {
       "src": "screenshots/gimp/01-gimp-desktop.jpg",

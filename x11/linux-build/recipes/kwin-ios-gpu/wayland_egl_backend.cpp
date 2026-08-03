@@ -82,6 +82,57 @@ static IOSurfaceRef createIOSurface(const QSize &size)
 
 static const wl_buffer_listener bufferListener = {IoscEglBuffer::released};
 
+// Freeing the IOSurface mach port: a send right handed to iosc must outlive the
+// request that carries its NAME.
+//
+// The name in iosc_iosurface.create_buffer is a one-shot handoff token. iosc
+// extracts its own COPY_SEND right (mach_port_extract_right on our task) while it
+// processes that request, which happens whenever iosc gets round to draining its
+// socket -- not when we send it. Deallocating the port in ~IoscEglBuffer() was
+// therefore a race: the cursor layer rebuilds its ENTIRE swapchain every time the
+// cursor image changes size (arrow -> I-beam over a text field and back), so a
+// buffer can be constructed and destroyed inside the window where its create_buffer
+// is still queued. iosc then fails the extract and answers with a protocol error,
+// which is fatal -- it kills kwin_wayland and the whole Plasma session with it.
+// Mach names are also recycled, so a freed name can be re-issued to an unrelated
+// port and imported as if it were ours.
+//
+// So the port outlives the buffer: ownership moves to a wl_display sync, whose
+// callback cannot run until the compositor has processed everything queued before
+// it, create_buffer included. Same contract the EGL shim enforces with a roundtrip
+// (x11/wayland/iosc_egl_shim.c, win_alloc_bufs), minus the blocking.
+namespace
+{
+struct PendingPortFree
+{
+    mach_port_t port;
+};
+
+void portFreed(void *data, wl_callback *callback, uint32_t)
+{
+    auto *pending = static_cast<PendingPortFree *>(data);
+    wl_callback_destroy(callback);
+    mach_port_deallocate(mach_task_self(), pending->port);
+    delete pending;
+}
+
+const wl_callback_listener portFreeListener = {portFreed};
+
+void freePortAfterSync(wl_display *display, mach_port_t port)
+{
+    if (port == MACH_PORT_NULL) {
+        return;
+    }
+    wl_callback *callback = display ? wl_display_sync(display) : nullptr;
+    if (!callback) {
+        // Nothing was queued (no display), so nothing can still need the name.
+        mach_port_deallocate(mach_task_self(), port);
+        return;
+    }
+    wl_callback_add_listener(callback, &portFreeListener, new PendingPortFree{port});
+}
+}
+
 IoscEglBuffer::IoscEglBuffer(WaylandEglBackend *backend, const QSize &size)
     : size(size)
     , surface(createIOSurface(size))
@@ -112,9 +163,18 @@ IoscEglBuffer::IoscEglBuffer(WaylandEglBackend *backend, const QSize &size)
             << " ioFmt=" << Qt::hex << (unsigned)IOSurfaceGetPixelFormat(surface);
         return;
     }
-    port = IOSurfaceCreateMachPort(surface);
+    const mach_port_t port = IOSurfaceCreateMachPort(surface);
+    if (port == MACH_PORT_NULL) {
+        // Sending name 0 would fail iosc's import, and an import failure there is a
+        // fatal protocol error for this connection. Stay buffer-less instead: the
+        // layer treats that as "no free render target" and skips the frame.
+        qCWarning(KWIN_WAYLAND_BACKEND) << "ios-gpu: IOSurfaceCreateMachPort failed for" << size;
+        return;
+    }
     buffer = iosc_iosurface_create_buffer(backend->backend()->display()->iosurface(), uint32_t(port),
         size.width(), size.height(), IOSC_IOSURFACE_FORMAT_BGRA8888_GL_ORIGIN);
+    // Hand the send right to the sync, not to ~IoscEglBuffer(); see portFreed().
+    freePortAfterSync(backend->backend()->display()->nativeDisplay(), port);
     wl_buffer_add_listener(buffer, &bufferListener, this);
     // The GL texture + FBO cannot be built here: no context is current during
     // swapchain construction. ensureRenderTarget() does it on first beginFrame.
@@ -231,9 +291,6 @@ IoscEglBuffer::~IoscEglBuffer()
     }
     if (buffer) {
         wl_buffer_destroy(buffer);
-    }
-    if (port != MACH_PORT_NULL) {
-        mach_port_deallocate(mach_task_self(), port);
     }
     if (pbuffer != EGL_NO_SURFACE) {
         eglDestroySurface(display, pbuffer);

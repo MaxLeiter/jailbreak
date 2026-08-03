@@ -29,7 +29,9 @@ struct IoscEglBuffer
 
     QSize size;
     IOSurfaceRef surface = nullptr;
-    mach_port_t port = MACH_PORT_NULL;
+    // No mach_port_t member on purpose: the IOSurface send right is owned by a
+    // wl_display sync from the moment create_buffer is sent, because iosc must be
+    // able to extract it after this buffer is gone. See freePortAfterSync().
     EGLDisplay display = EGL_NO_DISPLAY;
     EGLSurface pbuffer = EGL_NO_SURFACE;
     wl_buffer *buffer = nullptr;

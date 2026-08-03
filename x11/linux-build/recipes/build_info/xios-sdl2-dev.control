@@ -1,0 +1,11 @@
+Package: xios-sdl2-dev
+Version: @DEB_SDL2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://www.libsdl.org/
+Depends: xios-sdl2 (= @DEB_SDL2_V@), libwayland-dev, libxkbcommon-dev, angle
+Description: Development files for the private Xios SDL2 runtime
+ Headers, pkg-config metadata, CMake metadata, and link-time dylib aliases for
+ building SDL2 Wayland applications for rootless iOS against xios-sdl2.

@@ -1,10 +1,10 @@
 {
-  "tagline": "Real GNOME Shell on your iPad, one install",
+  "tagline": "GNOME Shell 46 on Mutter, on the iPad GPU",
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "macwindow",
-  "description": "**xios-gnome** installs the complete GNOME desktop for Xios: GNOME Shell 46 on Mutter, running on the iPad GPU through the iosc compositor and ANGLE.\n\nThis one package pulls in the whole session: gnome-session, gnome-settings-daemon, dconf, the single-user service stubs (login1, PolicyKit, Accounts), the introspection typelibs the shell needs at boot, and the Adwaita look with icons, cursors, and a wallpaper.\n\nAfter it installs, open the Xios app and the GNOME session starts. That is the entire setup.\n\nGNOME apps pair well with it and install individually from this repo:\n\n- **gnome-console** for a terminal\n- **nautilus** for files\n- **gnome-text-editor** and **gnome-calculator**\n\nRequires iOS 16.5+.",
+  "description": "**xios-gnome** installs the complete GNOME desktop for Xios: GNOME Shell 46 on Mutter, running on the iPad GPU through the iosc compositor and ANGLE.\n\nIt pulls in the whole session: gnome-session, gnome-settings-daemon, dconf, the single-user service stubs (login1, PolicyKit, Accounts), the introspection typelibs the shell needs at boot, and the Adwaita look with icons, cursors, and a wallpaper.\n\nAfter it installs, open the Xios app and the GNOME session starts.\n\nGNOME apps install individually from this repo:\n\n- **gnome-console** for a terminal\n- **nautilus** for files\n- **gnome-text-editor** and **gnome-calculator**\n\nRequires iOS 16.5+.",
   "changelog": [
-    { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: GNOME Shell 46 + Mutter + full session layer as one install" }
+    { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: GNOME Shell 46 + Mutter + full session layer" }
   ]
 }
