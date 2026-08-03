@@ -1,0 +1,51 @@
+# Ladybird helper confinement under the container profile
+# iPad7,12 / iPadOS 17.6.1 / Dopamine rootless / ladybird-wayland 0.1.0+wl4
+# harness: sbinject.dylib via DYLD_INSERT_LIBRARIES (no engine rebuild)
+# NOTE: DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:... is required to launch at all
+#       (the ladybird-tls rpath bug; without it WebContent dies on _EVP_PKEY_sign_message_init)
+
+======== control ========
+--- [status] lines ---
+(none)
+--- failures ---
+--- screenshot ---
+69d54fbc53e3b6bfac38dbdadd0b86830478b64dbf91d6d22a8f9c597bf595f4  shot-control.png
+
+======== webcontent ========
+--- [status] lines ---
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14948
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14949
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14950
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14951
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14952
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14953
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14955
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14956
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14958
+[status] sandbox=applied process=WebContent profile=container when=after-bootstrap pid=14957
+--- failures ---
+VERIFICATION FAILED: !buffer_or_error.is_error() at /work/Procursus/ladybird-src/Services/WebContent/PageClient.cpp:176
+VERIFICATION FAILED: !buffer_or_error.is_error() at /work/Procursus/ladybird-src/Services/WebContent/PageClient.cpp:176
+VERIFICATION FAILED: !buffer_or_error.is_error() at /work/Procursus/ladybird-src/Services/WebContent/PageClient.cpp:176
+VERIFICATION FAILED: !buffer_or_error.is_error() at /work/Procursus/ladybird-src/Services/WebContent/PageClient.cpp:176
+VERIFICATION FAILED: !buffer_or_error.is_error() at /work/Procursus/ladybird-src/Services/WebContent/PageClient.cpp:176
+--- screenshot ---
+(no screenshot produced)
+
+======== imgdec ========
+--- [status] lines ---
+[status] sandbox=applied process=ImageDecoder profile=container when=after-bootstrap pid=14965
+[status] sandbox=applied process=ImageDecoder profile=container when=after-bootstrap pid=14969
+--- failures ---
+VERIFICATION FAILED: MACH_PORT_VALID(descriptor.name) at /work/Procursus/ladybird-src/Libraries/LibIPC/TransportMachPort.cpp:75
+--- screenshot ---
+ed8822254d83815d2e91ea17b3a0accf31730e6d2df29c0016777f93f2ff7447  shot-imgdec.png
+
+======== ctor ========
+--- [status] lines ---
+[status] sandbox=applied process=ImageDecoder profile=container when=constructor pid=14985
+--- failures ---
+10818.798 [33;1mImageDecoder(14985)[0m: Unable to look up service org.ladybird.Ladybird.helper.14981 in bootstrap
+[31;1mRuntime error[0m: Permission denied
+--- screenshot ---
+(no screenshot produced)

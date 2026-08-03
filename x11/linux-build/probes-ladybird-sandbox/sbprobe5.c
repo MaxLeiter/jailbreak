@@ -175,10 +175,22 @@ int main(int argc, char **argv)
         ok("operate on pre-held mach receive right", k2 == KERN_SUCCESS, detail);
     }
 
+    /* WARNING — THIS ROW MISLED ONCE. READ BEFORE TRUSTING IT.
+     *
+     * This looks up an Apple *system* service. `container` permits that. It does NOT permit
+     * looking up an app-registered service, which is what a Ladybird helper actually does
+     * (org.ladybird.Ladybird.helper.<pid>, registered by its parent). On 2026-08-02 this row
+     * read OK, the doc concluded confinement was viable, and a real helper then died with
+     * "Unable to look up service org.ladybird.Ladybird.helper.N in bootstrap /
+     * Runtime error: Permission denied".
+     *
+     * A green here means "system services resolve", nothing more. For the question that
+     * matters use sbprobe.c, which registers a CUSTOM service in a parent and looks it up
+     * from a confined child -- or better, sbinject.c against a real helper. */
     mach_port_t bp = MACH_PORT_NULL;
     kern_return_t bkr = bootstrap_look_up(bootstrap_port, "com.apple.system.notification_center", &bp);
     snprintf(detail, sizeof(detail), "kr=%d (0x%x)", bkr, bkr);
-    ok("bootstrap_look_up (ordering only, not a blocker)", bkr == KERN_SUCCESS, detail);
+    ok("bootstrap_look_up (SYSTEM service only -- see comment)", bkr == KERN_SUCCESS, detail);
 
     printf("\n-- resources a renderer must read --\n");
     probe_read("/var/jb/usr/share/Lagom/fonts/SerenitySans-Regular.ttf");
