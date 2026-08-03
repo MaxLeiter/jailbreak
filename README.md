@@ -12,9 +12,7 @@ Most of this was written by Claude, and I've leaned on it heavily throughout.
 Read anything here with that in mind.
 
 Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before
-opening a PR, and [`docs/PUBLIC-READINESS.md`](docs/PUBLIC-READINESS.md) for the
-remaining GitHub history-cache cleanup. Publishing packages, signing the repo,
-deploying, and verifying on a device are things I do myself.
+opening a PR.
 
 It's largely rootless only. Everything builds with
 `THEOS_PACKAGE_SCHEME = rootless`, installs under `/var/jb`, and is packaged as
