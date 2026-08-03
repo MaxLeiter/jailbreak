@@ -88,6 +88,10 @@ static pthread_t s_thread;
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct app_client s_clients[XIOS_MAX_CLIENTS];
 static int s_nclients = 0;
+/* Bumped on every accepted client. Cursor CONTENT is sent on change, so a
+ * reconnecting app would otherwise sit with no cursor until the next one; the
+ * compositor watches this and re-sends. */
+static unsigned s_client_generation;
 static uint64_t s_next_client_serial;
 static uint64_t s_dirty_seq = 0;
 static uint64_t s_presented_seq = 0;
@@ -560,6 +564,7 @@ static int add_client(int fd, mach_port_t dst, uint32_t caps,
                 if (serial_out)
                     *serial_out = s_clients[slot].serial;
                 s_nclients++;
+                s_client_generation++;
                 fprintf(stderr,
                         "xios: app client attached (typed fd=%d slot=%d caps=0x%x total=%d)\n",
                         fd, slot, caps, s_nclients);
@@ -1363,6 +1368,57 @@ void xios_notify_cursor(int x, int y, int visible, int shape_id)
     pthread_mutex_unlock(&s_lock);
 }
 
+/* write_full() gives up on EAGAIN, which is right for the handshake (an empty
+ * socket buffer) but would drop a healthy client over a moment of backpressure.
+ * Cursor images are bounded and rare, so waiting briefly is cheaper than a
+ * reconnect. Returns 0 on success. */
+static int write_full_waiting(int fd, const void *buf, size_t n)
+{
+    const char *p = buf;
+    size_t put = 0;
+    while (put < n) {
+        ssize_t w = write(fd, p + put, n - put);
+        if (w > 0) { put += (size_t)w; continue; }
+        if (w < 0 && errno == EINTR) continue;
+        if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            struct pollfd pfd = { .fd = fd, .events = POLLOUT };
+            if (poll(&pfd, 1, 250) > 0)
+                continue;
+        }
+        return -1;
+    }
+    return 0;
+}
+
+void xios_notify_cursor_image(const void *bgra, int width, int height,
+                              int hot_x, int hot_y)
+{
+    size_t bytes = 0;
+    if (bgra && width > 0 && height > 0) {
+        if (width > XIOS_CURSOR_IMAGE_MAX || height > XIOS_CURSOR_IMAGE_MAX)
+            return;                      /* not a cursor; refuse rather than stall */
+        bytes = (size_t)width * (size_t)height * 4u;
+    } else {
+        width = height = hot_x = hot_y = 0;
+    }
+
+    xios_msg rec = { XIOS_MSG_MAGIC, XIOS_MSG_CURSOR_IMAGE, 0, (uint32_t)bytes,
+                     width, height, hot_x, hot_y };
+    pthread_mutex_lock(&s_lock);
+    for (int i = 0; i < XIOS_MAX_CLIENTS; i++) {
+        if (!s_clients[i].active)
+            continue;
+        /* Record and payload have to land together or the typed stream desyncs,
+         * so this one blocks rather than coalescing like CURSOR/DIRTY. It is
+         * bounded and rare: only when the cursor IMAGE changes, never per frame
+         * and never per pointer move. */
+        if (write_full_waiting(s_clients[i].fd, &rec, sizeof(rec)) != 0 ||
+            (bytes && write_full_waiting(s_clients[i].fd, bgra, bytes) != 0))
+            drop_client_locked(i);
+    }
+    pthread_mutex_unlock(&s_lock);
+}
+
 int xios_have_app_client(void)
 {
     int any;
@@ -1370,6 +1426,15 @@ int xios_have_app_client(void)
     any = s_nclients > 0;
     pthread_mutex_unlock(&s_lock);
     return any;
+}
+
+unsigned xios_app_client_generation(void)
+{
+    unsigned gen;
+    pthread_mutex_lock(&s_lock);
+    gen = s_client_generation;
+    pthread_mutex_unlock(&s_lock);
+    return gen;
 }
 
 /* ---- client→server IOSurface import (Wayland zero-copy GPU buffers) -------- */
@@ -1422,6 +1487,37 @@ void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h)
 void xios_release_client_iosurface(void *client_surface)
 {
     if (client_surface) CFRelease((IOSurfaceRef) client_surface);
+}
+
+int xios_read_client_iosurface(void *client_surface, unsigned char *dst,
+                               int width, int height, int flip_v)
+{
+    IOSurfaceRef surface = (IOSurfaceRef) client_surface;
+    if (!surface || !dst || width <= 0 || height <= 0)
+        return 0;
+    /* Read-only lock: no GPU readback and no pipeline stall, because an
+     * IOSurface is CPU-mappable. Deliberately does NOT wait on the producer
+     * fence — callers use this for static theme bitmaps that are uploaded once
+     * and committed, and every caller re-publishes on the next change, so the
+     * worst case is one stale image rather than a blocked compositor. */
+    /* kIOReturnSuccess is 0 and lives in an IOKit header this TU does not pull
+     * in; the numeric compare avoids dragging one in for one constant. */
+    if (IOSurfaceLock(surface, kIOSurfaceLockReadOnly, NULL) != 0)
+        return 0;
+    const unsigned char *src = IOSurfaceGetBaseAddress(surface);
+    size_t stride = IOSurfaceGetBytesPerRow(surface);
+    size_t sw = IOSurfaceGetWidth(surface), sh = IOSurfaceGetHeight(surface);
+    int ok = src && (size_t) width <= sw && (size_t) height <= sh;
+    if (ok) {
+        for (int row = 0; row < height; row++) {
+            /* GL origin is bottom-left; the wire format is top-down. */
+            int srow = flip_v ? (height - 1 - row) : row;
+            memcpy(dst + (size_t) row * (size_t) width * 4,
+                   src + (size_t) srow * stride, (size_t) width * 4);
+        }
+    }
+    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, NULL);
+    return ok;
 }
 
 void xios_probe_client_iosurface(void *client_surface, const char *tag)

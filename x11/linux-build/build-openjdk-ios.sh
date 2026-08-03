@@ -412,7 +412,11 @@ package_image() {
     "$jdk_home/bin" "$jdk$XIOS_PREFIX/usr/bin"
   cp "$ROOT/packages/$PKG_JRE/DEBIAN/control" "$jre/DEBIAN/control"
   cp "$ROOT/packages/$PKG_JDK/DEBIAN/control" "$jdk/DEBIAN/control"
-  local runtime_version="21.0.12$XIOS_VERSION_SUFFIX"
+  # OPENJDK_PKG_VERSION lets a variant cut a new package revision without
+  # disturbing the target-wide suffix the headless packages are published
+  # under. The AWT lane needs it: its first cut shipped the RECT_T clip bug,
+  # so the fixed build must not carry the same version string.
+  local runtime_version="${OPENJDK_PKG_VERSION:-21.0.12$XIOS_VERSION_SUFFIX}"
   sed -i.bak \
     -e "s/^Version: .*/Version: $runtime_version/" \
     -e "s/^Architecture: .*/Architecture: $XIOS_DEB_ARCH/" \

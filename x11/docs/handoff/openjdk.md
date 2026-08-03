@@ -163,31 +163,74 @@ Two fixes were needed beyond selecting the XAWT peer:
 - Swing renders: `JButton`/`JCheckBox`/`JTextField`/`JProgressBar` paint through
   Java2D, `java.awt.Robot` captures, and `ImageIO` encodes the result to PNG.
 
-### Known defect: accelerated VolatileImage renders black
+### Fixed: accelerated XRender surfaces rendered black
 
-`GraphicsConfiguration.createCompatibleVolatileImage(...)` returns an image that
-fills **black** while reporting success (`contentsLost()==false`). A software
-`createCompatibleImage` on the same config is correct, so this is specific to
-the X pixmap-backed accelerated surface. Blitting the VolatileImage into a
-software image also yields black, so the *fill* is wrong — not just readback.
+Symptom: every XRender-backed surface rendered black. `VolatileImage` fills
+returned `000000` while reporting success (`contentsLost()==false`), Metal L&F
+painted `JButton` faces as black blocks, and on-screen windows stayed at their
+unpainted background. Software `createCompatibleImage` was always correct, and
+`-Dsun.java2d.opengl=true` avoided it entirely, which is what made it look like
+an acceleration problem.
 
-Visible consequence: Metal L&F paints its button gradient through
-`sun.swing.CachedPainter`, which uses a VolatileImage, so `JButton` faces render
-as black blocks. Everything not routed through a VolatileImage is correct.
+Root cause: a struct-layout ABI split across the libawt/libawt_xawt boundary,
+introduced by the XAWT-as-unix patch. `RECT_T` in
+`unix/native/common/awt/utility/rect.h` was `XRectangle` (four shorts, 8 bytes)
+when `MACOSX` was undefined and `{int x,y,width,height}` (16 bytes) when it was
+defined. `Region.c` and `rect.c` live in libawt, compiled `-DMACOSX` because iOS
+is in the macOS platform family; `XRBackendNative.c` and `X11SurfaceData.c` live
+in libawt_xawt, compiled `-UMACOSX`, and hand `XRectangle[]` buffers to
+`RegionToYXBandedRectangles` in libawt. libawt wrote 16-byte records into an
+8-byte array, so the first rectangle's int `x` filled `XRectangle.x` and `.y`
+and its int `y` filled `.width` and `.height`.
 
-Reproduced identically with `-Dsun.java2d.xrender=false`,
-`-Dsun.java2d.pmoffscreen=false`, and
-`-Dswing.volatileImageBufferEnabled=false`, so it is not XRender-specific and
-no property-level workaround is known yet. Not yet isolated to either the JDK
-build or the X server; re-running the probe under a non-Xvfb server with
-exclusive device access is the next step.
+Every clip therefore reached `XRenderSetPictureClipRectangles` as `[0,0 0x0]`.
+A zero-area clip discards all rendering silently, with no X protocol error --
+which is why nothing rendered, no diagnostic appeared, and any client using that
+Picture (not just the JVM) was equally affected.
+
+Fixed by patch `0006`, which gives the `MACOSX` branch `XRectangle`'s field
+widths. Selecting `XRectangle` itself instead would drag `<X11/Xlib.h>` into
+every libawt translation unit that includes `Region.h`; that was tried first and
+regressed the window-surface path with `native ops missing` on the toolkit
+thread.
+
+How it was isolated, in case a similar silent-rendering bug shows up again:
+
+- `linux-build/tests/xrender-pixmap-probe.c` reproduced Java2D's operations in
+  plain Xlib/Xrender with no JVM: core fill, `XRenderFillRectangle` at depth 24
+  and ARGB32, and the 1x1-repeating-solid composite. All correct, ruling out the
+  X server and libXrender.
+- Reading the JVM's own pixmap by XID from a *separate* X client also showed
+  black, ruling out Java's readback path.
+- Every primitive failed, including `drawImage`, ruling out any single operation.
+- A `DYLD_INSERT_LIBRARIES` interposer on `XRenderFillRectangle` showed the JVM
+  issuing the right colour to the right Picture with no effect; wrapping
+  `XSetErrorHandler` showed no protocol errors.
+- Filling the JVM's Picture from the interposer *also* did nothing, while a
+  Picture we created over the same drawable worked -- proving the Picture, not
+  the drawable, was the dud.
+- Interposing `XRenderSetPictureClipRectangles` showed `[0,0 0x0]`, while the
+  Java-side `Region` was `[[0, 0 => 120, 40]]`.
+
+Verified after the fix on the default XRender pipeline: `fillRect`, a 200x
+repeat, antialiased fill, `fill(Shape)`, `drawImage`, `clearRect` and a wide
+`drawLine` all return the right colour; Swing paints its real Metal gradients;
+and the on-screen window contents paint (`robot_px` matches the app background).
+`-Dsun.java2d.opengl=true` is no longer needed as a workaround.
+
 
 ## Remaining work
 
-- Fix the black accelerated-VolatileImage path described above; until then
-  Swing UIs relying on Metal gradients render incorrectly.
+- Rebuild and republish `openjdk-21-{jre,jdk}-awt`: the installed device
+  packages predate patch `0006`, so they still render black.
 - Get an X client's window actually *presented* in a live iosc session, so AWT
   output is visible on the panel and not only verifiable in captured pixels.
+- Client-side GL is software everywhere (`softpipe` under both Xvfb and a
+  glamor-backed Xwayland), so the OpenGL Java2D pipeline rasterises on CPU.
+  Hardware acceleration for X clients needs a GLX-capable gl4es (MIT) built
+  against ANGLE — note `docs/hwgl-plan.md` Phase C: ANGLE exposes no
+  `EGL_EXT_platform_x11` and needs a `CAMetalLayer`, so this is not a
+  drop-in. XRender via glamor is the accelerated path that already exists.
 - OpenJDK still reports `os.name=Mac OS X` because the iOS target reuses the
   Darwin/macOS platform family. Changing this can alter third-party library
   selection and needs compatibility testing first.

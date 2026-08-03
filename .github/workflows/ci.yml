@@ -46,6 +46,11 @@ jobs:
       - name: Repo-ops guard hook
         run: python bin/lib/guard-repo-ops.test.py
 
+      # Logic only -- no debs, no otool, so it runs on the Linux runner. The gate
+      # itself is a host publish gate; this keeps its rpath-resolution rules honest.
+      - name: Ladybird TLS rpath rules
+        run: python bin/lib/check-ladybird-tls-rpath.py --self-test
+
   repo-index:
     name: APT index
     runs-on: ubuntu-latest

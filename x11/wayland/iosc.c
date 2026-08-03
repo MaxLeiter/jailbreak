@@ -194,6 +194,12 @@ struct wl_list g_surfaces;
 struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
 struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 struct iosc_surface *g_cursor_surface;
+/* Whether the app currently holds this cursor's pixels (see cursor_image_publish),
+ * and which app-client generation they went to — a reconnecting app needs them
+ * again, since content is only sent on change. Cursor drawing stays in iosc.c,
+ * so these two are private to it. */
+static int      g_cursor_image_sent;
+static unsigned g_cursor_image_gen;
 int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
 /* Last absolute sample from UIKit. Kept separate from the visible cursor so a
  * locked pointer can produce incremental deltas while the cursor stays frozen. */
@@ -1993,7 +1999,134 @@ int iosc_app_cursor(void)
         }
     }
     int enabled = v >= 0 ? v : xios_have_app_client();
-    return enabled && g_cursor_surface == NULL;
+    /* A client-supplied cursor can stay on the overlay only once the app
+     * actually HOLDS its pixels; until then the compositor still has to paint
+     * it, which is what cursor_image_publish() works to avoid. */
+    return enabled && (g_cursor_surface == NULL || g_cursor_image_sent);
+}
+
+/* Hand the client's cursor pixels to the app so its overlay layer becomes a real
+ * cursor plane. Sent on IMAGE change only.
+ *
+ * Cursor buffers are wl_shm in every stack we run (KWin and GTK both upload
+ * theme bitmaps). A GPU-IOSurface cursor would need a readback to reach the CPU,
+ * and a pipeline stall is the exact cost this path exists to remove — so that
+ * case deliberately keeps the composited cursor and simply does not get
+ * scanout. Conditional, not clever. */
+static void cursor_image_note(const char *why)
+{
+    static const char *last = (const char *)-1;
+    if (why == last) return;
+    last = why;
+    if (why)
+        fprintf(stderr, "iosc: cursor plane unavailable: %s\n", why);
+}
+
+static void cursor_image_publish(void)
+{
+    static unsigned char packed[XIOS_CURSOR_IMAGE_MAX * XIOS_CURSOR_IMAGE_MAX * 4];
+
+    if (!xios_have_app_client()) {
+        cursor_image_note("no-app-client");
+        g_cursor_image_sent = 0;
+        return;
+    }
+
+    struct wl_shm_buffer *shm = NULL;
+    if (g_cursor_surface && g_cursor_surface->current_buffer)
+        shm = wl_shm_buffer_get(g_cursor_surface->current_buffer);
+    if (!shm) {
+        /* KWin allocates its cursor as a client IOSurface, not wl_shm, so this
+         * is the common path for KDE rather than an exotic one. An IOSurface is
+         * CPU-mappable, so it costs a lock and a memcpy — no GPU readback. */
+        int iw = 0, ih = 0;
+        if (g_cursor_surface && g_cursor_surface->current_buffer &&
+            iosc_iosurface_buffer_read_bgra(g_cursor_surface->current_buffer,
+                                            packed, XIOS_CURSOR_IMAGE_MAX,
+                                            &iw, &ih)) {
+            int gscale = g_cursor_surface->current_buffer_scale > 0
+                       ? g_cursor_surface->current_buffer_scale : 1;
+            xios_notify_cursor_image(packed, iw, ih,
+                                     g_cursor_hot_x * gscale,
+                                     g_cursor_hot_y * gscale);
+            cursor_image_note(NULL);
+            g_cursor_image_sent = 1;
+            g_cursor_image_gen = xios_app_client_generation();
+            return;
+        }
+        /* Nothing publishable. Withdraw a stale image so the app stops drawing a
+         * cursor the compositor is about to start painting again. */
+        if (g_cursor_surface && g_cursor_surface->current_buffer) {
+            /* Report the size: a cursor refused for being too large is the one
+             * failure here that looks identical to a broken buffer. */
+            static int last_w, last_h;
+            int bw = 0, bh = 0;
+            iosc_iosurface_buffer_get_size(g_cursor_surface->current_buffer, &bw, &bh);
+            if (bw != last_w || bh != last_h) {
+                last_w = bw; last_h = bh;
+                fprintf(stderr, "iosc: cursor buffer unreadable at %dx%d (max %d)\n",
+                        bw, bh, XIOS_CURSOR_IMAGE_MAX);
+            }
+        }
+        cursor_image_note(g_cursor_surface ? "cursor-buffer-unreadable"
+                                           : "no-cursor-surface");
+        if (g_cursor_image_sent) {
+            xios_notify_cursor_image(NULL, 0, 0, 0, 0);
+            g_cursor_image_sent = 0;
+        }
+        return;
+    }
+
+    int32_t w = wl_shm_buffer_get_width(shm);
+    int32_t h = wl_shm_buffer_get_height(shm);
+    int32_t stride = wl_shm_buffer_get_stride(shm);
+    uint32_t format = wl_shm_buffer_get_format(shm);
+    if (w <= 0 || h <= 0 ||
+        w > XIOS_CURSOR_IMAGE_MAX || h > XIOS_CURSOR_IMAGE_MAX ||
+        (format != WL_SHM_FORMAT_ARGB8888 && format != WL_SHM_FORMAT_XRGB8888)) {
+        cursor_image_note("cursor-size-or-format-unsupported");
+        if (g_cursor_image_sent) {
+            xios_notify_cursor_image(NULL, 0, 0, 0, 0);
+            g_cursor_image_sent = 0;
+        }
+        return;
+    }
+
+    /* ARGB8888 is little-endian, so its bytes are already BGRA and already
+     * premultiplied per the wl_shm spec. Rows are repacked tight because the
+     * client's stride may carry padding the wire format does not. */
+    wl_shm_buffer_begin_access(shm);
+    const unsigned char *src = wl_shm_buffer_get_data(shm);
+    for (int32_t row = 0; row < h; row++)
+        memcpy(packed + (size_t)row * (size_t)w * 4,
+               src + (size_t)row * (size_t)stride, (size_t)w * 4);
+    if (format == WL_SHM_FORMAT_XRGB8888)
+        for (int32_t i = 0; i < w * h; i++)
+            packed[(size_t)i * 4 + 3] = 0xff;      /* no alpha channel: opaque */
+    wl_shm_buffer_end_access(shm);
+
+    /* Hotspot arrives in surface-local units; the image is in buffer pixels. */
+    int scale = g_cursor_surface->current_buffer_scale > 0
+              ? g_cursor_surface->current_buffer_scale : 1;
+    xios_notify_cursor_image(packed, w, h,
+                             g_cursor_hot_x * scale, g_cursor_hot_y * scale);
+    cursor_image_note(NULL);
+    g_cursor_image_sent = 1;
+    g_cursor_image_gen = xios_app_client_generation();
+}
+
+/* The app usually attaches AFTER the client has already set its cursor, and the
+ * publish paths (set_cursor, cursor-surface commit) have all been and gone by
+ * then. Re-publish when the client generation moves. This deliberately does not
+ * live behind iosc_app_cursor(): that predicate is true only once the image has
+ * landed, so gating the send on it would be circular and the cursor would never
+ * reach the plane at all. */
+static void cursor_image_sync_for_app(void)
+{
+    if (!g_cursor_surface) return;
+    if (g_cursor_image_sent && g_cursor_image_gen == xios_app_client_generation())
+        return;
+    cursor_image_publish();
 }
 
 /* Signal the current pointer position + shape to the app's cursor overlay. The
@@ -2015,19 +2148,58 @@ void app_cursor_notify(void)
  * fullscreen IOSurface toplevel, with cursor already owned by the app overlay.
  * The client's producer fence is forwarded unchanged, so iosc submits no draw
  * at all; Xios samples the original allocation directly. */
+/* Which precondition is keeping us off the direct path, or NULL if none is.
+ * Falling back to a full-output composite every frame is the single biggest
+ * present-side cost on this hardware, so when it happens the reason has to be
+ * greppable — deducing it from the absence of a log line is not workable. */
+static const char *direct_present_blocker(void)
+{
+    if (g_force_output_composite)  return "forced-composite";
+    if (g_native_mode)             return "native-mode";
+    if (g_slock.locked)            return "session-locked";
+    if (!xios_stream_v2_active())  return "no-stream-v2-app-client";
+    if (g_nmapped != 1)            return "multiple-mapped-surfaces";
+    if (g_dnd.active)              return "drag-and-drop-active";
+    if (!iosc_app_cursor()) {
+        /* Three genuinely different causes. Collapsing them into one label sent
+         * an earlier debugging pass chasing the cursor when the app had simply
+         * dropped. */
+        if (!xios_have_app_client())                  return "no-app-client";
+        if (g_cursor_surface && !g_cursor_image_sent) return "cursor-image-not-published";
+        return "app-cursor-disabled";
+    }
+    struct iosc_surface *s = g_mapped[0];
+    if (!s || !s->mapped)          return "surface-not-mapped";
+    if (s->toplevel_minimized)     return "toplevel-minimized";
+    if (!surface_fills_output(s))  return "not-fullscreen";
+    if (!surface_opaque_full(s))   return "not-opaque";
+    if (!s->current_buffer)        return "no-current-buffer";
+    if (s->viewport && (s->viewport->has_src || s->viewport->has_dst))
+        return "viewport-set";
+    return NULL;
+}
+
+/* Log the blocker only when it CHANGES: a steady state costs nothing, and a
+ * flapping one is exactly what we want to see. */
+static void direct_present_note_blocker(const char *reason)
+{
+    static const char *last = (const char *)-1;
+    if (reason == last) return;
+    last = reason;
+    /* Also published as live state, not just a transition: reading a change-log
+     * to work out the CURRENT reason means a steady blocker looks like silence. */
+    iosc_status_set("direct-blocker", reason ? reason : "none");
+    if (reason)
+        fprintf(stderr, "iosc: direct present unavailable: %s\n", reason);
+}
+
 static int try_direct_present(void)
 {
-    if (g_force_output_composite || g_native_mode || g_slock.locked ||
-        !xios_stream_v2_active() || g_nmapped != 1 ||
-        g_dnd.active || !iosc_app_cursor())
+    const char *blocker = direct_present_blocker();
+    direct_present_note_blocker(blocker);
+    if (blocker)
         return 0;
     struct iosc_surface *surface = g_mapped[0];
-    if (!surface || !surface->mapped || surface->toplevel_minimized ||
-        !surface_fills_output(surface) || !surface_opaque_full(surface) ||
-        !surface->current_buffer ||
-        (surface->viewport &&
-         (surface->viewport->has_src || surface->viewport->has_dst)))
-        return 0;
 
     uint32_t surface_id = 0;
     const void *token = NULL;
@@ -2036,8 +2208,10 @@ static int try_direct_present(void)
     if (!iosc_iosurface_buffer_peek_direct(surface->current_buffer,
                                             &surface_id,
                                             &token, &token_size,
-                                            &event_value))
+                                            &event_value)) {
+        direct_present_note_blocker("buffer-not-direct-presentable");
         return 0;
+    }
 
     uint64_t seq = 0;
     if (xios_notify_surface_with_fence(surface_id, token, token_size,
@@ -2120,6 +2294,10 @@ void recomposite_now(void)
         native_recomposite_now();
         return;
     }
+    /* Catches the app attaching after the cursor was already set. Cheap: a
+     * generation compare, and it only sends when that actually moved. */
+    cursor_image_sync_for_app();
+
     if (iosc_gl_ok()) {
         int direct = try_direct_present();
         if (direct != 0)
@@ -2979,6 +3157,11 @@ static void surface_commit_apply(struct iosc_surface *s)
      * repaint per committed frame. */
     if (!need_recomposite && s->mapped && s->current_buffer && s->gl_dirty)
         need_recomposite = 1;
+
+    /* New pixels on the cursor surface are an IMAGE change: re-publish so the
+     * app's plane keeps showing what the client actually asked for. */
+    if (s == g_cursor_surface)
+        cursor_image_publish();
 
     if (need_recomposite) recomposite_all();
 
@@ -5026,6 +5209,9 @@ static void pointer_set_cursor(struct wl_client *c, struct wl_resource *r, uint3
     g_cursor_hot_y = hy;
     g_cursor_visible = g_cursor_surface != NULL;
     output_damage_add_cursor_at(g_cursor_x, g_cursor_y);
+    /* Publish BEFORE choosing a path: whether the app can own this cursor is
+     * exactly what decides which branch below is correct. */
+    cursor_image_publish();
     if (iosc_app_cursor()) {
         app_cursor_notify();   /* overlay: push shape/visibility, no repaint */
     } else {

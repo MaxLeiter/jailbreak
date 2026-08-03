@@ -82,6 +82,24 @@ enum {
     XIOS_MSG_SURFACE_DROP = 0x08,
     XIOS_MSG_RELEASED = 0x09,
     XIOS_MSG_STREAM_INFO = 0x0a,
+    /* Server -> app: the pixels of a client-supplied cursor, so the app's
+     * overlay layer can act as a real cursor PLANE.
+     *
+     * A cursor composited into the output buffer is what forfeits direct
+     * scanout: it dirties the shared framebuffer, so the compositor can no
+     * longer hand the client's own IOSurface straight through. This is the same
+     * reason KMS compositors put the cursor on its own plane. CURSOR keeps
+     * carrying position/visibility every move; this record carries CONTENT and
+     * is sent only when the cursor image itself changes.
+     *
+     *   a/b    = width/height in pixels
+     *   c/d    = hotspot x/y, in the same pixels
+     *   length = a * b * 4, the payload that follows: tightly packed
+     *            premultiplied BGRA, stride = width * 4.
+     *
+     * A zero-size record means the client withdrew its cursor image and the app
+     * should fall back to the named shape in CURSOR. */
+    XIOS_MSG_CURSOR_IMAGE = 0x0b,
 
     XIOS_MSG_BIND = 0x40,
     XIOS_MSG_RESIZE = 0x41,
@@ -106,6 +124,12 @@ enum {
 #define XIOS_SURFACE_FLAG_FLIP_Y      (1u << 0)
 #define XIOS_PRIMARY_SURFACE_ID       1u
 #define XIOS_DYNAMIC_SURFACE_ID_BASE  0x100u
+/* Largest cursor edge the CURSOR_IMAGE payload will carry (128*128*4 = 64 KiB).
+ * A 64 px cap was too small in practice: KDE runs at a fractional output scale
+ * (2.75), so a nominally 24-32 px theme cursor is rendered well above 64 px and
+ * was refused, which silently dropped the whole session back to compositing.
+ * Anything past this is not a cursor. */
+#define XIOS_CURSOR_IMAGE_MAX         128
 #define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
 
 /*

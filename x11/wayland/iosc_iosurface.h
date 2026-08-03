@@ -15,6 +15,14 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
                                int dx, int dy, int dw, int dh);
 int iosc_iosurface_buffer_get_size(struct wl_resource *buf, int *w, int *h);
 
+/* Copy a small client IOSurface out to tightly packed top-down BGRA (stride
+ * w*4), flipping a GL-origin surface. For the cursor plane: KWin allocates its
+ * cursor through this path rather than wl_shm, and an IOSurface is CPU-mappable,
+ * so this is a lock plus a memcpy rather than a GPU readback. Refuses anything
+ * with an edge over max_edge. Returns 1 on success. */
+int iosc_iosurface_buffer_read_bgra(struct wl_resource *buf, unsigned char *dst,
+                                    int max_edge, int *out_w, int *out_h);
+
 /* Direct-present metadata for an IOSurface wl_buffer. Peek does not consume the
  * producer acquire fence; call consume only after the app DIRTY was queued. */
 int iosc_iosurface_buffer_peek_direct(struct wl_resource *buf,

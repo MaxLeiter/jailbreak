@@ -729,7 +729,15 @@ def native_depiction(ctrl, meta, size):
     markdown = meta.get("description", ctrl.get("Description", ""))
     if meta.get("projectPage"):
         markdown += f"\n\n[More screenshots and port details]({meta['projectPage']})"
-    details = [{"class": "DepictionMarkdownView", "markdown": markdown}]
+    details = []
+    # securityNotice goes above the description, not inside it: a caveat about what the
+    # package exposes should be readable before the pitch, and it must survive an edit
+    # to the prose. Sileo has no callout view, so bold markdown is the honest ceiling.
+    if meta.get("securityNotice"):
+        details.append({"class": "DepictionMarkdownView",
+                        "markdown": f"**Security notice.** {meta['securityNotice']}"})
+        details.append({"class": "DepictionSeparatorView"})
+    details.append({"class": "DepictionMarkdownView", "markdown": markdown})
     if screenshots:
         details += [
             {"class": "DepictionScreenshotsView",
@@ -785,6 +793,10 @@ def html_depiction(ctrl, meta, size):
             f'<p class="project-link"><a href="{html.escape(meta["projectPage"])}">'
             "More screenshots and port details on xiOS&nbsp;&rarr;</a></p>"
         )
+    notice = ""
+    if meta.get("securityNotice"):
+        notice = (f'<div class="notice" role="note"><strong>Security notice</strong>'
+                  f'{md_to_html(meta["securityNotice"])}</div>')
     gallery = html_screenshot_gallery(meta)
     gallery_block = f"\n  {gallery}" if gallery else ""
     name = html.escape(package_name(ctrl, meta))
@@ -797,7 +809,7 @@ def html_depiction(ctrl, meta, size):
   <a class="back" href="../index.html">{BACK_SVG}<span>{html.escape(ORIGIN)}</span></a>
   <header class="masthead"><img src="../icons/{pid}.png" alt="">
     <div><h1>{name}</h1><p class="sub">{tagline}</p></div>{THEME_PICKER}</header>
-  <div class="prose">{body}{project_link}</div>{gallery_block}
+  {notice}<div class="prose">{body}{project_link}</div>{gallery_block}
   <h2 class="section">Information</h2><table class="info">{rows}</table>
   <footer><a href="../index.html">&larr; All packages</a></footer>
 </div>{THEME_JS}{ANALYTICS_JS}</body></html>"""
@@ -829,6 +841,7 @@ SITE_CSS = f"""
     --line:#26262a; --line-hi:#45454c;
     --fg:#ececef; --fg-dim:#9c9ca4; --fg-mute:#6b6b73;
     --accent:{ACCENT_HEX}; --accent-ink:#001321;
+    --notice-accent:#e0a33a; --notice-line:#4a3a1c; --notice-bg:#1a150b;
     --mono:"Geist Mono",ui-monospace,monospace;
     --maxw:760px;
   }}
@@ -838,6 +851,7 @@ SITE_CSS = f"""
     --line:#e4e4e0; --line-hi:#c6c6bf;
     --fg:#151514; --fg-dim:#5d5d58; --fg-mute:#8b8b85;
     --accent:#0a6fce; --accent-ink:#fff;
+    --notice-accent:#8a5a00; --notice-line:#e6d5ac; --notice-bg:#fdf6e6;
   }}
   *{{box-sizing:border-box}}
   html{{-webkit-text-size-adjust:100%}}
@@ -989,6 +1003,18 @@ SITE_CSS = f"""
     letter-spacing:.14em;text-transform:uppercase;margin-bottom:28px;transition:color .15s}}
   .back:hover{{color:var(--fg)}}
   .back svg{{width:14px;height:14px;display:block}}
+  /* securityNotice: sits above the prose, must read as a caveat rather than a badge.
+     Amber rather than red -- these packages work as documented, the notice is about
+     what they expose, and a red alarm on every visit trains people to skip it. */
+  .notice{{margin:0 0 22px;padding:13px 15px;border:1px solid var(--notice-line);
+    border-left:3px solid var(--notice-accent);border-radius:7px;background:var(--notice-bg)}}
+  .notice strong{{display:block;color:var(--notice-accent);font-family:var(--mono);
+    font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;
+    margin-bottom:7px}}
+  .notice p{{margin:.4em 0;color:var(--fg-dim);font-size:14px;line-height:1.55}}
+  .notice p:first-of-type{{margin-top:0}} .notice p:last-child{{margin-bottom:0}}
+  .notice a{{color:var(--fg);border-bottom:1px solid var(--notice-accent)}}
+  .notice code{{font-family:var(--mono);font-size:.9em;color:var(--fg)}}
   .prose p{{margin:.6em 0;color:var(--fg-dim)}}
   .prose strong{{color:var(--fg);font-weight:600}} .prose em{{color:var(--fg)}}
   .prose ul{{margin:.5em 0;padding-left:1.15em}} .prose li{{margin:.25em 0;color:var(--fg-dim)}}

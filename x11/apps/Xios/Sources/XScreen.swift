@@ -165,6 +165,14 @@ final class XScreenView: UIView {
     // move is a Core Animation reposition with no Metal re-present. Stays nil (and
     // the compositor keeps drawing its own cursor) until the first CURSOR record.
     private var cursorLayer: CALayer?
+    // The client's own cursor bitmap, when the compositor has handed it over.
+    // Holding it here is what lets iosc stop painting the cursor into the shared
+    // output — a cursor in that buffer is what forfeits direct scanout.
+    private var clientCursorImage: CGImage?
+    private var clientCursorSize = CGSize.zero
+    private var clientCursorHotspot = CGPoint.zero
+    private var hasClientCursorImage = false
+    private var cursorImageSeq: UInt32 = 0
     private var lastCursorSeq: UInt32 = 0
     private var cursorIsText = false
     private var hardwarePointerActive = false
@@ -637,6 +645,9 @@ final class XScreenView: UIView {
     private func updateCursorOverlay(_ conn: OpaquePointer) {
         var x: Int32 = 0, y: Int32 = 0, vis: Int32 = 0, shape: Int32 = 0
         let seq = xsurface_cursor(conn, &x, &y, &vis, &shape)
+        // Content arrives on its own schedule (only when the cursor image
+        // changes), so it is picked up before the position early-outs below.
+        adoptClientCursorImage(conn)
         guard seq != 0 else { return }        // overlay off server-side → compositor draws it
         if seq == lastCursorSeq { return }    // no new pointer state this tick
         lastCursorSeq = seq
@@ -651,7 +662,12 @@ final class XScreenView: UIView {
             cursorLayer?.isHidden = true
             return
         }
-        if !hardwarePointerActive && iosurfaceCompositorID != "mutter-ios" {
+        // Without a real cursor image the synthesized arrow is only worth drawing
+        // where the compositor has no pointer of its own (mutter). But once the
+        // client's own bitmap is in hand, this layer IS the cursor — the
+        // compositor has stopped painting one, so hiding it would leave none.
+        if !hardwarePointerActive && iosurfaceCompositorID != "mutter-ios"
+            && !hasClientCursorImage {
             cursorLayer?.isHidden = true
             return
         }
@@ -659,7 +675,11 @@ final class XScreenView: UIView {
         guard let layer = cursorLayer else { return }
         if vis == 0 { layer.isHidden = true; return }
         layer.isHidden = false
-        applyCursorShape(shape)               // swap arrow/I-beam if the category changed
+        if hasClientCursorImage {
+            applyClientCursorToLayer()        // the client's real bitmap + hotspot
+        } else {
+            applyCursorShape(shape)           // swap arrow/I-beam if the category changed
+        }
 
         // Cursor coords arrive in framebuffer (physical) px; map through the same
         // fit/zoom/pan rect the framebuffer uses so the pointer tracks the content.
@@ -670,6 +690,60 @@ final class XScreenView: UIView {
         CATransaction.setDisableActions(true)  // track instantly, no implicit move animation
         layer.position = CGPoint(x: vx, y: vy)
         CATransaction.commit()
+    }
+
+    /// Adopt the client's cursor pixels as the overlay's contents, making this
+    /// layer a real cursor plane. CoreAnimation composites it for free, so the
+    /// compositor never has to dirty the shared framebuffer to move a pointer.
+    private func adoptClientCursorImage(_ conn: OpaquePointer) {
+        var w: Int32 = 0, h: Int32 = 0, hx: Int32 = 0, hy: Int32 = 0, seq: UInt32 = 0
+        let pixels = xsurface_cursor_image(conn, &w, &h, &hx, &hy, &seq)
+        guard seq != cursorImageSeq else { return }   // no image change this tick
+        cursorImageSeq = seq
+        guard let pixels, w > 0, h > 0 else {
+            // Withdrawn: the compositor is painting the cursor again, so stop
+            // drawing ours or there would be two.
+            hasClientCursorImage = false
+            clientCursorImage = nil
+            return
+        }
+        let data = Data(bytes: pixels, count: Int(w) * Int(h) * 4)
+        guard let provider = CGDataProvider(data: data as CFData),
+              let image = CGImage(
+                width: Int(w), height: Int(h),
+                bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: Int(w) * 4,
+                space: CGColorSpaceCreateDeviceRGB(),
+                // Premultiplied BGRA on the wire == premultipliedFirst + little endian.
+                bitmapInfo: CGBitmapInfo(rawValue:
+                    CGImageAlphaInfo.premultipliedFirst.rawValue |
+                    CGBitmapInfo.byteOrder32Little.rawValue),
+                provider: provider, decode: nil,
+                shouldInterpolate: false, intent: .defaultIntent)
+        else {
+            hasClientCursorImage = false
+            clientCursorImage = nil
+            return
+        }
+        clientCursorImage = image
+        clientCursorSize = CGSize(width: Int(w), height: Int(h))
+        clientCursorHotspot = CGPoint(x: CGFloat(hx) / CGFloat(w),
+                                      y: CGFloat(hy) / CGFloat(h))
+        hasClientCursorImage = true
+    }
+
+    /// Size the plane to match the framebuffer's on-screen scale, and put the
+    /// hotspot exactly where the compositor thinks the pointer is.
+    private func applyClientCursorToLayer() {
+        guard hasClientCursorImage, let layer = cursorLayer,
+              let image = clientCursorImage else { return }
+        let rect = contentRect()
+        let sx = fbWidth > 0 ? rect.width / CGFloat(fbWidth) : 1
+        let sy = fbHeight > 0 ? rect.height / CGFloat(fbHeight) : 1
+        layer.contents = image
+        layer.bounds = CGRect(origin: .zero,
+                              size: CGSize(width: clientCursorSize.width * sx,
+                                           height: clientCursorSize.height * sy))
+        layer.anchorPoint = clientCursorHotspot
     }
 
     private func makeCursorLayer(shape: Int32) {
@@ -1498,8 +1572,14 @@ final class XScreenView: UIView {
     }
 
     /// Blocking worker primitive. UI actions dispatch this through requestIOSCD.
+    /// `stopAtNewline` returns as soon as one complete line is in hand instead
+    /// of reading to EOF. Single-reply verbs (SESSION) use it so the picker
+    /// never waits on the daemon closing the connection — a session child that
+    /// inherits the socket would otherwise stall the reply to the recv timeout.
+    /// Streaming verbs (APPS_LIST/APPS_SYNC) still need the read-to-EOF path.
     private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20,
-                                  timeout: TimeInterval = 2.0) -> String? {
+                                  timeout: TimeInterval = 2.0,
+                                  stopAtNewline: Bool = false) -> String? {
         let fd = xiosConnectUnixSocket(ioscdSocketPath, timeout: timeout)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
@@ -1515,6 +1595,7 @@ final class XScreenView: UIView {
             }
             if n > 0 {
                 data.append(buf, count: Int(n))
+                if stopAtNewline, data.contains(UInt8(ascii: "\n")) { break }
             } else if n < 0 && errno == EINTR {
                 continue
             } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -1528,11 +1609,13 @@ final class XScreenView: UIView {
 
     private func requestIOSCD(_ line: String, maxBytes: Int = 1 << 20,
                               timeout: TimeInterval = 2.0,
+                              stopAtNewline: Bool = false,
                               completion: @escaping (String?) -> Void) {
         ioscdRequestQueue.async { [weak self] in
             guard let self else { return }
             let response = self.sendIOSCDRequest(
-                line, maxBytes: maxBytes, timeout: timeout)
+                line, maxBytes: maxBytes, timeout: timeout,
+                stopAtNewline: stopAtNewline)
             DispatchQueue.main.async {
                 completion(response)
             }
@@ -1593,7 +1676,7 @@ final class XScreenView: UIView {
         }
 
         let line = sessionRequestLine(preset, app: app, display: display, slot: slot)
-        requestIOSCD(line, maxBytes: 4096) { [weak self] rawResponse in
+        requestIOSCD(line, maxBytes: 4096, stopAtNewline: true) { [weak self] rawResponse in
             guard let self else { return }
             self.sessionRequestInFlight = false
             let response = rawResponse?.trimmingCharacters(in: .whitespacesAndNewlines)
