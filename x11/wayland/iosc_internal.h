@@ -106,7 +106,12 @@ static inline int physical_to_logical(int px)
 }
 
 void output_send_state(struct wl_resource *r);
+/* wp_viewporter + wp_fractional_scale_v1 (iosc_viewport.c). */
 void fractional_scale_broadcast(void);   /* re-notify wp_fractional_scale_v1 clients */
+void viewporter_bind(struct wl_client *client, void *data,
+                     uint32_t version, uint32_t id);
+void fractional_scale_bind(struct wl_client *client, void *data,
+                           uint32_t version, uint32_t id);
 
 /* Drop a destroyed resource from one of the per-global resource lists. */
 void output_res_remove(struct wl_resource **arr, int *n, struct wl_resource *r);
