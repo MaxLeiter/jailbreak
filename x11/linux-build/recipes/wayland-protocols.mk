@@ -7,15 +7,16 @@ endif
 # clients run wayland-scanner over these XMLs at *their* build time, so nothing here is
 # compiled or cross-built. No cross file needed (the meson project declares no language).
 #
-# BUILT/PUBLISHED — wayland-protocols 1.44+ios1. Recipe integration:
+# BUILT/PUBLISHED — wayland-protocols 1.49+ios1. Recipe integration:
 #   recipe        -> Procursus/makefiles/wayland-protocols.mk
 #   control file  -> Procursus/build_info/wayland-protocols.control
 
 SUBPROJECTS            += wayland-protocols
-# Bumped 1.38 -> 1.44 for foot 1.27, whose meson hard-requires wayland-protocols >= 1.41 and
-# references color-management-v1 (added 1.41) + xdg-toplevel-tag-v1 (>=1.43 gate). Pure data,
-# backward compatible; only foot/imv consume it in the wayland volume.
-WAYLANDPROTOCOLS_VERSION := 1.44
+# Bumped 1.44 -> 1.49 by the upstream audit (tools/audit-upstream-versions.py). Pure protocol
+# XML and pkg-config data, so the bump is purely additive: 1.49 adds three staging protocols
+# (ext-background-effect, pointer-warp, xdg-session-management) and removes nothing, keeping
+# foot/imv and every existing wayland-scanner consumer building unchanged.
+WAYLANDPROTOCOLS_VERSION := 1.49
 DEB_WAYLANDPROTOCOLS_V ?= $(WAYLANDPROTOCOLS_VERSION)+ios1
 
 wayland-protocols-setup: setup

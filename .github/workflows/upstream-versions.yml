@@ -1,0 +1,35 @@
+name: Upstream versions
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 16 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Audit recipe pins against upstream
+        run: |
+          python3 x11/linux-build/tools/audit-upstream-versions.py \
+            --refresh \
+            --format markdown \
+            --output upstream-versions.md
+          cat upstream-versions.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xios-upstream-versions
+          path: upstream-versions.md
+          retention-days: 30
