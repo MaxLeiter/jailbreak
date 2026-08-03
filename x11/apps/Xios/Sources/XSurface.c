@@ -75,6 +75,13 @@ struct XSurfaceConn {
     /* latest cursor state (from CURSOR records) */
     int cur_x, cur_y, cur_vis, cur_shape;
     uint32_t cur_seq;          /* bumped per CURSOR record; 0 = none seen */
+    /* Client cursor PIXELS (XIOS_MSG_CURSOR_IMAGE), so the overlay layer can be
+     * a real cursor plane instead of the compositor painting into the output. */
+    unsigned char cursor_pixels[XIOS_CURSOR_IMAGE_MAX * XIOS_CURSOR_IMAGE_MAX * 4];
+    int cursor_img_w, cursor_img_h, cursor_hot_x, cursor_hot_y;
+    uint32_t cursor_img_seq;   /* bumped per image change; 0 = none seen */
+    uint32_t cursor_rx_expected, cursor_rx_got;
+    int cursor_rx_w, cursor_rx_h, cursor_rx_hot_x, cursor_rx_hot_y;
     uint64_t dirty_seq;        /* latest DIRTY present sequence from the compositor */
     xios_msg pending_surface;
     int has_pending_surface;
@@ -436,6 +443,29 @@ int xsurface_drain(XSurfaceConn *c)
             if (errno == EINTR) continue;
             return -1;
         }
+        if (c->cursor_rx_expected > 0) {
+            ssize_t r = recv(c->fd,
+                             c->cursor_pixels + c->cursor_rx_got,
+                             c->cursor_rx_expected - c->cursor_rx_got,
+                             MSG_DONTWAIT);
+            if (r > 0) {
+                c->cursor_rx_got += (uint32_t)r;
+                if (c->cursor_rx_got < c->cursor_rx_expected)
+                    continue;
+                c->cursor_img_w = c->cursor_rx_w;
+                c->cursor_img_h = c->cursor_rx_h;
+                c->cursor_hot_x = c->cursor_rx_hot_x;
+                c->cursor_hot_y = c->cursor_rx_hot_y;
+                c->cursor_img_seq++;
+                c->cursor_rx_expected = 0;
+                c->cursor_rx_got = 0;
+                continue;
+            }
+            if (r == 0) return -1;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            if (errno == EINTR) continue;
+            return -1;
+        }
         if (c->skip > 0) {                     /* discard a record's payload */
             unsigned char scratch[64];
             int want = c->skip < (int) sizeof scratch ? c->skip : (int) sizeof scratch;
@@ -507,6 +537,28 @@ int xsurface_drain(XSurfaceConn *c)
                 c->cur_shape = m.c; c->cur_vis = (m.d & 1);
                 c->cur_seq++;
                 break;
+            case XIOS_MSG_CURSOR_IMAGE:
+                /* Zero size withdraws the image: the compositor has gone back to
+                 * painting the cursor itself, so drop ours rather than leave a
+                 * second one on screen. */
+                if (m.length == 0) {
+                    c->cursor_img_w = c->cursor_img_h = 0;
+                    c->cursor_img_seq++;
+                    break;
+                }
+                if (m.a <= 0 || m.b <= 0 ||
+                    m.a > XIOS_CURSOR_IMAGE_MAX || m.b > XIOS_CURSOR_IMAGE_MAX ||
+                    m.length != (uint32_t)m.a * (uint32_t)m.b * 4u) {
+                    xlog("invalid CURSOR_IMAGE %dx%d length=%u", m.a, m.b, m.length);
+                    return -1;
+                }
+                c->cursor_rx_expected = m.length;
+                c->cursor_rx_got = 0;
+                c->cursor_rx_w = m.a;
+                c->cursor_rx_h = m.b;
+                c->cursor_rx_hot_x = m.c;
+                c->cursor_rx_hot_y = m.d;
+                break;
             case XIOS_MSG_HELLO:
                 xlog("duplicate HELLO; reconnect");
                 return -1;
@@ -514,7 +566,10 @@ int xsurface_drain(XSurfaceConn *c)
                 xlog("typed unknown record type=0x%x; reconnect", m.type);
                 return -1;
             }
-            if (m.length > 0 && m.type != XIOS_MSG_DIRTY)
+            /* DIRTY and CURSOR_IMAGE consume their own payloads above; anything
+             * else with a payload is skipped. */
+            if (m.length > 0 && m.type != XIOS_MSG_DIRTY &&
+                m.type != XIOS_MSG_CURSOR_IMAGE)
                 c->skip = (int) m.length;
             continue;
         }
@@ -638,6 +693,25 @@ uint32_t xsurface_cursor(XSurfaceConn *c, int *x, int *y, int *visible, int *sha
     if (visible) *visible = c->cur_vis;
     if (shape_id) *shape_id = c->cur_shape;
     return c->cur_seq;
+}
+
+const void *xsurface_cursor_image(XSurfaceConn *c, int *width, int *height,
+                                  int *hot_x, int *hot_y, uint32_t *seq)
+{
+    if (width) *width = 0;
+    if (height) *height = 0;
+    if (hot_x) *hot_x = 0;
+    if (hot_y) *hot_y = 0;
+    if (seq) *seq = 0;
+    if (!c) return NULL;
+    if (seq) *seq = c->cursor_img_seq;
+    if (c->cursor_img_w <= 0 || c->cursor_img_h <= 0)
+        return NULL;                    /* seq still advances: image withdrawn */
+    if (width) *width = c->cursor_img_w;
+    if (height) *height = c->cursor_img_h;
+    if (hot_x) *hot_x = c->cursor_hot_x;
+    if (hot_y) *hot_y = c->cursor_hot_y;
+    return c->cursor_pixels;
 }
 
 const char *xsurface_compositor_id(XSurfaceConn *c) { return c ? c->comp_id : ""; }
