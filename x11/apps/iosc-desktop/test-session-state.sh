@@ -83,3 +83,91 @@ grep -q '"state":"submitted"' "$XS_APP_STATUS"
 grep -q '"owner":"kde"' "$XS_APP_STATUS"
 
 echo "session-state: installed profile and additive app status checks passed"
+
+# ---------------------------------------------------------------------------
+# stale display-slot sweep
+#
+# Regression: the sweeper used to skip any slot whose socket or config file
+# still existed, which is exactly the state a session that died dirty leaves
+# behind. Slots that crashed/were jetsammed/survived a reboot therefore piled
+# up in $XS_TMP forever, while only the already-clean slots were swept.
+# ---------------------------------------------------------------------------
+mkdir -p "$XS_SLOT_REGISTRY_DIR"
+
+stale_slot=deadslot
+printf '{"wayland":"wayland-%s","json":"%s/xios-%s.json"}\n' \
+    "$stale_slot" "$XS_TMP" "$stale_slot" \
+    >"$XS_SLOT_REGISTRY_DIR/$stale_slot.json"
+# The full dirty footprint: rendezvous socket + lock, config, every sidecar
+# socket, the status file, and a log that must SURVIVE the sweep.
+: >"$XS_TMP/wayland-$stale_slot"
+: >"$XS_TMP/wayland-$stale_slot.lock"
+: >"$XS_TMP/xios-$stale_slot.json"
+: >"$XS_TMP/iosc-$stale_slot-ddx.sock"
+: >"$XS_TMP/iosc-$stale_slot-input.sock"
+: >"$XS_TMP/iosc-$stale_slot-clipboard.sock"
+: >"$XS_TMP/iosc-$stale_slot-wm.sock"
+: >"$XS_TMP/mutter-$stale_slot-ddx.sock"
+: >"$XS_TMP/xios-session-$stale_slot.json"
+: >"$XS_TMP/iosc-$stale_slot.log"
+
+# A slot with a live process must be left completely alone, even though its
+# files look identical to the stale one's.
+live_slot=liveslot
+printf '{"wayland":"wayland-%s","json":"%s/xios-%s.json"}\n' \
+    "$live_slot" "$XS_TMP" "$live_slot" \
+    >"$XS_SLOT_REGISTRY_DIR/$live_slot.json"
+: >"$XS_TMP/wayland-$live_slot"
+: >"$XS_TMP/xios-$live_slot.json"
+/usr/bin/python3 -c 'import time; time.sleep(30)' "wayland-$live_slot" &
+live_pid=$!
+trap 'kill "$live_pid" 2>/dev/null || true; cleanup' EXIT
+for _ in $(seq 1 30); do
+    xs_slot_has_live_process "$live_slot" && break
+    sleep 0.1
+done
+xs_slot_has_live_process "$live_slot" || {
+    echo "test setup failed: live slot process never appeared in ps" >&2
+    exit 1
+}
+
+xs_sweep_stale_slot_registry
+
+for leftover in \
+    "$XS_SLOT_REGISTRY_DIR/$stale_slot.json" \
+    "$XS_TMP/wayland-$stale_slot" \
+    "$XS_TMP/wayland-$stale_slot.lock" \
+    "$XS_TMP/xios-$stale_slot.json" \
+    "$XS_TMP/iosc-$stale_slot-ddx.sock" \
+    "$XS_TMP/iosc-$stale_slot-input.sock" \
+    "$XS_TMP/iosc-$stale_slot-clipboard.sock" \
+    "$XS_TMP/iosc-$stale_slot-wm.sock" \
+    "$XS_TMP/mutter-$stale_slot-ddx.sock" \
+    "$XS_TMP/xios-session-$stale_slot.json"; do
+    if [ -e "$leftover" ]; then
+        echo "sweep left stale slot state behind: $leftover" >&2
+        exit 1
+    fi
+done
+
+[ -e "$XS_TMP/iosc-$stale_slot.log" ] || {
+    echo "sweep deleted the stale slot's log (needed for post-mortem)" >&2
+    exit 1
+}
+
+for kept in \
+    "$XS_SLOT_REGISTRY_DIR/$live_slot.json" \
+    "$XS_TMP/wayland-$live_slot" \
+    "$XS_TMP/xios-$live_slot.json"; do
+    [ -e "$kept" ] || {
+        echo "sweep removed state belonging to a LIVE slot: $kept" >&2
+        exit 1
+    }
+done
+
+kill "$live_pid" 2>/dev/null || true
+wait "$live_pid" 2>/dev/null || true
+live_pid=
+trap cleanup EXIT
+
+echo "session-state: stale display-slot sweep checks passed"
