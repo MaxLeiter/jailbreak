@@ -354,7 +354,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: com.max.xios
 Name: Xios
-Version: 0.1.10
+Version: 0.1.11
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -363,11 +363,11 @@ Priority: optional
 Depends: firmware (>= 16.0), iosc (>= 0.9.39)
 MinimumOSVersion: 16.0.0
 Description: the display app for the Xios desktop
-Filename: debs/com.max.xios_0.1.10_iphoneos-arm64.deb
-Size: 769510
-MD5sum: 677bcf884a9db6b8af5a20abeb7fdba3
-SHA1: 7a90792d4eaf6918aa6d63a4dbf6f5abb7bc025d
-SHA256: 79a0acbb85f4af3f0e3cd43ed4926371ba6dc0ea52a7e1378eca8d102083e071
+Filename: debs/com.max.xios_0.1.11_iphoneos-arm64.deb
+Size: 492100
+MD5sum: ba1b3be71fdf13e3ee2125237591fd7e
+SHA1: a0f3939bfa64b63a8bdbfff0222ea31da3efd7e6
+SHA256: 52a2417eadf28d7424ec5420b0840ee701715543ca93679095ab53d191bdd638
 Icon: https://repo.maxleiter.com/icons/com.max.xios.png
 Depiction: https://repo.maxleiter.com/depictions/com.max.xios.html
 SileoDepiction: https://repo.maxleiter.com/depictions/com.max.xios.json
