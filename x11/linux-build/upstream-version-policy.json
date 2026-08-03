@@ -34,7 +34,8 @@
     {
       "match": "linux-build/recipes/webkitgtk.mk:WEBKITGTK_VERSION",
       "track": "2.44",
-      "hold": "2.46 and newer require C++23 features unsupported by the current iOS Clang 14 lane."
+      "security": true,
+      "hold": "SECURITY: 2.44 is end-of-life. WebKitGTK backports fixes only to the current stable series, so every advisory since the 2.46 branch is unapplied here -- and this engine renders untrusted web content for epiphany and untrusted HTML email for geary. Held because 2.46+ need C++23 features the iOS Clang 14 lane does not have, which makes that lane the thing to fix. This is not a scheduling hold that can just wait."
     },
     {
       "match": "linux-build/recipes/xwayland.mk:XWAYLAND_VERSION",

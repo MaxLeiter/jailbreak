@@ -10,6 +10,13 @@ This is deliberately an auditor, not an auto-bumper.  Cross-port patches,
 desktop release cohorts, Procursus ABI shadows, and the iOS toolchain all make a
 blind "latest wins" policy unsafe.  linux-build/upstream-version-policy.json
 declares the exceptional tracks and holds.
+
+A policy rule may set "security": true alongside its "hold".  Most holds are a
+scheduling choice -- an ABI cohort that has to move as one lane -- and reading
+"held" as "fine for now" is correct for those.  It is not correct for a pin that
+ships parsing code for untrusted input on an upstream that no longer receives
+fixes.  Those report as "security-held", sort first, and get their own callout,
+so the two never blur together in the same list.
 """
 from __future__ import annotations
 
@@ -297,7 +304,8 @@ def audit_one(record: dict, policy: dict, refresh: bool) -> dict:
     result = {**record, "status": "unknown", "latest": None,
               "candidate": None, "track": rule.get("track") or record.get("track")
               or default_track(record["current"], record.get("source_url")),
-              "note": rule.get("hold") or rule.get("note"), "error": None}
+              "note": rule.get("hold") or rule.get("note"),
+              "security": bool(rule.get("security")), "error": None}
     if rule.get("ignore"):
         result["status"] = "ignored"
         result["note"] = rule["ignore"]
@@ -328,7 +336,13 @@ def audit_one(record: dict, policy: dict, refresh: bool) -> dict:
         current_key = natural_key(result["current"])
         candidate_key = natural_key(result["candidate"])
         if current_key < candidate_key:
-            result["status"] = "held" if rule.get("hold") else "update"
+            # A hold on a security-relevant pin is still a hold -- it cannot be bumped
+            # today -- but it must not read like the benign ABI-cohort holds around it.
+            # Those are a scheduling choice; this one means users run unpatched code.
+            if rule.get("hold"):
+                result["status"] = "security-held" if rule.get("security") else "held"
+            else:
+                result["status"] = "update"
         elif current_key > candidate_key:
             result["status"] = "ahead"
         elif result["latest"] != result["candidate"]:
@@ -366,10 +380,30 @@ def inventory() -> list[dict]:
     return records
 
 
+# Report order. Everything unlisted sorts after these, alphabetically by status.
+STATUS_ORDER = {"security-held": 0, "update": 1, "track-missing": 2, "unknown": 3, "held": 4}
+
+
+def sort_key(r: dict) -> tuple:
+    return (STATUS_ORDER.get(r["status"], 50), r["status"], r["key"])
+
+
+def security_holds(results: list[dict]) -> list[dict]:
+    return [r for r in results if r["status"] == "security-held"]
+
+
 def render_text(results: list[dict]) -> str:
     counts = {status: sum(r["status"] == status for r in results)
               for status in sorted({r["status"] for r in results})}
     lines = ["Xios upstream version audit", "  " + ", ".join(f"{k}={v}" for k, v in counts.items()), ""]
+    held = security_holds(results)
+    if held:
+        lines.append("!! SECURITY-RELEVANT HOLDS -- shipped to users on an unpatched upstream:")
+        for r in held:
+            lines.append(f"     {r['key']}: {r['current']} (upstream {r['latest'] or '?'})")
+            if r.get("note"):
+                lines.append(f"       {r['note']}")
+        lines.append("")
     for r in results:
         if r["status"] in {"current", "ignored"}:
             continue
@@ -386,8 +420,17 @@ def render_markdown(results: list[dict]) -> str:
               for status in sorted({r["status"] for r in results})}
     lines = ["# Xios upstream version audit", "",
              "Generated from the pinned versions in `linux-build/recipes/` and official upstream sources.", "",
-             " | ".join(f"**{k}:** {v}" for k, v in counts.items()), "",
-             "| Status | Recipe pin | Current | Candidate | Latest | Track / note |", "|---|---|---:|---:|---:|---|"]
+             " | ".join(f"**{k}:** {v}" for k, v in counts.items()), ""]
+    held = security_holds(results)
+    if held:
+        lines += ["> **Security-relevant holds.** These pins ship to users on an upstream that no",
+                  "> longer receives fixes. They are held for a build reason, not a scheduling one,",
+                  "> so the hold is the bug to fix -- not a status to acknowledge.", ""]
+        for r in held:
+            lines.append(f"> - `{r['key']}` at **{r['current']}** (upstream {r['latest'] or '?'})"
+                         + (f" -- {r['note']}" if r.get("note") else ""))
+        lines.append("")
+    lines += ["| Status | Recipe pin | Current | Candidate | Latest | Track / note |", "|---|---|---:|---:|---:|---|"]
     for r in results:
         if r["status"] in {"current", "ignored"}:
             continue
@@ -414,7 +457,7 @@ def main() -> int:
         records = [r for r in records if fnmatch.fnmatch(r["key"], args.include)]
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
         results = list(executor.map(lambda r: audit_one(r, policy, args.refresh), records))
-    results.sort(key=lambda r: (r["status"], r["key"]))
+    results.sort(key=sort_key)
     if args.format == "json":
         output = json.dumps(results, indent=2) + "\n"
     elif args.format == "markdown":
