@@ -1456,7 +1456,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.46
+Version: 0.9.47
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1464,13 +1464,13 @@ Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-16), libwayland0, libxkbcommon0
 Recommends: gnome-console
 Section: X11
 Priority: optional
-Installed-Size: 712
+Installed-Size: 708
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.46_iphoneos-arm64.deb
-Size: 164460
-MD5sum: 63e2f47303556958567c5dea91f5723c
-SHA1: cd6de7b2d19bfabf130ebf36f2b17a317a107337
-SHA256: 2cf942dd87c063c26be3ec6ebbf8ad79f001f3ef35df1e54c12e6df00505650f
+Filename: debs/iosc_0.9.47_iphoneos-arm64.deb
+Size: 164416
+MD5sum: cd38541a69f3af44b44ba91169db91ed
+SHA1: 3afb8d9b2ef033a6d058aefa7853e9faa6f5258f
+SHA256: 36d395355361cd8cddc019e8cfc17561c56c462974f2c7dad18c0d2bccf67b4e
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -11432,21 +11432,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
 
 Package: plasma-desktop-dev
-Version: 6.1.5+ios8
+Version: 6.1.5+ios10
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: plasma-desktop (= 6.1.5+ios8), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, kf6-kirigami-addons-dev, libplasma-dev, plasma-workspace-dev, plasma-activities-dev, plasma-activities-stats-dev
+Depends: plasma-desktop (= 6.1.5+ios10), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, kf6-kirigami-addons-dev, libplasma-dev, plasma-workspace-dev, plasma-activities-dev, plasma-activities-stats-dev
 Description: Development files for Plasma Desktop on Xios
 Installed-Size: 16
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-desktop-dev_6.1.5+ios8_iphoneos-arm64.deb
-Size: 830
-MD5sum: a380d5c61c28664fd31e8a3e2056ec21
-SHA1: 41bb6b77931b6a289ac87f5a059d6c44c2b94525
-SHA256: 75611f20088c923720d632ac10f17bd8b4ed18a1a9dd8a7ff8885cf1ddd6500c
+Filename: debs/plasma-desktop-dev_6.1.5+ios10_iphoneos-arm64.deb
+Size: 826
+MD5sum: e42ec48b3323edb92e1787943d5ff576
+SHA1: 59ccbad2fbee29e41f34a403de44bceedd2646f5
+SHA256: 2b28fad3e9ff4287bc7977491f0cb802d7b64dd157abc5264136c83be378dd4c
 Icon: https://repo.maxleiter.com/icons/plasma-desktop-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.json
@@ -13006,23 +13006,23 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-session
 Name: Xios session launcher
-Version: 1.0.78
+Version: 1.0.79
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.34)
+Depends: iosc (>= 0.9.34), uikittools
 Recommends: iosc-shell, xios
 Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
 Priority: optional
-Installed-Size: 152
+Installed-Size: 180
 Description: pick-a-desktop session launcher for the Xios stack
-Filename: debs/xios-session_1.0.78_iphoneos-arm64.deb
-Size: 40186
-MD5sum: bce2d11bf92e54117f1b14d6017a21d4
-SHA1: 7a9d99fa1d5e8aaf8d349be0089c4867d65ffbb4
-SHA256: d949618d6c253f30e894f31431bb7d175da137a9e179db72ef99c150479445b4
+Filename: debs/xios-session_1.0.79_iphoneos-arm64.deb
+Size: 48080
+MD5sum: 2a183e30adb5fe2274bb166e9d334458
+SHA1: a2826d6086d320da76a0694f874b8dd2e31368e2
+SHA256: 3605b7d85c49a88ff4673276b40100c8dafeae8f04d8ff68c743f92c7bf620ef
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session.json
