@@ -1,0 +1,18 @@
+Package: openjdk-21-jdk-awt
+Name: OpenJDK 21 AWT/X11 Development Kit
+Version: 21.0.12+ios1
+Architecture: iphoneos-arm64
+Depends: openjdk-21-jre-awt (= 21.0.12+ios1)
+Provides: java-compiler, java-sdk
+Description: OpenJDK 21 development tools for the AWT/X11 runtime on iOS.
+ Adds javac, jar, javadoc, jlink, JShell, debugger and diagnostic tools,
+ headers, JMODs, manuals, and OpenJDK sources to the headful Java runtime.
+ .
+ Installs alongside, not over, openjdk-21-jdk-headless: these tools live in
+ the java-21-openjdk-awt directory and claim no /usr/bin names. Select them
+ with JAVA_HOME.
+Maintainer: max
+Author: OpenJDK contributors and Xios
+Section: Development
+Priority: optional
+MinimumOSVersion: 16.0

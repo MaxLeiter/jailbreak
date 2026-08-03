@@ -129,10 +129,65 @@ All of the following passed on the iPad7,12 / A10:
 
 The test did not restart or disturb the running Xios session.
 
+## AWT/X11 variant (opt-in, alongside headless)
+
+`OPENJDK_VARIANT=awt-x11` builds a second, headful image
+(`--enable-headless-only=no`) in its own work tree and ships it as
+`openjdk-21-{jre,jdk}-awt`. It installs to
+`/var/jb/usr/lib/jvm/java-21-openjdk-awt` and deliberately claims **no**
+`/usr/bin` names, so the proven headless runtime is untouched — select it with
+`JAVA_HOME`. Verified on device: installing the AWT packages left the headless
+package versions and every `/usr/bin` symlink identical.
+
+    OPENJDK_VARIANT=awt-x11 bash x11/linux-build/build-openjdk-ios.sh --awt-x11-build-only
+    OPENJDK_VARIANT=awt-x11 bash x11/linux-build/build-openjdk-ios.sh --package-only
+
+Two fixes were needed beyond selecting the XAWT peer:
+
+- **rpath.** The Procursus X11 dylibs carry `@rpath` install names, and OpenJDK
+  gives its libraries only `LC_RPATH @loader_path/.` — the JDK's own `lib`. The
+  `awt-x11` ldflags now add `$XIOS_PREFIX/usr/lib`, matching every other
+  Procursus consumer. Without it `libawt_xawt` cannot resolve `libX11`.
+- **fontconfig** (patch `0005`). `X11FontManager` only consults
+  `FcFontConfiguration` when `FontUtilities.isLinux`; our macOS-family target
+  fell through to `MFontConfiguration`, which wants a `fontconfig.properties`
+  JDK 21 no longer generates, so the first text operation threw
+  "Fontconfig head is null".
+
+### Device evidence (iPad7,12 / A10)
+
+- `headless=false`, `toolkit=sun.awt.X11.XToolkit`, screen geometry read over
+  the X protocol, `Frame` displayable and showing at its requested size.
+- Ran against both Xwayland (attached to a live `iosc` compositor) and Xvfb.
+- The variant compiles Java on-device with its own `javac`.
+- Swing renders: `JButton`/`JCheckBox`/`JTextField`/`JProgressBar` paint through
+  Java2D, `java.awt.Robot` captures, and `ImageIO` encodes the result to PNG.
+
+### Known defect: accelerated VolatileImage renders black
+
+`GraphicsConfiguration.createCompatibleVolatileImage(...)` returns an image that
+fills **black** while reporting success (`contentsLost()==false`). A software
+`createCompatibleImage` on the same config is correct, so this is specific to
+the X pixmap-backed accelerated surface. Blitting the VolatileImage into a
+software image also yields black, so the *fill* is wrong — not just readback.
+
+Visible consequence: Metal L&F paints its button gradient through
+`sun.swing.CachedPainter`, which uses a VolatileImage, so `JButton` faces render
+as black blocks. Everything not routed through a VolatileImage is correct.
+
+Reproduced identically with `-Dsun.java2d.xrender=false`,
+`-Dsun.java2d.pmoffscreen=false`, and
+`-Dswing.volatileImageBufferEnabled=false`, so it is not XRender-specific and
+no property-level workaround is known yet. Not yet isolated to either the JDK
+build or the X server; re-running the probe under a non-Xvfb server with
+exclusive device access is the next step.
+
 ## Remaining work
 
-- Native AWT windows are not implemented. The current build is intentionally
-  headless; a real XAWT or Wayland Java peer is its own porting milestone.
+- Fix the black accelerated-VolatileImage path described above; until then
+  Swing UIs relying on Metal gradients render incorrectly.
+- Get an X client's window actually *presented* in a live iosc session, so AWT
+  output is visible on the panel and not only verifiable in captured pixels.
 - OpenJDK still reports `os.name=Mac OS X` because the iOS target reuses the
   Darwin/macOS platform family. Changing this can alter third-party library
   selection and needs compatibility testing first.
