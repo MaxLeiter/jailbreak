@@ -202,6 +202,18 @@ actually issues. All four return the right colour. The same failure also
 reproduces on a glamor-backed Xwayland, not just Xvfb, so it is not a
 server-specific quirk either.
 
+**The fill never reaches the pixmap; it is not a readback problem.**
+`XRSurfaceData.getXid()` gives the pixmap's XID, and a *separate X client*
+(`xrread`, same technique as the probe) reading that pixmap while the JVM still
+holds it sees `000000` too. The server-side pixel data really is black.
+
+**No primitive lands on an XRender surface.** `fillRect`, a 200x repeat of it,
+`fillRect` with antialiasing, `fill(Shape)`, `drawImage`, `clearRect` and a
+40px-wide `drawLine` all read back `000000`. Since even a blit fails, this is
+not one broken operation — the whole XRender surface is a sink. That matches
+the on-screen behaviour: with the XRender pipeline the Swing window stayed at
+its unpainted `eeeeee` background, and only the OpenGL pipeline made it paint.
+
 What is known about the Java side:
 
 - The surface really is `sun.java2d.xr.XRSurfaceData$XRPixmapSurfaceData`,
@@ -213,9 +225,22 @@ What is known about the Java side:
   `XRBackendNative` rather than the loops, so that alone is not proof the fill
   is skipped, but nothing in the loop layer touches the surface.
 
-Next: trace the actual X protocol (`XRBackendNative` call sequence, or an
-`xtrace`-style capture) for a Java fill and compare it against the C probe's
-request stream. They should be near-identical; the difference is the bug.
+So the pipeline believes it is enabled, builds the right surface objects, and
+then emits rendering that has no effect on a pixmap the server is perfectly
+willing to render into from another client.
+
+Next, in increasing cost:
+
+1. Check whether X protocol errors are being raised and swallowed. AWT installs
+   its own X error handler; a stream of `BadPicture`/`BadMatch` on every render
+   would explain "enabled but inert" exactly.
+2. Interpose on `XRenderComposite`/`XRenderFillRectangle` with
+   `DYLD_INSERT_LIBRARIES` and log the arguments the JVM passes — in particular
+   whether the destination Picture is the one created for the pixmap.
+3. Compare `XRBackendNative.c` and the `XRCompositeManager` flush path against a
+   known-good Linux build; our build is the only variable left, and the
+   `-UMACOSX`-on-XAWT-but-`-DMACOSX`-on-libawt split is the obvious suspect for
+   a struct or calling-convention mismatch across the two libraries.
 
 Caveat before making this the default: under Xvfb, GLX resolves to llvmpipe
 software rendering, so this trades a correctness bug for CPU-side rasterisation.
