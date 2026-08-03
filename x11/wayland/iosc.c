@@ -2296,6 +2296,18 @@ static void cursor_image_publish(void)
         }
         /* Nothing publishable. Withdraw a stale image so the app stops drawing a
          * cursor the compositor is about to start painting again. */
+        if (g_cursor_surface && g_cursor_surface->current_buffer) {
+            /* Report the size: a cursor refused for being too large is the one
+             * failure here that looks identical to a broken buffer. */
+            static int last_w, last_h;
+            int bw = 0, bh = 0;
+            iosc_iosurface_buffer_get_size(g_cursor_surface->current_buffer, &bw, &bh);
+            if (bw != last_w || bh != last_h) {
+                last_w = bw; last_h = bh;
+                fprintf(stderr, "iosc: cursor buffer unreadable at %dx%d (max %d)\n",
+                        bw, bh, XIOS_CURSOR_IMAGE_MAX);
+            }
+        }
         cursor_image_note(g_cursor_surface ? "cursor-buffer-unreadable"
                                            : "no-cursor-surface");
         if (g_cursor_image_sent) {
@@ -2388,8 +2400,14 @@ static const char *direct_present_blocker(void)
     if (!xios_stream_v2_active())  return "no-stream-v2-app-client";
     if (g_nmapped != 1)            return "multiple-mapped-surfaces";
     if (g_dnd.active)              return "drag-and-drop-active";
-    if (!iosc_app_cursor())
-        return g_cursor_surface ? "client-cursor-surface" : "no-app-cursor";
+    if (!iosc_app_cursor()) {
+        /* Three genuinely different causes. Collapsing them into one label sent
+         * an earlier debugging pass chasing the cursor when the app had simply
+         * dropped. */
+        if (!xios_have_app_client())                  return "no-app-client";
+        if (g_cursor_surface && !g_cursor_image_sent) return "cursor-image-not-published";
+        return "app-cursor-disabled";
+    }
     struct iosc_surface *s = g_mapped[0];
     if (!s || !s->mapped)          return "surface-not-mapped";
     if (s->toplevel_minimized)     return "toplevel-minimized";
@@ -2408,6 +2426,9 @@ static void direct_present_note_blocker(const char *reason)
     static const char *last = (const char *)-1;
     if (reason == last) return;
     last = reason;
+    /* Also published as live state, not just a transition: reading a change-log
+     * to work out the CURRENT reason means a steady blocker looks like silence. */
+    iosc_status_set("direct-blocker", reason ? reason : "none");
     if (reason)
         fprintf(stderr, "iosc: direct present unavailable: %s\n", reason);
 }

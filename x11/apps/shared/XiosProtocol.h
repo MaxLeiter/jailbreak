@@ -124,10 +124,12 @@ enum {
 #define XIOS_SURFACE_FLAG_FLIP_Y      (1u << 0)
 #define XIOS_PRIMARY_SURFACE_ID       1u
 #define XIOS_DYNAMIC_SURFACE_ID_BASE  0x100u
-/* Largest cursor edge the CURSOR_IMAGE payload will carry (64*64*4 = 16 KiB).
- * Real themes top out well under this; anything bigger is not a cursor, and
- * refusing it keeps the payload small enough to push through a socket buffer. */
-#define XIOS_CURSOR_IMAGE_MAX         64
+/* Largest cursor edge the CURSOR_IMAGE payload will carry (128*128*4 = 64 KiB).
+ * A 64 px cap was too small in practice: KDE runs at a fractional output scale
+ * (2.75), so a nominally 24-32 px theme cursor is rendered well above 64 px and
+ * was refused, which silently dropped the whole session back to compositing.
+ * Anything past this is not a cursor. */
+#define XIOS_CURSOR_IMAGE_MAX         128
 #define IOSC_NATIVE_SOCK "/var/jb/tmp/iosc-native.sock"
 
 /*
