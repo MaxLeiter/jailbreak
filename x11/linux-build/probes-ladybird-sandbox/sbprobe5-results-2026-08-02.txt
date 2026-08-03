@@ -1,0 +1,141 @@
+# sbprobe5 device run
+# iPad7,12 / iPadOS 17.6.1 / Dopamine rootless
+# binary sha256: 2885e0c99d9cf93320c3d9e668fd1865fdd9e64dc6177c95df95cfbc5df69b03
+
+######## uid=root mode=none profile=container ########
+[sbprobe5 pid=12936 uid=0 mode=none profile=container]
+  pre-confinement: pipe ok, kqueue fd=5, mach recv right kr=0
+
+-- event loop primitives (WebContent's profile denies all three) --
+  poll() on pre-made pipe                        OK rc=1 
+  select() on pre-made pipe                      OK rc=1 
+  kevent() register on pre-made kqueue           OK rc=0 
+  pipe() AFTER confinement                       OK rc=0 
+  operate on pre-held mach receive right         OK kr=0
+  bootstrap_look_up (ordering only, not a blocker) OK kr=0 (0x0)
+
+-- resources a renderer must read --
+  /var/jb/usr/share/Lagom/fonts/SerenitySans-Regular.ttf OK read 64 byte(s)
+  /var/jb/usr/lib/libcrypto.3.dylib              OK read 64 byte(s)
+  /System/Library/Fonts/Core/SFUI.ttf            OK read 64 byte(s)
+  /usr/lib/dyld                                  OK read 64 byte(s)
+  /var/jb/etc/ssl/cert.pem                       OK read 64 byte(s)
+
+-- writes that a renderer compromise would want (want: all DENIED) --
+  /var/jb/usr/lib/.sbprobe5.12936                OK wrote 1 byte(s)
+  /var/jb/usr/bin/.sbprobe5.12936                OK wrote 1 byte(s)
+  /var/jb/usr/share/Lagom/.sbprobe5.12936        OK wrote 1 byte(s)
+  /var/jb/etc/.sbprobe5.12936                    OK wrote 1 byte(s)
+  /var/jb/tmp/.sbprobe5.12936                    OK wrote 1 byte(s)
+  /tmp/.sbprobe5.12936                           OK wrote 1 byte(s)
+  /var/jb/var/root/.sbprobe5.12936               OK wrote 1 byte(s)
+
+-- network (RequestServer's job, not WebContent's) --
+  socket(AF_UNIX)                                OK fd=6 
+  socket(AF_INET)                                OK fd=6 
+
+[done] Compare against the `none` control before concluding anything.
+
+######## uid=root mode=confined profile=container ########
+[sbprobe5 pid=12938 uid=0 mode=confined profile=container]
+  pre-confinement: pipe ok, kqueue fd=5, mach recv right kr=0
+  confine: rc=0 err=(none)
+
+-- event loop primitives (WebContent's profile denies all three) --
+  poll() on pre-made pipe                        OK rc=1 
+  select() on pre-made pipe                      OK rc=1 
+  kevent() register on pre-made kqueue           OK rc=0 
+  pipe() AFTER confinement                       OK rc=0 
+  operate on pre-held mach receive right         OK kr=0
+  bootstrap_look_up (ordering only, not a blocker) OK kr=0 (0x0)
+
+-- resources a renderer must read --
+  /var/jb/usr/share/Lagom/fonts/SerenitySans-Regular.ttf OK read 64 byte(s)
+  /var/jb/usr/lib/libcrypto.3.dylib              OK read 64 byte(s)
+  /System/Library/Fonts/Core/SFUI.ttf            OK read 64 byte(s)
+  /usr/lib/dyld                                  OK read 64 byte(s)
+  /var/jb/etc/ssl/cert.pem                       OK read 64 byte(s)
+
+-- writes that a renderer compromise would want (want: all DENIED) --
+  /var/jb/usr/lib/.sbprobe5.12938                DENIED errno=1 Operation not permitted
+  /var/jb/usr/bin/.sbprobe5.12938                DENIED errno=1 Operation not permitted
+  /var/jb/usr/share/Lagom/.sbprobe5.12938        DENIED errno=1 Operation not permitted
+  /var/jb/etc/.sbprobe5.12938                    DENIED errno=1 Operation not permitted
+  /var/jb/tmp/.sbprobe5.12938                    DENIED errno=1 Operation not permitted
+  /tmp/.sbprobe5.12938                           DENIED errno=1 Operation not permitted
+  /var/jb/var/root/.sbprobe5.12938               DENIED errno=1 Operation not permitted
+
+-- network (RequestServer's job, not WebContent's) --
+  socket(AF_UNIX)                                OK fd=6 
+  socket(AF_INET)                                OK fd=6 
+
+[done] Compare against the `none` control before concluding anything.
+
+######## uid=mobile mode=none profile=container ########
+[sbprobe5 pid=12941 uid=501 mode=none profile=container]
+  pre-confinement: pipe ok, kqueue fd=5, mach recv right kr=0
+
+-- event loop primitives (WebContent's profile denies all three) --
+  poll() on pre-made pipe                        OK rc=1 
+  select() on pre-made pipe                      OK rc=1 
+  kevent() register on pre-made kqueue           OK rc=0 
+  pipe() AFTER confinement                       OK rc=0 
+  operate on pre-held mach receive right         OK kr=0
+  bootstrap_look_up (ordering only, not a blocker) OK kr=0 (0x0)
+
+-- resources a renderer must read --
+  /var/jb/usr/share/Lagom/fonts/SerenitySans-Regular.ttf OK read 64 byte(s)
+  /var/jb/usr/lib/libcrypto.3.dylib              OK read 64 byte(s)
+  /System/Library/Fonts/Core/SFUI.ttf            OK read 64 byte(s)
+  /usr/lib/dyld                                  OK read 64 byte(s)
+  /var/jb/etc/ssl/cert.pem                       OK read 64 byte(s)
+
+-- writes that a renderer compromise would want (want: all DENIED) --
+  /var/jb/usr/lib/.sbprobe5.12941                DENIED errno=13 Permission denied
+  /var/jb/usr/bin/.sbprobe5.12941                DENIED errno=13 Permission denied
+  /var/jb/usr/share/Lagom/.sbprobe5.12941        DENIED errno=13 Permission denied
+  /var/jb/etc/.sbprobe5.12941                    DENIED errno=13 Permission denied
+  /var/jb/tmp/.sbprobe5.12941                    OK wrote 1 byte(s)
+  /tmp/.sbprobe5.12941                           OK wrote 1 byte(s)
+  /var/jb/var/mobile/.sbprobe5.12941             OK wrote 1 byte(s)
+
+-- network (RequestServer's job, not WebContent's) --
+  socket(AF_UNIX)                                OK fd=6 
+  socket(AF_INET)                                OK fd=6 
+
+[done] Compare against the `none` control before concluding anything.
+
+######## uid=mobile mode=confined profile=container ########
+[sbprobe5 pid=12942 uid=501 mode=confined profile=container]
+  pre-confinement: pipe ok, kqueue fd=5, mach recv right kr=0
+  confine: rc=0 err=(none)
+
+-- event loop primitives (WebContent's profile denies all three) --
+  poll() on pre-made pipe                        OK rc=1 
+  select() on pre-made pipe                      OK rc=1 
+  kevent() register on pre-made kqueue           OK rc=0 
+  pipe() AFTER confinement                       OK rc=0 
+  operate on pre-held mach receive right         OK kr=0
+  bootstrap_look_up (ordering only, not a blocker) OK kr=0 (0x0)
+
+-- resources a renderer must read --
+  /var/jb/usr/share/Lagom/fonts/SerenitySans-Regular.ttf OK read 64 byte(s)
+  /var/jb/usr/lib/libcrypto.3.dylib              OK read 64 byte(s)
+  /System/Library/Fonts/Core/SFUI.ttf            OK read 64 byte(s)
+  /usr/lib/dyld                                  OK read 64 byte(s)
+  /var/jb/etc/ssl/cert.pem                       OK read 64 byte(s)
+
+-- writes that a renderer compromise would want (want: all DENIED) --
+  /var/jb/usr/lib/.sbprobe5.12942                DENIED errno=1 Operation not permitted
+  /var/jb/usr/bin/.sbprobe5.12942                DENIED errno=1 Operation not permitted
+  /var/jb/usr/share/Lagom/.sbprobe5.12942        DENIED errno=1 Operation not permitted
+  /var/jb/etc/.sbprobe5.12942                    DENIED errno=1 Operation not permitted
+  /var/jb/tmp/.sbprobe5.12942                    DENIED errno=1 Operation not permitted
+  /tmp/.sbprobe5.12942                           DENIED errno=1 Operation not permitted
+  /var/jb/var/mobile/.sbprobe5.12942             OK wrote 1 byte(s)
+
+-- network (RequestServer's job, not WebContent's) --
+  socket(AF_UNIX)                                OK fd=6 
+  socket(AF_INET)                                OK fd=6 
+
+[done] Compare against the `none` control before concluding anything.

@@ -10,6 +10,13 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
+          "markdown": "**Security notice.** GNOME Web renders pages with `libwebkit2gtk-4.1-0`, which is pinned to WebKitGTK **2.44** \u2014 a series upstream no longer issues security fixes for. Every WebKitGTK advisory since the 2.46 branch is unapplied.\n\nThe pin exists because 2.46+ need C++23 features the iOS Clang 14 toolchain does not have. Until that lane moves, this browser visits untrusted sites with a known-vulnerable engine.\n\nUse it for casual browsing, not for signing in to accounts or handling anything sensitive."
+        },
+        {
+          "class": "DepictionSeparatorView"
+        },
+        {
+          "class": "DepictionMarkdownView",
           "markdown": "GNOME Web browser for Xios"
         },
         {

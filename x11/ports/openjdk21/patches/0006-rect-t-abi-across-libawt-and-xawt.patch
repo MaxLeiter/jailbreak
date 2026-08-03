@@ -1,0 +1,59 @@
+Make RECT_T the same layout in libawt and libawt_xawt.
+
+RECT_T is ABI, not a local convenience. Region.c and rect.c live in libawt and
+write RECT_T records into a caller-supplied buffer; XRBackendNative.c and
+X11SurfaceData.c live in libawt_xawt and declare that buffer as XRectangle[].
+
+libawt is compiled -DMACOSX because iOS is in the macOS platform family, while
+patch 0004 compiles the XAWT sources -UMACOSX so they see the unix X11
+declarations. The int-based layout in the MACOSX branch therefore gave the two
+libraries different strides: libawt wrote 16-byte {int x,y,width,height}
+records into an 8-byte XRectangle {short x,y,width,height} array.
+
+Every clip handed to XRenderSetPictureClipRectangles arrived as [0,0 0x0] --
+the first record's int x filled XRectangle.x and .y, and its int y filled
+.width and .height. A zero-area clip silently discards all rendering, with no X
+protocol error, so every XRender surface rendered black: VolatileImage fills,
+blits, Swing button gradients and on-screen window contents alike. Only the
+OpenGL pipeline, which does not go through this path, painted correctly.
+
+Fixed by giving the MACOSX branch XRectangle's field widths rather than by
+selecting XRectangle itself. Including <X11/Xlib.h> here instead would drag
+Xlib into every libawt translation unit that includes Region.h, which regressed
+the window-surface path with "native ops missing" on the toolkit thread.
+
+diff --git a/src/java.desktop/unix/native/common/awt/utility/rect.h b/src/java.desktop/unix/native/common/awt/utility/rect.h
+index ceea38f434..79f7997e05 100644
+--- a/src/java.desktop/unix/native/common/awt/utility/rect.h
++++ b/src/java.desktop/unix/native/common/awt/utility/rect.h
+@@ -32,12 +32,25 @@
+ #include <X11/Xlib.h>
+ typedef XRectangle RECT_T;
+ #else
+-// OSX still needs this for BitmapToYXBandedRectangles
++/*
++ * OSX still needs this for BitmapToYXBandedRectangles.
++ *
++ * The field widths are ABI, not a local convenience. Region.c and rect.c live
++ * in libawt, which is compiled -DMACOSX because iOS is in the macOS platform
++ * family; they write RECT_T records into buffers that the XAWT sources declare
++ * as XRectangle[] and compile -UMACOSX (see the XAWT-as-unix patch). An int
++ * layout here gave the two libraries different strides -- 16-byte records
++ * written into an 8-byte array -- so every clip arrived as [0,0 0x0], which
++ * silently discarded all XRender output and rendered every accelerated surface
++ * black. Matching XRectangle's short fields keeps both sides in step without
++ * pulling <X11/Xlib.h> into every libawt translation unit that includes
++ * Region.h.
++ */
+ typedef struct {
+-    int x;
+-    int y;
+-    int width;
+-    int height;
++    short x;
++    short y;
++    unsigned short width;
++    unsigned short height;
+ } RECT_T;
+ #endif /* !MACOSX */
+ 

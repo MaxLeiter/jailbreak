@@ -3,3 +3,4 @@
 0003-use-unix-splashscreen-on-ios.patch
 0004-compile-xawt-as-unix-on-ios.patch
 0005-fontconfig-fontconfiguration-on-ios.patch
+0006-rect-t-abi-across-libawt-and-xawt.patch

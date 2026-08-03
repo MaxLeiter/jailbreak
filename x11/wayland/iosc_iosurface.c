@@ -115,6 +115,23 @@ int iosc_iosurface_buffer_draw(struct wl_resource *buf,
     return 1;
 }
 
+int iosc_iosurface_buffer_read_bgra(struct wl_resource *buf, unsigned char *dst,
+                                    int max_edge, int *out_w, int *out_h)
+{
+    struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);
+    if (!ib || !ib->surface || !dst || max_edge <= 0)
+        return 0;
+    if (ib->w <= 0 || ib->h <= 0 || ib->w > max_edge || ib->h > max_edge)
+        return 0;
+
+    /* The IOSurfaceRef stays opaque here; the Darwin side owns that API. */
+    if (!xios_read_client_iosurface(ib->surface, dst, ib->w, ib->h, ib->flip_v))
+        return 0;
+    if (out_w) *out_w = ib->w;
+    if (out_h) *out_h = ib->h;
+    return 1;
+}
+
 int iosc_iosurface_buffer_get_size(struct wl_resource *buf, int *w, int *h)
 {
     struct iosc_iosurface_buffer *ib = iosurface_buffer_from_resource(buf);

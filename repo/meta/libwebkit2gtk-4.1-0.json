@@ -1,0 +1,3 @@
+{
+  "securityNotice": "This is WebKitGTK **2.44**, which upstream no longer supports. WebKitGTK backports security fixes only to its current stable series, so the advisories published since the 2.46 branch are not applied here.\n\nIt stays on 2.44 because 2.46 and newer need C++23 features the iOS Clang 14 toolchain does not have — not because 2.44 is considered safe. Anything built on this engine parses untrusted input with known, unpatched issues.\n\nTreat pages and documents it renders as capable of exploiting it. Prefer not to use it for accounts, payments, or anything else you would mind an attacker reaching."
+}

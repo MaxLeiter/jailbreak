@@ -157,10 +157,25 @@ int xios_last_present_time(uint32_t *age_us, uint64_t *ack_at_ms);
  * recomposite. Non-blocking, same never-stall posture as fenced frame delivery. */
 void xios_notify_cursor(int x, int y, int visible, int shape_id);
 
+/* Send the PIXELS of a client-supplied cursor so the app's overlay can act as a
+ * real cursor plane, and the compositor never has to paint the cursor into the
+ * shared output buffer (which is what forfeits direct scanout). Sent on cursor
+ * IMAGE change only — never per frame, never per pointer move, which is why
+ * this one may briefly wait for socket space instead of coalescing.
+ * `bgra` is tightly packed premultiplied BGRA, stride = width*4. Passing NULL
+ * (or a zero size) withdraws the image and returns the app to the named shape.
+ * Edges above XIOS_CURSOR_IMAGE_MAX are refused. */
+void xios_notify_cursor_image(const void *bgra, int width, int height,
+                              int hot_x, int hot_y);
+
 /* True if at least one app client is attached (so the compositor knows the app
  * can draw its own cursor overlay and can stop compositing the cursor into the
  * output). */
 int xios_have_app_client(void);
+
+/* Bumped every time an app client attaches. The compositor re-sends cursor
+ * CONTENT when this changes, since a reconnecting app missed the last one. */
+unsigned xios_app_client_generation(void);
 
 /* Identify which compositor is driving (e.g. "iosc", "mutter-ios"). Sent to
  * clients in the in-band XIOS_MSG_HELLO on connect, so the app learns the
@@ -209,6 +224,13 @@ void *xios_import_client_iosurface(int pid, unsigned port_name, int *w, int *h);
 
 /* Release a surface returned by xios_import_client_iosurface(). */
 void xios_release_client_iosurface(void *client_surface);
+
+/* Copy a small client surface to tightly packed top-down BGRA (stride w*4),
+ * flipping when it carries GL bottom-left origin. Used for the cursor plane:
+ * an IOSurface is CPU-mappable, so this is a lock plus a memcpy rather than a
+ * GPU readback. Returns 1 on success. */
+int xios_read_client_iosurface(void *client_surface, unsigned char *dst,
+                               int width, int height, int flip_v);
 
 /* Debug: report what a client actually committed into its IOSurface.
  * Counts pixels with any non-zero colour separately from pixels with non-zero

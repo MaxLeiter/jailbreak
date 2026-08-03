@@ -171,7 +171,10 @@ xstage_lagom_fonts() {
         find "$LADYBIRD_LIBERATION_TTF_DIR" -name 'Liberation*.ttf' -exec cp -f {} "$fonts_dir/" \; || return 1
     else
         local url="https://github.com/liberationfonts/liberation-fonts/files/7261482/liberation-fonts-ttf-2.1.5.tar.gz"
-        local sha256="7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0"
+        # sha256 of the UNCOMPRESSED tar (see the verification note below). The old
+        # .tar.gz pin was 7191c669bf38899f73a2094ed00f7b800553364f90e2637010a69c0e268f25d0;
+        # GitHub now serves a re-compressed archive with identical contents.
+        local sha256_tar="11387cec8c2325caf868c20ed91d77d0087be64ed4d75157240db14dc1606b35"
         local tarball="$cache/liberation-fonts-ttf-2.1.5.tar.gz"
         mkdir -p "$cache" || return 1
         if [ ! -s "$tarball" ]; then
@@ -184,12 +187,30 @@ xstage_lagom_fonts() {
         fi
         # Pin the archive: this is fetched over the network into a shipped deb, and a
         # silently-changed upstream file would be baked into every build from then on.
+        #
+        # Pin the DECOMPRESSED tar, not the .tar.gz. On 2026-08-02 this gate fired on a
+        # fresh download: the gzip hash had changed because GitHub re-compressed the
+        # attachment, while the archived bytes were identical. Verified rather than
+        # assumed -- all 12 Liberation TTFs inside the new tarball hash exactly equal to
+        # the ones already staged in the shipped Ladybird.app, which came from a build
+        # made when the old gzip hash still matched.
+        #
+        # gzip framing (mtime, OS byte, compression level) is not part of the content, so
+        # pinning it makes the gate fire on re-compressions that change nothing and, worse,
+        # trains whoever hits it to just paste in the new number -- which is exactly how a
+        # real substitution would get waved through. The inner tar is the thing worth
+        # pinning: it changes if and only if a file changes.
         local have_sha
-        have_sha="$(shasum -a 256 "$tarball" | awk '{print $1}')" || return 1
-        [ "$have_sha" = "$sha256" ] || {
-            echo "xstage_lagom_fonts: ERROR checksum mismatch for $tarball" >&2
-            echo "xstage_lagom_fonts:   want $sha256" >&2
-            echo "xstage_lagom_fonts:   got  $have_sha  (delete the file to re-fetch)" >&2
+        have_sha="$(gunzip -c "$tarball" | shasum -a 256 | awk '{print $1}')" || {
+            echo "xstage_lagom_fonts: ERROR could not decompress $tarball (delete it and retry)" >&2
+            return 1; }
+        [ "$have_sha" = "$sha256_tar" ] || {
+            echo "xstage_lagom_fonts: ERROR content checksum mismatch for $tarball" >&2
+            echo "xstage_lagom_fonts:   want (uncompressed tar) $sha256_tar" >&2
+            echo "xstage_lagom_fonts:   got  (uncompressed tar) $have_sha" >&2
+            echo "xstage_lagom_fonts:   The FONT DATA differs, not just the gzip framing." >&2
+            echo "xstage_lagom_fonts:   Do not update this pin without establishing where the" >&2
+            echo "xstage_lagom_fonts:   new bytes came from. Delete the file to re-fetch." >&2
             return 1; }
         local tmp
         tmp="$(mktemp -d)" || return 1

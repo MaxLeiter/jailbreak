@@ -26,7 +26,9 @@
         <string>IOSurfaceAcceleratorClient</string>
     </array>
 
-    <!-- FS: config/cache/cookies under the app's own dirs + the engine tree under /var/jb. -->
+    <!-- FS: config/cache/cookies under the app's own dirs + the engine tree under /var/jb.
+         As in ladybird-helper.entitlements: this is an App Sandbox *exception* key, and no
+         profile is applied, so it documents intent rather than enforcing a boundary. -->
     <key>com.apple.security.exception.files.absolute-path.read-write</key>
     <array>
         <string>/var/jb/</string>

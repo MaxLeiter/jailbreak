@@ -91,6 +91,15 @@ int xsurface_released(XSurfaceConn *c, uint32_t surface_id, uint64_t seq);
  * is still drawing the cursor itself and the app must NOT draw its own. */
 uint32_t xsurface_cursor(XSurfaceConn *c, int *x, int *y, int *visible, int *shape_id);
 
+/* Pixels of the client's cursor, when the compositor has handed them over so the
+ * app's overlay can act as a cursor PLANE (a cursor painted into the shared
+ * output is what forfeits direct scanout). Returns premultiplied BGRA, stride
+ * width*4, owned by the connection and valid until the next drain. `seq` is
+ * bumped on every image change; NULL with an advanced seq means the image was
+ * withdrawn and the compositor is painting the cursor again. */
+const void *xsurface_cursor_image(XSurfaceConn *c, int *width, int *height,
+                                  int *hot_x, int *hot_y, uint32_t *seq);
+
 /* Compositor identity from the in-band HELLO (e.g. "iosc", "mutter-ios"). Valid
  * after xsurface_connect() returns. */
 const char *xsurface_compositor_id(XSurfaceConn *c);

@@ -93,33 +93,47 @@ declined" and "this GPU has no spatial scaler" are both visible in the UI.
 - Scroll/touch/tablet/clipboard app-side code has landed; clipboard is now compositor-wired too. Treat clipboard/scroll as app+iosc co-deploy work, not an app-only next wave.
 
 ## Current state
-- 2026-08-02 dead-pin release (`com.max.xios 0.1.11`): KDE taps were reported
-  dead on-device. The compositor side was healthy — the live `kde` session was
-  `up` with `iosc`, `kwin_wayland --scale 2.75` and `plasmashell` alive on
-  `/var/jb/tmp/iosc-{ddx,input}.sock`. The app was pinned to a **long-dead slot**:
-  `xios-debug.txt` reported `ddx_socket=/var/jb/tmp/iosc-codex-gles-ddx.sock` and
-  `iosc_input=/var/jb/tmp/iosc-codex-gles-input.sock`, and neither path existed
-  (nor did that slot's `xios-codex-gles.json`). With `input-not-connected` every
-  UIKit path bails at `guard inputConnected`, so *no* tap reached any compositor
-  — the desktop looked live only because the app was still holding its last
-  frame. Restarting KDE does not clear it: the app survived a full session
-  restart still bound to the dead sockets.
-  Root cause: `userPinned`/`selectedConfigPath` were only ever released by the
-  app's own Stop/Remove rows (`unpinIfShowing`, 2026-07-28). A slot stopped over
-  SSH or reaped after a crash deletes its config and sockets without those rows
-  running, so the pin outlived its compositor and every reload path
-  (`tick`'s watchdog and holding-frame poll, `teardownIOSurface`) is gated on
-  `!userPinned`. The pin is not persisted, so a relaunch of the app clears it —
-  which is why this reads as intermittent.
-  Fix: `releasePinIfDisplayGone()` polls the pinned display on the same ~1.5s
-  cadence and drops the pin once its config or DDX socket has been gone for 3
-  consecutive polls (a restarting slot is tolerated), then falls back to the live
-  `xios.json` through `reloadRuntimeConfig()`. `xios-debug.txt` now also reports
-  `config=<path> pinned=<bool>`; its absence is what made this hard to see.
-  Release-iphoneos build and the `bin/install-app.sh x11/apps/Xios` sideload
-  pass. The device could not be re-foregrounded over SSH (the FrontBoard
-  `uiopen` gate recorded below), so the physical tap-through confirmation is
-  the user's Home Screen `X11` tap.
+- 2026-08-02 "KDE taps are dead" — **the cause was app/compositor version skew,
+  and taps are now device-confirmed working.** Symptom: `xios-status.txt` stuck
+  at `holding-frame awaiting iosurface 2880x2160 [metal]` /
+  `input-not-connected` while the `kde` session was `up` with `iosc`,
+  `kwin_wayland --scale 2.75` and `plasmashell` all alive on the correct
+  `/var/jb/tmp/iosc-{ddx,input}.sock`. With `input-not-connected` every UIKit
+  path bails at `guard inputConnected`, so *no* tap reaches any compositor — and
+  the desktop still looks live because the app holds its last frame.
+  Root cause, from `iosc.log`: `xios: app client attached (typed fd=32 slot=0
+  caps=0x1 total=1)` immediately followed by `xios: client fd=32 dropped`.
+  `caps=0x1` is `XIOS_HELLO_CAP_STREAM_V2`; the device was running **iosc 0.9.43
+  + ANGLE es3-15** against a stream-v2 app. That is exactly the pairing this file
+  already required ("deployed only with ANGLE `es3-16` and `iosc 0.9.46`") — the
+  entry was right, the device had simply drifted behind it.
+  Fix on-device: install the published `iosc 0.9.46` + `angle …+es3-16` (hash-
+  verified against the committed index), then restart the session so the new
+  compositor binary is the running one. `iosc` then logs `output stream allocated
+  3 buffers`, the app attaches and **stays** attached, and status flips to
+  `iosurface-zerocopy 2880x2160 [metal]` / `input-connected iosc(wayland)`.
+  Max confirmed taps work.
+  **DIAGNOSTIC TRAP that cost most of this session: `xios-debug.txt` is written
+  only on demand** (UI actions), so a stale copy reads like current state and its
+  `ddx_socket=`/`iosc_input=` lines will name a long-dead slot's sockets. Trust
+  `xios-status.txt` (written on every state change) and `iosc.log`; check the
+  debug snapshot's mtime before believing it.
+- 2026-08-02 dead-pin hardening (`com.max.xios 0.1.11`) — a real bug found while
+  chasing the above, but **not** what broke taps: a pinned display whose slot
+  dies could never release the pin. `userPinned`/`selectedConfigPath` were only
+  ever dropped by the app's own Stop/Remove rows (`unpinIfShowing`, 2026-07-28),
+  so a slot stopped over SSH or reaped after a crash left the pin bound to a
+  deleted config forever, and every reload path (`tick`'s watchdog and
+  holding-frame poll, `teardownIOSurface`) is gated on `!userPinned`. Only an app
+  relaunch cleared it, since the pin is not persisted.
+  `releasePinIfDisplayGone()` polls the pinned display on the same ~1.5s cadence
+  and drops the pin once its config or DDX socket has been gone for 3 consecutive
+  polls (a restarting slot is tolerated), then falls back to the live `xios.json`
+  through `reloadRuntimeConfig()`. `xios-debug.txt` now also reports
+  `config=<path> pinned=<bool>`. Release-iphoneos build, `bin/package-app.sh`,
+  and the `bin/install-app.sh` sideload pass; the 0.1.11 build is what is running
+  on-device in the confirmation above. The dead-pin path itself is not
+  device-reproduced — it needs a pinned slot to be stopped out-of-band.
 - 2026-08-01 host-only repository release (`com.max.xios 0.1.10`; published to
   staging and production, not installed on-device): `0.1.9` was packaged before
   the final stream-v2 C client sources,
