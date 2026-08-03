@@ -2256,19 +2256,49 @@ static void app_cursor_notify(void)
  * fullscreen IOSurface toplevel, with cursor already owned by the app overlay.
  * The client's producer fence is forwarded unchanged, so iosc submits no draw
  * at all; Xios samples the original allocation directly. */
+/* Which precondition is keeping us off the direct path, or NULL if none is.
+ * Falling back to a full-output composite every frame is the single biggest
+ * present-side cost on this hardware, so when it happens the reason has to be
+ * greppable — deducing it from the absence of a log line is not workable. */
+static const char *direct_present_blocker(void)
+{
+    if (g_force_output_composite)  return "forced-composite";
+    if (g_native_mode)             return "native-mode";
+    if (g_slock.locked)            return "session-locked";
+    if (!xios_stream_v2_active())  return "no-stream-v2-app-client";
+    if (g_nmapped != 1)            return "multiple-mapped-surfaces";
+    if (g_dnd.active)              return "drag-and-drop-active";
+    if (!iosc_app_cursor())
+        return g_cursor_surface ? "client-cursor-surface" : "no-app-cursor";
+    struct iosc_surface *s = g_mapped[0];
+    if (!s || !s->mapped)          return "surface-not-mapped";
+    if (s->toplevel_minimized)     return "toplevel-minimized";
+    if (!surface_fills_output(s))  return "not-fullscreen";
+    if (!surface_opaque_full(s))   return "not-opaque";
+    if (!s->current_buffer)        return "no-current-buffer";
+    if (s->viewport && (s->viewport->has_src || s->viewport->has_dst))
+        return "viewport-set";
+    return NULL;
+}
+
+/* Log the blocker only when it CHANGES: a steady state costs nothing, and a
+ * flapping one is exactly what we want to see. */
+static void direct_present_note_blocker(const char *reason)
+{
+    static const char *last = (const char *)-1;
+    if (reason == last) return;
+    last = reason;
+    if (reason)
+        fprintf(stderr, "iosc: direct present unavailable: %s\n", reason);
+}
+
 static int try_direct_present(void)
 {
-    if (g_force_output_composite || g_native_mode || g_slock.locked ||
-        !xios_stream_v2_active() || g_nmapped != 1 ||
-        g_dnd.active || !iosc_app_cursor())
+    const char *blocker = direct_present_blocker();
+    direct_present_note_blocker(blocker);
+    if (blocker)
         return 0;
     struct iosc_surface *surface = g_mapped[0];
-    if (!surface || !surface->mapped || surface->toplevel_minimized ||
-        !surface_fills_output(surface) || !surface_opaque_full(surface) ||
-        !surface->current_buffer ||
-        (surface->viewport &&
-         (surface->viewport->has_src || surface->viewport->has_dst)))
-        return 0;
 
     uint32_t surface_id = 0;
     const void *token = NULL;
@@ -2277,8 +2307,10 @@ static int try_direct_present(void)
     if (!iosc_iosurface_buffer_peek_direct(surface->current_buffer,
                                             &surface_id,
                                             &token, &token_size,
-                                            &event_value))
+                                            &event_value)) {
+        direct_present_note_blocker("buffer-not-direct-presentable");
         return 0;
+    }
 
     uint64_t seq = 0;
     if (xios_notify_surface_with_fence(surface_id, token, token_size,
