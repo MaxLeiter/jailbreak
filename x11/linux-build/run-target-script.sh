@@ -68,9 +68,22 @@ echo "==> volume: $VOLUME"
 echo "==> out:    $OUT"
 [ -n "${JOBS:-}" ] && echo "==> jobs:   $JOBS"
 
+# The container scripts document rebuild and staging knobs (FORCE_REBUILD,
+# SKIP_GAME_DEP_STAGING, ...) but they are read inside the container, so they
+# have to be forwarded explicitly. Without this a "forced" rebuild silently
+# reuses the previous tree. XIOS_ENV_PASS carries any additional names.
+PASS_ENV=(FORCE_REBUILD FORCE_GAME_DEPS_REBUILD FORCE_GAME_DEPS_STAGE
+  FORCE_SDL_REBUILD FORCE_SDL_SMOKE_REBUILD SKIP_GAME_DEP_STAGING)
+for name in ${XIOS_ENV_PASS:-}; do PASS_ENV+=("$name"); done
+
 cmd=(docker run --rm --platform linux/arm64
   -e XIOS_TARGET_ID -e XIOS_MEMO_TARGET -e XIOS_MEMO_CFVER -e XIOS_PREFIX
   -e XIOS_SUBPREFIX -e XIOS_DEB_ARCH -e JOBS -e TARGETS -e ICU_VERSION -e MUTTER_CLEAN
+)
+for name in "${PASS_ENV[@]}"; do
+  [ -n "${!name:-}" ] && cmd+=(-e "$name")
+done
+cmd+=(
   -v "$VOLUME:/work/Procursus"
   -v "$HERE/target-env.sh:/work/target-env.sh:ro"
   -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro"
