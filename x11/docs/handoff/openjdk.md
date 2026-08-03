@@ -192,8 +192,30 @@ the on-screen window contents paint correctly too (the Robot capture goes from
 the unpainted `eeeeee` background to the app's own `1a202c`).
 
 So the bug is confined to the X pixmap/XRender offscreen path, not Java2D
-generally. The underlying XRender defect is still unfixed and still unattributed
-between the JDK build and the X server — the OpenGL route simply avoids it.
+generally. The OpenGL route avoids it rather than fixing it.
+
+**It is ours, not the X server's.** `linux-build/tests/xrender-pixmap-probe.c`
+does what Java2D does, in plain Xlib/Xrender with no JVM: fills a pixmap via
+core X11, via `XRenderFillRectangle` at depth 24 and ARGB32, and via the
+1x1-repeating-solid `XRenderComposite` that `XRSurfaceData`/`XRCompositeManager`
+actually issues. All four return the right colour. The same failure also
+reproduces on a glamor-backed Xwayland, not just Xvfb, so it is not a
+server-specific quirk either.
+
+What is known about the Java side:
+
+- The surface really is `sun.java2d.xr.XRSurfaceData$XRPixmapSurfaceData`,
+  managed by `sun.java2d.xr.XRVolatileSurfaceManager` — the right plumbing.
+- `-Dsun.java2d.xrender=True` reports `XRender pipeline enabled` and detects
+  libXrender as 0.910, so the pipeline is not silently disabled.
+- `-Dsun.java2d.trace=count` shows exactly one primitive for a fill-then-read
+  cycle: the `Blit(IntRgb, SrcNoEa, IntRgb)` readback. XRender fills go through
+  `XRBackendNative` rather than the loops, so that alone is not proof the fill
+  is skipped, but nothing in the loop layer touches the surface.
+
+Next: trace the actual X protocol (`XRBackendNative` call sequence, or an
+`xtrace`-style capture) for a Java fill and compare it against the C probe's
+request stream. They should be near-identical; the difference is the bug.
 
 Caveat before making this the default: under Xvfb, GLX resolves to llvmpipe
 software rendering, so this trades a correctness bug for CPU-side rasterisation.
