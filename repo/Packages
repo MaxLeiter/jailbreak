@@ -4049,7 +4049,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: ladybird-wayland
 Name: Ladybird (Wayland)
-Version: 0.1.0+wl3
+Version: 0.1.0+wl4
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -4058,11 +4058,11 @@ Section: Apps
 Priority: optional
 Description: The Ladybird browser for Xios desktop sessions
 Installed-Size: 140692
-Filename: debs/ladybird-wayland_0.1.0+wl3_iphoneos-arm64.deb
-Size: 43025042
-MD5sum: 4fcf23842ea1e0e2c93f547fad5d7467
-SHA1: 343ace86ecd8bc03c3ebd09bbde197af526736dc
-SHA256: d6738347c028f0a14d632fffc2563ace9661c95f4c311362f6e2123203755397
+Filename: debs/ladybird-wayland_0.1.0+wl4_iphoneos-arm64.deb
+Size: 43025086
+MD5sum: cd21004a3904aa24bbd602d5fe114c1f
+SHA1: 811acc93f4971bd9bb246692561a1565b6398d39
+SHA256: d154f6501d1d512c751972087848880e5714605cd2f4b6be140ecb0cf75049c8
 Icon: https://repo.maxleiter.com/icons/ladybird-wayland.png
 Depiction: https://repo.maxleiter.com/depictions/ladybird-wayland.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-wayland.json
