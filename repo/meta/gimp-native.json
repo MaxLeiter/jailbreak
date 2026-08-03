@@ -1,6 +1,6 @@
 {
   "name": "GIMP Native",
-  "tagline": "Launch GIMP from the iPad Home Screen",
+  "tagline": "Launch GIMP from the Home Screen",
   "seoTitle": "GIMP in an iPadOS app window (jailbreak) · xiOS",
   "seoDescription": "Launch the full desktop GIMP locally from the iPad Home Screen in an individual xiOS host window. Requires a compatible rootless jailbreak.",
   "developer": "The GIMP team",
@@ -9,7 +9,7 @@
   "applicationCategory": "GraphicsApplication",
   "operatingSystem": "iOS on a jailbroken iPad",
   "projectPage": "https://xios.maxleiter.com/apps/gimp",
-  "description": "**GIMP Native** adds an iPad Home Screen launcher and individual xiOS host window for the full `gimp` package.\n\nGIMP still runs locally as the same arm64 GTK3 build; this package supplies the iPadOS-facing launcher and host integration. It requires a compatible rootless jailbreak and installs the main GIMP package as a dependency.",
+  "description": "**GIMP Native** adds a Home Screen launcher and its own xiOS host window for the `gimp` package.\n\nGIMP still runs locally as the same arm64 GTK3 build; this package supplies the launcher and the host integration. It requires a compatible rootless jailbreak and installs the main GIMP package as a dependency.",
   "screenshots": [
     {
       "src": "screenshots/gimp-native/01-gimp-native.jpg",

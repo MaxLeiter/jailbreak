@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**Thunar** is the Xfce desktop file manager, rebuilt for arm64 iOS and running through xiOS.\n\n- Icon and list views with normal desktop file operations\n- Path navigation and access to the mobile home directory\n- Runs inside a xiOS desktop or an individual iPadOS host window\n\nA compatible rootless jailbreak is required.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/thunar)"
+          "markdown": "**Thunar** is the Xfce file manager, rebuilt for arm64 iOS and running through xiOS.\n\n- Icon and list views with normal desktop file operations\n- Path navigation and access to the mobile home directory\n- Runs inside a xiOS desktop, or in its own iPadOS host window\n\nA compatible rootless jailbreak is required.\n\n[More screenshots and port details](https://xios.maxleiter.com/apps/thunar)"
         },
         {
           "class": "DepictionScreenshotsView",

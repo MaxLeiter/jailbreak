@@ -1,6 +1,6 @@
 {
   "name": "Gnumeric",
-  "tagline": "Desktop spreadsheets on a jailbroken iPad",
+  "tagline": "Desktop spreadsheets on jailbroken iOS",
   "seoTitle": "Gnumeric spreadsheet for iOS and iPad (jailbreak) · xiOS",
   "seoDescription": "Run the desktop Gnumeric spreadsheet locally on a jailbroken iPad with xiOS, rebuilt as a native arm64 iOS package.",
   "developer": "The GNOME Project",
@@ -10,7 +10,7 @@
   "operatingSystem": "iOS on a jailbroken iPad",
   "projectPage": "https://xios.maxleiter.com/apps/gnumeric",
   "canonicalUrl": "https://xios.maxleiter.com/apps/gnumeric",
-  "description": "**Gnumeric** is a full desktop spreadsheet running locally on a jailbroken iPad through xiOS.\n\n- Worksheets, formulas, formatting, and charts\n- Common workbook import and export support\n- GTK3 desktop interface with touch, pointer, and keyboard input\n\nA compatible rootless jailbreak and xiOS desktop session are required.",
+  "description": "**Gnumeric** is a desktop spreadsheet running locally on jailbroken iOS through xiOS.\n\n- Worksheets, formulas, formatting, and charts\n- Common workbook import and export support\n- GTK3 desktop interface with touch, pointer, and keyboard input\n\nA compatible rootless jailbreak and xiOS desktop session are required.",
   "screenshots": [
     {
       "src": "screenshots/gnumeric/01-gnumeric.jpg",

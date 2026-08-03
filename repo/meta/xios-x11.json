@@ -3,8 +3,8 @@
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "xmark.rectangle",
-  "description": "**xios-x11** is the compatibility flavor: a real X11 environment on the iPad. It installs the original Xios X server for plain X11 apps, plus Xwayland so X11 clients can also run inside the GPU-accelerated iosc compositor.\n\nUse this flavor for software that predates Wayland, for window managers and tools that expect a bare X server, or simply because the classic path started this whole project.\n\nXvfb and the TigerVNC server are recommended alongside it for headless and remote-display setups.\n\nRequires iOS 16.5+.",
+  "description": "**xios-x11** is the compatibility flavor: a full X11 environment on the iPad. It installs the original Xios X server for plain X11 apps, plus Xwayland so X11 clients can also run inside the GPU-accelerated iosc compositor.\n\nUse this flavor for software that predates Wayland, for window managers and tools that expect a bare X server, or simply because the classic path started this whole project.\n\nXvfb and the TigerVNC server are recommended alongside it for headless and remote-display setups.\n\nRequires iOS 16.5+.",
   "changelog": [
-    { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: Xios X server + Xwayland as one install" }
+    { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: Xios X server + Xwayland" }
   ]
 }

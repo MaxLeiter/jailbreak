@@ -1385,7 +1385,7 @@ def write_index(pkgs):
     <div class="list solo">{tweak_rows}</div>
   </section>
   <section class="panel" id="panel-xios" role="tabpanel" aria-labelledby="tab-xios" hidden>
-    <p class="lede">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS. <strong>Install one flavor</strong> and it pulls in everything it needs.</p>
+    <p class="lede">A desktop for jailbroken iPads: X11, Wayland, GNOME and KDE, cross-compiled to run natively on iOS.</p>
 {flavors_html}
 {sections_html}
   </section>
