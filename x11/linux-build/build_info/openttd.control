@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Games
 Priority: optional
 Homepage: https://www.openttd.org/
-Depends: libsdl2-2.0-0, libcurl4, libpng16-16, liblzma5, libz1, libfreetype6, libfontconfig1, libharfbuzz0b, libicu78
+Depends: xios-sdl2, libcurl4, libpng16-16, liblzma5, libz1, libfreetype6, libfontconfig1, libharfbuzz0b, libicu78
 Description: OpenTTD transport simulation for Xios
  The complete open-source transport management simulation, built as a normal
  Xios Wayland desktop application with SDL2 video, PulseAudio sound, scalable

@@ -78,6 +78,7 @@
   "libcurl4-openssl-dev": {"version": "companion of libcurl4 8.20.0"},
   "luajit": {"version": "mpv wants rolling LuaJIT 2.1; Procursus still ships 2.1.0~beta3"},
   "transmission": {"version": "leaf app package, no library consumers"},
+  "_comment_libsdl2": "libsdl2-2.0-0 waiver ADDED AND WITHDRAWN 2026-08-02. The first version argued ABI parity from the install name and symlink chain alone -- that is not a symbol check, and the gate was right to keep failing. Our 2.32.10+ios2 is built SDL_XIOS_WAYLAND=ON / SDL_X11=OFF and exports 836 symbols but ZERO of _SDL_UIKitRunApp and _SDL_OnApplicationDidChangeStatusBarOrientation, both of which Procursus's 2.0.14 exports (verified on device 2026-08-02). libsdl2-2.0-0 has Procursus reverse-dependencies -- ffmpeg, libavdevice59 and powder, the last a UIKit SDL app -- so publishing a Wayland-only build under that name replaces theirs repo-wide, which is the openssl shape. Follow the ladybird-tls precedent instead: vendor under a private name with a private library path, and have the games depend on that. Do not re-add this waiver.",
 
   "libgnome-desktop-dev": {"devlib": "KNOWN BUG — libgnome-bg/rr runtime dylibs must move into libgnome-desktop-4-2 (removing this -dev broke GNOME Shell 2026-07-08); task open, REMOVE this waiver when 44.1+ios2 lands"},
   "libepoll-shim-dev": {"devlib": "libepoll-shim-interpose is a preload/interpose helper; revisit whether it belongs in the runtime deb"},

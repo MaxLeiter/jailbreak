@@ -5,5 +5,5 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://github.com/libsdl-org/SDL_image
-Depends: libsdl2-image-2.0-0 (= @DEB_SDL2_IMAGE_V@), libsdl2-dev, libpng16-dev, libjpeg62-turbo-dev
+Depends: libsdl2-image-2.0-0 (= @DEB_SDL2_IMAGE_V@), xios-sdl2-dev, libpng16-dev, libjpeg62-turbo-dev
 Description: SDL2_image development files for Xios

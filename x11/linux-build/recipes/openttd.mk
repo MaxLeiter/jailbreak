@@ -7,7 +7,7 @@ endif
 
 SUBPROJECTS    += openttd
 OPENTTD_VERSION := 15.3
-DEB_OPENTTD_V  ?= $(OPENTTD_VERSION)+ios1
+DEB_OPENTTD_V  ?= $(OPENTTD_VERSION)+ios2
 OPENTTD_PATCH_REV := 28
 
 openttd-setup: setup
@@ -78,6 +78,9 @@ openttd-package: openttd-stage
 		'#!/bin/sh' \
 		'export SDL_VIDEODRIVER="$${SDL_VIDEODRIVER:-wayland}"' \
 		'export SDL_AUDIODRIVER="$${SDL_AUDIODRIVER:-pulseaudio}"' \
+		'# xios-sdl2 is vendored in a private directory so it never stands in for' \
+		'# Procursus SDL2. This is the only thing that puts it on the search path.' \
+		'export DYLD_LIBRARY_PATH="$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/xios-sdl2$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"' \
 		'exec $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec/games/openttd.real "$$@"' \
 		> $(BUILD_DIST)/openttd/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/openttd
 	chmod 0755 $(BUILD_DIST)/openttd/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/openttd

@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Games
 Priority: optional
 Homepage: https://play0ad.com/
-Depends: libiosexec1 (>= 1.3.1), libsdl2-2.0-0, libboost-game1.90, libenet7, libmozjs-115-0, libopenal1, libogg0, libvorbisfile3, libsodium23, libfmt12, libxml2, libicu78, libcurl4, libpng16-16, libfreetype6, libz1
+Depends: libiosexec1 (>= 1.3.1), xios-sdl2, libboost-game1.90, libenet7, libmozjs-115-0, libopenal1, libogg0, libvorbisfile3, libsodium23, libfmt12, libxml2, libicu78, libcurl4, libpng16-16, libfreetype6, libz1
 Description: 0 A.D. real-time strategy game for Xios
  The complete 0 A.D. Alpha 27.1 engine and game data, built for the Xios
  Wayland desktop with SDL2, ANGLE OpenGL ES, PulseAudio, and SpiderMonkey 115.

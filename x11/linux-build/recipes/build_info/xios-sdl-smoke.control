@@ -4,7 +4,7 @@ Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Apps
 Priority: optional
-Depends: libsdl2-2.0-0, libsdl3-0, angle, libwayland0, libxkbcommon0, libpulse0
+Depends: xios-sdl2, libsdl3-0, angle, libwayland0, libxkbcommon0, libpulse0
 Description: SDL Wayland GLES smoke clients for Xios
  Two small signed clients that exercise the SDL2 and SDL3 Wayland backends
  through Xios's ANGLE/EGL to IOSurface rendering path. They provide a durable

@@ -1,0 +1,20 @@
+Package: xios-sdl2
+Version: @DEB_SDL2_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.libsdl.org/
+Depends: libwayland0, libxkbcommon0, angle, libpulse0
+Description: Private SDL2 runtime for Xios Wayland games
+ SDL2 built as a native iOS/Darwin library with the Wayland video backend,
+ OpenGL ES through Xios ANGLE, touch and desktop input through iosc, and
+ PulseAudio output. Cocoa and UIKit window backends are intentionally disabled.
+ .
+ This deliberately does NOT provide libsdl2-2.0-0. With the UIKit backend off
+ it exports none of _SDL_UIKitRunApp or
+ _SDL_OnApplicationDidChangeStatusBarOrientation, which Procursus's SDL2
+ exports and its dependents (ffmpeg, libavdevice59, and powder, a UIKit SDL
+ app) may import. It therefore installs into /var/jb/usr/lib/xios-sdl2 and is
+ reached only by programs that ask for it on DYLD_LIBRARY_PATH, leaving the
+ system SDL2 untouched.

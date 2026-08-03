@@ -5,5 +5,5 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://github.com/libsdl-org/SDL_mixer
-Depends: libsdl2-mixer-2.0-0 (= @DEB_SDL2_MIXER_V@), libsdl2-dev, libogg-dev, libvorbis-dev
+Depends: libsdl2-mixer-2.0-0 (= @DEB_SDL2_MIXER_V@), xios-sdl2-dev, libogg-dev, libvorbis-dev
 Description: SDL2_mixer development files for Xios

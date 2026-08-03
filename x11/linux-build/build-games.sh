@@ -76,7 +76,8 @@ sed -E -i \
 for recipe in libogg libvorbis libopus libtheora libsodium libzip openssl; do
   grep -Eq '^DEB_[A-Z0-9_]+_V[[:space:]]+\?=.*\+ios1$' "makefiles/$recipe.mk"
 done
-cp -v /work/recipes/build_info/libsdl*.control build_info/
+cp -v /work/recipes/build_info/libsdl*.control \
+  /work/recipes/build_info/xios-sdl2*.control build_info/
 cp -v /work/recipes/build_info/libopenal*.control \
   /work/recipes/build_info/libphysfs*.control \
   /work/recipes/build_info/libboost-game*.control \
@@ -95,6 +96,30 @@ cp -v /work/recipes/build_info/xios-sdl-smoke.control \
   build_info/
 for package in sdl2 sdl3 physfs openttd warzone2100 wesnoth 0ad; do
   bash /work/recipes/stage-port-patches.sh "$package" /work/ports build_patch
+done
+
+# Procursus' DOWNLOAD_FILES neither verifies a download nor re-fetches, and it
+# skips any file that already exists. A connection that drops mid-transfer
+# therefore leaves a truncated archive that tar unpacks *partially*, and every
+# later run happily reuses it -- which reads as a source or configuration bug
+# rather than a bad download. Both boost and wesnoth lost a build cycle to this
+# on 2026-08-02. Test every cached archive up front and delete the bad ones so
+# their recipes refetch instead of building on half a tree.
+echo "==> verifying cached source archives"
+for archive in build_source/*.tar.gz build_source/*.tgz build_source/*.tar.xz \
+               build_source/*.tar.bz2 build_source/*.zip; do
+  [ -e "$archive" ] || continue
+  case "$archive" in
+    *.tar.gz|*.tgz)  tester=(gzip -t) ;;
+    *.tar.xz)        tester=(xz -t) ;;
+    *.tar.bz2)       tester=(bzip2 -t) ;;
+    *.zip)           tester=(unzip -tq) ;;
+    *)               continue ;;
+  esac
+  if ! "${tester[@]}" "$archive" >/dev/null 2>&1; then
+    echo "    corrupt or truncated, removing for refetch: $archive"
+    rm -f "$archive"
+  fi
 done
 
 stage_rootless_deb() {
@@ -117,6 +142,19 @@ stage_rootless_deb() {
 
   echo "    staging $deb"
   dpkg-deb -x "$deb" "$XIOS_BUILD_BASE"
+
+  # xios-sdl2 ships its dylibs in a private directory so it shadows nothing at
+  # runtime. Link them into the ordinary sysroot libdir for BUILD time only, so
+  # -lSDL2 and the pkg-config/CMake metadata resolve exactly as before. The
+  # packaged games still load it via DYLD_LIBRARY_PATH, not from here.
+  if [ "$package" = "xios-sdl2" ]; then
+    mkdir -p "$XIOS_BUILD_BASE/var/jb/usr/lib"
+    for dylib in "$XIOS_BUILD_BASE/var/jb/usr/lib/xios-sdl2/"libSDL2*.dylib; do
+      [ -e "$dylib" ] || continue
+      ln -sf "xios-sdl2/$(basename "$dylib")" \
+        "$XIOS_BUILD_BASE/var/jb/usr/lib/$(basename "$dylib")"
+    done
+  fi
 }
 
 echo "==> staging Xios Wayland, input, graphics, and audio development roots"
@@ -238,7 +276,7 @@ for target in $TARGETS; do
   if [ "$target" = "sdl2-image-package" ]; then
     echo "==> staging SDL2_image development roots"
     for package in \
-      libsdl2-2.0-0 libsdl2-dev \
+      xios-sdl2 xios-sdl2-dev \
       libpng16-16 libpng16-dev \
       libjpeg62-turbo libjpeg62-turbo-dev; do
       stage_rootless_deb "$package"
@@ -249,7 +287,7 @@ for target in $TARGETS; do
   if [ "$target" = "sdl2-mixer-package" ]; then
     echo "==> staging SDL2_mixer development roots"
     for package in \
-      libsdl2-2.0-0 libsdl2-dev \
+      xios-sdl2 xios-sdl2-dev \
       libogg0 libogg-dev \
       libvorbis0a libvorbisfile3 libvorbis-dev; do
       stage_rootless_deb "$package"
@@ -262,7 +300,7 @@ for target in $TARGETS; do
     if [ "${FORCE_GAME_DEPS_STAGE:-0}" = "1" ] || \
        [ ! -f "$XIOS_BUILD_BASE/.xios-openttd-deps-staged" ]; then
       for package in \
-        libsdl2-2.0-0 libsdl2-dev \
+        xios-sdl2 xios-sdl2-dev \
         libcurl4 libcurl4-openssl-dev \
         libpng16-16 libpng16-dev \
         liblzma5 liblzma-dev \
@@ -309,7 +347,7 @@ for target in $TARGETS; do
   if [ "$target" = "wesnoth-package" ]; then
     echo "==> staging Battle for Wesnoth development roots"
     for package in \
-      libsdl2-2.0-0 libsdl2-dev \
+      xios-sdl2 xios-sdl2-dev \
       libsdl2-image-2.0-0 libsdl2-image-dev \
       libsdl2-mixer-2.0-0 libsdl2-mixer-dev \
       libboost-game1.90 libboost-game-dev \
@@ -329,7 +367,7 @@ for target in $TARGETS; do
   if [ "$target" = "zero-ad-package" ]; then
     echo "==> staging 0 A.D. development roots"
     for package in \
-      libsdl2-2.0-0 libsdl2-dev \
+      xios-sdl2 xios-sdl2-dev \
       libboost-game1.90 libboost-game-dev \
       libenet7 libenet-dev \
       libmozjs-115-0 libmozjs-115-dev \
@@ -356,7 +394,7 @@ done
 echo "==> collecting game-wave debs"
 mkdir -p /out
 for package in \
-  libsdl2-2.0-0 libsdl2-dev libsdl3-0 libsdl3-dev \
+  xios-sdl2 xios-sdl2-dev libsdl3-0 libsdl3-dev \
   libsdl2-image-2.0-0 libsdl2-image-dev \
   libsdl2-mixer-2.0-0 libsdl2-mixer-dev \
   libopenal1 libopenal-dev libphysfs1 libphysfs-dev \
