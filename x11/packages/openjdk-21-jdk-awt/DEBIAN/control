@@ -1,8 +1,8 @@
 Package: openjdk-21-jdk-awt
 Name: OpenJDK 21 AWT/X11 Development Kit
-Version: 21.0.12+ios1
+Version: 21.0.12+ios2
 Architecture: iphoneos-arm64
-Depends: openjdk-21-jre-awt (= 21.0.12+ios1)
+Depends: openjdk-21-jre-awt (= 21.0.12+ios2)
 Provides: java-compiler, java-sdk
 Description: OpenJDK 21 development tools for the AWT/X11 runtime on iOS.
  Adds javac, jar, javadoc, jlink, JShell, debugger and diagnostic tools,
