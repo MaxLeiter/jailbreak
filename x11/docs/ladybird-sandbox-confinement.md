@@ -1,8 +1,12 @@
 # Confining Ladybird helpers with iOS's precompiled sandbox profiles
 
-**Conclusion for `com.apple.WebKit.WebContent`: impossible, and not for a fixable reason.
-Do not retry that profile.** The `container` profile is a separate, still-open question —
-see [Reopening `container`](#reopening-container) below.
+**Conclusion: impossible under both available profiles. Do not retry this.**
+
+`com.apple.WebKit.WebContent` fails at the event loop (below). `container` was re-tested on
+2026-08-02 and fails too, at the paint backing store for WebContent and at Mach port descriptor
+passing for ImageDecoder — see [Measured, 2026-08-02](#measured-2026-08-02--and-the-answer-is-still-no).
+That section also records a synthetic probe that briefly said `container` worked, and why it was
+wrong; read it before trusting any future probe result on this.
 
 `com.apple.WebKit.WebContent` denies `poll()`, `select()` **and** `kevent()`. Ladybird's
 `Core::EventLoop` waits on file descriptors, so a confined helper cannot wait for events at
@@ -32,7 +36,8 @@ Baseline vs confined, same binary, same paths. For the wait primitives the fds a
 | **`select()`** on a pre-made pipe | OK | **DENIED** | OK |
 | **`kevent()`** on a pre-made kqueue | OK | **DENIED** | OK |
 | `pipe()` | OK | **DENIED** | OK |
-| `bootstrap_look_up` | OK | **DENIED** (0x44c) | OK (measured 2026-08-02) |
+| `bootstrap_look_up` (Apple *system* service) | OK | **DENIED** (0x44c) | OK (2026-08-02) |
+| `bootstrap_look_up` (app-registered service) | OK | **DENIED** | **DENIED** (2026-08-02) |
 | `socket(AF_UNIX)` | OK | DENIED | OK |
 | `socket(AF_INET)` | OK | DENIED | **OK** |
 | write `/var/jb/tmp` | OK | DENIED | DENIED |
@@ -88,7 +93,7 @@ trap that cost a build cycle is this:
 > someone else will", and nobody ever does. WebContent hangs on startup with no output. The
 > catch-up must therefore ring unconditionally rather than consulting that helper.
 
-## Reopening `container`
+## Reopening `container` — re-tested, and closed
 
 The original write-up dismissed the other available profile in one line: `container` "leaves
 the network reachable and so removes nothing worth having from a renderer." That weighs the
@@ -103,18 +108,22 @@ WebContent does not do its own networking — RequestServer does, in a separate 
 would stay unconfined either way. So "leaves the network reachable" costs little, and "denies
 writes" may remove the single most valuable thing an attacker gets.
 
-### Measured, 2026-08-02
+### Measured, 2026-08-02 — and the answer is still no
+
+**Conclusion: `container` cannot host a Ladybird helper either. Both available profiles are
+now closed, for different reasons.** The synthetic probe said yes; the real helpers said no.
+That gap is the whole lesson of this section, so read the order it happened in.
 
 `probes-ladybird-sandbox/sbprobe5.c`, on iPad7,12 (A10, iPadOS 17.6.1, Dopamine rootless), run
-as both `root` and `mobile`, in `none` and `confined` modes off one binary. **`container` is a
-usable renderer jail. Every primitive survives; every write outside the container is denied.**
+as both `root` and `mobile`, in `none` and `confined` modes off one binary. On a *synthetic*
+process, every primitive survived and every write outside the container was denied:
 
 | capability | root: none → confined | mobile: none → confined |
 | --- | --- | --- |
 | `poll()` / `select()` / `kevent()` on pre-made fds | OK → **OK** | OK → **OK** |
 | `pipe()` *after* confinement | OK → **OK** | OK → **OK** |
 | operate on a pre-held mach receive right | OK → **OK** | OK → **OK** |
-| `bootstrap_look_up` | OK → **OK** | OK → **OK** |
+| `bootstrap_look_up` (Apple *system* service — see below, this row misled) | OK → **OK** | OK → **OK** |
 | read Lagom fonts, `/var/jb` dylib, system font, `dyld`, `cert.pem` | OK → **OK** | OK → **OK** |
 | write `/var/jb/usr/lib` | OK → **DENIED** | denied by file perms either way |
 | write `/var/jb/usr/bin` | OK → **DENIED** | denied by file perms either way |
@@ -125,12 +134,50 @@ usable renderer jail. Every primitive survives; every write outside the containe
 | write `$HOME` | OK → **DENIED** (`/var/jb/var/root`) | OK → **OK** (`/var/mobile`) |
 | `socket(AF_UNIX)` / `socket(AF_INET)` | OK → OK | OK → OK |
 
-Two things are better than expected. `bootstrap_look_up` **works** under `container`, so unlike
-`com.apple.WebKit.WebContent` there is no ordering constraint at all — a helper can confine
-itself early rather than having to wait out the Mach handshake. And the write denial is not
-partial: it is everything outside the process's own container, `/var/jb/tmp` and `/tmp`
-included. Under `container`, `$HOME` stays writable for `mobile` and not for `root`, which is
-the profile behaving exactly as its name suggests: `/var/mobile` *is* mobile's container.
+The write-denial rows are real and still stand. The `bootstrap_look_up` row **was a false
+pass**, and it is the reason this section briefly claimed `container` was usable. The probe
+looked up `com.apple.system.notification_center` — an Apple *system* service. Ladybird looks up
+`org.ladybird.Ladybird.helper.<pid>`, a custom service its parent registered. `container`
+permits the first and denies the second. One line of a synthetic probe, one wrong conclusion.
+
+This is the same trap named at the top of this document, in a new costume: **success from
+`sandbox_init_with_parameters` says nothing about whether the process can still function**, and
+neither does a probe that exercises primitives in isolation rather than the IPC patterns the
+real program uses. If this gets revisited again, test against a real helper first.
+
+### What the real helpers do (sbinject, no rebuild required)
+
+`probes-ladybird-sandbox/sbinject.c` confines actual helpers by interposing `bootstrap_look_up`
+via `DYLD_INSERT_LIBRARIES`, so confinement lands exactly where a source patch would put it —
+after the handshake — with no engine rebuild. Raw output in
+`sbinject-results-2026-08-02.txt`. Four headless screenshot runs of the same local page:
+
+| run | confined | result |
+| --- | --- | --- |
+| control | nothing | renders |
+| `WHEN=constructor` | WebContent + ImageDecoder | `Unable to look up service org.ladybird.Ladybird.helper.N in bootstrap` → `Runtime error: Permission denied`. **Confirms the ordering constraint the probe missed.** |
+| after-bootstrap | WebContent | `VERIFICATION FAILED: !buffer_or_error.is_error()` at `Services/WebContent/PageClient.cpp:176`, then `Compositor/ConnectionFromClient.cpp:68` and `LibIPC/Connection.h:74`. **No screenshot.** |
+| after-bootstrap | ImageDecoder | `VERIFICATION FAILED: MACH_PORT_VALID(descriptor.name)` at `LibIPC/TransportMachPort.cpp:75`. Screenshot renders **without the image**. |
+
+So confinement fails at a different layer for each helper, and neither is a fixable ordering
+problem:
+
+- **WebContent** cannot allocate its paint backing store under `container`. That buffer is
+  created per page and again on every resize, so it cannot be pre-allocated before confinement
+  the way the pre-made fds were — the same shape as the `pipe()`-per-transport problem, but
+  without a shared-instance trick available.
+- **ImageDecoder** cannot pass Mach port descriptors after confinement, which is how it returns
+  decoded bitmaps. It survives, and the page still renders — just with nothing decoded. A
+  renderer that silently drops every image is not a working renderer.
+
+Caveat on method, since it cuts against a claim made elsewhere in this document: **the headless
+screenshots were not byte-stable across unconfined control runs here** (two controls of the
+same page hashed differently). Byte-identical comparison was usable for the entitlement trim;
+it was not usable as the pass/fail signal for these runs. The failures above are read from
+`VERIFICATION FAILED` lines and from a missing or visibly wrong screenshot, not from hashes.
+
+Under `container`, `$HOME` stays writable for `mobile` and not for `root`, which is the profile
+behaving exactly as its name suggests: `/var/mobile` *is* mobile's container.
 
 ### What this is actually worth — read this before quoting the win
 
@@ -152,19 +199,19 @@ mobile columns above show them denied in the *control* run, with `EACCES` rather
   device, so a helper parented by that session inherits root, and the root columns apply. There
   the win is large: the entire `/var/jb` tree plus `$HOME` become unwritable.
 
-The honest summary is that `container` is worth wiring in for both flavors, that it is close to
-free (nothing a renderer needs was denied), and that its value is concentrated in the root-run
-case rather than being the universal persistence fix the original framing implied.
+This correction outlives the confinement idea, so keep it even though `container` failed: the
+threat model for the `.app` flavor is smaller than "renderer compromise owns the desktop
+stack," because file permissions already stop a `mobile` process from writing the tree. The
+root-run `ladybird-wayland` case is the one where a renderer compromise really does get the
+whole prefix — and since confinement is unavailable, **running those helpers as `mobile`
+instead of `root` is now the cheapest real mitigation left.** That is uid separation, which
+`ios-platform-features.md` named as the fallback and which nothing here has ruled out.
 
-Scope stays **WebContent and ImageDecoder.** RequestServer needs the network by definition —
-`container` permits `socket()`, so it *could* be confined, but the write denial is the whole
-point and RequestServer is the one helper that genuinely writes (HTTP disk cache, alt-svc).
-Compositor's IOSurface path is still unmeasured under this profile.
-
-Not yet done: wiring `sandbox_init_with_parameters("container", 0x1, NULL, &err)` into the
-helper startup path behind a `LADYBIRD_IOS_SANDBOX` env guard, and re-running the device A/B
-that validated the entitlement trim (byte-identical screenshot against an unconfined control).
-The probe says the primitives are there; it does not prove a real helper renders a page.
+Do not reopen `container` without new information. The two failures above are architectural,
+not ordering or entitlement problems: a renderer that cannot allocate a backing store and an
+image decoder that cannot return a bitmap are not configuration issues. If someone does revisit
+it, the cheap first step is `sbinject.c` against a real helper — one command, no rebuild — not
+another synthetic probe.
 
 ## What to do instead: entitlement minimisation
 
@@ -241,7 +288,28 @@ Neither is caused by any of the above; both block launching a freshly built
    Related: `--force-fontconfig` is broken on iOS, because patch 0008 only installs the
    CoreText `SkFontMgr` when the provider is *not* FontConfig and its `#elif AK_OS_IOS` branch
    is a comment, so `VERIFY(font_manager)` fires at `TypefaceSkia.cpp:105`.
-2. **A fresh build lacks the `ladybird-tls` rpath.** The committed build script defaults to
+2. **SHIPPED BROKEN: `ladybird-wayland` 0.1.0+wl4 lacks the `ladybird-tls` rpath.**
+   Confirmed 2026-08-02 against the published deb's installed payload: `WebContent` and
+   `ladybird` carry only `@executable_path/../lib`, so `libcrypto` resolves to the base
+   3.2.1 and every helper dies at dyld on `_EVP_PKEY_sign_message_init`. **The wayland
+   browser cannot start a renderer for anyone who installs it.** It fails closed, so it is
+   not a weak-crypto exposure -- it is a dead browser.
+
+   Not a build-script bug: `prepend_tls_rpath` is correct and fails closed per binary, and
+   it landed in 879cfd7c *before* the wl4 bump in 1a5655b6. The deb simply reached users
+   without anything re-checking the property on the artifact. `bin/lib/check-ladybird-tls-rpath.py`
+   is now a publish gate for exactly that, and flags these binaries.
+
+   The `.app` flavor is unaffected: it links `@executable_path/lib/libcrypto.3.dylib` by
+   path and bundles OpenSSL 3.5.3 inside the bundle, so no rpath search happens.
+
+   Remedy is a rebuild + republish as `wl5` -- the packaging script needs no change. Do not
+   hand-patch the deb. Testing-only workaround meanwhile:
+   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:/var/jb/lib/angle`;
+   do not put that on a global launcher path, since the whole point of ladybird-tls is that
+   the private OpenSSL 3.5 shadows nothing.
+
+   (Original note, now superseded by the above.) **A fresh build lacks the `ladybird-tls` rpath.** The committed build script defaults to
    `0.1.0+wl1` and does not do the rpath prepend that published `wl2` has, so `libcrypto`
    resolves to base OpenSSL 3.2.1 and `_EVP_PKEY_sign_message_init` is missing at launch.
    Workaround for testing only:

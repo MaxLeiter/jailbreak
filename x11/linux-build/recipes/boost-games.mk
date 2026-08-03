@@ -12,7 +12,22 @@ DEB_BOOST_GAMES_V        ?= $(BOOST_GAMES_VERSION)+ios1
 
 boost-games-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/boostorg/boost/releases/download/boost-$(BOOST_GAMES_VERSION)/boost-$(BOOST_GAMES_VERSION)-cmake.tar.xz)
+	# DOWNLOAD_FILES neither verifies nor re-fetches, and skips any file that
+	# already exists. A connection that drops mid-transfer therefore leaves a
+	# truncated archive that tar unpacks *partially* and every later run reuses:
+	# the 2026-08-02 failure was a half-extracted tree where CMake could not find
+	# Boost::config because libs/config had never been written. Fail here, and
+	# discard the bad archive so the next run refetches instead of repeating it.
+	if ! xz -t $(BUILD_SOURCE)/boost-$(BOOST_GAMES_VERSION)-cmake.tar.xz 2>/dev/null; then \
+		echo "ERROR: boost-$(BOOST_GAMES_VERSION)-cmake.tar.xz is corrupt or truncated; removing" >&2; \
+		rm -f $(BUILD_SOURCE)/boost-$(BOOST_GAMES_VERSION)-cmake.tar.xz; \
+		exit 1; \
+	fi
+	# A partial tree from an earlier truncated archive survives re-extraction,
+	# so clear it the way the OpenTTD recipe clears its stale source directory.
+	rm -rf $(BUILD_WORK)/boost-games $(BUILD_WORK)/boost-$(BOOST_GAMES_VERSION)
 	$(call EXTRACT_TAR,boost-$(BOOST_GAMES_VERSION)-cmake.tar.xz,boost-$(BOOST_GAMES_VERSION),boost-games)
+	test -f $(BUILD_WORK)/boost-games/libs/config/CMakeLists.txt
 	rm -rf $(BUILD_WORK)/boost-games/build
 	mkdir -p $(BUILD_WORK)/boost-games/build
 

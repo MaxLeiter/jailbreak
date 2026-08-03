@@ -9,6 +9,17 @@ DEB_ENET_V     ?= $(ENET_VERSION)+ios1
 enet-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/lsalzman/enet/archive/refs/tags/v$(ENET_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(ENET_VERSION).tar.gz,enet-$(ENET_VERSION),enet)
+	# ENet 1.3.18 hardcodes STATIC, so BUILD_SHARED_LIBS never reaches the
+	# target and packaging finds no dylib. Take the library kind from the
+	# cache variable instead and carry the libtool 7:4:0 soname that the
+	# libenet7 package name already assumes.
+	sed -E -i 's|^add_library\(enet STATIC$$|add_library(enet|' \
+		$(BUILD_WORK)/enet/CMakeLists.txt
+	grep -q 'set_target_properties(enet PROPERTIES' $(BUILD_WORK)/enet/CMakeLists.txt || \
+		sed -E -i 's|^install\(TARGETS enet$$|set_target_properties(enet PROPERTIES VERSION 7.0.0 SOVERSION 7)\n\ninstall(TARGETS enet|' \
+			$(BUILD_WORK)/enet/CMakeLists.txt
+	grep -q '^add_library(enet$$' $(BUILD_WORK)/enet/CMakeLists.txt
+	grep -q 'SOVERSION 7' $(BUILD_WORK)/enet/CMakeLists.txt
 	rm -rf $(BUILD_WORK)/enet/build
 	mkdir -p $(BUILD_WORK)/enet/build
 

@@ -1,6 +1,6 @@
 # Xios strategy-game ports
 
-Updated: 2026-07-30
+Updated: 2026-08-02
 
 ## Scope
 
@@ -40,15 +40,18 @@ Xios app, iosc, SDL, and audio layers.
   target, Clang 14 aggregate/template compatibility, the Xios Unix locale and
   desktop-media paths, and `SDL_SetMainReady()` for OpenTTD's non-`SDL_main`
   iOS entry point.
-- On-device launch reaches SDL2 Wayland and maps a live 1360x1000 window:
-  `Successfully loaded video driver 'sdl'`. The visible bootstrap correctly
-  reports that no base graphics set is installed and offers to download
-  OpenGFX. Evidence:
-  `game-openttd-20260730-1108/compositor.png`.
-- The game process remained alive behind the bootstrap. Full-playability proof
-  is gated on installing/downloading OpenGFX. The isolated compositor input
-  socket refused the attempted injected tap, so this run does not claim menu
-  interaction or gameplay.
+- **Playable on device (2026-08-02).** With `openttd-opengfx` installed the game
+  goes straight to its real main menu -- title logo, animated demo world, and
+  the full New Game / Play Scenario / Multiplayer / Game Options list. Evidence:
+  `game-openttd-opengfx-proof/compositor.png`.
+- Menu interaction is proven too: an injected click on the first-run survey
+  dialog's "No" dismissed it, and the demo world had advanced between captures,
+  so the frame is live rather than a stale surface. Evidence:
+  `game-openttd-menu-interaction/compositor.png`. The input socket that refused
+  the 2026-07-30 tap works after a clean `session stop` + `session iosc` on the
+  slot; a stale slot is what refuses input.
+- The earlier bootstrap-only capture (`game-openttd-20260730-1108`) is kept as
+  the record of the pre-OpenGFX state.
 - The final package must still be host-DER re-signed after every repack:
 
   ```bash
