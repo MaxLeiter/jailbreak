@@ -1,203 +1,191 @@
-# Jailbreak Utilities and Xios
+# Jailbreak utilities and Xios
 
-Rootless iOS jailbreak projects: Theos tweaks, small companion apps, static APT
-repo tooling, and the Xios X11/Wayland-on-iOS desktop stack.
+My rootless iOS jailbreak stuff: a few Theos tweaks, some companion apps, the
+tooling for a static APT repo, and Xios, which is a Wayland/X11 desktop running
+natively on a jailbroken iPad.
 
-> **Want to see more about the X11/Wayland work?** See **[`x11/`](x11/)** — a
-> native Linux desktop (a GPU Wayland compositor, hardware Xwayland, and
-> GNOME/KDE apps) running on a jailbroken iPad. Write-up:
-> **[maxleiter.com/blog/xios](https://maxleiter.com/blog/xios)**. Wiki:
-> **[xios.maxleiter.com](https://xios.maxleiter.com)**.
+If you're here for the desktop, that lives in [`x11/`](x11/). There's a write-up
+at [maxleiter.com/blog/xios](https://maxleiter.com/blog/xios) and a slopwiki at
+[xios.maxleiter.com](https://xios.maxleiter.com).
 
-## Public development
+Most of this was written by Claude, and I've leaned on it heavily throughout.
+Read anything here with that in mind.
 
-Public contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md)
-before opening a PR and [`docs/PUBLIC-READINESS.md`](docs/PUBLIC-READINESS.md)
-for the final GitHub history-cache cleanup. Package publication, APT signing,
-Vercel deployment, and device verification remain maintainer-controlled.
+Contributions are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before
+opening a PR. Publishing packages, signing the repo, deploying, and verifying on
+a device are things I do myself.
 
-## Reference Device
+It's largely rootless only. Everything builds with
+`THEOS_PACKAGE_SCHEME = rootless`, installs under `/var/jb`, and is packaged as
+`iphoneos-arm64`. I test on an iPad running iPadOS 17.6.1, so that's the setup I
+know works.
 
-| Field | Value |
-|---|---|
-| Model | iPad 7th gen (`iPad7,12`, A10 Fusion) |
-| OS | iPadOS **17.6.1** (build 21G93) |
-| Arch | `arm64` (A10 — **not** arm64e) |
-| Jailbreak | **Dopamine** — **rootless** |
-| Layout | rootless → everything installs under **`/var/jb`** |
-| Substrate | ElleKit (provides `mobilesubstrate`) |
-| Package manager | Sileo |
-| SSH | OpenSSH on port 22, user `root`; configure the host in `device.env` |
+## What you need
 
-Because this is a **rootless** jailbreak, every tweak builds with
-`THEOS_PACKAGE_SCHEME = rootless`, installs to `/var/jb`, and is packaged as
-`iphoneos-arm64`. (rootful builds install to `/` — not used here.)
+- Theos at `~/theos`, with `THEOS=$HOME/theos` exported in your shell
+- `iPhoneOS16.5.sdk` in `$THEOS/sdks` (deployment target is 15.0)
+- `ldid` and `xz` from Homebrew, for signing and packaging
+- `libimobiledevice` from Homebrew, for `idevicesyslog` and `ideviceinfo`
 
-## Toolchain
-
-- **Theos** at `~/theos` (`$THEOS`) — the tweak build system + Logos preprocessor
-- iOS SDK: `iPhoneOS16.5.sdk` in `$THEOS/sdks` (newer SDK, deployment target 15.0)
-- `ldid`, `xz` (via Homebrew) — signing + packaging
-- `libimobiledevice` (via Homebrew) — USB device tools (`idevicesyslog`, `ideviceinfo`)
-- `THEOS=$HOME/theos` exported in your shell
-
-## Workflow
+## Building things
 
 ```bash
-# Build only (produces packages/*.deb)
+# Build only, produces packages/*.deb
 bin/build.sh tweaks/PullToRespring2
 
-# Build + install to the iPad + respring (needs SSH key set up, see below)
+# Build and install to the iPad, then respring (needs an SSH key, see below)
 bin/install.sh tweaks/PullToRespring2
 
-# Build + install a companion app
+# Build and install a companion app
 bin/install-app.sh apps/TaskManager
 
-# Watch the device log live (works over USB, no SSH needed)
+# Watch the device log live, over USB, no SSH needed
 bin/logs.sh PullToRespring2
 ```
 
-## Sileo repo (hosted on Vercel)
+Inside a tweak directory you can also use Theos directly:
 
-A static APT repo is published at **https://repo.maxleiter.com**. `repo/` holds
-the static site and signed metadata; package payloads live locally in ignored
-`repo/debs/` and are uploaded to Vercel Blob before deployment.
-`bin/lib/make-repo.py` generates the index (`Packages`, `Packages.gz`,
-`Release`, `index.html`, `CydiaIcon.png`) from that local cache. Use the staging
-publisher for low-cache iteration; production `.deb` filenames are immutable, so
-bump the package version/revision instead of replacing an already-published file.
+```bash
+make package            # build the .deb into ./packages
+make package install    # build, push to THEOS_DEVICE_IP, respring
+make clean              # needed when switching rootless <-> rootful
+```
 
-Publishing runs locally, because the gates that matter need the actual `.deb`
-files: the Blob upload, DER entitlement re-signing, and the Procursus shadow
-check. CI validates the index on every PR but does not deploy.
+## The Sileo repo
+
+There's a static APT repo at [repo.maxleiter.com](https://repo.maxleiter.com),
+hosted on Vercel. To add it in Sileo:
+`sileo://source/https://repo.maxleiter.com/`. The landing page has buttons for
+Sileo, Zebra, and Cydia plus a copyable URL.
+
+`repo/` holds the static site and the signed metadata. The actual package
+payloads live in `repo/debs/`, which is gitignored, and get uploaded to Vercel
+Blob before a deploy. `bin/lib/make-repo.py` generates the index (`Packages`,
+`Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from that local cache.
 
 ```bash
 bin/build.sh tweaks/<Name>
 cp tweaks/<Name>/packages/*.deb repo/debs/   # stage what you want public
-bin/publish-staging.sh                       # upload payloads + deploy low-cache staging (dev.repo.maxleiter.com)
-git add repo/Packages && git commit          # review the diff: it is what goes public
-bin/publish-repo.sh                          # production: publish the committed index
+bin/publish-staging.sh                       # upload payloads, deploy to dev.repo.maxleiter.com
+git add repo/Packages && git commit          # the diff here is what goes public
+bin/publish-repo.sh                          # publish the committed index to production
 bin/publish-repo.sh --only <pkg>[,<pkg>]     # ship just these against the live index
 ```
 
-Production publishes the *committed* index, so the diff you commit is the change
-users receive — and a prod publish refuses to run while `repo/Packages` differs
-from `HEAD`. Staging is the step that uploads payloads, so don't run the
-production step alone for something you just built. `--only pkg[,pkg]` scopes a
-publish to named packages instead: it swaps only those stanzas into the live
-index in a throwaway deploy copy and re-checks dependency solvability there.
+Publishing runs locally because the checks that matter need the real `.deb`
+files: the Blob upload, DER entitlement re-signing, and the Procursus shadow
+check. CI validates the index on every PR but never deploys.
 
-Run `bin/setup-repo-guards.sh` once per clone: it registers the structural merge
-driver for `repo/Packages` (so branches stop conflicting on the index) and a
-Claude Code hook that blocks the two operations that destroy work silently.
+Two things worth knowing. Production publishes the committed index, and refuses
+to run if `repo/Packages` differs from `HEAD`. Staging is the step that actually
+uploads payloads, so don't run the production step alone for something you just
+built. `--only` scopes a publish to named packages: it swaps just those stanzas
+into the live index in a throwaway copy and re-checks that dependencies still
+solve.
 
-Add it in Sileo: `sileo://source/https://repo.maxleiter.com/` (the landing page
-also has Sileo / Zebra / Cydia buttons and the copyable URL).
+Production filenames are immutable, so bump a package's version or revision
+rather than trying to replace a file that's already published.
 
-## iOS Simulator loop (device-free, via simject)
+Run `bin/setup-repo-guards.sh` once per clone. It registers a structural merge
+driver for `repo/Packages`, so branches stop conflicting on the index, and a
+Claude Code hook that blocks the two operations that silently destroy work.
 
-For fast iteration you can load a tweak into the **iOS Simulator** instead of the
-iPad. [simject](https://github.com/akemin-dayo/simject) injects your tweak's
-dylib into Simulator processes via a Simulator build of Cydia Substrate, so your
-`%hook`s run against the real iOS frameworks in the sim.
+## Using the Simulator instead of the iPad
 
-**This is a complement, not a replacement.** There's no real jailbreak or device
-SpringBoard in the sim, and some frameworks (Weather, etc.) are missing or differ.
-Iterate logic here, then `bin/install.sh` to confirm on the iPad. The sim also
-runs whatever runtime you have (e.g. iOS 18.x), **not** the device's 17.6.1.
+You can load a tweak into the iOS Simulator for faster iteration.
+[simject](https://github.com/akemin-dayo/simject) injects your dylib into
+Simulator processes using a Simulator build of Cydia Substrate, so your `%hook`s
+run against the real iOS frameworks.
 
 ```bash
-bin/sim.sh tweaks/PullToRespring2     # build for Simulator (arm64) + copy to /opt/simject + resim
+bin/sim.sh tweaks/PullToRespring2   # build for the Simulator, copy to /opt/simject, resim
 ```
 
-This Mac is Apple Silicon, so the Simulator is **arm64** — ignore older guides
-that say `x86_64`. `sim.sh` overrides the device build settings on the command
-line: `TARGET=simulator:clang::12.0 ARCHS=arm64 THEOS_PACKAGE_SCHEME=` (the
-rootless scheme is device-only), finds the built `.dylib`, copies it **and** its
-filter `.plist` into `/opt/simject`, **re-signs it ad-hoc**, then runs `resim`.
+This doesn't replace testing on the device. There's no jailbreak or real
+SpringBoard in the sim, some frameworks are missing or behave differently, and
+you're running whatever runtime you have installed (18.x for me) rather than the
+device's 17.6.1. Iterate here, then `bin/install.sh` to confirm on the iPad.
 
-If more than one Simulator is booted, `resim` (no args) is ambiguous — target one
-explicitly: `resim -i <UUID>` or `resim -d "iPad (10th generation)" -v 18.2`.
+This Mac is Apple Silicon, so the Simulator is arm64. Ignore older guides that
+say x86_64. `sim.sh` overrides the device build settings on the command line
+(`TARGET=simulator:clang::12.0 ARCHS=arm64 THEOS_PACKAGE_SCHEME=`, since the
+rootless scheme is device-only), finds the built dylib, copies it and its filter
+plist into `/opt/simject`, re-signs it ad-hoc, and runs `resim`.
 
-### Gotchas (learned the hard way)
+If more than one Simulator is booted, `resim` with no arguments is ambiguous.
+Target one explicitly with `resim -i <UUID>` or
+`resim -d "iPad (10th generation)" -v 18.2`.
 
-- **Code signing is mandatory.** The Simulator enforces real code signing on
-  Apple Silicon. Theos signs during the build, but its post-link fixups leave the
-  signature stale → the kernel kills the host process (SpringBoard) with an
-  *"Invalid Page" / Code Signature Invalid* `SIGKILL`, i.e. a **respring loop**.
-  `sim.sh` fixes this by re-signing the dylib **last** (`codesign --force --sign -`)
-  on the final on-disk bytes. If you load a tweak by hand, do the same.
-- **tmpfs symlinks vanish on macOS reboot.** Runtimes now live as *sealed,
-  read-only* volumes under `/Library/Developer/CoreSimulator/Volumes/iOS_*`, so
-  the installer mounts a RAM-backed `tmpfs` over each runtime's `Library` and puts
-  the substrate symlinks there. After a **Mac reboot** they're gone — re-run
-  `cd ~/simject && ./installsubstrate.sh link` (fast, no rebuild), or install the
-  **LaunchDaemon** below so it happens automatically.
+Two things that cost me time:
 
-### Auto-relink on reboot (LaunchDaemon)
+Code signing isn't optional. The Simulator enforces real code signing on Apple
+Silicon. Theos signs during the build, but its post-link fixups leave the
+signature stale, and the kernel then kills SpringBoard with an invalid signature
+`SIGKILL`, which looks like a respring loop. `sim.sh` handles this by re-signing
+the dylib last (`codesign --force --sign -`) on the final bytes on disk. If you
+load a tweak by hand, do the same.
 
-`bin/simject-relink.sh` re-runs `installsubstrate.sh link` automatically.
-`bin/launchd/com.max.simject-relink.plist` runs it as root at boot
-(`RunAtLoad`) and whenever a runtime volume mounts (`StartOnMount`, since those
-volumes can mount lazily when Simulator launches). The wrapper is idempotent and
-logs to `~/Library/Logs/simject-relink.log`. Install once (needs sudo):
+The tmpfs symlinks disappear when the Mac reboots. Runtimes now live as sealed
+read-only volumes under `/Library/Developer/CoreSimulator/Volumes/iOS_*`, so the
+installer mounts a RAM-backed tmpfs over each runtime's `Library` and puts the
+substrate symlinks there. After a reboot, re-run
+`cd ~/simject && ./installsubstrate.sh link`, or install the LaunchDaemon below.
+
+### Relinking automatically after a reboot
+
+`bin/simject-relink.sh` re-runs `installsubstrate.sh link`.
+`bin/launchd/com.max.simject-relink.plist` runs it as root at boot and whenever
+a runtime volume mounts, since those can mount lazily when the Simulator
+launches. The wrapper is idempotent and logs to
+`~/Library/Logs/simject-relink.log`. Install it once:
 
 ```bash
 sudo cp ~/Documents/jailbreak/bin/launchd/com.max.simject-relink.plist /Library/LaunchDaemons/
 sudo chown root:wheel /Library/LaunchDaemons/com.max.simject-relink.plist
 sudo chmod 644        /Library/LaunchDaemons/com.max.simject-relink.plist
 sudo launchctl bootstrap system /Library/LaunchDaemons/com.max.simject-relink.plist
-# verify:
+# check it worked:
 sudo launchctl kickstart -k system/com.max.simject-relink && cat ~/Library/Logs/simject-relink.log
 ```
 
-### One-time simject setup
+### Setting simject up the first time
 
-Requires Xcode selected, an iOS Development cert, and **Terminal granted Full
-Disk Access** (System Settings → Privacy & Security). simject's substrate build
-([PoomSmart/substitute](https://github.com/PoomSmart/substitute)) needs
-**Python 3.9** specifically — its `configure` imports the stdlib `parser` module,
-removed in Python 3.10+. Get one with `uv python install 3.9` and put it on PATH
-(`ln -sf "$(uv python find 3.9)" /opt/homebrew/bin/python3.9`).
+You need Xcode selected, an iOS Development cert, and Full Disk Access granted
+to Terminal (System Settings > Privacy & Security). simject's substrate build
+([PoomSmart/substitute](https://github.com/PoomSmart/substitute)) needs Python
+3.9 specifically, because its `configure` imports the stdlib `parser` module
+that was removed in 3.10. `uv python install 3.9` gets you one, then put it on
+PATH with `ln -sf "$(uv python find 3.9)" /opt/homebrew/bin/python3.9`.
 
 ```bash
 sudo xcode-select -s /Applications/Xcode.app
 git clone https://github.com/akemin-dayo/simject.git ~/simject
 cd ~/simject && make setup
-./installsubstrate.sh subst       # build + symlink substrate into all runtimes
-./installsubstrate.sh theos       # install the simulator CydiaSubstrate.tbd into Theos (so tweaks LINK)
-# later: ./installsubstrate.sh link    # re-symlink after a reboot or adding a new simulator
+./installsubstrate.sh subst       # build and symlink substrate into all runtimes
+./installsubstrate.sh theos       # install the simulator CydiaSubstrate.tbd so tweaks link
+# later: ./installsubstrate.sh link   # after a reboot, or a new simulator
 ```
 
-Drag-and-drop alternative:
+There's also a drag-and-drop alternative,
 [simulator-trainer](https://github.com/EthanArbuckle/simulator-trainer).
 
-Inside a tweak directory you can also use Theos directly:
+## SSH keys
 
-```bash
-make package            # build the .deb into ./packages
-make package install    # build + push to THEOS_DEVICE_IP + respring
-make clean              # required when switching rootless <-> rootful
-```
-
-## One-time SSH key setup
-
-So install scripts do not prompt for a password every time, authorize your Mac's
-key on the iPad once. Set the host with `device.env` or `THEOS_DEVICE_IP`.
+So the install scripts stop asking for a password, authorize your Mac's key on
+the iPad once. Set the host in `device.env` or `THEOS_DEVICE_IP`.
 
 ```bash
 [ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N "" -f ~/.ssh/id_ed25519
 ssh-copy-id -o StrictHostKeyChecking=accept-new root@<device-hostname>
 ```
 
-If the device still uses a default root password, change it before putting it on
-an untrusted network.
+If your device still has the default root password, change it before putting it
+on a network you don't trust.
 
 ## Finding things to hook
 
-- **Headers:** dump with `class-dump`, or use community headers
-  (e.g. the iOS runtime headers repos). Drop headers in a `headers/` dir and add
-  `-I` to `<Tweak>_CFLAGS`.
-- **Class/method discovery:** Look at the target binary in a disassembler, or
-  use `cycript`/`Frida` on-device, or browse existing tweak source for the same app.
-- **Logging:** `NSLog(@"[Name] ...")` then `bin/logs.sh Name`.
+- Headers: dump them with `class-dump`, or use one of the community header
+  repos. Put them in a `headers/` dir and add `-I` to `<Tweak>_CFLAGS`.
+- Finding classes and methods: open the target binary in a disassembler, use
+  cycript or Frida on-device, or read an existing tweak that hooks the same app.
+- Logging: `NSLog(@"[Name] ...")`, then `bin/logs.sh Name`.
