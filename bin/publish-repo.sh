@@ -400,7 +400,15 @@ verify_published() {
   echo "==> Verifying $base serves what apt needs"
   local bad="" code
   for f in Packages Packages.gz Release InRelease Release.gpg; do
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$base/$f" || echo 000)"
+    # `|| echo 000` would APPEND to whatever curl already printed: curl emits the
+    # status as soon as it has headers, so a transfer that dies mid-body yields
+    # the concatenation "200000", which fails the check below and reports a
+    # perfectly healthy repo as an outage. Overwrite on failure instead. Retry
+    # and allow more time as well -- Packages is ~6x the size of the other four
+    # and was the only one that ever tripped this, on a flaky link rather than a
+    # bad deploy.
+    code="$(curl -s -o /dev/null -w '%{http_code}' \
+              --retry 3 --retry-all-errors --max-time 120 "$base/$f")" || code=000
     printf '    %-14s HTTP %s\n' "$f" "$code"
     [ "$code" = 200 ] || bad="$bad $f"
   done
