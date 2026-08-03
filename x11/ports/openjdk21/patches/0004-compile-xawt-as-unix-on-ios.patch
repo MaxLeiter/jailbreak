@@ -1,0 +1,23 @@
+diff --git a/make/modules/java.desktop/lib/Awt2dLibraries.gmk b/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+--- a/make/modules/java.desktop/lib/Awt2dLibraries.gmk
++++ b/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+@@ -192,3 +192,4 @@ ifeq ($(call isTargetOs, windows), false)
+     LIBAWT_XAWT_EXCLUDES := medialib debug
++    LIBAWT_XAWT_EXCLUDE_FILES := screencast_pipewire.c screencast_portal.c
+ 
+     LIBPIPEWIRE_HEADER_DIRS := \
+@@ -209,7 +210,7 @@ ifeq ($(call isTargetOs, windows), false)
+     endif
+ 
+     LIBAWT_XAWT_CFLAGS += -DXAWT -DXAWT_HACK \
+-        $(FONTCONFIG_CFLAGS) \
++        -UMACOSX $(FONTCONFIG_CFLAGS) \
+         $(CUPS_CFLAGS)
+ 
+     ifeq ($(call isTargetOs, linux), true)
+@@ -229,4 +230,5 @@ ifeq ($(call isTargetOs, windows), false)
+         EXTRA_SRC := $(LIBAWT_XAWT_EXTRA_SRC), \
+         EXTRA_HEADER_DIRS := $(LIBAWT_XAWT_EXTRA_HEADER_DIRS), \
+         EXCLUDES := $(LIBAWT_XAWT_EXCLUDES), \
++        EXCLUDE_FILES := $(LIBAWT_XAWT_EXCLUDE_FILES), \
+         OPTIMIZATION := LOW, \

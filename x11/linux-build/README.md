@@ -26,6 +26,7 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `x11-xvfb_*_iphoneos-arm64.deb` | Packaged Xvfb server for rootless installs, built from target artifacts |
 | `xios-audio-server` | CoreAudio/RemoteIO audio daemon plus `xios-audio-play` smoke-test client |
 | `openjdk-21-{jre,jdk}-headless_*_iphoneos-arm64.deb` | OpenJDK 21 HotSpot runtime and development tools for rootless iOS |
+| `openjdk-21-{jre,jdk}-awt_*_iphoneos-arm64.deb` | Opt-in headful OpenJDK 21 with the XAWT peer; installs beside the headless runtime, selected via `JAVA_HOME` |
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
 | `iosc*`, `xios-session*`, GNOME/KDE/Wayland app debs | Built by their specialized `build-*.sh` and package scripts; see `docs/handoff/` for the current active lanes |
 

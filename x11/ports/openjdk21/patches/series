@@ -1,1 +1,5 @@
 0001-disable-compressed-class-pointers-on-ios.patch
+0002-enable-xawt-on-ios.patch
+0003-use-unix-splashscreen-on-ios.patch
+0004-compile-xawt-as-unix-on-ios.patch
+0005-fontconfig-fontconfiguration-on-ios.patch

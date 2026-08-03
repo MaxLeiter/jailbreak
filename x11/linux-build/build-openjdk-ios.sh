@@ -22,15 +22,49 @@ xios_load_target "${XIOS_TARGET:-rootless-1900}"
 source "$ROOT/lib/xlib.sh"
 
 MODE="${1:-all}"
+if [ "$MODE" = "--awt-x11-build-only" ]; then
+  MODE="--build-only"
+  OPENJDK_VARIANT="${OPENJDK_VARIANT:-awt-x11}"
+fi
+OPENJDK_VARIANT="${OPENJDK_VARIANT:-headless}"
+case "$OPENJDK_VARIANT" in
+  headless|awt-x11) ;;
+  *)
+    echo "unsupported OpenJDK variant: $OPENJDK_VARIANT (expected headless or awt-x11)" >&2
+    exit 2
+    ;;
+esac
 if [ "$XIOS_REPO_PROFILE" = rootless ]; then
   OUT="${OUT:-$HERE/out}"
 else
   OUT="${OUT:-$HERE/out/targets/$XIOS_TARGET_ID}"
 fi
-WORK="${WORK:-$HERE/out/openjdk-ios-work}"
-CONF="${OPENJDK_CONF:-ios-aarch64-server-release}"
+if [ "$OPENJDK_VARIANT" = "awt-x11" ]; then
+  WORK="${WORK:-$HERE/out/openjdk-awt-ios-work}"
+  CONF="${OPENJDK_CONF:-ios-aarch64-server-awt-x11-release}"
+  HEADLESS_ONLY=no
+  PKG_JRE=openjdk-21-jre-awt
+  PKG_JDK=openjdk-21-jdk-awt
+else
+  WORK="${WORK:-$HERE/out/openjdk-ios-work}"
+  CONF="${OPENJDK_CONF:-ios-aarch64-server-release}"
+  HEADLESS_ONLY=yes
+  PKG_JRE=openjdk-21-jre-headless
+  PKG_JDK=openjdk-21-jdk-headless
+fi
 IMAGE="$WORK/openjdk/build/$CONF/images/jdk"
 JVM_HOME="$XIOS_INSTALL_PREFIX/lib/jvm/java-21-openjdk"
+# Where the variant actually installs. The AWT lane gets its own JVM directory
+# so it sits ALONGSIDE the proven headless runtime rather than replacing it,
+# and it publishes no /usr/bin symlinks (those names belong to the headless
+# packages); pick it with JAVA_HOME. JVM_HOME stays the configure --prefix for
+# both variants -- the image derives java.home from the launcher at runtime, so
+# the prefix is metadata only.
+if [ "$OPENJDK_VARIANT" = "awt-x11" ]; then
+  PKG_JVM_HOME="$XIOS_INSTALL_PREFIX/lib/jvm/java-21-openjdk-awt"
+else
+  PKG_JVM_HOME="$JVM_HOME"
+fi
 IOS_MIN="${IOS_MIN:-$XIOS_DEFAULT_MIN_IOS}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
 
@@ -40,6 +74,7 @@ if [ "$XIOS_REPO_PROFILE" != rootless ] && [ "$MODE" != "--package-only" ]; then
   echo "  XIOS_TARGET=$XIOS_TARGET_ID $0 --package-only" >&2
   exit 2
 fi
+
 
 OPENJDK_REPO="${OPENJDK_REPO:-https://github.com/openjdk/jdk21u.git}"
 OPENJDK_COMMIT="${OPENJDK_COMMIT:-9de4f68c88a0a1510373f291d1a95b1f6b0db8c8}"
@@ -90,11 +125,24 @@ docker_extract_deb() {
   debdir="$(cd "$(dirname "$deb")" && pwd)"
   base="$(basename "$deb")"
   mkdir -p "$sysroot"
-  docker run --rm --platform linux/arm64 \
+  if docker run --rm --platform linux/arm64 \
     -v "$debdir:/debs:ro" \
     -v "$sysroot:/sysroot" \
     "${XLIB_XBUILD_IMAGE:-procursus-xbuild:bookworm-arm64}" \
-    -c "dpkg-deb -x /debs/'$base' /sysroot"
+    -c "dpkg-deb -x /debs/'$base' /sysroot"; then
+    return 0
+  fi
+
+  # Some Docker hosts cannot execute the arm64 helper image even though the
+  # host can unpack the zstd-compressed .deb itself. Keep extraction portable
+  # so the AWT probe does not depend on a working cross-container emulator.
+  local tmp data
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/xios-deb.XXXXXX")"
+  trap 'rm -rf "$tmp"' RETURN
+  (cd "$tmp" && ar -x "$deb")
+  data="$(find "$tmp" -maxdepth 1 -type f -name 'data.tar.*' -print -quit)"
+  [ -n "$data" ] || { echo "cannot find data archive in $deb" >&2; return 1; }
+  tar -xf "$data" -C "$sysroot" --no-same-owner
 }
 
 make_deb_isolated() {
@@ -161,11 +209,14 @@ prepare_sources() {
     git diff --check
   )
 
-  rg -q 'MirrorMappedCodeCache' "$WORK/openjdk/src/hotspot/share/runtime/globals.hpp"
-  rg -q 'IOS_USE_COMPRESSED_CLASS_POINTERS_DEFAULT' \
+  # grep, not rg: these are fixed-string post-patch assertions, and requiring
+  # ripgrep made the script fail before doing any work on a host that only has
+  # `rg` as an interactive shell function rather than a real binary.
+  grep -q 'MirrorMappedCodeCache' "$WORK/openjdk/src/hotspot/share/runtime/globals.hpp"
+  grep -q 'IOS_USE_COMPRESSED_CLASS_POINTERS_DEFAULT' \
     "$WORK/openjdk/src/hotspot/share/runtime/globals.hpp"
-  rg -q 'aarch64-apple-ios' "$WORK/openjdk/make/autoconf/platform.m4" || \
-    rg -q '\\*ios\\*' "$WORK/openjdk/make/autoconf/platform.m4"
+  grep -q 'aarch64-apple-ios' "$WORK/openjdk/make/autoconf/platform.m4" || \
+    grep -qE '\\*ios\\*' "$WORK/openjdk/make/autoconf/platform.m4"
 
   local desktop="$WORK/openjdk/src/java.desktop/macosx"
   mv "$desktop" "${desktop}_NOTIOS"
@@ -187,12 +238,13 @@ prepare_headers() {
     tar -C "$WORK" -xf "$WORK/libXrender-0.9.12.tar.xz"
 
   local repo_debs="$ROOT/../repo/debs"
+  local target_out="$HERE/out/targets/$XIOS_TARGET_ID"
   local libx11_deb fontconfig_deb
-  libx11_deb="$(xdeb_find libx11-dev "$OUT" "$repo_debs")" || {
+  libx11_deb="$(xdeb_find libx11-dev "$OUT" "$target_out" "$repo_debs")" || {
     echo "libx11-dev iOS package is required in linux-build/out or repo/debs" >&2
     exit 1
   }
-  fontconfig_deb="$(xdeb_find libfontconfig-dev "$OUT" "$repo_debs")" || {
+  fontconfig_deb="$(xdeb_find libfontconfig-dev "$OUT" "$target_out" "$repo_debs")" || {
     echo "libfontconfig-dev iOS package is required in linux-build/out or repo/debs" >&2
     exit 1
   }
@@ -200,6 +252,19 @@ prepare_headers() {
   local depsys="$WORK/header-sysroot"
   docker_extract_deb "$libx11_deb" "$depsys"
   docker_extract_deb "$fontconfig_deb" "$depsys"
+
+  if [ "$OPENJDK_VARIANT" = awt-x11 ]; then
+    local xdep xdep_deb
+    for xdep in libx11-6 libxext-dev libxext6 libxrender-dev libxrender1 \
+      libxi-dev libxi6 libxtst-dev libxtst6 libxrandr-dev libxrandr2; do
+      xdep_deb="$(xdeb_find "$xdep" "$OUT" "$target_out" "$repo_debs")" || {
+        echo "AWT/X11 probe requires $xdep in linux-build/out or repo/debs" >&2
+        echo "build the missing Procursus X11 dependency before rerunning" >&2
+        exit 1
+      }
+      docker_extract_deb "$xdep_deb" "$depsys"
+    done
+  fi
 
   local headers="$WORK/ios-build-include"
   mkdir -p "$headers/X11/extensions"
@@ -247,6 +312,17 @@ configure_and_build() {
   unset IPHONEOS_DEPLOYMENT_TARGET
 
   local extra_cflags="-O3 -arch arm64 -I$headers -Wno-implicit-function-declaration"
+  local extra_ldflags="-arch arm64"
+  if [ "$OPENJDK_VARIANT" = awt-x11 ]; then
+    # The Procursus X11 dylibs carry @rpath install names (e.g.
+    # @rpath/libX11.6.dylib), and OpenJDK only gives its own libraries
+    # LC_RPATH @loader_path/. That resolves the JDK's own lib dir and nothing
+    # else, so libawt_xawt/libsplashscreen would miss libX11 at dlopen time on
+    # device. Record the on-device library dir the same way every other
+    # Procursus consumer does.
+    extra_ldflags+=" -L$WORK/header-sysroot$XIOS_PREFIX/usr/lib"
+    extra_ldflags+=" -Wl,-rpath,$XIOS_PREFIX/usr/lib"
+  fi
 
   echo "==> configure OpenJDK 21.0.12 for arm64 iOS"
   (
@@ -256,11 +332,11 @@ configure_and_build() {
       --with-sysroot="$IOS_SDKROOT" \
       --with-extra-cflags="$extra_cflags" \
       --with-extra-cxxflags="$extra_cflags" \
-      --with-extra-ldflags="-arch arm64" \
+      --with-extra-ldflags="$extra_ldflags" \
       --disable-precompiled-headers \
       --disable-warnings-as-errors \
       --enable-option-checking=fatal \
-      --enable-headless-only=yes \
+      --enable-headless-only="$HEADLESS_ONLY" \
       --with-jvm-variants=server \
       --with-jvm-features=-dtrace,-zero,-vm-structs,-epsilongc \
       --with-cups-include="$WORK/cups-2.2.4" \
@@ -327,15 +403,15 @@ package_image() {
   mkdir -p "$pkgwork"
   find "$pkgwork" -mindepth 1 -delete
 
-  local jre="$pkgwork/openjdk-21-jre-headless"
-  local jdk="$pkgwork/openjdk-21-jdk-headless"
-  local jre_home="$jre$JVM_HOME"
-  local jdk_home="$jdk$JVM_HOME"
+  local jre="$pkgwork/$PKG_JRE"
+  local jdk="$pkgwork/$PKG_JDK"
+  local jre_home="$jre$PKG_JVM_HOME"
+  local jdk_home="$jdk$PKG_JVM_HOME"
   mkdir -p "$jre/DEBIAN" "$jdk/DEBIAN" \
     "$jre_home/bin" "$jre$XIOS_PREFIX/usr/bin" \
     "$jdk_home/bin" "$jdk$XIOS_PREFIX/usr/bin"
-  cp "$ROOT/packages/openjdk-21-jre-headless/DEBIAN/control" "$jre/DEBIAN/control"
-  cp "$ROOT/packages/openjdk-21-jdk-headless/DEBIAN/control" "$jdk/DEBIAN/control"
+  cp "$ROOT/packages/$PKG_JRE/DEBIAN/control" "$jre/DEBIAN/control"
+  cp "$ROOT/packages/$PKG_JDK/DEBIAN/control" "$jdk/DEBIAN/control"
   local runtime_version="21.0.12$XIOS_VERSION_SUFFIX"
   sed -i.bak \
     -e "s/^Version: .*/Version: $runtime_version/" \
@@ -346,7 +422,7 @@ package_image() {
   sed -i.bak \
     -e "s/^Version: .*/Version: $runtime_version/" \
     -e "s/^Architecture: .*/Architecture: $XIOS_DEB_ARCH/" \
-    -e "s/^Depends: openjdk-21-jre-headless .*/Depends: openjdk-21-jre-headless (= $runtime_version)/" \
+    -e "s/^Depends: $PKG_JRE .*/Depends: $PKG_JRE (= $runtime_version)/" \
     -e "s/^MinimumOSVersion: .*/MinimumOSVersion: $IOS_MIN/" \
     -e 's/ for rootless iOS\\./ for iOS./' \
     "$jdk/DEBIAN/control"
@@ -359,11 +435,20 @@ package_image() {
   mkdir -p "$jre_home/lib"
   rsync -a --exclude=/src.zip "$IMAGE/lib/" "$jre_home/lib/"
 
+  # Only the headless packages own the unsuffixed /usr/bin names. The AWT lane
+  # ships its tools inside its own JVM directory and links nothing into
+  # /usr/bin, so installing it can never shadow or conflict with the runtime
+  # everything else on the device already depends on.
+  local link_into_usr_bin=yes
+  [ "$OPENJDK_VARIANT" = awt-x11 ] && link_into_usr_bin=no
+
   local runtime_bins=(java jfr keytool rmiregistry)
   local tool
   for tool in "${runtime_bins[@]}"; do
     cp "$IMAGE/bin/$tool" "$jre_home/bin/$tool"
-    ln -s "$JVM_HOME/bin/$tool" "$jre$XIOS_PREFIX/usr/bin/$tool"
+    if [ "$link_into_usr_bin" = yes ]; then
+      ln -s "$PKG_JVM_HOME/bin/$tool" "$jre$XIOS_PREFIX/usr/bin/$tool"
+    fi
   done
 
   for tool_path in "$IMAGE"/bin/*; do
@@ -372,7 +457,9 @@ package_image() {
       *" $tool "*) continue ;;
     esac
     cp "$tool_path" "$jdk_home/bin/$tool"
-    ln -s "$JVM_HOME/bin/$tool" "$jdk$XIOS_PREFIX/usr/bin/$tool"
+    if [ "$link_into_usr_bin" = yes ]; then
+      ln -s "$PKG_JVM_HOME/bin/$tool" "$jdk$XIOS_PREFIX/usr/bin/$tool"
+    fi
   done
   for d in include jmods man; do
     cp -R "$IMAGE/$d" "$jdk_home/$d"
@@ -390,7 +477,7 @@ package_image() {
   echo "    $jdk_deb"
 }
 
-for tool in git curl shasum patch rg rsync xcrun gmake file otool ldid docker; do
+for tool in git curl shasum patch rsync xcrun gmake file otool ldid docker ar tar; do
   need "$tool"
 done
 
