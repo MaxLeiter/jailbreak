@@ -585,9 +585,39 @@ xs_reap_slot_named_processes() {
     done
 }
 
-# A slot's registry entry is only deleted on clean stop; crashes/jetsam/reboots
-# leave stale entries the Xios app keeps listing. Sweep entries with no socket,
-# config, or process left. Runs under the session lock to avoid racing a write.
+# Is any compositor/shell process still serving this slot? This is the ONLY
+# liveness test that means anything: every file a slot leaves in $XS_TMP
+# outlives the process that made it (nothing unlinks a slot's socket on crash,
+# jetsam or reboot, and $XS_TMP is not cleared at boot). Substring matching is
+# deliberate -- a near-miss keeps a slot, and keeping a dead slot is merely
+# untidy while sweeping a live one would delete a running desktop's socket.
+#
+# The process table is snapshotted ONCE and matched with `case`, never with a
+# `grep -q` pipeline: under `set -o pipefail` an early-exiting `grep -q` makes
+# the upstream `ps` die of SIGPIPE and the pipeline report 141, which reads as
+# "no match" and would sweep a slot that is very much alive.
+xs_slot_has_live_process() {
+    local slot="$1" needle procs
+    procs="$(ps axww 2>/dev/null | grep -v grep || true)"
+    for needle in "wayland-$slot" "iosc-$slot-" "mutter-$slot-" "kwin-$slot" \
+        "xios-$slot.json"; do
+        case "$procs" in
+            *"$needle"*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+# A slot's runtime state is only deleted on clean stop; crashes/jetsam/reboots
+# leave the whole per-slot footprint behind, and the Xios app keeps listing the
+# entry. Sweep every slot with no live process.
+#
+# This used to skip a slot whose socket or config file still existed, which
+# inverted the test: a leftover socket is the SYMPTOM of a dead session, not
+# evidence of a live one, so the two file guards short-circuited before the
+# process check and the only slots that ever got swept were the ones that had
+# already cleaned up after themselves. Slots that died dirty -- the ones this
+# function exists for -- accumulated in $XS_TMP indefinitely, across reboots.
 xs_sweep_stale_slot_registry() {
     case "${XIOS_SESSION_SWEEP_SLOTS:-1}" in 0|no|off|false) return 0 ;; esac
     [ -d "$XS_SLOT_REGISTRY_DIR" ] || return 0
@@ -596,20 +626,30 @@ xs_sweep_stale_slot_registry() {
         [ -f "$entry" ] || continue
         slot="$(basename "$entry" .json)"
         [ -n "${XS_SLOT:-}" ] && [ "$slot" = "$XS_SLOT" ] && continue
+        xs_slot_has_live_process "$slot" && continue
+
         wayland="$(xs_json_get_file "$entry" wayland)"
         [ -n "$wayland" ] || wayland="wayland-$slot"
-        [ -e "$XS_TMP/$wayland" ] && continue
         config="$(xs_json_get_file "$entry" json)"
         [ -n "$config" ] || config="$XS_TMP/xios-$slot.json"
-        [ -e "$config" ] && continue
-        if ps axww 2>/dev/null | grep -v grep | grep -qE "wayland-$slot|iosc-$slot-|kwin-$slot"; then
-            continue
-        fi
-        rm -f "$entry" 2>/dev/null || true
+
+        # The compositor's rendezvous plus every sidecar socket keyed to it.
+        # Logs are left alone on purpose: they are the only post-mortem left
+        # for whatever killed the session.
+        rm -f "$XS_TMP/$wayland" "$XS_TMP/$wayland.lock" 2>/dev/null || true
+        rm -f "$config" 2>/dev/null || true
+        rm -f "$XS_TMP/iosc-$slot-ddx.sock" "$XS_TMP/iosc-$slot-input.sock" \
+            "$XS_TMP/iosc-$slot-clipboard.sock" "$XS_TMP/iosc-$slot-wm.sock" \
+            2>/dev/null || true
+        rm -f "$XS_TMP/mutter-$slot-ddx.sock" "$XS_TMP/mutter-$slot-input.sock" \
+            "$XS_TMP/mutter-$slot-clipboard.sock" 2>/dev/null || true
         rm -f "$XS_TMP/xios-session-$slot.json" 2>/dev/null || true
+        rm -f "$XS_TMP/xios-app-launch-$slot.json" 2>/dev/null || true
+        rm -f "$entry" 2>/dev/null || true
         swept=$((swept + 1))
-        xs_log "swept stale display slot '$slot' (no socket, config or processes)"
+        xs_log "swept stale display slot '$slot' (no live process)"
     done
+    [ "$swept" -gt 0 ] && xs_log "sweep removed $swept stale display slot(s)"
     return 0
 }
 

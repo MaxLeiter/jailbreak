@@ -33,12 +33,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.0+wl3"
+          "text": "0.1.0+wl4"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "42016.6 KiB"
+          "text": "42016.7 KiB"
         },
         {
           "class": "DepictionTableTextView",

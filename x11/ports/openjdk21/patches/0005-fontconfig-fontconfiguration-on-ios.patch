@@ -1,0 +1,33 @@
+Use the fontconfig-backed FontConfiguration on iOS.
+
+X11FontManager only consults FcFontConfiguration -- the one that asks
+libfontconfig for the font set at runtime -- when FontUtilities.isLinux.
+Our target reports as the macOS family, so it fell straight through to
+MFontConfiguration, which wants a per-OS fontconfig.properties/.bfc that
+JDK 21 no longer generates (make/data/fontconfig is gone). With no file to
+read, FontConfiguration.head stayed null and the first text operation died
+with "Fontconfig head is null, check your fonts or fonts configuration".
+
+The native side FcFontConfiguration needs is already present: fontpath.c
+builds into libawt_xawt and exports Java_sun_font_FontConfigManager_getFontConfig
+and Java_sun_awt_FcFontManager_getFontPathNative, and the versioned dlopen
+name expands to libfontconfig.1.dylib on this target.
+
+X11FontManager is only reachable when XAWT is the toolkit, which on a
+macOS-family build only happens in the iOS XAWT configuration, so widening
+the guard to the macOS family does not change real macOS behaviour.
+
+diff --git a/src/java.desktop/unix/classes/sun/awt/X11FontManager.java b/src/java.desktop/unix/classes/sun/awt/X11FontManager.java
+index 26cf8fd6e0..d8e92927e3 100644
+--- a/src/java.desktop/unix/classes/sun/awt/X11FontManager.java
++++ b/src/java.desktop/unix/classes/sun/awt/X11FontManager.java
+@@ -686,7 +686,8 @@ public final class X11FontManager extends FcFontManager {
+          * and do the best we can.
+          */
+         FontConfiguration mFontConfig = new MFontConfiguration(this);
+-        if ((FontUtilities.isLinux && !mFontConfig.foundOsSpecificFile())) {
++        if (((FontUtilities.isLinux || FontUtilities.isMacOSX)
++             && !mFontConfig.foundOsSpecificFile())) {
+             FcFontConfiguration fcFontConfig =
+                 new FcFontConfiguration(this);
+             if (fcFontConfig.init()) {
