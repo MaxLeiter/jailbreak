@@ -120,21 +120,43 @@ def otool_loads_and_rpaths(path: Path) -> tuple[list[str], list[str]]:
     return loads, rpaths
 
 
-def is_macho(path: Path) -> bool:
+MH_EXECUTE = 0x2
+
+
+def macho_filetype(path: Path) -> int | None:
+    """Mach-O filetype, or None if this is not a thin little-endian Mach-O.
+
+    Only MH_EXECUTE is worth checking here -- see check_deb for why a dylib is not.
+    """
     try:
         with open(path, "rb") as fh:
-            return fh.read(4) in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xca\xfe\xba\xbe")
+            head = fh.read(16)
     except OSError:
-        return False
+        return None
+    if len(head) < 16 or head[:4] not in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe"):
+        return None
+    return int.from_bytes(head[12:16], "little")
+
+
+def deb_version_key(deb: Path) -> tuple:
+    """Sort key from the filename's version field (name_VERSION_arch.deb).
+
+    Naturally ordered so 0.1.0+wl5 > 0.1.0+wl4 > 0.1.0+wl2, and 0.1.25 > 0.1.9.
+    mtime is NOT a version: cloning or re-staging a pool rewrites timestamps and would
+    silently pick an older build as "the one that ships".
+    """
+    parts = deb.name.split("_")
+    version = parts[1] if len(parts) > 2 else ""
+    return tuple(int(t) if t.isdigit() else t
+                 for t in re.split(r"(\d+)", version))
 
 
 def newest_ladybird_debs(debs_dir: Path) -> list[Path]:
-    """Newest version of each ladybird-* deb. Version compare is left to dpkg ordering
-    by filename mtime, which is what the other gates rely on too."""
+    """Newest *version* of each ladybird-* deb -- that is the one the index will carry."""
     by_pkg: dict[str, Path] = {}
     for deb in sorted(debs_dir.glob("ladybird-*.deb")):
         pkg = deb.name.split("_", 1)[0]
-        if pkg not in by_pkg or deb.stat().st_mtime > by_pkg[pkg].stat().st_mtime:
+        if pkg not in by_pkg or deb_version_key(deb) > deb_version_key(by_pkg[pkg]):
             by_pkg[pkg] = deb
     return sorted(by_pkg.values())
 
@@ -143,7 +165,8 @@ def check_deb(deb: Path) -> list[str]:
     failures: list[str] = []
     tmp = Path(tempfile.mkdtemp(prefix="tlsrpath."))
     try:
-        subprocess.run(["ar", "x", str(deb)], cwd=tmp, check=True,
+        # Absolute: `ar` runs with cwd=tmp, so a relative --debs path would not resolve.
+        subprocess.run(["ar", "x", str(deb.resolve())], cwd=tmp, check=True,
                        capture_output=True)
         data = next((p for p in tmp.iterdir() if p.name.startswith("data.tar")), None)
         if data is None:
@@ -155,7 +178,17 @@ def check_deb(deb: Path) -> list[str]:
 
         shipped = {"/" + str(p.relative_to(root)) for p in root.rglob("*") if p.is_file()}
         for p in sorted(root.rglob("*")):
-            if not p.is_file() or p.is_symlink() or not is_macho(p):
+            if not p.is_file() or p.is_symlink():
+                continue
+            # EXECUTABLES ONLY, and that is a correctness requirement, not a shortcut.
+            # `@executable_path` in a dylib means the directory of whatever executable
+            # loaded it -- not the dylib's own directory. Expanding it against the dylib
+            # gives a wrong answer, which is exactly what happened on the first run of
+            # this gate: ladybird-tls's own libssl.3.dylib (which links
+            # @rpath/libcrypto.3.dylib) resolved to "/var/jb/usr/lib" and blocked a
+            # perfectly good publish. dyld searches the LC_RPATHs of the loading
+            # executable, so the executable is where the property is decidable.
+            if macho_filetype(p) != MH_EXECUTE:
                 continue
             inpkg = "/" + str(p.relative_to(root))
             loads, rpaths = otool_loads_and_rpaths(p)
@@ -195,6 +228,27 @@ def self_test() -> int:
         bad += not ok
         print(f"{'ok   ' if ok else 'FAIL '} {name}: got={got} want={want}"
               + ("" if ok else f"  ({detail})"))
+
+    # Version selection: mtime is not a version. Cloning a deb pool rewrites
+    # timestamps, and picking the wrong deb means gating a build that will not ship.
+    vcases = [
+        ("wl5 beats wl4/wl3/wl2",
+         ["ladybird-wayland_0.1.0+wl2_iphoneos-arm64.deb",
+          "ladybird-wayland_0.1.0+wl4_iphoneos-arm64.deb",
+          "ladybird-wayland_0.1.0+wl5_iphoneos-arm64.deb",
+          "ladybird-wayland_0.1.0+wl3_iphoneos-arm64.deb"],
+         "ladybird-wayland_0.1.0+wl5_iphoneos-arm64.deb"),
+        ("0.1.25 beats 0.1.9 (not a string compare)",
+         ["ladybird-app_0.1.9+ios1_iphoneos-arm64.deb",
+          "ladybird-app_0.1.25+ios1_iphoneos-arm64.deb"],
+         "ladybird-app_0.1.25+ios1_iphoneos-arm64.deb"),
+    ]
+    for name, names, want in vcases:
+        got = max(names, key=lambda n: deb_version_key(Path(n)))
+        ok = got == want
+        bad += not ok
+        print(f"{'ok   ' if ok else 'FAIL '} {name}: picked {got}")
+
     print("\nall passed" if not bad else f"\n{bad} case(s) failed")
     return 1 if bad else 0
 
