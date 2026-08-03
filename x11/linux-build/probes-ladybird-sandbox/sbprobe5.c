@@ -183,7 +183,12 @@ int main(int argc, char **argv)
     printf("\n-- resources a renderer must read --\n");
     probe_read("/var/jb/usr/share/Lagom/fonts/SerenitySans-Regular.ttf");
     probe_read("/var/jb/usr/lib/libcrypto.3.dylib");
-    probe_read("/System/Library/Frameworks/CoreText.framework/CoreText");
+    /* Not the framework binary: on iOS that path does not exist as a file (frameworks
+     * live in the dyld shared cache), so it reports ENOENT in BOTH modes and measures
+     * nothing. A real system font is the honest stand-in, and it is what a renderer
+     * actually needs from /System anyway. */
+    probe_read("/System/Library/Fonts/Core/SFUI.ttf");
+    probe_read("/usr/lib/dyld");
     probe_read("/var/jb/etc/ssl/cert.pem");
 
     /* ---- 2. Is the persistence primitive actually removed? ----------------------- */

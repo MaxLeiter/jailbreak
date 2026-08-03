@@ -32,7 +32,7 @@ Baseline vs confined, same binary, same paths. For the wait primitives the fds a
 | **`select()`** on a pre-made pipe | OK | **DENIED** | OK |
 | **`kevent()`** on a pre-made kqueue | OK | **DENIED** | OK |
 | `pipe()` | OK | **DENIED** | OK |
-| `bootstrap_look_up` | OK | **DENIED** (0x44c) | not retested |
+| `bootstrap_look_up` | OK | **DENIED** (0x44c) | OK (measured 2026-08-02) |
 | `socket(AF_UNIX)` | OK | DENIED | OK |
 | `socket(AF_INET)` | OK | DENIED | **OK** |
 | write `/var/jb/tmp` | OK | DENIED | DENIED |
@@ -103,27 +103,68 @@ WebContent does not do its own networking — RequestServer does, in a separate 
 would stay unconfined either way. So "leaves the network reachable" costs little, and "denies
 writes" may remove the single most valuable thing an attacker gets.
 
-That makes it worth measuring rather than assuming, in both directions:
+### Measured, 2026-08-02
 
-- **Does the write denial generalise?** `/var/jb/tmp` is one path. The persistence-relevant
-  ones are `/var/jb/usr/lib`, `/var/jb/usr/bin`, the engine tree, and `/var/jb/etc`. If
-  `container` only sandboxes writes to some of those, it buys much less than it looks like.
-- **Does a WebContent-shaped process stay functional?** The matrix rows were measured on a
-  probe, not on a helper: reading engine resources and fonts, operating on Mach rights held
-  from before confinement, and `bootstrap_look_up` (recorded as "not retested" for this
-  profile) all still need checking. A denied `bootstrap_look_up` is not a blocker — it just
-  forces the same ordering as before, confine *after* the Mach handshake.
+`probes-ladybird-sandbox/sbprobe5.c`, on iPad7,12 (A10, iPadOS 17.6.1, Dopamine rootless), run
+as both `root` and `mobile`, in `none` and `confined` modes off one binary. **`container` is a
+usable renderer jail. Every primitive survives; every write outside the container is denied.**
 
-`probes-ladybird-sandbox/sbprobe5.c` asks exactly these questions and is written to be run in
-both `none` and `confined` modes so the delta is the result. It compiles for
-`iphoneos`/arm64 but **has not been run on device** — nothing here is a measurement yet.
+| capability | root: none → confined | mobile: none → confined |
+| --- | --- | --- |
+| `poll()` / `select()` / `kevent()` on pre-made fds | OK → **OK** | OK → **OK** |
+| `pipe()` *after* confinement | OK → **OK** | OK → **OK** |
+| operate on a pre-held mach receive right | OK → **OK** | OK → **OK** |
+| `bootstrap_look_up` | OK → **OK** | OK → **OK** |
+| read Lagom fonts, `/var/jb` dylib, system font, `dyld`, `cert.pem` | OK → **OK** | OK → **OK** |
+| write `/var/jb/usr/lib` | OK → **DENIED** | denied by file perms either way |
+| write `/var/jb/usr/bin` | OK → **DENIED** | denied by file perms either way |
+| write `/var/jb/usr/share/Lagom` | OK → **DENIED** | denied by file perms either way |
+| write `/var/jb/etc` | OK → **DENIED** | denied by file perms either way |
+| write `/var/jb/tmp` | OK → **DENIED** | OK → **DENIED** |
+| write `/tmp` | OK → **DENIED** | OK → **DENIED** |
+| write `$HOME` | OK → **DENIED** (`/var/jb/var/root`) | OK → **OK** (`/var/mobile`) |
+| `socket(AF_UNIX)` / `socket(AF_INET)` | OK → OK | OK → OK |
 
-Scope, if it does pan out: **WebContent and ImageDecoder only.** RequestServer needs the
-network by definition. Compositor's IOSurface path is unmeasured under this profile, and
-headless runs use in-process raster, so it was never exercised. Confining two of five helpers
-is still worth doing — they are the two whose entire job is parsing untrusted input.
+Two things are better than expected. `bootstrap_look_up` **works** under `container`, so unlike
+`com.apple.WebKit.WebContent` there is no ordering constraint at all — a helper can confine
+itself early rather than having to wait out the Mach handshake. And the write denial is not
+partial: it is everything outside the process's own container, `/var/jb/tmp` and `/tmp`
+included. Under `container`, `$HOME` stays writable for `mobile` and not for `root`, which is
+the profile behaving exactly as its name suggests: `/var/mobile` *is* mobile's container.
 
-If the probe says no, write the numbers into the matrix above and close this for good.
+### What this is actually worth — read this before quoting the win
+
+The claim that motivated the re-test ("a renderer compromise can write anywhere under
+`/var/jb`, so this is a persistence primitive for the whole desktop stack") is **only true for
+a helper running as `root`**, and it overstated the case for the flavor most users run.
+
+`/var/jb/usr/lib`, `/var/jb/usr/bin`, `/var/jb/usr/share/Lagom` and `/var/jb/etc` are all
+`root:wheel` `0755`. A `mobile` process cannot write them with or without a sandbox — the
+mobile columns above show them denied in the *control* run, with `EACCES` rather than the
+`EPERM` the sandbox returns. Plain file permissions were already doing that work. So:
+
+- **`.app` flavor (SpringBoard-launched, runs as `mobile`)** — `container` adds the denial of
+  `/var/jb/tmp` and `/tmp`. That is not nothing: both are world-writable `1777` staging dirs
+  shared with every other process on the device, so a compromised renderer dropping a file
+  there is a real cross-process vector. It does **not** take away `$HOME`, which is correct —
+  that is where cookies and cache live, and removing it would break the browser.
+- **`ladybird-wayland` under the desktop session** — `iosc` and `ioscd` run as **root** on this
+  device, so a helper parented by that session inherits root, and the root columns apply. There
+  the win is large: the entire `/var/jb` tree plus `$HOME` become unwritable.
+
+The honest summary is that `container` is worth wiring in for both flavors, that it is close to
+free (nothing a renderer needs was denied), and that its value is concentrated in the root-run
+case rather than being the universal persistence fix the original framing implied.
+
+Scope stays **WebContent and ImageDecoder.** RequestServer needs the network by definition —
+`container` permits `socket()`, so it *could* be confined, but the write denial is the whole
+point and RequestServer is the one helper that genuinely writes (HTTP disk cache, alt-svc).
+Compositor's IOSurface path is still unmeasured under this profile.
+
+Not yet done: wiring `sandbox_init_with_parameters("container", 0x1, NULL, &err)` into the
+helper startup path behind a `LADYBIRD_IOS_SANDBOX` env guard, and re-running the device A/B
+that validated the entitlement trim (byte-identical screenshot against an unconfined control).
+The probe says the primitives are there; it does not prove a real helper renders a page.
 
 ## What to do instead: entitlement minimisation
 
