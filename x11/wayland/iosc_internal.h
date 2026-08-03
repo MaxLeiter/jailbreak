@@ -323,6 +323,9 @@ extern struct iosc_surface *g_kbd_focus;   /* surface with keyboard focus */
 extern struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 extern struct iosc_surface *g_cursor_surface;
 extern int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
+/* Last absolute sample from UIKit. Kept separate from the visible cursor so a
+ * locked pointer can produce incremental deltas while the cursor stays frozen. */
+extern int g_motion_input_valid, g_motion_input_x, g_motion_input_y;
 
 extern int g_keymap_fd;                    /* xkb keymap, sent to each wl_keyboard */
 
@@ -361,6 +364,39 @@ void input_method_manager_bind(struct wl_client *client, void *data,
                                uint32_t version, uint32_t id);
 void virtual_keyboard_manager_bind(struct wl_client *client, void *data,
                                    uint32_t version, uint32_t id);
+
+/* ===========================================================================
+ * wl_pointer extensions  (iosc_pointer_ext.c)
+ * ======================================================================== */
+
+/* Report a synthesised relative delta (iosc only ever sees absolute positions,
+ * so handle_motion() computes the delta and calls this). */
+void relptr_send(uint32_t time, double dx, double dy);
+
+/* Trackpad pinch/rotate, fed by XIOS_IN_GESTURE off the app input socket. */
+void handle_gesture(uint32_t code, int32_t dx256, int32_t dy256,
+                    uint32_t scale256, uint32_t rot256);
+
+/* Pointer lock/confinement. handle_motion() consults both: a locked pointer
+ * freezes the visible cursor and reports deltas only, and a confined one has its
+ * position clamped into the region by confine_point(). */
+int  pointer_locked_for(struct iosc_surface *s);
+int  confine_point(struct iosc_surface *s, int *x, int *y);
+void constraints_update_focus(struct iosc_surface *newfocus);
+void constraints_surface_gone(struct iosc_surface *s);
+
+void relptr_mgr_bind(struct wl_client *client, void *data,
+                     uint32_t version, uint32_t id);
+void ptrgest_mgr_bind(struct wl_client *client, void *data,
+                      uint32_t version, uint32_t id);
+void constraints_bind(struct wl_client *client, void *data,
+                      uint32_t version, uint32_t id);
+
+/* Helpers the extension modules call back into. */
+void reslist_remove(struct wl_resource **arr, int *n, struct wl_resource *r);
+void handle_motion(int x, int y);
+void surface_output_size(struct iosc_surface *s, int *w, int *h);
+void output_damage_add_cursor_at(int x, int y);
 
 /* Route one real key transition to a bound input-method's keyboard grab.
  * Returns 1 if an active grab consumed the key (the caller must NOT also deliver
