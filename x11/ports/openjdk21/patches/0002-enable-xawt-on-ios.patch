@@ -1,0 +1,12 @@
+diff --git a/make/modules/java.desktop/lib/Awt2dLibraries.gmk b/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+--- a/make/modules/java.desktop/lib/Awt2dLibraries.gmk
++++ b/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+@@ -180,7 +180,7 @@ ifeq ($(call isTargetOs, macosx), true)
+ 
+ ################################################################################
+ 
+-ifeq ($(call isTargetOs, windows macosx), false)
++ifeq ($(call isTargetOs, windows), false)
+   ifeq ($(ENABLE_HEADLESS_ONLY), false)
+ 
+     LIBAWT_XAWT_EXTRA_SRC := \

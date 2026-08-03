@@ -1,0 +1,40 @@
+diff --git a/make/modules/java.desktop/lib/Awt2dLibraries.gmk b/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+--- a/make/modules/java.desktop/lib/Awt2dLibraries.gmk
++++ b/make/modules/java.desktop/lib/Awt2dLibraries.gmk
+@@ -719,7 +719,7 @@
+     LIBSPLASHSCREEN_EXTRA_SRC += java.base:libzip/zlib
+   endif
+ 
+-  ifeq ($(call isTargetOs, macosx), true)
++  ifeq ($(call isTargetOs, macosx_NOTIOS), true)
+     # libsplashscreen on macosx do not use the unix code
+     LIBSPLASHSCREEN_EXCLUDE_SRC_PATTERNS := /unix/
+   endif
+@@ -747,7 +747,7 @@
+     endif
+   endif
+ 
+-  ifeq ($(call isTargetOs, macosx), true)
++  ifeq ($(call isTargetOs, macosx_NOTIOS), true)
+     LIBSPLASHSCREEN_CFLAGS += -DWITH_MACOSX
+ 
+     BUILD_LIBSPLASHSCREEN_java_awt_SplashScreen.c_CFLAGS := -x objective-c -O0
+@@ -766,7 +766,7 @@
+ 
+   LIBSPLASHSCREEN_LIBS :=
+ 
+-  ifeq ($(call isTargetOs, macosx), true)
++  ifeq ($(call isTargetOs, macosx_NOTIOS), true)
+     LIBSPLASHSCREEN_LIBS += \
+         $(LIBM) -lpthread -liconv -losxapp \
+         -framework ApplicationServices \
+@@ -780,3 +780,3 @@
+   else
+-    LIBSPLASHSCREEN_LIBS += $(X_LIBS) -lX11 -lXext $(LIBM) -lpthread -ldl
++    LIBSPLASHSCREEN_LIBS += $(X_LIBS) -lX11 -lXext $(LIBM) -lpthread -ldl -liconv
+   endif
+@@ -828,3 +828,3 @@
+-  ifeq ($(call isTargetOs, macosx), true)
++  ifeq ($(call isTargetOs, macosx_NOTIOS), true)
+     $(BUILD_LIBSPLASHSCREEN): $(call FindLib, $(MODULE), osxapp)
+   endif

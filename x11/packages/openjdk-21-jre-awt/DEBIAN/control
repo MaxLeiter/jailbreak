@@ -1,0 +1,21 @@
+Package: openjdk-21-jre-awt
+Name: OpenJDK 21 AWT/X11 Runtime
+Version: 21.0.12+ios1
+Architecture: iphoneos-arm64
+Depends: libiosexec1 (>= 1.3.1), libx11-6, libxext6, libxrender1, libxi6, libxtst6, libfontconfig1
+Recommends: xwayland, libxrandr2, libxinerama1, libxcomposite1
+Provides: java-runtime
+Description: OpenJDK 21 runtime with AWT/Java2D for rootless iOS.
+ The same arm64 HotSpot server VM as the headless runtime, built headful: the
+ XAWT peer (libawt_xawt) draws through an X server, so AWT and Swing windows
+ and the full Java2D pipeline work. Needs a running X display -- Xwayland
+ against the iosc compositor -- and DISPLAY set.
+ .
+ Installs alongside, not over, openjdk-21-jre-headless: this runtime lives in
+ its own java-21-openjdk-awt directory and claims no /usr/bin names, so the
+ proven headless runtime stays exactly as it is. Select it with JAVA_HOME.
+Maintainer: max
+Author: OpenJDK contributors and Xios
+Section: Development
+Priority: optional
+MinimumOSVersion: 16.0
