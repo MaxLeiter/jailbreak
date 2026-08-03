@@ -353,6 +353,7 @@ $CC $CFLAGS "${XWM_CFLAGS[@]}" $INCS -I"$ANGLE_INC" \
     "$X11/wayland/iosc_wm_socket.c" \
     "$X11/wayland/iosc_foreign_toplevel.c" \
     "$X11/wayland/iosc_viewport.c" \
+    "$X11/wayland/iosc_session_lock.c" \
     "$X11/wayland/iosc_options.c" \
     "$X11/wayland/iosc_render_plan.c" \
     "$X11/wayland/iosc_util.c" \

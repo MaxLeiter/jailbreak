@@ -344,6 +344,37 @@ void screencopy_mgr_bind(struct wl_client *client, void *data,
                          uint32_t version, uint32_t id);
 
 /* ===========================================================================
+ * ext-session-lock-v1  (iosc_session_lock.c)
+ * ======================================================================== */
+
+/* While locked, the output shows ONLY the lock surface (blank black until it
+ * maps) and all input is confined to it: surface_at() resolves to it
+ * exclusively and keyboard_set_focus() redirects to it, so normal windows can
+ * neither show nor steal focus. If the locker dies without unlocking, the
+ * session STAYS locked (spec security requirement); a fresh lock request may
+ * then take over and unlock.
+ *
+ * This is compositor-wide mode rather than protocol-local state — the composite
+ * path, surface_unmap(), surface_at() and the focus path all honour it — so it
+ * lives here rather than inside the module. */
+struct iosc_session_lock {
+    struct wl_resource  *lock;         /* ext_session_lock_v1; NULL if none/abandoned */
+    int                  locked;
+    struct iosc_surface *surface;      /* the lock surface (single output) */
+    struct wl_resource  *lock_surface; /* its ext_session_lock_surface_v1 */
+};
+extern struct iosc_session_lock g_slock;
+
+void slock_mgr_bind(struct wl_client *client, void *data,
+                    uint32_t version, uint32_t id);
+
+/* Focus/grab helpers the lock path drives when the session locks or unlocks. */
+struct iosc_surface *topmost_focusable(void);
+void touch_cancel_all(void);
+void dnd_end(void);
+void dnd_cancel_active(void);   /* cancel an in-flight drag, notifying its source */
+
+/* ===========================================================================
  * Input focus + seat
  * ======================================================================== */
 
