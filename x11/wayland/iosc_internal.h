@@ -101,8 +101,30 @@ static inline int physical_to_logical(int px)
 
 void output_send_state(struct wl_resource *r);
 void fractional_scale_broadcast(void);   /* re-notify wp_fractional_scale_v1 clients */
+
+/* Drop a destroyed resource from one of the per-global resource lists. */
+void output_res_remove(struct wl_resource **arr, int *n, struct wl_resource *r);
+
+/* The single entry point for changing the output geometry at runtime (the KDE
+ * output-management apply path and the -logical/-g runtime reconfigure both land
+ * here). Returns nonzero if anything actually changed. */
+int output_reconfigure_px(int pw, int ph, int transform, int scale);
+
+/* ===========================================================================
+ * KDE output-management family  (iosc_kde_output.c)
+ * ======================================================================== */
+
 void kde_output_broadcast(void);         /* kde device bursts + order + primary */
 void broadcast_output_all(void);         /* wl_output + xdg_output + the two above */
+
+void kde_output_device_bind(struct wl_client *client, void *data,
+                            uint32_t version, uint32_t id);
+void kde_management_bind(struct wl_client *client, void *data,
+                         uint32_t version, uint32_t id);
+void kde_primary_bind(struct wl_client *client, void *data,
+                      uint32_t version, uint32_t id);
+void kde_order_bind(struct wl_client *client, void *data,
+                    uint32_t version, uint32_t id);
 
 /* ===========================================================================
  * Surfaces
