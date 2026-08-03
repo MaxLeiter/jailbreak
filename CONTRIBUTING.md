@@ -1,6 +1,6 @@
 # Contributing
 
-This repository is being prepared for public development. It has two tracks:
+This repository is open for public development. It has two tracks:
 
 - top-level jailbreak tweaks, apps, package-repo tooling, and small iOS utilities
 - `x11/`, the Xios/X11/Wayland desktop stack and its Procursus/Docker build system
