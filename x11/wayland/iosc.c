@@ -3923,6 +3923,17 @@ int output_reconfigure_px(int pw, int ph, int transform, int scale)
     g_cursor_x = clampi(g_cursor_x, 0, output_logical_width() - 1);
     g_cursor_y = clampi(g_cursor_y, 0, output_logical_height() - 1);
 
+    /* Log the transition. This path was previously silent on success, so a log
+     * showing only the startup geometry could mean either "no rotation ever
+     * arrived" or "several applied cleanly" -- indistinguishable, and the
+     * difference is the whole diagnosis when the app and the compositor end up
+     * disagreeing about the output shape. */
+    fprintf(stderr, "iosc: output reconfigured %dx%d transform=%d scale=%d "
+                    "(logical %dx%d)%s\n",
+            g_width, g_height, g_output_transform, g_output_scale,
+            output_logical_width(), output_logical_height(),
+            physical_changed ? " [IOSurface realloc]" : " [scale/transform only]");
+
     broadcast_output_all();
 
     for (int i = 0; i < g_nmapped; i++) {

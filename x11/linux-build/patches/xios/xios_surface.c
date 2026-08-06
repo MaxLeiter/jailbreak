@@ -1589,10 +1589,24 @@ uint32_t xios_read_output_pixel(int x, int y)
 int xios_read_output_region(int x, int y, int w, int h, void *dst, int dst_stride)
 {
     if (!s_surface || !dst || w <= 0 || h <= 0 || x < 0 || y < 0) return -1;
-    int cw = w, ch = h;                       /* clamp the rect to the surface */
-    if (x + cw > s_width)  cw = s_width  - x;
-    if (y + ch > s_height) ch = s_height - y;
-    if (cw <= 0 || ch <= 0) return -1;
+    /* REFUSE a rect the surface cannot satisfy instead of clamping it.
+     *
+     * Clamping silently filled only the first cw*4 bytes of each destination
+     * row and left the remainder as the caller found it, so a caller asking for
+     * the output size while the surface had been resized (a device rotation
+     * that reached one side of the pipeline and not the other) still got a
+     * well-formed, plausible-looking image: content sheared into bands with
+     * black padding. A screenshot that lies is worse than no screenshot --
+     * on 2026-08-06 a capture in exactly that state was read as evidence about
+     * a game's rendering. grim reports the failure instead now. */
+    if (x + w > s_width || y + h > s_height) {
+        fprintf(stderr,
+                "xios: read_output_region %dx%d+%d+%d exceeds surface %dx%d; "
+                "refusing (output geometry and surface geometry disagree)\n",
+                w, h, x, y, s_width, s_height);
+        return -1;
+    }
+    int cw = w, ch = h;
     if (dst_stride < cw * 4) return -1;
     /* One read-only lock for the whole region (coherency: same as the pixel read). */
     if (IOSurfaceLock(s_surface, XIOS_LOCK_READONLY, NULL) != KERN_SUCCESS)
