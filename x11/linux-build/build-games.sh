@@ -384,6 +384,23 @@ for target in $TARGETS; do
       libz1 zlib-dev; do
       stage_rootless_deb "$package"
     done
+    # 0 A.D. discovers SpiderMonkey with `pkg-config mozjs-115`, but the
+    # libmozjs-115-dev deb ships no .pc file at all, so every mozjs header came
+    # back not-found (js/TypeDecls.h, jspubtd.h) even though the headers and
+    # dylib are both staged. Synthesise one, the way egl.pc and glesv2.pc above
+    # stand in for ANGLE.
+    mkdir -p "$XIOS_BUILD_BASE/var/jb/usr/lib/pkgconfig"
+    cat > "$XIOS_BUILD_BASE/var/jb/usr/lib/pkgconfig/mozjs-115.pc" <<'PCEOF'
+prefix=/var/jb
+includedir=${prefix}/usr/include/mozjs-115
+libdir=${prefix}/usr/lib
+
+Name: mozjs-115
+Description: Xios SpiderMonkey 115
+Version: 115.12.0
+Libs: -L${libdir} -lmozjs-115
+Cflags: -I${includedir}
+PCEOF
     find "$XIOS_BUILD_BASE/var/jb" -type f -name '*.pc' -exec \
       cp -f {} "$XIOS_BUILD_BASE/usr/lib/pkgconfig/" \;
   fi

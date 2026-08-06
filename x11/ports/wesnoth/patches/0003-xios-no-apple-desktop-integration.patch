@@ -1,0 +1,85 @@
+Take the generic desktop-integration paths on Xios.
+
+The Xios build already excludes Wesnoth's Objective-C++ sources: 0001 added
+"AND NOT WESNOTH_XIOS" to the APPLE branch in src/CMakeLists.txt, because
+apple_video.mm and friends drive AppKit/Cocoa windows that do not exist here.
+Their callers were left behind though, still guarded on plain __APPLE__, so the
+link failed on four undefined symbols -- apple_notifications::send_notification,
+apple_notifications::available, and battery_info::apple's two entry points.
+
+Guard those call sites on WESNOTH_XIOS as well, so both files fall through to
+branches that already exist: notifications compile out (the same path a Linux
+build without libdbus takes), and battery_info returns false / -1.
+
+Consequences worth knowing: Wesnoth shows no desktop notifications on Xios, and
+reports no battery even though the device has one. Wiring battery through the
+xios-fhs UPower bridge is possible later; this patch only stops the build from
+referencing implementations it deliberately does not compile.
+
+--- a/src/desktop/notifications.cpp
++++ b/src/desktop/notifications.cpp
+@@ -24,7 +24,7 @@
+ #include "desktop/dbus_features.hpp"
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ #include "desktop/apple_notification.hpp"
+ #endif
+ 
+@@ -36,7 +36,7 @@
+ 
+ namespace notifications {
+ 
+-#if !(defined(HAVE_LIBDBUS) || defined(__APPLE__) || defined(_WIN32))
++#if !(defined(HAVE_LIBDBUS) || (defined(__APPLE__) && !defined(WESNOTH_XIOS)) || defined(_WIN32))
+ 
+ bool available() { return false; }
+ 
+@@ -47,7 +47,7 @@
+ 
+ bool available()
+ {
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ 	return apple_notifications::available();
+ #else
+ 	return true;
+@@ -65,7 +65,7 @@
+ 	dbus::send_notification(owner, message, t == CHAT);
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ 	apple_notifications::send_notification(owner, message, t);
+ #endif
+ 
+--- a/src/desktop/battery_info.cpp
++++ b/src/desktop/battery_info.cpp
+@@ -19,7 +19,7 @@
+ #include "desktop/windows_battery_info.hpp"
+ #endif
+ 
+-#ifdef __APPLE__
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ #include "apple_battery_info.hpp"
+ #endif
+ 
+@@ -34,7 +34,7 @@
+ {
+ #if defined(_WIN32)
+ 	return windows_battery_info::does_device_have_battery();
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ 	return desktop::battery_info::apple::does_device_have_battery();
+ #elif defined(HAVE_LIBDBUS)
+ 	return dbus::does_device_have_battery();
+@@ -47,7 +47,7 @@
+ {
+ #if defined(_WIN32)
+ 	return windows_battery_info::get_battery_percentage();
+-#elif defined(__APPLE__)
++#elif defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ 	return desktop::battery_info::apple::get_battery_percentage();
+ #elif defined(HAVE_LIBDBUS)
+ 	return dbus::get_battery_percentage();

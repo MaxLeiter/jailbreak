@@ -310,3 +310,172 @@ revisions stale and is superseded by this section.
   2026-07-30: terminating the exact KWin PID changed the lifecycle record to
   `kde/down`, removed the active marker, and stopped the KDE process set; KDE
   subsequently relaunched successfully.
+
+## KWin ANGLE-Metal failure is a launch-path split, not a restart leak (2026-08-02)
+
+Investigating the report that repeatedly restarting KDE (`xios-device session
+kde` / `session stop`) leaks memory or GPU/IOSurface resources until
+`kwin_wayland` can no longer create an ANGLE Metal display:
+
+    kwin_wayland_backend: ios-gpu: ANGLE Metal display creation failed 3000
+    kwin_scene_opengl: Creating the OpenGL rendering failed: "Could not initialize ANGLE Metal EGL"
+
+**The accumulation theory does not survive the archived evidence.** Verdict:
+this is a launch-path/configuration split, not a leak.
+
+### What the 19 archived runs in `x11/.artifacts/*/kde-plasma.log` show
+Seventeen of them carry a `kde-plasma.log`, and they fall into two clean,
+bimodal clusters with **no intermediate states**:
+
+| | ANGLE display | `EGL not available` | `0x3003` | `client bound fenced` | plasmashell |
+|---|---|---|---|---|---|
+| cluster A (6 runs) | fails | yes | 3x | 0 | `rc=138` |
+| cluster B (7 runs) | succeeds | no | 0 | 1 | survives |
+
+The discriminator is the DDX/app socket recorded in each run's `iosc.log`, and
+it is perfect across all 13 runs that have one — **zero counterexamples**:
+
+- `app socket=/var/jb/tmp/iosc-native-ddx.sock` -> ANGLE fails, 6/6
+- `app socket=/var/jb/tmp/iosc-ddx.sock` -> ANGLE succeeds, 7/7
+
+The two clusters are launched by different harnesses. The working cluster's
+`iosc.log` opens with `iosc: fullscreen toplevel mode enabled` and its
+`xios-session-status.json` is a well-formed `kde-desktop`/`up` record naming
+`socket:/var/jb/tmp/iosc-ddx.sock`. The failing cluster has neither.
+
+### Why this rules out an accumulating leak
+1. **The signature predates the 2026-08-02 restart marathon.** It is already
+   present in `kde-scale-contract-20260729` (2026-07-29) and in the
+   `thunar-*`/`ladybird-classic-wl3` runs.
+2. **The clusters are interleaved in time, not ordered.** `kde-scale-contract-20260729`
+   (23:07, failing) is followed the same evening by `kde-visible-20260729-2343`
+   (23:42) and `kde-input-probe-20260729-2347` (23:47), both clean, with no
+   reboot between them. A resource leak that accumulates across restarts cannot
+   spontaneously heal in a later run on the same boot. Restart count does not
+   predict the failure; launch path does.
+3. **The EGL error code is wrong for exhaustion.** `wayland_egl_backend.cpp:550`
+   prints `eglGetError()` in hex after `eglGetPlatformDisplayEXT` returns
+   `EGL_NO_DISPLAY`. The logged `3000` is `EGL_SUCCESS` — no error was recorded
+   at all. Resource exhaustion surfaces as `EGL_BAD_ALLOC` (`0x3003`). A display
+   that fails to be created while EGL reports success is ANGLE declining the
+   Metal platform request, not a GPU allocator running dry.
+4. **Process counts do not correlate.** Concurrent `iosc` instances in the
+   captured `xios-ps.txt` run 4-5 in the *working* cluster and 1-4 in the
+   *failing* one, so "second GPU consumer" contention is not the discriminator
+   either.
+
+### Corrected reading of the downstream errors
+The `0x3003` (`EGL_BAD_ALLOC`) in `qt.qpa.wayland: Could not create EGL surface`
+is **downstream, not the cause**. Order of events in a cluster-A run: KWin's
+ANGLE Metal display creation fails -> `initializeEgl()` returns false -> KWin's
+scene falls back to software -> plasmashell then cannot get an EGL surface ->
+`rc=138`. Chasing the `BAD_ALLOC` as an allocation problem leads away from the
+real fault, which is one call earlier and reports success.
+
+Note also that the earlier `vm_stat` "~1348 free pages" reading is not evidence
+of anything: the same count was observed after a clean reboot.
+
+### Not verified on device
+The **mechanism** by which the `iosc-native-ddx.sock` launch path leaves KWin
+unable to create an ANGLE Metal display is still open. The leading candidate is
+per-process library resolution — `run-kde-plasma.sh:876` sets
+`DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$ANGLE"` for the KWin child, so a launch path
+that bypasses that export would load a `libEGL` without the ANGLE Metal backend,
+which matches `EGL_NO_DISPLAY` + `EGL_SUCCESS` exactly. Confirming this needs a
+device run comparing `DYLD_LIBRARY_PATH` and the resolved `libEGL` in the KWin
+process across the two paths.
+
+**This was not run: the iPad had an active concurrent owner** (see below), and
+the N-cycle start/stop experiment would have stomped it.
+
+### Device state at time of investigation (2026-08-03 00:09, read-only)
+Do not trust any device measurement taken in this window:
+- `iosc` binary written `00:09:01`, `Xios.app/Xios` written `00:09:15` — i.e.
+  *seconds* before inspection. `iosc 0.9.47` is installed but the last apt
+  transaction is `22:37`, so it was deployed out-of-band, not via apt.
+- Load average `2.20 / 15.21 / 37.93` on a 20-minute uptime; a live KDE session
+  with `xios-kde-runtime`, `kde-plasma.log`, `iosc.log` all being written at
+  `00:09`; `/var/jb/tmp/iosc-diag` freshly dropped.
+- Other-agent artifacts from `00:04`-`00:06`: `iosc-codex-games.log`,
+  `ottd-vendored.log`, `xios-shot.png`.
+- SSH then began timing out under that load.
+
+### Next step when the device is free
+1. Reproduce both paths once each and diff the KWin process environment
+   (`DYLD_LIBRARY_PATH`, resolved `libEGL`) — cheap and likely decisive.
+2. Only if that comes back clean is an N-cycle leak sweep worth running; if it
+   is run, sample per-process footprint and IOSurface counts rather than
+   `vm_stat` free pages.
+
+## CLOSED (2026-08-06): root cause was a second ANGLE display, already fixed
+
+Both readings above — the leak theory *and* the launch-path/`DYLD_LIBRARY_PATH`
+theory that replaced it — are superseded. The section above is kept because its
+disproof of the leak theory still holds; its **causal** conclusion does not.
+
+### Root cause
+ANGLE returns `EGL_NO_DISPLAY` **with `eglGetError()` left at `EGL_SUCCESS`**
+when a process asks it to construct a *second* Metal display. Pre-fix, that is
+exactly what `kwin_wayland` did: its compositing backend created one, and Qt's
+Wayland QPA then asked the shim for another. The logged `3000` is `EGL_SUCCESS`,
+which is why it never looked like an allocation failure.
+
+This was never a mystery in the source — the pre-fix `angle_metal_display()`
+comment in `x11/wayland/iosc_egl_shim.c` described it verbatim, including the
+downstream effect ("Qt treats that as *EGL not available* and drops its QtQuick
+scenegraph to software for that process").
+
+### The fix, already in main
+`4ef068ab angle: share the process Metal display` (2026-07-29 21:58) caches the
+constructed display and routes **both** the Wayland facade and the canonical
+ANGLE-Metal request through it, so the second caller gets the same display
+instead of `EGL_NO_DISPLAY`. Ancestor of both `main` and this branch.
+
+### Device proof (2026-08-06, iPad free)
+Five consecutive `xios-session kde` launches, zero occurrences of
+`display creation failed` / `Could not initialize ANGLE Metal` / `EGL not
+available`. With `IOSC_EGL_DEBUG=1`:
+
+- pid 7348 `kwin_wayland` — `GetPlatformDisplayEXT(ANGLE Metal)` ->
+  `ANGLE Metal display = 0x759064400 (err 0x3000)`, `eglInitialize -> ok=1`.
+- pid 7364 `plasmashell` — `GetPlatformDisplayEXT(WAYLAND)` ->
+  `ANGLE Metal display = 0xebd015200`, initialized, then `bound iosc_iosurface`
+  and a 3-buffer `window surface 2879x2159`.
+
+A cache *hit* logs nothing (the debug line only prints on construction), so the
+operative proof is the absence of the failure signature, not a second log line.
+
+### Why the "launch-path split" discriminator was wrong
+Two independent reasons, either one sufficient:
+
+1. **The evidence was a stale log.** The failing bundles did not run on the
+   native socket at all. Their `xios-ps.txt` shows the live compositor on a
+   *slot-scoped* socket — `iosc-codexthunar-ddx.sock` (`thunar-classic`),
+   `iosc-codexscale2-ddx.sock` (`kde-scale-contract-20260729`). A slot-scoped
+   `iosc` does not write `/var/jb/tmp/iosc.log`, so the bundle captured leftover
+   text from an earlier native instance. That is why bundles *named* `classic`
+   appear to report `iosc-native-ddx.sock`. Keying on `app socket=` in
+   `iosc.log` measured which iosc last wrote a shared file, not which compositor
+   hosted KWin.
+2. **The proposed mechanism cannot produce the signature.** `kwin_wayland` links
+   `/var/jb/lib/angle/libEGL.dylib` **by absolute path**, and that file is the
+   iosc EGL shim (real ANGLE is `libEGL.angle.dylib` beside it). The shim
+   resolves real ANGLE itself, defaulting to `libEGL.angle.dylib` when
+   `ANGLE_REAL_LIBEGL` is unset, and `abort()`s if the `dlopen` fails
+   (`iosc_egl_shim.c:82`). A missing `DYLD_LIBRARY_PATH` would therefore crash
+   the process, not yield `EGL_NO_DISPLAY` + `EGL_SUCCESS`.
+
+The time distribution fits the fix instead: every `-20260730` bundle is clean,
+and `ladybird-classic-wl3` fails while the later `ladybird-final-wl3` is clean.
+
+**Not done:** the historical correlation was not re-proven by running a pre-fix
+binary, and no N-cycle leak sweep was run. Neither is worth doing — the fault is
+per-process display construction, which restart count cannot influence.
+
+### Reusable lessons
+- `EGL_SUCCESS` alongside a null handle means *refused*, not *failed to
+  allocate*. Do not chase a downstream `EGL_BAD_ALLOC` (`0x3003`).
+- Do not attribute `/var/jb/tmp/iosc.log` to a run without confirming from
+  `xios-ps.txt` that the run's compositor is the process writing it. Slot-scoped
+  sessions make that log stale rather than absent, which is the more dangerous
+  failure mode.
