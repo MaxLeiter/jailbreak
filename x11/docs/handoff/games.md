@@ -90,11 +90,27 @@ Xios app, iosc, SDL, and audio layers.
   correctly. The wrapper now passes `--datadir` (override: `WZ2100_DATADIR`).
 - Needed `libvorbisfile3`, which came from **Procursus** -- do not install the
   local `+ios1` rebuild, see the shadow note below.
-- OPEN: `+ios2` has not been launched on device yet (`+ios1` was, with the flag
-  passed by hand). OPEN: it renders but stutters audibly; thermal pressure is 0
-  and nothing else is running, so the live lead is the 2048x1536 render surface
-  -- the compositor forces fullscreen toplevels and ignores
-  `--window --resolution`.
+- **`+ios2` verified on device 2026-08-06**: launches from a bare `warzone2100`
+  with no manual flag, reaches its main menu on ANGLE Metal. Evidence:
+  `game-warzone2100-ios2-proof/compositor.png`.
+- **RE-SIGN AFTER EVERY REBUILD, and re-sign AFTER collecting.** `+ios2` first
+  failed with `iosc_egl: ANGLE Metal display = 0x0 (err 0x3000)` -- ANGLE
+  returning EGL_NO_DISPLAY with EGL_SUCCESS, i.e. no Metal device, the
+  fakesigned-GPU-entitlement signature. The cause was mundane: the wave's
+  `collecting game-wave debs` step copies fresh debs from `build_dist` over
+  `out/`, silently replacing an already-re-signed deb with an unsigned rebuild.
+  Downgrading to `+ios1` to bisect reproduced the failure and wrongly implicated
+  the environment -- that `+ios1` was itself a fresh unsigned rebuild, not the
+  binary that had worked.
+- OPEN: it renders but stutters audibly; thermal pressure is 0 and nothing else
+  is running, so the live lead is the 2048x1536 render surface -- the compositor
+  forces fullscreen toplevels and ignores `--window --resolution`.
+- OPEN (compositor, not the game): when the Xios app's orientation disagrees
+  with iosc's output geometry -- app presenting 2160x2880 while iosc serves
+  2880x2160 -- the display pillarboxes with black borders and `xios-device shot`
+  captures a sheared frame (bands offset horizontally, since the capture assumes
+  the landscape stride). Restarting the slot and the Xios app does not clear it.
+  Any runtime conclusion drawn from a capture in that state is unreliable.
 
 ### Battle for Wesnoth
 
