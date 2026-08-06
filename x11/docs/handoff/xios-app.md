@@ -297,11 +297,13 @@ sealed box: Shortcuts/Siri in, and the share sheet in. Both are clients of the
 control paths that already existed — no new launch mechanism, and the
 "socket clients never supply executable text" invariant is preserved.
 
-**Status: host-built and packaged (`com.max.xios 0.1.12`), NOT verified on the
-iPad.** The device was unreachable for this work (no USB, no Bonjour, nothing on
-`10.0.0.0/24:22`), so nothing below has been exercised with real Siri, a real
-share, or a real appex process. `x11/artifacts/device-runs/` has no bundle for
-this change on purpose — see "What device verification must still answer".
+**Status: installed and partly device-verified 2026-08-06.** `com.max.xios 0.1.12`
+is installed on the iPad and ioscd carries the new verb. The DAEMON side is
+verified end to end; the UI side (share sheet entry, Shortcuts listing, Siri
+phrases) still needs taps, because `pluginkit` is not installed on this device and
+those are physical acts. Evidence + the three bugs the device found:
+`x11/artifacts/device-runs/xios-integration-20260806-113535/` (see its
+`FINDINGS.md`).
 
 ### Half A — App Intents (`Sources/XiosIntents.swift`)
 
@@ -391,29 +393,68 @@ Verified on the built artifact: `XiosShare.appex/XiosShare` is 0755, its
 signature carries `no-container` + the `/var/jb/tmp/` exceptions and none of the
 app's camera/GPU entitlements, and both survive `dpkg-deb -x` round-trip.
 
-### What device verification must still answer
+### What the device found (2026-08-06) — three real bugs, all fixed
+
+1. **There is no `xdg-open`, and no `xdg-utils` to install** (`apt-cache policy
+   xdg-utils` -> `Candidate: (none)`). Hardcoding it would have shipped a feature
+   that never ran.
+2. **`gio open` does not work here either**: no default handler is registered
+   (`gio mime x-scheme-handler/https` -> "No default applications"), so it exits
+   with "Operation not supported".
+   Fix for 1+2: ioscd resolves a **trusted desktop entry for the scheme** first
+   (Ladybird/Epiphany for http(s)), via the same root-owned `.desktop` machinery
+   LAUNCH uses, with the URL substituted into `%u`/`%U` by the new
+   `xios_desktop_entry_argv_url()`. Command openers remain a fallback.
+3. **Rootless iOS has NO `/bin/sh`** — only `/var/jb/bin/sh` (dash). Every
+   `#!/bin/sh` wrapper, including `ladybird-wayland`, fails `execv` with ENOENT
+   *for the interpreter*, which presents as "No such file or directory" for a
+   file you can stat. ioscd now detects a missing shebang interpreter and re-execs
+   through the rootless one. **This is a general landmine for anything in this
+   repo that execs a wrapper script.**
+
+Also corrected: `OPENED` was replied on `fork()` success, so the share sheet said
+"Sent to desktop" while the opener had already failed. ioscd now waits ~600ms and
+returns `ERR` if the handler exits nonzero. That check is what exposed 2 and 3 —
+without it both would have looked like successes.
+
+Device-verified: `OPEN_URL https://example.com` -> `OPENED` via
+`org.ladybird.Ladybird`; `javascript:alert(1)` and a URL containing
+`;rm -rf /tmp/zzz` both rejected; the live KDE session survived every ioscd
+redeploy.
+
+### KNOWN LIMIT: sharing into a KDE session does not render yet
+
+The page does not appear under the live KDE desktop, and the verb is not the
+reason. KWin's socket is `srwxr-xr-x root:wheel`, and `connect()` on a unix socket
+requires WRITE permission, so the `mobile` client ioscd spawns cannot attach and
+dies with "Failed to open display" (exit 1 — after the 600ms window, so the reply
+is still an optimistic `OPENED`). That is a property of the root-owned KDE runtime
+dir and affects ANY mobile-uid client launched into that session, not just this.
+Under the iosc flavor, where ioscd already fixes ddx perms for mobile clients,
+this is expected to work — untested, because testing it would have torn down the
+live KDE desktop. Fix later by relaxing the KDE runtime socket for the mobile uid,
+or spawning the client as the session's uid.
+
+### Still needs a human at the device
 
 1. **The gating one:** does the appex reach `/var/jb/tmp/ioscd.sock`? Share a
    Safari URL and read the probe verdict in the sheet (or
-   `idevicesyslog | grep com.max.xios.share`). If it says SANDBOXED, the direct
-   path is dead and the fallback is the only route — which is already the
-   shipped behavior, but the doc should then say so definitively.
-2. **Siri phrases.** The build emits `Metadata.appintents/` with
-   `extract.actionsdata`, but no `nlu/` or `root.ssu.yaml` — there is no
-   `AppIntentsSSUTraining` phase in the generated project. Intents should still
-   enumerate in the Shortcuts app; whether *spoken* phrases match is unverified.
-   If they don't, that phase is the thing to add.
-3. **`xdg-open` presence.** No `xdg-utils` deb exists in `repo/debs/`, and the
-   control file does not depend on it. If `/var/jb/usr/bin/xdg-open` is absent,
-   `OPEN_URL` answers `ERR no trusted xdg-open on this device` (graceful, but the
-   feature does nothing). Check the device; consider a `Recommends:`.
-4. Destructive-switch authority actually holding for an intent run from Siri
-   while a *different* healthy desktop is up — the whole reason the intents are
-   in-process. `/var/jb/tmp/ioscd.log` records the peer path per request.
-5. FrontBoard relaunch throttle: intents foreground the app
-   (`openAppWhenRun`), so repeated Shortcuts runs are exactly the pattern that
-   trips it. `sbreload` clears it.
+   `idevicesyslog | grep com.max.xios.share`). `pluginkit` is NOT installed here,
+   so registration cannot be checked over SSH.
+2. **Siri phrases.** The build emits `Metadata.appintents/extract.actionsdata` but
+   no `nlu/` — there is no `AppIntentsSSUTraining` phase in the generated project.
+   Intents should still enumerate in Shortcuts; spoken matching is unverified.
+3. Destructive-switch authority holding for an intent run while a *different*
+   healthy desktop is up — the whole reason the intents are in-process.
+   `/var/jb/tmp/ioscd.log` records the peer path per request.
+4. FrontBoard relaunch throttle: intents foreground the app (`openAppWhenRun`),
+   so repeated Shortcuts runs are exactly the pattern that trips it; `sbreload`
+   clears it.
 
 Nothing here has been published. `bin/package-app.sh x11/apps/Xios` produced
-`repo/debs/com.max.xios_0.1.12_iphoneos-arm64.deb`; publishing is a separate,
-explicit step.
+`repo/debs/com.max.xios_0.1.12_iphoneos-arm64.deb`, installed on the iPad by hand.
+
+**Publishing needs TWO packages in lockstep.** The share extension calls `OPEN_URL`,
+which lives in ioscd — shipped by `xios-launcher-tools`, deployed here by scp and
+NOT yet packaged. Publishing `com.max.xios` alone gives users a share sheet whose
+backend verb their ioscd does not implement. Package and publish both, or neither.

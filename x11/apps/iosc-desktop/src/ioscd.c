@@ -64,6 +64,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <ctype.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -136,7 +137,6 @@ static char g_xios_session_bin[PATH_MAX];
 static char g_xios_session_bin_fallback[PATH_MAX];
 static char g_xios_launcher_sync[PATH_MAX];
 static char g_uiopen_bin[PATH_MAX];
-static char g_xdg_open[PATH_MAX];
 static char g_bash_bin[PATH_MAX];
 static char g_dbus_run[PATH_MAX];
 static char g_dbus_daemon[PATH_MAX];
@@ -248,7 +248,6 @@ static void init_paths(void)
     prefixed_path(g_xios_session_bin_fallback, sizeof(g_xios_session_bin_fallback), "/usr/bin/xios-session");
     prefixed_path(g_xios_launcher_sync, sizeof(g_xios_launcher_sync), "/usr/local/bin/xios-launcher-sync");
     prefixed_path(g_uiopen_bin, sizeof(g_uiopen_bin), "/usr/bin/uiopen");
-    prefixed_path(g_xdg_open, sizeof(g_xdg_open), "/usr/bin/xdg-open");
     prefixed_path(g_bash_bin, sizeof(g_bash_bin), "/usr/bin/bash");
     prefixed_path(g_dbus_run, sizeof(g_dbus_run), "/usr/bin/dbus-run-session");
     prefixed_path(g_dbus_daemon, sizeof(g_dbus_daemon), "/usr/bin/dbus-daemon");
@@ -1756,11 +1755,225 @@ static int handler_is_trusted(const char *path)
     return 1;
 }
 
+/*
+ * Openers, in preference order. These are FIXED paths compiled in here — the
+ * client never names one — so this list is part of the trusted side of the
+ * boundary, not input.
+ *
+ * xdg-open is first because it is the freedesktop norm, but it is NOT present on
+ * this device and Procursus ships no xdg-utils to install (device-checked
+ * 2026-08-06: `apt-cache policy xdg-utils` -> Candidate: none). glib's `gio open`
+ * is the working opener here and does the same MIME/default-handler lookup;
+ * exo-open is the XFCE fallback. Resolving a LIST rather than one hardcoded path
+ * is what keeps this feature from being dead on arrival.
+ */
+struct url_opener { const char *rel; const char *verb; };
+static const struct url_opener g_url_openers[] = {
+    { "/usr/bin/xdg-open", NULL   },
+    { "/usr/bin/gio",      "open" },
+    { "/usr/bin/exo-open", NULL   },
+    { NULL,                NULL   },
+};
+
+/*
+ * Preferred handlers by scheme, as APP IDS resolved through the same trusted
+ * root-owned desktop-entry path LAUNCH uses.
+ *
+ * This is tried BEFORE the command openers because on this device the command
+ * openers do not work: there is no xdg-utils to install, and `gio open` answers
+ * "Operation not supported" because no default handler is registered
+ * (`gio mime x-scheme-handler/https` -> "No default applications", device-checked
+ * 2026-08-06). Resolving a browser's .desktop directly needs no mimeapps.list and
+ * still takes its Exec from a root-owned file.
+ */
+struct scheme_handlers { const char *scheme; const char *app_ids[4]; };
+static const struct scheme_handlers g_scheme_handlers[] = {
+    { "http",   { "org.ladybird.Ladybird", "org.gnome.Epiphany", NULL } },
+    { "https",  { "org.ladybird.Ladybird", "org.gnome.Epiphany", NULL } },
+    { "mailto", { "org.gnome.Geary", "thunderbird", NULL } },
+    { "file",   { "thunar", "org.gnome.Nautilus", NULL } },
+    { NULL,     { NULL } },
+};
+
+/* Scheme of `url`, lowercased into buf. Callers have already validated it. */
+static void url_scheme_of(const char *url, char *buf, size_t buf_len)
+{
+    size_t n = 0;
+    for (const char *p = url; *p && *p != ':' && n + 1 < buf_len; p++)
+        buf[n++] = (char)tolower((unsigned char)*p);
+    buf[n] = 0;
+}
+
+/*
+ * Absolute path of the socket a CLIENT should connect to on the classic desktop.
+ *
+ * NOT the same question as "is iosc up". Under KDE, KWin runs nested on iosc and
+ * BOTH sockets are live, but a browser must attach to KWin — attaching to the
+ * outer iosc puts the window behind the whole Plasma session. Under GNOME the
+ * session has its own private runtime dir. Only plain iosc uses wayland-0
+ * directly, which is why the KDE/GNOME probes come first.
+ *
+ * libwayland treats an absolute WAYLAND_DISPLAY as the socket path, so returning
+ * a full path is enough to aim the client.
+ */
+static int classic_client_socket(char *out, size_t out_len)
+{
+    char p[PATH_MAX];
+    tmp_path(p, sizeof(p), "xios-kde-runtime/kwin-ios-test");
+    if (wayland_sock_live(p)) { snprintf(out, out_len, "%s", p); return 1; }
+    tmp_path(p, sizeof(p), "xios-kde-runtime/wayland-0");
+    if (wayland_sock_live(p)) { snprintf(out, out_len, "%s", p); return 1; }
+    tmp_path(p, sizeof(p), "xios-run/wayland-0");           /* GNOME session */
+    if (wayland_sock_live(p)) { snprintf(out, out_len, "%s", p); return 1; }
+    if (wayland_sock_live(mode_cfg(0)->wayland_sock)) {
+        snprintf(out, out_len, "%s", mode_cfg(0)->wayland_sock);
+        return 1;
+    }
+    return 0;
+}
+
+/* First trusted opener wins. Returns 1 and fills path + verb (verb may be NULL).
+ * Resolved per request, not at startup, so installing xdg-utils later takes
+ * effect without restarting the daemon. */
+static int resolve_url_opener(char *path, size_t path_len, const char **verb)
+{
+    for (int i = 0; g_url_openers[i].rel; i++) {
+        prefixed_path(path, path_len, g_url_openers[i].rel);
+        if (handler_is_trusted(path)) {
+            *verb = g_url_openers[i].verb;
+            return 1;
+        }
+    }
+    path[0] = 0;
+    *verb = NULL;
+    return 0;
+}
+
 /* Same client environment as launch_client, minus remember_app: a URL open is
  * one-shot, so it must not occupy a slot in the app_id -> pid raise table. */
-static pid_t spawn_url_handler(const char *url, int native)
+/* Build argv for the scheme's preferred trusted desktop entry, with the URL
+ * substituted into its field codes. Returns argc, or 0 if none resolved. */
+/* A .desktop Exec names a bare command ("ladybird-wayland"), which execvp can
+ * only find via PATH — and the client PATH here does not include the rootless
+ * prefix, so the first cut died with exit 127 "command not found" for a binary
+ * that was sitting right there. Resolve it against a fixed list of trusted bin
+ * directories instead, so the spawn does not depend on PATH at all. */
+static int resolve_abs_command(const char *cmd, char *out, size_t out_len)
 {
-    const struct mode_cfg *mode = mode_cfg(native);
+    static const char *const dirs[] = {
+        "/usr/local/bin", "/usr/bin", "/bin", NULL
+    };
+    if (strchr(cmd, '/')) {                    /* already absolute/relative */
+        snprintf(out, out_len, "%s", cmd);
+        return handler_is_trusted(out);
+    }
+    for (int i = 0; dirs[i]; i++) {
+        char dir[PATH_MAX];
+        prefixed_path(dir, sizeof(dir), dirs[i]);
+        snprintf(out, out_len, "%s/%s", dir, cmd);
+        if (handler_is_trusted(out)) return 1;
+    }
+    out[0] = 0;
+    return 0;
+}
+
+/*
+ * Rootless iOS has NO /bin/sh (device-checked 2026-08-06: only /var/jb/bin/sh,
+ * a dash symlink). A wrapper script starting `#!/bin/sh` therefore cannot be
+ * exec'd at all — execv returns ENOENT for the INTERPRETER while the script
+ * itself sits right there, which reads as "No such file or directory" for a file
+ * you can plainly stat. ladybird-wayland is exactly such a wrapper, so the
+ * browser could never be launched from a desktop entry.
+ *
+ * Rewrite argv to run the script through the rootless interpreter: argv becomes
+ * [<jbroot>/bin/sh, <script>, ...]. Both come from trusted fixed locations, and
+ * the interpreter is exec'd directly, so this adds no shell EVALUATION — the
+ * script is data to dash exactly as it was to the kernel.
+ *
+ * Returns 1 if it rewrote argv, 0 if no rewrite was needed or possible.
+ */
+static int rewrite_script_interpreter(char **argv, size_t argv_len,
+                                      char *interp, size_t interp_len)
+{
+    FILE *f = fopen(argv[0], "r");
+    if (!f) return 0;
+    char line[256];
+    char *got = fgets(line, sizeof(line), f);
+    fclose(f);
+    if (!got || line[0] != '#' || line[1] != '!') return 0;
+
+    char *p = line + 2;
+    while (*p == ' ' || *p == '\t') p++;
+    p[strcspn(p, " \t\r\n")] = 0;
+    if (!*p) return 0;
+    if (access(p, X_OK) == 0) return 0;         /* interpreter is fine as-is */
+
+    const char *base = strrchr(p, '/');
+    base = base ? base + 1 : p;
+    if (!resolve_abs_command(base, interp, interp_len)) {
+        fprintf(stderr, "ioscd: script %s wants missing interpreter %s "
+                        "and no %s in a trusted bin dir\n", argv[0], p, base);
+        return 0;
+    }
+
+    size_t argc = 0;
+    while (argv[argc]) argc++;
+    if (argc + 2 > argv_len) return 0;
+    for (size_t i = argc + 1; i > 0; i--) argv[i] = argv[i - 1];
+    argv[0] = interp;
+    fprintf(stderr, "ioscd: %s has missing interpreter %s; running via %s\n",
+            argv[1], p, interp);
+    return 1;
+}
+
+static int resolve_handler_argv(const char *url, char **argv, size_t argv_len,
+                                char *storage, size_t storage_len,
+                                char *chosen, size_t chosen_len,
+                                char *abscmd, size_t abscmd_len,
+                                char *interp, size_t interp_len)
+{
+    char scheme[32];
+    url_scheme_of(url, scheme, sizeof(scheme));
+
+    for (int i = 0; g_scheme_handlers[i].scheme; i++) {
+        if (strcmp(g_scheme_handlers[i].scheme, scheme) != 0) continue;
+        for (int j = 0; g_scheme_handlers[i].app_ids[j]; j++) {
+            const char *app_id = g_scheme_handlers[i].app_ids[j];
+            struct xios_desktop_entry entry;
+            char err[256];
+            if (!xios_desktop_entry_resolve(app_id, g_jbroot, 1, &entry,
+                                            err, sizeof(err)))
+                continue;
+            int argc = xios_desktop_entry_argv_url(&entry, url, argv, argv_len,
+                                                   storage, storage_len,
+                                                   err, sizeof(err));
+            if (argc > 0) {
+                if (!resolve_abs_command(argv[0], abscmd, abscmd_len)) {
+                    fprintf(stderr,
+                            "ioscd: open-url: %s Exec command %.64s not found "
+                            "in a trusted bin dir\n", app_id, argv[0]);
+                    continue;
+                }
+                argv[0] = abscmd;
+                argv[argc] = NULL;
+                if (rewrite_script_interpreter(argv, argv_len,
+                                               interp, interp_len))
+                    argc++;
+                snprintf(chosen, chosen_len, "%s", app_id);
+                return argc;
+            }
+            fprintf(stderr, "ioscd: open-url: %s resolved but argv failed: %s\n",
+                    app_id, err);
+        }
+        break;
+    }
+    return 0;
+}
+
+/* Spawn a prebuilt argv (desktop-entry route). */
+static pid_t spawn_url_argv(char *const argv[], const char *wayland_sock)
+{
+    const struct mode_cfg *mode = mode_cfg(0);
     const char *busdir = g_ioscd_bus_dir;
     char bus_addr[256];
     int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
@@ -1772,24 +1985,70 @@ static pid_t spawn_url_handler(const char *url, int native)
         setsid();
         child_stdio(g_ioscd_client_log, 1);
         set_wayland_client_env(mode, busdir, have_bus, bus_addr, 0);
+        if (wayland_sock && *wayland_sock)
+            setenv("WAYLAND_DISPLAY", wayland_sock, 1);
         if (drop_to_mobile() != 0) _exit(126);
 
-        char *argv[4];
-        size_t n = 0;
         if (!have_bus) {
-            char *run_argv[6];
+            char *run_argv[XIOS_DESKTOP_ARG_MAX + 3];
             size_t m = 0;
             run_argv[m++] = "dbus-run-session";
             run_argv[m++] = "--";
-            run_argv[m++] = g_xdg_open;
-            run_argv[m++] = (char *)url;
+            for (size_t i = 0; argv[i] && m + 1 < sizeof(run_argv) / sizeof(run_argv[0]); i++)
+                run_argv[m++] = argv[i];
+            run_argv[m] = NULL;
+            execv(g_dbus_run, run_argv);
+            fprintf(stderr, "ioscd: open-url exec %s failed: %s\n",
+                    g_dbus_run, strerror(errno));
+        }
+        execv(argv[0], argv);
+        fprintf(stderr, "ioscd: open-url exec %s failed: %s\n",
+                argv[0], strerror(errno));
+        _exit(127);
+    }
+    return pid;
+}
+
+static pid_t spawn_url_handler(const char *url, const char *opener,
+                               const char *verb, const char *wayland_sock)
+{
+    const struct mode_cfg *mode = mode_cfg(0);
+    const char *busdir = g_ioscd_bus_dir;
+    char bus_addr[256];
+    int have_bus = ensure_session_bus(bus_addr, sizeof(bus_addr));
+    ensure_native_helpers_for_bus(busdir, bus_addr, have_bus);
+
+    pid_t pid = fork();
+    if (pid < 0) return -1;
+    if (pid == 0) {
+        setsid();
+        child_stdio(g_ioscd_client_log, 1);
+        set_wayland_client_env(mode, busdir, have_bus, bus_addr, 0);
+        /* Aim the client at the ACTIVE flavor's compositor, overriding the
+         * wayland-0 default set above. Absolute path = the socket itself. */
+        if (wayland_sock && *wayland_sock)
+            setenv("WAYLAND_DISPLAY", wayland_sock, 1);
+        if (drop_to_mobile() != 0) _exit(126);
+
+        /* argv is built here, from a compiled-in opener path and an optional
+         * compiled-in verb, with the URL as the single trailing element. */
+        char *argv[5];
+        size_t n = 0;
+        argv[n++] = (char *)opener;
+        if (verb) argv[n++] = (char *)verb;
+        argv[n++] = (char *)url;
+        argv[n] = NULL;
+
+        if (!have_bus) {
+            char *run_argv[8];
+            size_t m = 0;
+            run_argv[m++] = "dbus-run-session";
+            run_argv[m++] = "--";
+            for (size_t i = 0; i < n; i++) run_argv[m++] = argv[i];
             run_argv[m] = NULL;
             execv(g_dbus_run, run_argv);
         }
-        argv[n++] = g_xdg_open;
-        argv[n++] = (char *)url;
-        argv[n] = NULL;
-        execv(g_xdg_open, argv);
+        execv(opener, argv);
         _exit(127);
     }
     return pid;
@@ -1815,41 +2074,102 @@ static void handle_open_url_request(int fd, char *payload,
         reply(fd, "ERR only http, https, file and mailto URLs can be opened\n");
         return;
     }
-    if (!handler_is_trusted(g_xdg_open)) {
-        fprintf(stderr, "ioscd: reject open-url: %s missing or not trusted\n", g_xdg_open);
-        reply(fd, "ERR no trusted xdg-open on this device\n");
+    /* Preferred: a trusted desktop entry for this scheme. Fallback: a command
+     * opener. Resolve both up front so a device with neither fails before it
+     * starts a compositor. */
+    char *hargv[XIOS_DESKTOP_ARG_MAX];
+    char hstorage[XIOS_DESKTOP_ARG_STORAGE];
+    char chosen[256] = "";
+    char abscmd[PATH_MAX] = "";
+    char interp[PATH_MAX] = "";
+    int hargc = resolve_handler_argv(url, hargv,
+                                     sizeof(hargv) / sizeof(hargv[0]),
+                                     hstorage, sizeof(hstorage),
+                                     chosen, sizeof(chosen),
+                                     abscmd, sizeof(abscmd),
+                                     interp, sizeof(interp));
+
+    char opener[PATH_MAX];
+    const char *opener_verb = NULL;
+    int have_opener = resolve_url_opener(opener, sizeof(opener), &opener_verb);
+
+    if (!hargc && !have_opener) {
+        fprintf(stderr, "ioscd: reject open-url: no handler app and no opener "
+                        "(tried xdg-open, gio, exo-open under %s)\n",
+                g_jbroot[0] ? g_jbroot : "/");
+        reply(fd, "ERR nothing installed can open that link\n");
         return;
     }
 
     reap_children();
 
-    /* A URL needs somewhere to land: bring the compositor up and show it, the
-     * same preconditions a launch has. Share targets the classic desktop — the
-     * native flavor has no single surface to open into. */
-    int ensure_rc = ensure_iosc(0);
-    if (ensure_rc != 0) {
-        if (ensure_rc == -2) {
-            reply(fd, "ERR active session is not iosc\n");
+    /* A URL needs somewhere to land. Any classic flavor will do — deliberately
+     * NOT ensure_iosc(), which refuses outright when the active session is KDE
+     * or GNOME ("active session is not iosc"). A share should open on whatever
+     * desktop the user is actually running; only when nothing is up do we bring
+     * iosc in as the default. */
+    char wayland_sock[PATH_MAX] = "";
+    if (!classic_client_socket(wayland_sock, sizeof(wayland_sock))) {
+        int ensure_rc = ensure_iosc(0);
+        if (ensure_rc != 0) {
+            if (ensure_rc == -2) {
+                reply(fd, "ERR active session owns the display; cannot start iosc\n");
+                return;
+            }
+            fprintf(stderr, "ioscd: open-url: iosc failed to start (see %s)\n", g_iosc_log);
+            reply(fd, "ERR iosc start failed\n");
             return;
         }
-        fprintf(stderr, "ioscd: open-url: iosc failed to start (see %s)\n", g_iosc_log);
-        reply(fd, "ERR iosc start failed\n");
-        return;
+        if (!classic_client_socket(wayland_sock, sizeof(wayland_sock))) {
+            reply(fd, "ERR no desktop compositor to open into\n");
+            return;
+        }
     }
     foreground_xios();
 
-    pid_t pid = spawn_url_handler(url, 0);
+    pid_t pid;
+    const char *route;
+    if (hargc) {
+        hargv[hargc] = NULL;
+        pid = spawn_url_argv(hargv, wayland_sock);
+        route = chosen;
+    } else {
+        pid = spawn_url_handler(url, opener, opener_verb, wayland_sock);
+        route = opener;
+    }
     if (pid <= 0) {
         reply(fd, "ERR fork failed\n");
         return;
+    }
+
+    /* Don't claim OPENED just because fork() worked. `gio open` with no
+     * registered handler exits ~instantly with "Operation not supported", and
+     * reporting success for that put a cheerful "Sent to desktop" in the share
+     * sheet while nothing happened. A short bounded wait catches the immediate
+     * failures; a handler that is genuinely starting is still running here and
+     * is reported as opened, which is the honest answer at this point. */
+    int status = 0, exited_early = 0;
+    for (int i = 0; i < 12; i++) {           /* ~600ms */
+        pid_t r = waitpid(pid, &status, WNOHANG);
+        if (r == pid) { exited_early = 1; break; }
+        if (r < 0) break;
+        usleep(50 * 1000);
     }
 
     {
         char who[384], clean[1024];
         format_peer(peer, who, sizeof(who));
         sanitized_copy(clean, sizeof(clean), url);
-        fprintf(stderr, "ioscd: open-url pid=%d peer=%s url=\"%s\"\n",
-                (int)pid, who, clean);
+        fprintf(stderr, "ioscd: open-url pid=%d peer=%s via=%s url=\"%s\"%s\n",
+                (int)pid, who, route, clean,
+                exited_early ? " (handler exited immediately)" : "");
+    }
+
+    if (exited_early && WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+        fprintf(stderr, "ioscd: open-url handler %s exited %d\n",
+                route, WEXITSTATUS(status));
+        reply(fd, "ERR the desktop handler could not open that link\n");
+        return;
     }
     reply(fd, "OPENED\n");
 }

@@ -308,10 +308,44 @@ static int append_text(char *dst, size_t dst_len, size_t *used, const char *text
     return 1;
 }
 
-int xios_desktop_entry_argv(const struct xios_desktop_entry *entry,
-                            char **argv, size_t argv_len,
-                            char *storage, size_t storage_len,
-                            char *error, size_t error_len)
+/* file:///a/b%20c -> /a/b c. %f/%F want a path, not a URI. Decoding is bounded
+ * by the caller's buffer and rejects a truncated escape rather than guessing. */
+static int file_uri_to_path(const char *url, char *out, size_t out_len)
+{
+    const char *p = url + 7;                   /* past "file://" */
+    if (*p == '/' && p[1] == '/') p++;         /* file:///x -> /x  */
+    else if (*p != '/') return 0;              /* file://host/x unsupported */
+    size_t n = 0;
+    for (; *p; p++) {
+        char c = *p;
+        if (c == '%') {
+            if (!isxdigit((unsigned char)p[1]) || !isxdigit((unsigned char)p[2])) return 0;
+            char hex[3] = { p[1], p[2], 0 };
+            c = (char)strtol(hex, NULL, 16);
+            if (c == 0) return 0;              /* embedded NUL: refuse */
+            p += 2;
+        }
+        if (n + 1 >= out_len) return 0;
+        out[n++] = c;
+    }
+    out[n] = 0;
+    return n > 0;
+}
+
+/*
+ * Shared implementation. `url` is NULL for a plain launch (field codes dropped,
+ * the original behavior) or a validated URL, in which case %u/%U get the URL and
+ * %f/%F get its local path.
+ *
+ * The URL only ever lands in ONE argv element, and the Exec it is substituted
+ * into came from a root-owned .desktop. No shell is involved at any point, so a
+ * URL containing shell metacharacters is inert text.
+ */
+static int entry_argv_impl(const struct xios_desktop_entry *entry,
+                           const char *url,
+                           char **argv, size_t argv_len,
+                           char *storage, size_t storage_len,
+                           char *error, size_t error_len)
 {
     if (!entry || !argv || argv_len < 2 || !storage || storage_len < 2) {
         set_error(error, error_len, "invalid argv arguments");
@@ -399,7 +433,24 @@ int xios_desktop_entry_argv(const struct xios_desktop_entry *entry,
             if (code == '%') {
                 if (!append_char(storage, storage_len, &used, '%')) goto too_long;
                 had_literal = 1;
-            } else if (strchr("fFuUdDnNvm", code)) {
+            } else if (strchr("uU", code)) {
+                if (!url) continue;            /* launch with no URL: drop it */
+                if (!append_text(storage, storage_len, &used, url)) goto too_long;
+                had_literal = 1;
+            } else if (strchr("fF", code)) {
+                char path[PATH_MAX];
+                if (!url) continue;
+                /* A non-file URL has no path form; dropping %f leaves the app to
+                 * open with no argument, which is better than handing it a URI
+                 * it will treat as a relative filename. */
+                if (strncmp(url, "file://", 7) != 0) continue;
+                if (!file_uri_to_path(url, path, sizeof(path))) {
+                    set_error(error, error_len, "unusable file: URL");
+                    return 0;
+                }
+                if (!append_text(storage, storage_len, &used, path)) goto too_long;
+                had_literal = 1;
+            } else if (strchr("dDnNvm", code)) {
                 continue;
             } else if (code == 'c') {
                 if (!append_text(storage, storage_len, &used, entry->name)) goto too_long;
@@ -430,4 +481,27 @@ int xios_desktop_entry_argv(const struct xios_desktop_entry *entry,
 too_long:
     set_error(error, error_len, "expanded Exec value is too long");
     return 0;
+}
+
+int xios_desktop_entry_argv(const struct xios_desktop_entry *entry,
+                            char **argv, size_t argv_len,
+                            char *storage, size_t storage_len,
+                            char *error, size_t error_len)
+{
+    return entry_argv_impl(entry, NULL, argv, argv_len, storage, storage_len,
+                           error, error_len);
+}
+
+int xios_desktop_entry_argv_url(const struct xios_desktop_entry *entry,
+                                const char *url,
+                                char **argv, size_t argv_len,
+                                char *storage, size_t storage_len,
+                                char *error, size_t error_len)
+{
+    if (!url || !*url) {
+        set_error(error, error_len, "no URL supplied");
+        return 0;
+    }
+    return entry_argv_impl(entry, url, argv, argv_len, storage, storage_len,
+                           error, error_len);
 }

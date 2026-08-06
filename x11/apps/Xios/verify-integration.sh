@@ -75,13 +75,32 @@ ssh_ 'ls -la /var/jb/usr/bin/xdg-open 2>&1;
 # --- exercise OPEN_URL from root (proves the verb, not the appex) ------------
 # Deliberately separate from the share test: this shows the DAEMON side works
 # even if the extension turns out to be sandboxed away from the socket.
+#
+# python3, NOT nc: this device has no nc (and xios-status carries the same
+# nc -> socat -> python ladder for the same reason).
+ioscd_ask() {
+    ssh_ "python3 - <<'PYEOF'
+import socket
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(25)
+s.connect('/var/jb/tmp/ioscd.sock')
+s.sendall(${1@Q}.encode())
+s.shutdown(socket.SHUT_WR)
+buf = b''
+while True:
+    c = s.recv(4096)
+    if not c:
+        break
+    buf += c
+print(buf.decode('utf-8', 'replace'), end='')
+PYEOF"
+}
+
 say "OPEN_URL round-trip from the device shell"
-ssh_ 'printf "OPEN_URL\thttps://example.com\n" | nc -U /var/jb/tmp/ioscd.sock 2>&1' \
-    | tee "$OUT/open-url-reply.txt"
+ioscd_ask 'OPEN_URL\thttps://example.com\n' | tee "$OUT/open-url-reply.txt"
 
 say "OPEN_URL rejects a disallowed scheme (invariant check)"
-ssh_ 'printf "OPEN_URL\tjavascript:alert(1)\n" | nc -U /var/jb/tmp/ioscd.sock 2>&1' \
-    | tee "$OUT/open-url-rejected.txt"
+ioscd_ask 'OPEN_URL\tjavascript:alert(1)\n' | tee "$OUT/open-url-rejected.txt"
 
 # --- ioscd log, which records the peer path per request ----------------------
 say "ioscd log tail (peer attribution for SESSION / OPEN_URL)"

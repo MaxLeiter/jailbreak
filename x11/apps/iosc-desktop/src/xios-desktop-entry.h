@@ -50,6 +50,18 @@ int xios_desktop_entry_argv(const struct xios_desktop_entry *entry,
                             char *storage, size_t storage_len,
                             char *error, size_t error_len);
 
+/*
+ * As above, but substitutes a URL into the entry's field codes: %u/%U get the
+ * URL, %f/%F get its local path (file: URLs only). Used by ioscd's OPEN_URL so a
+ * shared link opens in the trusted default handler. The URL becomes exactly one
+ * argv element and no shell is involved, so it is data rather than command text.
+ */
+int xios_desktop_entry_argv_url(const struct xios_desktop_entry *entry,
+                                const char *url,
+                                char **argv, size_t argv_len,
+                                char *storage, size_t storage_len,
+                                char *error, size_t error_len);
+
 int xios_desktop_app_id_valid(const char *app_id);
 
 #endif
