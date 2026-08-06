@@ -105,12 +105,19 @@ Xios app, iosc, SDL, and audio layers.
 - OPEN: it renders but stutters audibly; thermal pressure is 0 and nothing else
   is running, so the live lead is the 2048x1536 render surface -- the compositor
   forces fullscreen toplevels and ignores `--window --resolution`.
-- OPEN (compositor, not the game): when the Xios app's orientation disagrees
-  with iosc's output geometry -- app presenting 2160x2880 while iosc serves
-  2880x2160 -- the display pillarboxes with black borders and `xios-device shot`
-  captures a sheared frame (bands offset horizontally, since the capture assumes
-  the landscape stride). Restarting the slot and the Xios app does not clear it.
-  Any runtime conclusion drawn from a capture in that state is unreliable.
+- RESOLVED 2026-08-06 (was recorded here as an orientation bug; it was not).
+  The app presented 2160x2880 while iosc served 2880x2160, the screen
+  pillarboxed, and `xios-device shot` returned sheared frames. Cause: a SECOND
+  iosc had been started by calling `run-shell.sh <slot>` positionally. That
+  script takes its slot from `WAYLAND_DISPLAY` and ignores arguments, so it ran
+  on the DEFAULT slot and its `-json /var/jb/tmp/xios.json` overwrote the live
+  session's descriptor with the stray's portrait geometry. Three iosc processes
+  were running. Killing the strays restored a clean capture (non-black pixels
+  54.9% -> 99.8%). `run-shell.sh` now rejects positional arguments.
+  The lasting lesson: `xios_read_output_region` used to CLAMP a too-large rect
+  and leave the rest of each row untouched, so a geometry disagreement produced
+  a well-formed, plausible-looking PNG rather than an error -- it now refuses.
+  **Count iosc processes before theorising about geometry.**
 
 ### Battle for Wesnoth
 
