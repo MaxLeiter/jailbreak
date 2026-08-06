@@ -1,15 +1,15 @@
 # Xios strategy-game ports
 
-Updated: 2026-08-02
+Updated: 2026-08-03
 
 ## Scope
 
 This lane adds four full desktop strategy/simulation games to Xios:
 
-1. Warzone 2100 4.7.0 (SDL3)
-2. Battle for Wesnoth 1.18.5 (SDL2)
-3. OpenTTD 15.3 (SDL2)
-4. 0 A.D. 27.1 (SDL2, ANGLE GLES, SpiderMonkey 115)
+1. Warzone 2100 4.7.0 (SDL3) -- builds, runs on device
+2. Battle for Wesnoth 1.18.5 (SDL2) -- builds, device proof open
+3. OpenTTD 15.3 (SDL2) -- builds, playable on device
+4. 0 A.D. 27.1 -- DROPPED 2026-08-03, blocked on broken mozjs packaging
 
 They are normal Wayland clients. UIKit touch, hardware keyboard, pointer,
 scrolling, PulseAudio, and IOSurface presentation remain owned by the existing
@@ -110,9 +110,42 @@ Xios app, iosc, SDL, and audio layers.
   `find_package` requires.
 - Source is a 462 MB bz2 and truncated repeatedly on a flaky connection; see
   the download gotcha below.
-- Build and device proof remain open.
+- **Builds (2026-08-03):** `wesnoth 1.18.5+ios1` is in `linux-build/out/`.
+  Patches 0002-0004 were needed beyond the existing target patch; see
+  `ports/wesnoth/patches/`. Device proof remains open.
 
-### 0 A.D.
+### 0 A.D. -- DROPPED 2026-08-03 (blocked on mozjs packaging, not on 0 A.D.)
+
+**Do not restart this without rebuilding mozjs first.** Everything on the 0 A.D.
+side works: the premake patch applies, `--xios` is accepted, workspaces
+generate, and the engine compiles until it needs SpiderMonkey headers. It is
+blocked by a defect in the published mozjs packages:
+
+- `libmozjs-115-dev 115.12.0+ios1` ships **545 headers that are all dangling
+  symlinks** into `/work/Procursus/mozjs-derisk/firefox-115.12.0/...`, a build
+  tree that exists on no device and in no surviving volume. The package installs
+  cleanly and every header is unreadable, so `-I`, `-isystem` and `-idirafter`
+  all fail identically -- which reads as an include-path bug for a long time.
+- `libmozjs-115-jit-dev 115.12.0+ios2` has **real, complete headers**, but
+  installs them flat at `usr/include/js/...` while its own `mozjs-115.pc`
+  advertises `-isystem ${includedir}/mozjs-115`. Consumers using pkg-config get
+  a path that does not exist in that package.
+
+`mozjs.mk` and `mozjs-jit.mk` both already carry the `cp -aL` deref that would
+prevent the first bug. The broken deb is a STALE artifact: `.build_complete`
+short-circuits the `mozjs:` target, so `mozjs-package` re-packaged pre-fix
+staging without ever re-running the deref. Any mozjs repackage must force the
+build/stage step, not just the package step.
+
+Rebuilding is the only repair for the dangling-symlink deb, and
+`procursus-vol-gjs` is pruned, so it means the full mozjs 115 cross (Rust
+toolchain, two passes, the heaviest cross in the tree, gated in
+`build-gjs.sh`). That was judged not worth it for one game. If mozjs is ever
+rebuilt, 0 A.D. should resume cleanly -- keep the recipe and patch.
+
+Historical notes on the port itself:
+
+### 0 A.D. (port state at drop)
 
 - Alpha 27.1 is deliberate: it uses SpiderMonkey 115, already built and
   device-proven in Xios. Alpha 28 requires a separate mozjs 128 port.
@@ -122,7 +155,20 @@ Xios app, iosc, SDL, and audio layers.
   GLES, SDL2, system mozjs 115, ENet, and compiled Boost while excluding X11
   and unsupported Linux link flags.
 - Recipe, ENet dependency, package metadata, launcher, and full data packaging
-  exist. Configure/build/device proof remain open.
+  exist. Fixed on the way to the mozjs wall, all still in tree:
+  - `DO_PATCH` was called with its arguments SWAPPED (`zero-ad,0ad` instead of
+    `0ad,zero-ad`), so the premake patch had never once applied -- `patch -sN`
+    skips silently. The recipe now asserts `trigger = "xios"` reached
+    premake5.lua and carries `ZERO_AD_PATCH_REV`.
+  - The premake bootstrap builds HOST tools, and the cross toolchain reached it
+    through three channels: CC/CXX via MAKEFLAGS (command-line variables
+    outrank the environment in nested makes), CFLAGS/LDFLAGS exported, and
+    AR/RANLIB exported -- the last archived host objects with the Darwin ranlib,
+    giving `liblua-lib.a` an empty table of contents. `XIOS_HOST_TOOLCHAIN`
+    pins the whole host toolchain in one place.
+  - `update-workspaces` queries pkg-config for TARGET libraries but 0 A.D.
+    calls bare `pkg-config`, which has none of the cross wrapper's config. It
+    now exports the same `PKG_CONFIG_LIBDIR`/`PKG_CONFIG_SYSROOT_DIR`.
 
 ## Build entry point
 

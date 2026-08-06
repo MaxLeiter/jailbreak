@@ -106,7 +106,12 @@ static inline int physical_to_logical(int px)
 }
 
 void output_send_state(struct wl_resource *r);
+/* wp_viewporter + wp_fractional_scale_v1 (iosc_viewport.c). */
 void fractional_scale_broadcast(void);   /* re-notify wp_fractional_scale_v1 clients */
+void viewporter_bind(struct wl_client *client, void *data,
+                     uint32_t version, uint32_t id);
+void fractional_scale_bind(struct wl_client *client, void *data,
+                           uint32_t version, uint32_t id);
 
 /* Drop a destroyed resource from one of the per-global resource lists. */
 void output_res_remove(struct wl_resource **arr, int *n, struct wl_resource *r);
@@ -339,6 +344,37 @@ void screencopy_mgr_bind(struct wl_client *client, void *data,
                          uint32_t version, uint32_t id);
 
 /* ===========================================================================
+ * ext-session-lock-v1  (iosc_session_lock.c)
+ * ======================================================================== */
+
+/* While locked, the output shows ONLY the lock surface (blank black until it
+ * maps) and all input is confined to it: surface_at() resolves to it
+ * exclusively and keyboard_set_focus() redirects to it, so normal windows can
+ * neither show nor steal focus. If the locker dies without unlocking, the
+ * session STAYS locked (spec security requirement); a fresh lock request may
+ * then take over and unlock.
+ *
+ * This is compositor-wide mode rather than protocol-local state — the composite
+ * path, surface_unmap(), surface_at() and the focus path all honour it — so it
+ * lives here rather than inside the module. */
+struct iosc_session_lock {
+    struct wl_resource  *lock;         /* ext_session_lock_v1; NULL if none/abandoned */
+    int                  locked;
+    struct iosc_surface *surface;      /* the lock surface (single output) */
+    struct wl_resource  *lock_surface; /* its ext_session_lock_surface_v1 */
+};
+extern struct iosc_session_lock g_slock;
+
+void slock_mgr_bind(struct wl_client *client, void *data,
+                    uint32_t version, uint32_t id);
+
+/* Focus/grab helpers the lock path drives when the session locks or unlocks. */
+struct iosc_surface *topmost_focusable(void);
+void touch_cancel_all(void);
+void dnd_end(void);
+void dnd_cancel_active(void);   /* cancel an in-flight drag, notifying its source */
+
+/* ===========================================================================
  * Input focus + seat
  * ======================================================================== */
 
@@ -360,7 +396,50 @@ void keyboard_send_raw_key(uint32_t time, uint32_t key, uint32_t state);
 int  iosc_app_cursor(void);   /* IOSC_APP_CURSOR: app draws the pointer overlay */
 void app_cursor_notify(void); /* signal pointer pos/shape to the app overlay */
 
+/* ===========================================================================
+ * foreign-toplevel / taskbar  (iosc_foreign_toplevel.c)
+ * ======================================================================== */
+
+/* The surface code calls these whenever a toplevel's advertised state changes;
+ * each bound manager holds a handle in s->ftl_handles[]. */
+void ftl_toplevel_mapped(struct iosc_surface *s);
+void ftl_toplevel_closed(struct iosc_surface *s);
+void ftl_broadcast_state(struct iosc_surface *s);
+void ftl_broadcast_title(struct iosc_surface *s);
+void ftl_broadcast_app_id(struct iosc_surface *s);
+void ftl_manager_bind(struct wl_client *client, void *data,
+                      uint32_t version, uint32_t id);
+
+/* Re-send an xdg_toplevel.configure reflecting the surface's current
+ * maximized/fullscreen/minimized flags. */
+void toplevel_reconfigure_state(struct iosc_surface *s);
+
+/* ===========================================================================
+ * wm control socket  (iosc_wm_socket.c)
+ * ======================================================================== */
+
+/* A tiny line protocol so a NON-Wayland client (ioscd, the panel) can raise,
+ * focus or minimise a window by app_id. Returns 0 on success. */
+int wm_socket_start(struct wl_event_loop *loop, const char *path);
+
+/* Shared AF_UNIX listener plumbing (the wm socket and the app input socket both
+ * use it): unlink, bind, listen, and register on_accept with the event loop. */
+int unix_listen_start(struct wl_event_loop *loop, const char *path,
+                      int (*on_accept)(int, uint32_t, void *));
+
+void surface_set_minimized(struct iosc_surface *s, int minimized);
+
+/* ===========================================================================
+ * idle notify / inhibit  (iosc_idle.c)
+ * ======================================================================== */
+
+/* Every real input event calls this; it resets the idle timers and wakes any
+ * client that was told the seat went idle. */
 void idle_note_activity(void);
+void idle_notifier_bind(struct wl_client *client, void *data,
+                        uint32_t version, uint32_t id);
+void idle_inhibit_mgr_bind(struct wl_client *client, void *data,
+                           uint32_t version, uint32_t id);
 
 /* ===========================================================================
  * text-input-v3 / input-method-v2 / virtual-keyboard-v1  (iosc_text_input.c)

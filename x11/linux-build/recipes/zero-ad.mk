@@ -9,19 +9,33 @@ endif
 SUBPROJECTS       += zero-ad
 ZERO_AD_VERSION    := 0.27.1
 DEB_ZERO_AD_V     ?= $(ZERO_AD_VERSION)+ios1
+# Bump when the patch series changes, so an existing source tree is
+# re-extracted and re-patched. Same mechanism as OPENTTD_PATCH_REV.
+ZERO_AD_PATCH_REV := 2
+
+# Everything needed to keep a HOST build free of the cross toolchain. Procursus
+# exports the cross compiler, flags and binutils, so a host tool picks them up
+# silently and fails somewhere that looks unrelated to cross-compilation.
+XIOS_HOST_TOOLCHAIN := \
+	CC=/usr/bin/cc CXX=/usr/bin/c++ CPP=/usr/bin/cpp \
+	AR=/usr/bin/ar RANLIB=/usr/bin/ranlib NM=/usr/bin/nm \
+	STRIP=/usr/bin/strip LD=/usr/bin/ld OBJDUMP=/usr/bin/objdump \
+	CFLAGS= CXXFLAGS= CPPFLAGS= LDFLAGS=
 
 zero-ad-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://releases.wildfiregames.com/0ad-$(ZERO_AD_VERSION)-unix-build.tar.xz)
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://releases.wildfiregames.com/0ad-$(ZERO_AD_VERSION)-unix-data.tar.xz)
-	if [ ! -f "$(BUILD_WORK)/zero-ad/.xios_setup_$(DEB_ZERO_AD_V)" ]; then \
+	if [ ! -f "$(BUILD_WORK)/zero-ad/.xios_setup_$(DEB_ZERO_AD_V)_p$(ZERO_AD_PATCH_REV)" ]; then \
 		rm -rf $(BUILD_WORK)/zero-ad $(BUILD_WORK)/0ad-$(ZERO_AD_VERSION); \
 		cd $(BUILD_WORK) && \
 			tar -xf $(BUILD_SOURCE)/0ad-$(ZERO_AD_VERSION)-unix-build.tar.xz && \
 			mkdir -p zero-ad && \
 			cp -a 0ad-$(ZERO_AD_VERSION)/. zero-ad/ && \
 			rm -rf 0ad-$(ZERO_AD_VERSION); \
-		$(call DO_PATCH,zero-ad,0ad,-p1); \
-		touch "$(BUILD_WORK)/zero-ad/.xios_setup_$(DEB_ZERO_AD_V)"; \
+		$(call DO_PATCH,0ad,zero-ad,-p1); \
+		grep -q 'trigger = "xios"' $(BUILD_WORK)/zero-ad/build/premake/premake5.lua || \
+			{ echo "ERROR: 0ad patch series did not apply" >&2; exit 1; }; \
+		touch "$(BUILD_WORK)/zero-ad/.xios_setup_$(DEB_ZERO_AD_V)_p$(ZERO_AD_PATCH_REV)"; \
 	fi
 
 ifneq ($(wildcard $(BUILD_WORK)/zero-ad/.build_complete),)
@@ -37,17 +51,26 @@ zero-ad: zero-ad-setup sdl2 boost-games enet openal-soft
 	# "'system' is unavailable: not available on iOS" -- a host tool failing a
 	# target restriction, which reads as a source problem rather than a leak.
 	# Clearing MAKEFLAGS/MFLAGS is what actually makes CC=/usr/bin/cc stick.
-	# The cross CFLAGS/CXXFLAGS/LDFLAGS are exported too, so the host compiler
-	# still received -miphoneos-version-min and refused it. Blank them for the
-	# host steps, the same way openttd.mk builds its host tools.
+	# The cross toolchain reaches these host steps through three separate
+	# channels, and fixing one only exposes the next: CC/CXX via MAKEFLAGS,
+	# CFLAGS/LDFLAGS via the environment, and AR/RANLIB via the environment as
+	# well -- the last produced host archives indexed by the Darwin ranlib, so
+	# liblua-lib.a and friends had an empty table of contents and premake5
+	# failed to link against its own bundled Lua. Pin the whole host toolchain
+	# rather than wait to discover a fourth channel.
 	cd $(BUILD_WORK)/zero-ad/libraries/source/premake-core && \
-		env -u MAKEFLAGS -u MFLAGS \
-			OS=Linux CC=/usr/bin/cc CXX=/usr/bin/c++ MAKE=/usr/bin/make \
-			CFLAGS= CXXFLAGS= CPPFLAGS= LDFLAGS= \
+		env -u MAKEFLAGS -u MFLAGS $(XIOS_HOST_TOOLCHAIN) \
+			OS=Linux MAKE=/usr/bin/make \
 			JOBS=-j$(JOBS) ./build.sh
+	# update-workspaces runs premake (a HOST tool) but queries pkg-config for
+	# TARGET libraries. 0 A.D. calls bare `pkg-config`, which has none of the
+	# cross wrapper's configuration, so every lookup missed the sysroot and
+	# mozjs came back not-found. Mirror what build_tools/*-pkg-config exports.
 	cd $(BUILD_WORK)/zero-ad/build/workspaces && \
-		env -u MAKEFLAGS -u MFLAGS \
-			CFLAGS= CXXFLAGS= CPPFLAGS= LDFLAGS= OS=Linux ./update-workspaces.sh \
+		env -u MAKEFLAGS -u MFLAGS $(XIOS_HOST_TOOLCHAIN) \
+			PKG_CONFIG_LIBDIR=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig \
+			PKG_CONFIG_SYSROOT_DIR=$(BUILD_BASE) \
+			OS=Linux ./update-workspaces.sh \
 			--xios \
 			--gles \
 			--with-system-mozjs \

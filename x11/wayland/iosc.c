@@ -198,7 +198,8 @@ struct iosc_surface *g_ptr_focus;   /* surface the pointer is over  */
 struct iosc_surface *g_cursor_surface;
 /* Whether the app currently holds this cursor's pixels (see cursor_image_publish),
  * and which app-client generation they went to — a reconnecting app needs them
- * again, since content is only sent on change. Private to this file. */
+ * again, since content is only sent on change. Cursor drawing stays in iosc.c,
+ * so these two are private to it. */
 static int      g_cursor_image_sent;
 static unsigned g_cursor_image_gen;
 int g_cursor_visible, g_cursor_x, g_cursor_y, g_cursor_hot_x, g_cursor_hot_y;
@@ -238,27 +239,15 @@ struct iosc_dnd {
 static struct iosc_dnd g_dnd;
 static void dnd_update_motion(int x, int y, uint32_t t);
 static void dnd_drop(void);
-static void dnd_end(void);
+void dnd_end(void);
 /* start_drag is only honored against the serial of a still-held button press. */
 static uint32_t g_button_serial;
 static uint32_t g_button_serial_code;
 static int g_button_down;
 static void touch_surface_gone(struct iosc_surface *s);   /* drop touch grabs on unmap */
-static void touch_cancel_all(void);
+void touch_cancel_all(void);
 
-/* ext-session-lock-v1. While locked, the output shows ONLY the lock surface
- * (blank black until it maps) and all input is confined to it: surface_at()
- * resolves to it exclusively and keyboard_set_focus() redirects to it, so
- * normal windows can neither show nor steal focus. If the locker dies without
- * unlocking, the session STAYS locked (spec security requirement); a fresh
- * lock request may then take over and unlock. */
-struct iosc_session_lock {
-    struct wl_resource  *lock;         /* ext_session_lock_v1; NULL if none/abandoned */
-    int                  locked;
-    struct iosc_surface *surface;      /* the lock surface (single output) */
-    struct wl_resource  *lock_surface; /* its ext_session_lock_surface_v1 */
-};
-static struct iosc_session_lock g_slock;
+struct iosc_session_lock g_slock;
 enum iosc_interactive_op { IOSC_INTERACTIVE_NONE, IOSC_INTERACTIVE_MOVE, IOSC_INTERACTIVE_RESIZE };
 static enum iosc_interactive_op g_interactive_op;
 static struct iosc_surface *g_interactive_surface;
@@ -302,12 +291,7 @@ static const char *g_recompose_reason;
 static int g_recompose_reason_line;
 /* text-input-v3 / input-method-v2 / virtual-keyboard-v1 live in
  * iosc_text_input.c; their entry points are declared in iosc_internal.h. */
-/* foreign-toplevel (zwlr_foreign_toplevel_management_v1) — taskbar/window list */
-static void ftl_toplevel_mapped(struct iosc_surface *s);
-static void ftl_toplevel_closed(struct iosc_surface *s);
-static void ftl_broadcast_state(struct iosc_surface *s);
-static void ftl_broadcast_title(struct iosc_surface *s);
-static void ftl_broadcast_app_id(struct iosc_surface *s);
+/* foreign-toplevel lives in iosc_foreign_toplevel.c; see iosc_internal.h. */
 /* relative-pointer / pointer-gestures / pointer-constraints live in
  * iosc_pointer_ext.c; see iosc_internal.h. */
 /* primary selection (zwp_primary_selection_device_manager_v1) */
@@ -414,7 +398,7 @@ static void layer_compute(struct iosc_surface *s, int *cw, int *ch, int *cx, int
 
 /* The top-most surface that may hold keyboard focus (topmost toplevel, or a
  * layer surface that requested keyboard interactivity). */
-static struct iosc_surface *topmost_focusable(void)
+struct iosc_surface *topmost_focusable(void)
 {
     for (int i = g_nmapped - 1; i >= 0; i--) {
         struct iosc_surface *s = g_mapped[i];
@@ -1306,7 +1290,7 @@ static void surface_gl_dirty_full(struct iosc_surface *s)
  * asked. xdg_toplevel has no "unset_minimized" request of its own -- restoring
  * happens through the foreign-toplevel activate / wm-socket raise paths, which
  * call this with minimized=0. */
-static void surface_set_minimized(struct iosc_surface *s, int minimized)
+void surface_set_minimized(struct iosc_surface *s, int minimized)
 {
     if (!s || s->role != IOSC_ROLE_TOPLEVEL) return;
     minimized = !!minimized;
@@ -2189,7 +2173,7 @@ static void direct_present_note_blocker(const char *reason)
     last = reason;
     /* Also published as live state, not just a transition: reading a change-log
      * to work out the CURRENT reason means a steady blocker looks like silence. */
-    iosc_status_set("direct-blocker", reason ? reason : "none");
+    iosc_status_set_value("direct-blocker", reason ? reason : "none");
     if (reason)
         fprintf(stderr, "iosc: direct present unavailable: %s\n", reason);
 }
@@ -3424,140 +3408,6 @@ static void compositor_bind(struct wl_client *client, void *data,
     wl_resource_set_implementation(r, &compositor_impl, NULL, NULL);
 }
 
-/* ---- wp_viewporter + wp_fractional_scale --------------------------------- */
-
-/* Live wp_fractional_scale_v1 objects, so a runtime output-scale change can
- * re-send preferred_scale to every fractional-scale-aware client. */
-#define IOSC_MAX_FRAC_RES 64
-static struct wl_resource *g_frac_res[IOSC_MAX_FRAC_RES]; static int g_nfrac_res;
-
-static void viewport_resource_destroy(struct wl_resource *r)
-{
-    struct iosc_viewport *vp = wl_resource_get_user_data(r);
-    if (!vp) return;
-    if (vp->surface && vp->surface->viewport == vp)
-        vp->surface->viewport = NULL;
-    free(vp);
-}
-
-static void viewport_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static void viewport_set_source(struct wl_client *c, struct wl_resource *r,
-                                wl_fixed_t x, wl_fixed_t y,
-                                wl_fixed_t w, wl_fixed_t h)
-{
-    (void)c;
-    struct iosc_viewport *vp = wl_resource_get_user_data(r);
-    if (!vp) return;
-    wl_fixed_t unset = wl_fixed_from_int(-1);
-    if (x == unset && y == unset && w == unset && h == unset) {
-        vp->has_src = 0;
-        return;
-    }
-    vp->has_src = 1;
-    vp->src_x = wl_fixed_to_int(x);
-    vp->src_y = wl_fixed_to_int(y);
-    vp->src_w = wl_fixed_to_int(w);
-    vp->src_h = wl_fixed_to_int(h);
-}
-static void viewport_set_destination(struct wl_client *c, struct wl_resource *r,
-                                     int32_t w, int32_t h)
-{
-    (void)c;
-    struct iosc_viewport *vp = wl_resource_get_user_data(r);
-    if (!vp) return;
-    if (w == -1 && h == -1) {
-        vp->has_dst = 0;
-        return;
-    }
-    vp->has_dst = 1;
-    vp->dst_w = w;
-    vp->dst_h = h;
-}
-static const struct wp_viewport_interface viewport_impl = {
-    .destroy = viewport_destroy,
-    .set_source = viewport_set_source,
-    .set_destination = viewport_set_destination,
-};
-
-static void viewporter_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static void viewporter_get_viewport(struct wl_client *c, struct wl_resource *r,
-                                    uint32_t id, struct wl_resource *surface)
-{
-    struct iosc_surface *s = wl_resource_get_user_data(surface);
-    if (s->viewport) {
-        wl_resource_post_error(r, WP_VIEWPORTER_ERROR_VIEWPORT_EXISTS,
-                               "surface already has a viewport");
-        return;
-    }
-    struct iosc_viewport *vp = calloc(1, sizeof(*vp));
-    if (!vp) { wl_client_post_no_memory(c); return; }
-    struct wl_resource *vr = wl_resource_create(c, &wp_viewport_interface,
-                                                wl_resource_get_version(r), id);
-    if (!vr) { free(vp); wl_client_post_no_memory(c); return; }
-    vp->resource = vr;
-    vp->surface = s;
-    s->viewport = vp;
-    wl_resource_set_implementation(vr, &viewport_impl, vp, viewport_resource_destroy);
-}
-static const struct wp_viewporter_interface viewporter_impl = {
-    .destroy = viewporter_destroy,
-    .get_viewport = viewporter_get_viewport,
-};
-static void viewporter_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{
-    (void)data;
-    struct wl_resource *r = wl_resource_create(client, &wp_viewporter_interface, version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &viewporter_impl, NULL, NULL);
-}
-
-static void fractional_scale_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static const struct wp_fractional_scale_v1_interface fractional_scale_impl = {
-    .destroy = fractional_scale_destroy,
-};
-static void fractional_scale_resource_destroy(struct wl_resource *r)
-{
-    for (int i = 0; i < g_nfrac_res; i++)
-        if (g_frac_res[i] == r) { g_frac_res[i] = g_frac_res[--g_nfrac_res]; break; }
-}
-/* Re-notify every live fractional-scale client after a runtime output-scale change. */
-void fractional_scale_broadcast(void)
-{
-    uint32_t pref = (uint32_t)(output_scale() * 120);
-    for (int i = 0; i < g_nfrac_res; i++)
-        wp_fractional_scale_v1_send_preferred_scale(g_frac_res[i], pref);
-}
-static void fractional_manager_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static void fractional_manager_get(struct wl_client *c, struct wl_resource *r,
-                                   uint32_t id, struct wl_resource *surface)
-{
-    (void)surface;
-    struct wl_resource *sr = wl_resource_create(c, &wp_fractional_scale_v1_interface,
-                                                wl_resource_get_version(r), id);
-    if (!sr) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(sr, &fractional_scale_impl, NULL,
-                                   fractional_scale_resource_destroy);
-    if (g_nfrac_res < IOSC_MAX_FRAC_RES)
-        g_frac_res[g_nfrac_res++] = sr;
-    wp_fractional_scale_v1_send_preferred_scale(sr, (uint32_t)(output_scale() * 120));
-}
-static const struct wp_fractional_scale_manager_v1_interface fractional_manager_impl = {
-    .destroy = fractional_manager_destroy,
-    .get_fractional_scale = fractional_manager_get,
-};
-static void fractional_scale_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
-{
-    (void)data;
-    struct wl_resource *r = wl_resource_create(client, &wp_fractional_scale_manager_v1_interface,
-                                               version, id);
-    if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &fractional_manager_impl, NULL, NULL);
-}
-
 /* ---- wp_presentation ----------------------------------------------------- */
 
 static void presentation_destroy(struct wl_client *c, struct wl_resource *r)
@@ -3978,7 +3828,7 @@ static void send_initial_configure(struct iosc_surface *s)
     toplevel_send_configure(s, w, h);
 }
 
-static void toplevel_reconfigure_state(struct iosc_surface *s)
+void toplevel_reconfigure_state(struct iosc_surface *s)
 {
     if (s->mapped) output_damage_add_surface(s);
     int gx = 0, gy = 0, gw = 0, gh = 0;
@@ -5101,7 +4951,7 @@ static void touch_cancel_client(struct wl_client *cl)
 
 /* One wl_touch.cancel wipes every in-flight point of that client, so cancel each
  * involved client once and deactivate all its points together. */
-static void touch_cancel_all(void)
+void touch_cancel_all(void)
 {
     for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++) {
         struct iosc_touch_point *p = &g_touch_points[i];
@@ -5971,7 +5821,17 @@ static void dnd_drop(void)
     dnd_end();
 }
 
-static void dnd_end(void)
+/* Cancel any in-flight drag, telling the source it was cancelled first. The
+ * session-lock path uses this: a drag cannot survive the screen locking, and
+ * the source needs to hear about it rather than just having the grab vanish. */
+void dnd_cancel_active(void)
+{
+    if (!g_dnd.active) return;
+    if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
+    dnd_end();
+}
+
+void dnd_end(void)
 {
     if (!g_dnd.active) return;
     output_damage_add_dnd_icon_at(g_cursor_x, g_cursor_y);
@@ -6159,7 +6019,7 @@ static void chmod_mobile_socket(const char *path)
 /* Create a listening AF_UNIX stream socket at `path` and register its accept
  * handler on the event loop. Shared by the clipboard + input bridges; the Xios
  * app runs as mobile and must connect, so prefer mobile-owned 0660. */
-static int unix_listen_start(struct wl_event_loop *loop, const char *path,
+int unix_listen_start(struct wl_event_loop *loop, const char *path,
                              int (*on_accept)(int, uint32_t, void *))
 {
     unlink(path);
@@ -6408,194 +6268,6 @@ static int make_keymap_fd(void)
     return fd;
 }
 
-/* ---- zwlr_foreign_toplevel_management_v1 --------------------------------- */
-/* The window list as a protocol: a taskbar/overview binds the manager, receives
- * one handle per open toplevel (title/app_id/state), and can activate or close
- * them. State broadcasts hook the existing map/focus/maximize paths above. */
-
-#define IOSC_MAX_FTL_MANAGERS 8
-static struct wl_resource *g_ftl_managers[IOSC_MAX_FTL_MANAGERS];
-static int g_nftl_managers;
-static void ftl_handle_res_destroy(struct wl_resource *r);
-
-/* Build the wl_array of zwlr_foreign_toplevel_handle_v1 state enums. */
-static void ftl_state_array(struct iosc_surface *s, struct wl_array *a)
-{
-    wl_array_init(a);
-    uint32_t *e;
-    if (s->toplevel_maximized) {
-        e = wl_array_add(a, sizeof(uint32_t));
-        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MAXIMIZED;
-    }
-    if (s->toplevel_minimized) {
-        e = wl_array_add(a, sizeof(uint32_t));
-        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_MINIMIZED;
-    }
-    if (s == g_kbd_focus) {
-        e = wl_array_add(a, sizeof(uint32_t));
-        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_ACTIVATED;
-    }
-    if (s->toplevel_fullscreen) {
-        e = wl_array_add(a, sizeof(uint32_t));
-        if (e) *e = ZWLR_FOREIGN_TOPLEVEL_HANDLE_V1_STATE_FULLSCREEN;
-    }
-}
-
-static void ftl_handle_send_state(struct wl_resource *h, struct iosc_surface *s)
-{
-    struct wl_array a;
-    ftl_state_array(s, &a);
-    zwlr_foreign_toplevel_handle_v1_send_state(h, &a);
-    wl_array_release(&a);
-}
-
-/* Initial dump for a freshly created handle: title, app_id, state, done. */
-static void ftl_handle_send_initial(struct wl_resource *h, struct iosc_surface *s)
-{
-    zwlr_foreign_toplevel_handle_v1_send_title(h, s->title[0] ? s->title : "");
-    zwlr_foreign_toplevel_handle_v1_send_app_id(h, s->app_id[0] ? s->app_id : "");
-    ftl_handle_send_state(h, s);
-    zwlr_foreign_toplevel_handle_v1_send_done(h);
-}
-
-static const struct zwlr_foreign_toplevel_handle_v1_interface ftl_handle_impl;
-
-/* Create a handle for surface `s` on manager `m`, register it, dump initial state. */
-static struct wl_resource *ftl_new_handle(struct wl_resource *m, struct iosc_surface *s)
-{
-    if (s->ftl_nhandles >= (int)(sizeof(s->ftl_handles) / sizeof(s->ftl_handles[0])))
-        return NULL;
-    struct wl_client *c = wl_resource_get_client(m);
-    struct wl_resource *h = wl_resource_create(
-        c, &zwlr_foreign_toplevel_handle_v1_interface, wl_resource_get_version(m), 0);
-    if (!h) return NULL;
-    wl_resource_set_implementation(h, &ftl_handle_impl, s, ftl_handle_res_destroy);
-    s->ftl_handles[s->ftl_nhandles++] = h;
-    zwlr_foreign_toplevel_manager_v1_send_toplevel(m, h);
-    ftl_handle_send_initial(h, s);
-    return h;
-}
-
-static void ftl_toplevel_mapped(struct iosc_surface *s)
-{
-    if (s->role != IOSC_ROLE_TOPLEVEL) return;
-    for (int i = 0; i < g_nftl_managers; i++)
-        ftl_new_handle(g_ftl_managers[i], s);
-}
-
-static void ftl_toplevel_closed(struct iosc_surface *s)
-{
-    for (int i = 0; i < s->ftl_nhandles; i++) {
-        zwlr_foreign_toplevel_handle_v1_send_closed(s->ftl_handles[i]);
-        wl_resource_set_user_data(s->ftl_handles[i], NULL);   /* handle goes inert */
-    }
-    s->ftl_nhandles = 0;
-}
-
-static void ftl_broadcast_state(struct iosc_surface *s)
-{
-    if (!s) return;
-    for (int i = 0; i < s->ftl_nhandles; i++) {
-        ftl_handle_send_state(s->ftl_handles[i], s);
-        zwlr_foreign_toplevel_handle_v1_send_done(s->ftl_handles[i]);
-    }
-}
-
-static void ftl_broadcast_title(struct iosc_surface *s)
-{
-    if (!s) return;
-    for (int i = 0; i < s->ftl_nhandles; i++) {
-        zwlr_foreign_toplevel_handle_v1_send_title(s->ftl_handles[i], s->title);
-        zwlr_foreign_toplevel_handle_v1_send_done(s->ftl_handles[i]);
-    }
-}
-
-static void ftl_broadcast_app_id(struct iosc_surface *s)
-{
-    if (!s) return;
-    for (int i = 0; i < s->ftl_nhandles; i++) {
-        zwlr_foreign_toplevel_handle_v1_send_app_id(s->ftl_handles[i], s->app_id);
-        zwlr_foreign_toplevel_handle_v1_send_done(s->ftl_handles[i]);
-    }
-}
-
-/* Handle requests. After `closed`, user_data is NULL and requests are ignored. */
-static void ftl_handle_res_destroy(struct wl_resource *r)
-{
-    struct iosc_surface *s = wl_resource_get_user_data(r);
-    if (s) reslist_remove(s->ftl_handles, &s->ftl_nhandles, r);
-}
-
-static void ftlh_set_maximized(struct wl_client *c, struct wl_resource *h)
-{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { s->toplevel_maximized = 1; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
-static void ftlh_unset_maximized(struct wl_client *c, struct wl_resource *h)
-{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { s->toplevel_maximized = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
-static void ftlh_set_minimized(struct wl_client *c, struct wl_resource *h)
-{ (void)c; surface_set_minimized(wl_resource_get_user_data(h), 1); }
-static void ftlh_unset_minimized(struct wl_client *c, struct wl_resource *h)
-{ (void)c; surface_set_minimized(wl_resource_get_user_data(h), 0); }
-static void ftlh_activate(struct wl_client *c, struct wl_resource *h, struct wl_resource *seat)
-{ (void)c; (void)seat; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { surface_set_minimized(s, 0); surface_raise(s); keyboard_set_focus(s);
-           if (g_output_damage_valid) recomposite_all(); } }
-static void ftlh_close(struct wl_client *c, struct wl_resource *h)
-{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s && s->is_xwayland) iosc_xwm_request_close(s->resource);
-  else if (s && s->xdg_toplevel) xdg_toplevel_send_close(s->xdg_toplevel); }
-static void ftlh_set_rectangle(struct wl_client *c, struct wl_resource *h, struct wl_resource *surf,
-                               int32_t x, int32_t y, int32_t w, int32_t ht)
-{ (void)c; (void)h; (void)surf; (void)x; (void)y; (void)w; (void)ht; /* minimize hint; unused */ }
-static void ftlh_destroy(struct wl_client *c, struct wl_resource *h)
-{ (void)c; wl_resource_destroy(h); }
-static void ftlh_set_fullscreen(struct wl_client *c, struct wl_resource *h, struct wl_resource *out)
-{ (void)c; (void)out; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { s->toplevel_fullscreen = 1; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
-static void ftlh_unset_fullscreen(struct wl_client *c, struct wl_resource *h)
-{ (void)c; struct iosc_surface *s = wl_resource_get_user_data(h);
-  if (s) { s->toplevel_fullscreen = 0; toplevel_reconfigure_state(s); ftl_broadcast_state(s); } }
-
-static const struct zwlr_foreign_toplevel_handle_v1_interface ftl_handle_impl = {
-    .set_maximized   = ftlh_set_maximized,
-    .unset_maximized = ftlh_unset_maximized,
-    .set_minimized   = ftlh_set_minimized,
-    .unset_minimized = ftlh_unset_minimized,
-    .activate        = ftlh_activate,
-    .close           = ftlh_close,
-    .set_rectangle   = ftlh_set_rectangle,
-    .destroy         = ftlh_destroy,
-    .set_fullscreen  = ftlh_set_fullscreen,
-    .unset_fullscreen = ftlh_unset_fullscreen,
-};
-
-static void ftl_manager_stop(struct wl_client *c, struct wl_resource *m)
-{ (void)c; zwlr_foreign_toplevel_manager_v1_send_finished(m); wl_resource_destroy(m); }
-
-static const struct zwlr_foreign_toplevel_manager_v1_interface ftl_manager_impl = {
-    .stop = ftl_manager_stop,
-};
-
-static void ftl_manager_res_destroy(struct wl_resource *m)
-{ reslist_remove(g_ftl_managers, &g_nftl_managers, m); }
-
-static void ftl_manager_bind(struct wl_client *client, void *data,
-                             uint32_t version, uint32_t id)
-{
-    (void)data;
-    struct wl_resource *m = wl_resource_create(
-        client, &zwlr_foreign_toplevel_manager_v1_interface, version, id);
-    if (!m) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(m, &ftl_manager_impl, NULL, ftl_manager_res_destroy);
-    if (g_nftl_managers < IOSC_MAX_FTL_MANAGERS)
-        g_ftl_managers[g_nftl_managers++] = m;
-    int n = 0;
-    for (int i = 0; i < g_nmapped; i++)      /* replay current window list */
-        if (g_mapped[i]->role == IOSC_ROLE_TOPLEVEL) { ftl_new_handle(m, g_mapped[i]); n++; }
-    fprintf(stderr, "iosc: client bound zwlr_foreign_toplevel_manager_v1 v%u (%d open toplevel(s))\n",
-            version, n);
-}
-
 /* ---- zwlr_layer_shell_v1 / zwlr_layer_surface_v1 ------------------------- */
 /* Desktop-shell surfaces: anchored, z-banded panels/overviews. State is stored
  * on struct iosc_layer_state and applied via the commit-driven placement above
@@ -6748,119 +6420,6 @@ static void layer_shell_bind(struct wl_client *client, void *data,
     if (!r) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(r, &layer_shell_impl, NULL, NULL);
     fprintf(stderr, "iosc: client bound zwlr_layer_shell_v1 v%u\n", version);
-}
-
-/* ---- wm control socket (/var/jb/tmp/iosc-wm.sock) ------------------------ */
-/* A tiny line protocol so a NON-Wayland client (ioscd, the panel) can raise an
- * existing window by app_id without becoming a wl client: `raise\t<app_id>\n` ->
- * surface_raise + keyboard_set_focus, reply "ok\n" / "notfound\n". This is the
- * "second-tap raises the live window" hook (docs/iosc-desktop-env.md §7); it just
- * drives the same raise+focus the xdg-activation path does, keyed by the app_id
- * we already store on the surface. Graceful-degrades: absent, the window is still
- * mapped, it just may not restack to the top. */
-
-#define IOSC_MAX_WM_CLIENTS 8
-#define IOSC_WM_BUF 256
-struct iosc_wm_client { int fd; struct wl_event_source *src; char buf[IOSC_WM_BUF]; int have; };
-static struct iosc_wm_client *g_wm_clients[IOSC_MAX_WM_CLIENTS];
-
-static struct iosc_surface *wm_find_toplevel_by_app_id(const char *app_id)
-{
-    if (!app_id || !*app_id) return NULL;
-    for (int i = g_nmapped - 1; i >= 0; i--) {   /* top-most match wins */
-        struct iosc_surface *s = g_mapped[i];
-        if (s->role == IOSC_ROLE_TOPLEVEL && s->app_id[0] &&
-            strcmp(s->app_id, app_id) == 0)
-            return s;
-    }
-    return NULL;
-}
-
-static int wm_raise_app(const char *app_id)
-{
-    struct iosc_surface *s = wm_find_toplevel_by_app_id(app_id);
-    if (!s) return 0;
-    surface_set_minimized(s, 0);
-    surface_raise(s);
-    keyboard_set_focus(s);
-    if (g_output_damage_valid) recomposite_all();
-    wl_display_flush_clients(g_display);
-    fprintf(stderr, "iosc: wm raise app_id=\"%s\" -> raised\n", app_id);
-    return 1;
-}
-
-/* Handle one line: "raise\t<app_id>". Best-effort reply on fd. */
-static void wm_handle_line(int fd, char *line)
-{
-    char *tab = strchr(line, '\t');
-    const char *reply = "err\n";
-    if (tab && (size_t)(tab - line) == 5 && strncmp(line, "raise", 5) == 0)
-        reply = wm_raise_app(tab + 1) ? "ok\n" : "notfound\n";
-    ssize_t n = write(fd, reply, strlen(reply));   /* best-effort */
-    (void)n;
-}
-
-static void wm_client_drop(struct iosc_wm_client *c)
-{
-    if (!c) return;
-    for (int i = 0; i < IOSC_MAX_WM_CLIENTS; i++)
-        if (g_wm_clients[i] == c) g_wm_clients[i] = NULL;
-    if (c->src) wl_event_source_remove(c->src);
-    if (c->fd >= 0) close(c->fd);
-    free(c);
-}
-
-static int wm_client_readable(int fd, uint32_t mask, void *data)
-{
-    struct iosc_wm_client *c = data;
-    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) { wm_client_drop(c); return 0; }
-    for (;;) {
-        if (c->have >= IOSC_WM_BUF - 1) c->have = 0;   /* overflow: drop partial */
-        ssize_t r = read(fd, c->buf + c->have, IOSC_WM_BUF - 1 - c->have);
-        if (r > 0) {
-            c->have += (int)r;
-            char *nl;
-            while ((nl = memchr(c->buf, '\n', (size_t)c->have)) != NULL) {
-                *nl = 0;
-                char *cr = strchr(c->buf, '\r'); if (cr) *cr = 0;
-                wm_handle_line(fd, c->buf);
-                int consumed = (int)(nl + 1 - c->buf);
-                c->have -= consumed;
-                memmove(c->buf, nl + 1, (size_t)c->have);
-            }
-            continue;
-        }
-        if (r == 0) { wm_client_drop(c); return 0; }
-        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-        if (errno == EINTR) continue;
-        wm_client_drop(c); return 0;
-    }
-    return 0;
-}
-
-static int wm_listen_readable(int fd, uint32_t mask, void *data)
-{
-    (void)mask;
-    struct wl_event_loop *loop = data;
-    int cfd = accept(fd, NULL, NULL);
-    if (cfd < 0) return 0;
-    fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
-    int slot = -1;
-    for (int i = 0; i < IOSC_MAX_WM_CLIENTS; i++) if (!g_wm_clients[i]) { slot = i; break; }
-    if (slot < 0) { close(cfd); return 0; }
-    struct iosc_wm_client *c = calloc(1, sizeof(*c));
-    if (!c) { close(cfd); return 0; }
-    c->fd = cfd;
-    c->src = wl_event_loop_add_fd(loop, cfd, WL_EVENT_READABLE, wm_client_readable, c);
-    g_wm_clients[slot] = c;
-    return 0;
-}
-
-static int wm_socket_start(struct wl_event_loop *loop, const char *path)
-{
-    /* ioscd / the panel connect from outside the app sandbox; unix_listen_start
-     * hands the socket to mobile with 0660 permissions. */
-    return unix_listen_start(loop, path, wm_listen_readable);
 }
 
 /* ===========================================================================
@@ -7223,264 +6782,6 @@ static void data_control_mgr_bind(struct wl_client *c, void *data, uint32_t vers
     struct wl_resource *r = wl_resource_create(c, &zwlr_data_control_manager_v1_interface, version, id);
     if (!r) { wl_client_post_no_memory(c); return; }
     wl_resource_set_implementation(r, &data_control_mgr_impl, NULL, NULL);
-}
-
-/* ===========================================================================
- * idle: ext_idle_notifier_v1 (notifications) + zwp_idle_inhibit_manager_v1.
- *
- * Each notification arms a timer for its timeout; input activity (pointer/key)
- * just stamps g_idle_last_activity_ms — no timer syscalls on the hot input
- * path — and sends `resumed` to any that had `idled`. When a timer fires it
- * checks the stamp and re-arms itself for the remaining time if there was
- * activity since it was armed. While any idle inhibitor exists (video players,
- * presentations) the timers never fire idle.
- * =========================================================================== */
-
-#define IOSC_MAX_IDLE_NOTIF 32
-struct iosc_idle_notif {
-    struct wl_resource *resource;
-    uint32_t timeout_ms;
-    struct wl_event_source *timer;
-    int idled;
-};
-static struct iosc_idle_notif *g_idle_notifs[IOSC_MAX_IDLE_NOTIF]; static int g_nidle_notifs;
-static int g_idle_inhibitors;
-static uint32_t g_idle_last_activity_ms;
-
-static int idle_timer_cb(void *data)
-{
-    struct iosc_idle_notif *n = data;
-    if (g_idle_inhibitors > 0) {          /* inhibited: stay awake, re-arm */
-        if (n->timer && n->timeout_ms) wl_event_source_timer_update(n->timer, n->timeout_ms);
-        return 0;
-    }
-    uint32_t elapsed = now_ms() - g_idle_last_activity_ms;
-    if (elapsed < n->timeout_ms) {        /* activity since arming: sleep the rest */
-        if (n->timer) wl_event_source_timer_update(n->timer, n->timeout_ms - elapsed);
-        return 0;
-    }
-    if (!n->idled) { n->idled = 1; ext_idle_notification_v1_send_idled(n->resource); }
-    return 0;
-}
-void idle_note_activity(void)
-{
-    g_idle_last_activity_ms = now_ms();   /* timers check this lazily when they fire */
-    for (int i = 0; i < g_nidle_notifs; i++) {
-        struct iosc_idle_notif *n = g_idle_notifs[i];
-        if (!n->idled) continue;
-        n->idled = 0; ext_idle_notification_v1_send_resumed(n->resource);
-        if (n->timer && n->timeout_ms) wl_event_source_timer_update(n->timer, n->timeout_ms);
-    }
-}
-
-static void idle_notif_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
-static const struct ext_idle_notification_v1_interface idle_notif_impl = { .destroy = idle_notif_destroy_req };
-static void idle_notif_res_destroy(struct wl_resource *r)
-{
-    struct iosc_idle_notif *n = wl_resource_get_user_data(r);
-    if (!n) return;
-    if (n->timer) wl_event_source_remove(n->timer);
-    for (int i = 0; i < g_nidle_notifs; i++)
-        if (g_idle_notifs[i] == n) { g_idle_notifs[i] = g_idle_notifs[--g_nidle_notifs]; break; }
-    free(n);
-}
-static void idle_notifier_get(struct wl_client *c, struct wl_resource *r, uint32_t id,
-                              uint32_t timeout, struct wl_resource *seat)
-{ (void)seat;
-    if (g_nidle_notifs >= IOSC_MAX_IDLE_NOTIF) { wl_client_post_no_memory(c); return; }
-    struct iosc_idle_notif *n = calloc(1, sizeof(*n));
-    if (!n) { wl_client_post_no_memory(c); return; }
-    n->resource = wl_resource_create(c, &ext_idle_notification_v1_interface, wl_resource_get_version(r), id);
-    if (!n->resource) { free(n); wl_client_post_no_memory(c); return; }
-    n->timeout_ms = timeout ? timeout : 1;
-    wl_resource_set_implementation(n->resource, &idle_notif_impl, n, idle_notif_res_destroy);
-    n->timer = wl_event_loop_add_timer(wl_display_get_event_loop(g_display), idle_timer_cb, n);
-    if (n->timer) wl_event_source_timer_update(n->timer, n->timeout_ms);
-    g_idle_notifs[g_nidle_notifs++] = n;
-}
-static void idle_notifier_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
-static const struct ext_idle_notifier_v1_interface idle_notifier_impl = {
-    .destroy = idle_notifier_destroy, .get_idle_notification = idle_notifier_get };
-static void idle_notifier_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(c, &ext_idle_notifier_v1_interface, version, id);
-    if (!r) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(r, &idle_notifier_impl, NULL, NULL);
-}
-
-static void idle_inhibitor_destroy_req(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
-static const struct zwp_idle_inhibitor_v1_interface idle_inhibitor_impl = { .destroy = idle_inhibitor_destroy_req };
-static void idle_inhibitor_res_destroy(struct wl_resource *r){ (void)r; if (g_idle_inhibitors > 0) g_idle_inhibitors--; }
-static void idle_inhibit_create(struct wl_client *c, struct wl_resource *r, uint32_t id,
-                                struct wl_resource *surface)
-{ (void)surface;
-    struct wl_resource *inh = wl_resource_create(c, &zwp_idle_inhibitor_v1_interface, wl_resource_get_version(r), id);
-    if (!inh) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(inh, &idle_inhibitor_impl, NULL, idle_inhibitor_res_destroy);
-    g_idle_inhibitors++;
-}
-static void idle_inhibit_mgr_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
-static const struct zwp_idle_inhibit_manager_v1_interface idle_inhibit_mgr_impl = {
-    .create_inhibitor = idle_inhibit_create, .destroy = idle_inhibit_mgr_destroy };
-static void idle_inhibit_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(c, &zwp_idle_inhibit_manager_v1_interface, version, id);
-    if (!r) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(r, &idle_inhibit_mgr_impl, NULL, NULL);
-}
-
-/* ===========================================================================
- * ext-session-lock-v1 (screen locking)
- *
- * State + the render/input/focus confinement hooks live at the top of the file
- * (g_slock; recomposite_all, surface_at, keyboard_set_focus, surface_unmap).
- * This section is just the protocol plumbing: grant/deny the lock, hand out
- * the (single-output) lock surface with an output-sized configure, and unlock.
- * =========================================================================== */
-
-static void slock_surface_destroy_req(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static void slock_surface_ack_configure(struct wl_client *c, struct wl_resource *r, uint32_t serial)
-{ (void)c; (void)r; (void)serial; }   /* single fixed-size configure; nothing to track */
-static const struct ext_session_lock_surface_v1_interface slock_surface_impl = {
-    .destroy = slock_surface_destroy_req,
-    .ack_configure = slock_surface_ack_configure,
-};
-
-static void slock_surface_resource_destroy(struct wl_resource *r)
-{
-    struct iosc_surface *s = wl_resource_get_user_data(r);
-    if (!s) return;                     /* disarmed by surface_unmap */
-    s->role = IOSC_ROLE_NONE;           /* the wl_surface may be reused */
-    if (g_slock.surface == s) {
-        g_slock.surface = NULL;
-        g_slock.lock_surface = NULL;
-        if (g_kbd_focus == s) keyboard_set_focus(NULL);
-        output_damage_add_full();
-        recomposite_all();              /* blank again while still locked */
-    }
-}
-
-static void slock_get_lock_surface(struct wl_client *c, struct wl_resource *r, uint32_t id,
-                                   struct wl_resource *surf, struct wl_resource *output)
-{ (void)output;   /* single output */
-    struct iosc_surface *s = surf ? wl_resource_get_user_data(surf) : NULL;
-    if (!s) return;
-    if (g_slock.lock != r || !g_slock.locked) return;   /* denied lock: inert */
-    if (s->role != IOSC_ROLE_NONE) {
-        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_ROLE,
-                               "surface already has a role");
-        return;
-    }
-    if (g_slock.surface) {
-        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_DUPLICATE_OUTPUT,
-                               "output already has a lock surface");
-        return;
-    }
-    struct wl_resource *ls = wl_resource_create(c, &ext_session_lock_surface_v1_interface,
-                                                wl_resource_get_version(r), id);
-    if (!ls) { wl_client_post_no_memory(c); return; }
-    s->role = IOSC_ROLE_LOCK;
-    s->dx = 0;
-    s->dy = 0;
-    g_slock.surface = s;
-    g_slock.lock_surface = ls;
-    wl_resource_set_implementation(ls, &slock_surface_impl, s, slock_surface_resource_destroy);
-    ext_session_lock_surface_v1_send_configure(ls, wl_display_next_serial(g_display),
-                                               (uint32_t)output_logical_width(),
-                                               (uint32_t)output_logical_height());
-    keyboard_set_focus(s);
-    fprintf(stderr, "iosc: session-lock surface created (%dx%d configure)\n",
-            output_logical_width(), output_logical_height());
-}
-
-static void slock_destroy_req(struct wl_client *c, struct wl_resource *r)
-{ (void)c;
-    /* Plain destroy is only legal while NOT locked through this object (i.e.
-     * after a finished event); a locked client must use unlock_and_destroy. */
-    if (g_slock.lock == r && g_slock.locked) {
-        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_INVALID_DESTROY,
-                               "destroy while locked (use unlock_and_destroy)");
-        return;
-    }
-    wl_resource_destroy(r);
-}
-
-static void slock_unlock_and_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c;
-    if (g_slock.lock != r || !g_slock.locked) {
-        wl_resource_post_error(r, EXT_SESSION_LOCK_V1_ERROR_INVALID_UNLOCK,
-                               "unlock on a lock that was never granted");
-        return;
-    }
-    g_slock.locked = 0;
-    g_slock.lock = NULL;
-    fprintf(stderr, "iosc: session UNLOCKED\n");
-    keyboard_set_focus(topmost_focusable());
-    g_ptr_focus = NULL;                /* next motion re-enters normally */
-    output_damage_add_full();
-    recomposite_all();                 /* windows come back */
-    wl_resource_destroy(r);
-}
-
-static const struct ext_session_lock_v1_interface slock_impl = {
-    .destroy = slock_destroy_req,
-    .get_lock_surface = slock_get_lock_surface,
-    .unlock_and_destroy = slock_unlock_and_destroy,
-};
-
-static void slock_resource_destroy(struct wl_resource *r)
-{
-    /* Reached with the session still locked only when the locker died or its
-     * client misbehaved: keep the session locked (spec: never unlock on crash);
-     * a new ext_session_lock_manager_v1.lock may take over and unlock. */
-    if (g_slock.lock == r) {
-        g_slock.lock = NULL;
-        if (g_slock.locked)
-            fprintf(stderr, "iosc: session lock ABANDONED; staying locked "
-                            "(run a locker again to take over)\n");
-    }
-}
-
-static void slock_mgr_lock(struct wl_client *c, struct wl_resource *r, uint32_t id)
-{
-    struct wl_resource *lk = wl_resource_create(c, &ext_session_lock_v1_interface,
-                                                wl_resource_get_version(r), id);
-    if (!lk) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(lk, &slock_impl, NULL, slock_resource_destroy);
-    if (g_slock.lock) {
-        /* Another locker is active: deny (client should destroy the object). */
-        ext_session_lock_v1_send_finished(lk);
-        fprintf(stderr, "iosc: session-lock denied (already locked)\n");
-        return;
-    }
-    g_slock.lock = lk;
-    g_slock.locked = 1;                /* also adopts an abandoned locked session */
-    ext_session_lock_v1_send_locked(lk);
-    fprintf(stderr, "iosc: session LOCKED\n");
-    keyboard_set_focus(NULL);          /* redirected to the lock surface once it exists */
-    g_ptr_focus = NULL;
-    if (g_dnd.active) {                /* a drag can't survive the screen locking */
-        if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
-        dnd_end();
-    }
-    touch_cancel_all();                /* nor can in-flight touch sequences */
-    pen_leave(now_ms());               /* nor a pen stroke */
-    output_damage_add_full();
-    recomposite_all();                 /* blank the output right away */
-}
-
-static void slock_mgr_destroy(struct wl_client *c, struct wl_resource *r)
-{ (void)c; wl_resource_destroy(r); }
-static const struct ext_session_lock_manager_v1_interface slock_mgr_impl = {
-    .destroy = slock_mgr_destroy,
-    .lock = slock_mgr_lock,
-};
-static void slock_mgr_bind(struct wl_client *c, void *data, uint32_t version, uint32_t id)
-{ (void)data;
-    struct wl_resource *r = wl_resource_create(c, &ext_session_lock_manager_v1_interface, version, id);
-    if (!r) { wl_client_post_no_memory(c); return; }
-    wl_resource_set_implementation(r, &slock_mgr_impl, NULL, NULL);
 }
 
 /* ---- main ---------------------------------------------------------------- */
