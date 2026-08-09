@@ -11748,7 +11748,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/powerdevil.json
 Native Depiction: https://repo.maxleiter.com/depictions/powerdevil.json
 
 Package: pulseaudio
-Version: 17.0-7+ios1
+Version: 17.0-7+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
@@ -11758,18 +11758,18 @@ Depends: libgtkintl, libiosexec1 (>= 1.3.1), libpulse0 (>= 17.0), libltdl7, libs
 Description: PulseAudio sound server for the Xios desktop
 Installed-Size: 6356
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/pulseaudio_17.0-7+ios1_iphoneos-arm64.deb
-Size: 639376
-MD5sum: 637173b08f6f9d22570ede2e8e39b240
-SHA1: 3360509e057082b31eaf87e76e77242f552aa383
-SHA256: 4e842bcab80752245e46f156dd7643ff65554d34a1d014c10d1fa91d0c865f28
+Filename: debs/pulseaudio_17.0-7+ios2_iphoneos-arm64.deb
+Size: 640132
+MD5sum: 8dca89f0d98db48cc0486c9b993b7a7d
+SHA1: 5e59b007863a0dddfc0558980d383d1d58ba523a
+SHA256: e30d4b63fb92cb561f5663381aa8126dc98639ab601846a367c5953980164fbd
 Icon: https://repo.maxleiter.com/icons/pulseaudio.png
 Depiction: https://repo.maxleiter.com/depictions/pulseaudio.html
 SileoDepiction: https://repo.maxleiter.com/depictions/pulseaudio.json
 Native Depiction: https://repo.maxleiter.com/depictions/pulseaudio.json
 
 Package: pulseaudio-utils
-Version: 17.0-7+ios1
+Version: 17.0-7+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
@@ -11779,11 +11779,11 @@ Depends: libgtkintl, libiosexec1 (>= 1.3.1), libpulse0 (>= 17.0), libsndfile1
 Description: PulseAudio command line tools
 Installed-Size: 524
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/pulseaudio-utils_17.0-7+ios1_iphoneos-arm64.deb
-Size: 63930
-MD5sum: 7de9971594cdf69e31c9c280034c9581
-SHA1: e74382d2a2166e76aa643d0c4c1a440ed16d3b17
-SHA256: 2e71c3673df4ca8984dd21d5c36e71fe6fbe0aefca20510d912c9b772e7bf52e
+Filename: debs/pulseaudio-utils_17.0-7+ios2_iphoneos-arm64.deb
+Size: 63926
+MD5sum: 1b6ccb38bbb533c56fc667a57308469a
+SHA1: ee16787444a5e1550bca56146686a57cd52603db
+SHA256: ffff11ac4905c10e7d75fff0279ff18f012be172d1079bf1e1220b9af5e01ec7
 Icon: https://repo.maxleiter.com/icons/pulseaudio-utils.png
 Depiction: https://repo.maxleiter.com/depictions/pulseaudio-utils.html
 SileoDepiction: https://repo.maxleiter.com/depictions/pulseaudio-utils.json
@@ -12807,7 +12807,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-fhs
 Name: Xios filesystem + hardware bridge
-Version: 1.0.4
+Version: 1.0.5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -12816,11 +12816,11 @@ Provides: xios-hwbridge, xios-sensor-bridge
 Section: X11
 Priority: optional
 Description: Standard Linux paths + hardware bridges for the Xios desktop
-Filename: debs/xios-fhs_1.0.4_iphoneos-arm64.deb
-Size: 20328
-MD5sum: 7b1d2490cdd6e78a46a484928ba3721f
-SHA1: 97e71e930a967c47d12479b7f29af47521f41043
-SHA256: 47ea8a3bcac665b521a9c5758f822a8579ab3f2d55dfdfa3641a6320e74bf969
+Filename: debs/xios-fhs_1.0.5_iphoneos-arm64.deb
+Size: 20612
+MD5sum: fc7d34d678ef9fd66de20c127364c025
+SHA1: 96b3c730109668b62081bddc87d7c0b7ba934d94
+SHA256: 50fd63e4b799c54a9c49792a94edf21be19ea24c4035efda479795c67b969ce1
 Icon: https://repo.maxleiter.com/icons/xios-fhs.png
 Depiction: https://repo.maxleiter.com/depictions/xios-fhs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-fhs.json
