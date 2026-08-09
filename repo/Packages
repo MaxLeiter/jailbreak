@@ -1265,21 +1265,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.
 Native Depiction: https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.json
 
 Package: gtk-3-bin
-Version: 3.24.38+ios2
+Version: 3.24.38+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libiosexec1 (>= 1.3.1), libgtk-3-0 (= 3.24.38+ios2), libglib2.0-bin, libgtkintl
+Depends: libiosexec1 (>= 1.3.1), libgtk-3-0 (>= 3.24.38+ios2), libglib2.0-bin, libgtkintl
 Description: Programs for the GTK graphical user interface library
 Installed-Size: 820
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/gtk-3-bin_3.24.38+ios2_iphoneos-arm64.deb
-Size: 229924
-MD5sum: dd0b3d1113359c213582d0a73c1c22d2
-SHA1: 7e4ad22d87ee15c64d66bb20b2ef6545fb38903a
-SHA256: bdf0cbe4043c04a4878476973be1046fa9c3264681a56dcdb506cd2b9e5c7171
+Filename: debs/gtk-3-bin_3.24.38+ios3_iphoneos-arm64.deb
+Size: 229942
+MD5sum: 28c6a7a4ed34daf5af32373269ddb8da
+SHA1: 9a236df6ac8101369c3ac8ed219b61ef1df82c50
+SHA256: 1f0d046110ee1f020ac004296d420a5bdd8fe4888f73ad7f147c08207ab603c8
 Icon: https://repo.maxleiter.com/icons/gtk-3-bin.png
 Depiction: https://repo.maxleiter.com/depictions/gtk-3-bin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/gtk-3-bin.json
@@ -1605,21 +1605,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kdecoration.json
 Native Depiction: https://repo.maxleiter.com/depictions/kdecoration.json
 
 Package: kdecoration-dev
-Version: 6.1.5+ios1
+Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kdecoration (= 6.1.5), extra-cmake-modules, qt6-base-dev, kf6-i18n-dev
+Depends: kdecoration (>= 6.1.5), extra-cmake-modules, qt6-base-dev, kf6-i18n-dev
 Description: Development files for KDecoration2
 Installed-Size: 212
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kdecoration-dev_6.1.5+ios1_iphoneos-arm64.deb
-Size: 18308
-MD5sum: ae682ade73db3b6258b833ae87b2117a
-SHA1: 6ea464705df47d58f2b8c0eac5335701742c37ad
-SHA256: ae1eac0fa46fe490a68ca795eec0db215e8dcc220dd7a533487a6d3f59ed9090
+Filename: debs/kdecoration-dev_6.1.5+ios2_iphoneos-arm64.deb
+Size: 18320
+MD5sum: fb5dbace185634f1ba963cd72e99aba6
+SHA1: 76c83057de9d8632d1b08dee24a284d6564e72f3
+SHA256: 94d41751a55b899e621968da650b4649c4032f4d3ef98e424c7e0f0dda093db9
 Icon: https://repo.maxleiter.com/icons/kdecoration-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kdecoration-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kdecoration-dev.json
@@ -1647,21 +1647,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-archive.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-archive.json
 
 Package: kf6-archive-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-archive (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-archive (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KArchive
 Installed-Size: 200
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-archive-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 17248
-MD5sum: 0b924e1b609179508ea2717b0ec50cff
-SHA1: 2249ae5aec3f728f570c1bfa83b485b76737b979
-SHA256: 621044326f3565b8424e7fef3155f7a8d6edc247be6753e4bbbba98231ed9786
+Filename: debs/kf6-archive-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 17260
+MD5sum: 642857323ea165b3e88a5a7ad8103d75
+SHA1: 782d7c2e2033e7a38f03db97d3532458fa8c776c
+SHA256: 88e452a2256d07b123466e3449a9f67588e054a83783ce41ff0d6280120101cb
 Icon: https://repo.maxleiter.com/icons/kf6-archive-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-archive-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-archive-dev.json
@@ -1731,21 +1731,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-auth.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-auth.json
 
 Package: kf6-auth-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-auth (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev
+Depends: kf6-auth (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev
 Description: Development files for KAuth
 Installed-Size: 156
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-auth-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 21410
-MD5sum: 577c343c0a148befab0e7d364ce19e85
-SHA1: b2d4b893ca3148fc2b4c7c6bf3ff88d5e2346f07
-SHA256: bf21bfeb336377f696e52e90ceacf4e8d191df6aff664824c4baff363f6b21ad
+Filename: debs/kf6-auth-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 21426
+MD5sum: 847c8f9f994aee10a7d9d408121ee05a
+SHA1: a9e0f35115333afb68812e7ffba95309dcbd31c6
+SHA256: 0c38692d1e56aa2ab1e0747369259ab694fbeaf37c0bc8ffc01ecca8bf635446
 Icon: https://repo.maxleiter.com/icons/kf6-auth-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-auth-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-auth-dev.json
@@ -1815,21 +1815,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-bookmarks.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-bookmarks.json
 
 Package: kf6-bookmarks-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-bookmarks (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-widgetsaddons-dev
+Depends: kf6-bookmarks (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-widgetsaddons-dev
 Description: Development files for KBookmarks
 Installed-Size: 176
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-bookmarks-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 16012
-MD5sum: c2019964a4f63f5f9e73be72472544fc
-SHA1: e3e26dbd311591d3c4f3842aa5b9673fac68be65
-SHA256: 03153610b6097cef7796b81d10609c867a4104f05fa0d9bda34d9e7bd01fd3aa
+Filename: debs/kf6-bookmarks-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 16022
+MD5sum: 373dcf4e0017d33cc206cf0f2c056df3
+SHA1: cc7d74ed62032af85b7e4478f5eaa0f2bbe5a14b
+SHA256: 8316c810dea40fc4bc22c69fff2e0f293405855d6ddd668a5ee31d782d0e1dea
 Icon: https://repo.maxleiter.com/icons/kf6-bookmarks-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-bookmarks-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-bookmarks-dev.json
@@ -1878,21 +1878,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-codecs.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-codecs.json
 
 Package: kf6-codecs-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-codecs (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-codecs (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KCodecs
 Installed-Size: 132
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-codecs-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 17052
-MD5sum: f77ab7f99dbacc560edf92db67366220
-SHA1: 4b25e89680188aba3171380dbc490007f87476a3
-SHA256: feb2960d1a08ac9aead6a18c681a9ca27b57ce05cdbd5c47c0fc01a849fc41b6
+Filename: debs/kf6-codecs-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 17062
+MD5sum: ebc2db2ce88e0fd5091f9f5113cb0027
+SHA1: 5e04f9f727d73df1294e8a5c394787007f20abb5
+SHA256: 188443482150006a2a50fc11e847dd98c3b47a02482c32c9f2584b834ba50e74
 Icon: https://repo.maxleiter.com/icons/kf6-codecs-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-codecs-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-codecs-dev.json
@@ -1920,21 +1920,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-colorscheme.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-colorscheme.json
 
 Package: kf6-colorscheme-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-colorscheme (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-guiaddons-dev, kf6-i18n-dev
+Depends: kf6-colorscheme (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-guiaddons-dev, kf6-i18n-dev
 Description: Development files for KColorScheme
 Installed-Size: 128
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-colorscheme-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 13104
-MD5sum: b19462e8461493aeb5485142e17e05fe
-SHA1: 97e485c683a8132b03600f962628ba44a9b8b0e8
-SHA256: ea6203af6a51781cee66e192520ecddce480b08ccfe9b29d126e07a1af43ade1
+Filename: debs/kf6-colorscheme-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 13120
+MD5sum: 1c907b06f9e6ededb35d4e2d87289afb
+SHA1: 6648f4d1d12327e309dcf6e7a6d63ff622cabda7
+SHA256: a4635cff5ced972370869a9acaa576845486984f251dabbd053d5b17ea0a97b8
 Icon: https://repo.maxleiter.com/icons/kf6-colorscheme-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-colorscheme-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-colorscheme-dev.json
@@ -1962,21 +1962,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-completion.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-completion.json
 
 Package: kf6-completion-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-completion (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-codecs-dev, kf6-config-dev, kf6-widgetsaddons-dev
+Depends: kf6-completion (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-codecs-dev, kf6-config-dev, kf6-widgetsaddons-dev
 Description: Development files for KCompletion
 Installed-Size: 204
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-completion-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 28486
-MD5sum: f79dcdcec77e5b61ae63a54b136a5d31
-SHA1: aed47868f4c7c0b43262c49ffa1aa55a748675fb
-SHA256: 7e5da39634396e3dd9c71d36eb8f884b101c37007082cc93a52fdce84e1db704
+Filename: debs/kf6-completion-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 28492
+MD5sum: ab3d6622411f7cd3ec75b39e5c46f021
+SHA1: e8a75fdd21f66bc29cc3b68ec0160eafd0a54d8b
+SHA256: c8d804f4c9a0cbc86f31515b97f31725060fbb3d3cda9facf6cbe8ef2bb27c3a
 Icon: https://repo.maxleiter.com/icons/kf6-completion-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-completion-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-completion-dev.json
@@ -2004,21 +2004,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-config.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-config.json
 
 Package: kf6-config-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-config (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-config (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KConfig
 Installed-Size: 460
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-config-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 56272
-MD5sum: cae2d57875fdb77a17274a66a4581c65
-SHA1: 2510134c5e236dca48965384143791c4de1fdb29
-SHA256: e1f9e508cfb34d9c6660cc6236d310065d326b7c0f5cbd09689fdf2836fd3861
+Filename: debs/kf6-config-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 56284
+MD5sum: 6d4c63db8ccb6da86db4757947b66ced
+SHA1: c2354a165cad86a85d5bf3c64dec5eff74574d6b
+SHA256: 00b7055cb92cde14987ca863c0cb6d2c3da6230e280f1cf07e1395d0bfafb500
 Icon: https://repo.maxleiter.com/icons/kf6-config-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-config-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-config-dev.json
@@ -2046,21 +2046,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-configwidgets.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-configwidgets.json
 
 Package: kf6-configwidgets-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-configwidgets (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-codecs-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-widgetsaddons-dev
+Depends: kf6-configwidgets (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-codecs-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-widgetsaddons-dev
 Description: Development files for KConfigWidgets
 Installed-Size: 244
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-configwidgets-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 27294
-MD5sum: 843f18b9e6253953e883c2acf1e002f5
-SHA1: 1991dac8fde707e4957679093344901003aac9f5
-SHA256: c4819ab5a3fa748c5466d79ca465a614a448e91fcffc6709c20d53c6378044ba
+Filename: debs/kf6-configwidgets-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 27304
+MD5sum: 5f06ee183543f11e087710cab133adb7
+SHA1: 0fea913039777c98791307222542f349e5932c55
+SHA256: c4d832fab655d12dd773a8c2f62a96750db8e5b7c1512ecfd386710074674f70
 Icon: https://repo.maxleiter.com/icons/kf6-configwidgets-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-configwidgets-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-configwidgets-dev.json
@@ -2131,21 +2131,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-crash.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-crash.json
 
 Package: kf6-crash-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-crash (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev
+Depends: kf6-crash (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev
 Description: Development files for KCrash
 Installed-Size: 76
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-crash-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 6916
-MD5sum: 13c2d02d009beb9ea34e58b828db400d
-SHA1: 9e70c8da6de9e0e028c3dd79912c26368bf3578b
-SHA256: f067f211039e2cf4331fa7479fcf62eb362c0f924814f42ffad7636da285d8d8
+Filename: debs/kf6-crash-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 6928
+MD5sum: b84acc57f68673374e2214db4db87946
+SHA1: 0236d4ce4d4ccd8ce34d9f2c0ca7f67bd3134839
+SHA256: 1cf45f49076785ef2744eae544b3e874128c510e95accab84d69e0ca6badd66d
 Icon: https://repo.maxleiter.com/icons/kf6-crash-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-crash-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-crash-dev.json
@@ -2173,21 +2173,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-dbusaddons.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-dbusaddons.json
 
 Package: kf6-dbusaddons-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-dbusaddons (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-dbusaddons (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KDBusAddons
 Installed-Size: 112
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-dbusaddons-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 11040
-MD5sum: 1a3cbba732d4975a7c51cd3165f3b708
-SHA1: 969d65317a04ea034f9cfa5817b7d2a8e6196d53
-SHA256: 2b17c3de4dc11f2ac99a8eff31d7148d8830a7623e555f25ce80fda1cda6dbd8
+Filename: debs/kf6-dbusaddons-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 11042
+MD5sum: 5e421f5347d9f83f8fc9377210bcef45
+SHA1: ba87112dcfcc5c14c4ac81345f2e200bc23f7399
+SHA256: ebb56b3e530926dc5de018a18ed3863a2b243e0e04b8d14aa67e8254b3e42d11
 Icon: https://repo.maxleiter.com/icons/kf6-dbusaddons-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-dbusaddons-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-dbusaddons-dev.json
@@ -2257,21 +2257,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-globalaccel.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-globalaccel.json
 
 Package: kf6-globalaccel-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-globalaccel (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-globalaccel (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KGlobalAccel
 Installed-Size: 96
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-globalaccel-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 9370
-MD5sum: 5beb4b75d8b6e74444d5ec44e4cca095
-SHA1: c8ccabd4a2207164c7524fa15b7911305469932e
-SHA256: 289b371cac0683106f4c23c288fe0df5fa2486013170a016eabec2c7455e32c3
+Filename: debs/kf6-globalaccel-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 9408
+MD5sum: bd846c1c8be487316ed0b3c68d1861ab
+SHA1: 00c39205968311acd3cb55ceb782b730dc8a255d
+SHA256: a56ff94f53655b267922560fec9a197ca8aca8961f1e9e96a49e8d6e3b77f8a6
 Icon: https://repo.maxleiter.com/icons/kf6-globalaccel-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-globalaccel-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-globalaccel-dev.json
@@ -2299,21 +2299,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-guiaddons.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-guiaddons.json
 
 Package: kf6-guiaddons-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-guiaddons (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-guiaddons (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KGuiAddons
 Installed-Size: 232
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-guiaddons-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 22834
-MD5sum: 9a736271a5d4e83c0dbec3954c652496
-SHA1: 66a36a153e1b0b1280001d53f7051d1093a8d07a
-SHA256: ea8bf657f2fa30eb03c20a2565e257e13e98e651d9d548756d5ef969de2a3e82
+Filename: debs/kf6-guiaddons-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 22846
+MD5sum: be2ff5ea498204926b3c2ef03e0659ab
+SHA1: 7da75e54592fba9b87e2cfd07f2ee5ae1aa4abdd
+SHA256: 516b608c62a66da7742c0f3e619665c06ae9c3049f0aab36c609d386c25cab53
 Icon: https://repo.maxleiter.com/icons/kf6-guiaddons-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-guiaddons-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-guiaddons-dev.json
@@ -2341,21 +2341,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-i18n.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-i18n.json
 
 Package: kf6-i18n-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-i18n (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-i18n (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KI18n
 Installed-Size: 308
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-i18n-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 30486
-MD5sum: db7a715f3b4ecb42af0557ec07c016f9
-SHA1: abc3bb5bf5e1dd40c1f70a0e322b80b97a4a4824
-SHA256: 73fc2cb3f75f1644d806c277fa680a8afcca103c0236f268ad1e06167952a182
+Filename: debs/kf6-i18n-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 30494
+MD5sum: 502da5acc85fc3a2cc22e8261b5fd623
+SHA1: 2efe23a62cdf402b2ac34aae55cec3d4a7383290
+SHA256: dd2149cda7a9d849ce08613fea0dc68d8ca6e14528b5c3fa7100e6ec54fdbe58
 Icon: https://repo.maxleiter.com/icons/kf6-i18n-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-i18n-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-i18n-dev.json
@@ -2383,21 +2383,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-iconthemes.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-iconthemes.json
 
 Package: kf6-iconthemes-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-iconthemes (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-widgetsaddons-dev, kf6-breeze-icons
+Depends: kf6-iconthemes (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-widgetsaddons-dev, kf6-breeze-icons
 Description: Development files for KIconThemes
 Installed-Size: 200
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-iconthemes-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 21212
-MD5sum: 8cea7fde166c8c78ee2eb7a0853b9cde
-SHA1: bed6c4a5056d6bcba65c75586ed8a1c69e6ed517
-SHA256: fa60a636d09f00e4563f3984be185c005f91a0509cbe8854f45ad23e7f067f5a
+Filename: debs/kf6-iconthemes-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 21224
+MD5sum: b6daf4b4b13241abf4cdfedca462388b
+SHA1: 798a318a969573ffdc0c4dcb156b7a9a0b407355
+SHA256: 3cdf90bed23c24e5ee8caa03fca121d53ac9084040ad7e9fe659e859c3284e03
 Icon: https://repo.maxleiter.com/icons/kf6-iconthemes-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-iconthemes-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-iconthemes-dev.json
@@ -2425,21 +2425,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-idletime.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-idletime.json
 
 Package: kf6-idletime-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-idletime (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-idletime (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KIdleTime
 Installed-Size: 84
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-idletime-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 7442
-MD5sum: 5733908140c753a5e02e6f9c62cdc444
-SHA1: d0636902d421696ed4423bf53b5af117a73b12ff
-SHA256: fccc99621d80ebdda7f780731ab8c3c0c90e2a3bcd1dc75c932e06d0bbd61fff
+Filename: debs/kf6-idletime-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 7462
+MD5sum: 714d85cc5e4f5b43d9182b29183c0d16
+SHA1: b3abcadfc2db11ef8c1495dd7fdf15a3de1730c1
+SHA256: eb4ebbb872789c8fbc0187e8d98e990bcb3c7a931867c653e192b4008f948757
 Icon: https://repo.maxleiter.com/icons/kf6-idletime-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-idletime-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-idletime-dev.json
@@ -2467,21 +2467,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-itemmodels.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-itemmodels.json
 
 Package: kf6-itemmodels-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-itemmodels (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-itemmodels (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KItemModels
 Installed-Size: 168
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-itemmodels-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 17346
-MD5sum: efdefac5ddd8572cf704f01b13c0c662
-SHA1: ccd6c7a51cd303968b6fc7daacd42423cdf55a14
-SHA256: 507e992c5f3e2a3b5336a633584c78e72185f9301c26a1b90c76435d1e88d91a
+Filename: debs/kf6-itemmodels-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 17354
+MD5sum: 413f11c360a36512a96f242dd26f1649
+SHA1: 35452d8e5f17259af0f86919a49074a5663c8664
+SHA256: f755fee6f2a184f7dc57a82a971712e6f3b4acdd9409796af4174f084da375ee
 Icon: https://repo.maxleiter.com/icons/kf6-itemmodels-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-itemmodels-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-itemmodels-dev.json
@@ -2509,21 +2509,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-itemviews.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-itemviews.json
 
 Package: kf6-itemviews-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-itemviews (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-itemviews (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KItemViews
 Installed-Size: 160
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-itemviews-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 16988
-MD5sum: de08693ebf5af8cbfa7a62ce1678b8e8
-SHA1: 87c266240753010a6b4c154c0c50593557d70200
-SHA256: 285022665cadef6cb84fb199b505adf8b907bf067e0b8edbd783f7a1602a7a61
+Filename: debs/kf6-itemviews-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 16998
+MD5sum: 9d343f4b9c58b9bbebb2c403cd19eb17
+SHA1: 5c2108108e73fcedf55eafc656824aa7fa37a021
+SHA256: 56deab4e96b07f73a1b2fe9df9b4d4e59e69b7332044a03327d05eba880a43d2
 Icon: https://repo.maxleiter.com/icons/kf6-itemviews-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-itemviews-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-itemviews-dev.json
@@ -2551,21 +2551,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-jobwidgets.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-jobwidgets.json
 
 Package: kf6-jobwidgets-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-jobwidgets (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev, kf6-notifications-dev, kf6-widgetsaddons-dev
+Depends: kf6-jobwidgets (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-coreaddons-dev, kf6-notifications-dev, kf6-widgetsaddons-dev
 Description: Development files for KJobWidgets
 Installed-Size: 128
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-jobwidgets-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 9410
-MD5sum: 302db323f787deede6a9573f24aaaa28
-SHA1: 111133b672c9cc6a89e20b13269a31aafc0a4731
-SHA256: 665eab1d8cb29ebd2eb5a680278745f26b55d9232088fb68ff7a43cac90b5062
+Filename: debs/kf6-jobwidgets-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 9418
+MD5sum: a04dd3b40afd82e5022b024da1052940
+SHA1: 908fb3331cd184773ffa7489a56bf4471636256b
+SHA256: a37ff45d19753fa954284b0a26d02ec7793789f425adf96de38a397682f68666
 Icon: https://repo.maxleiter.com/icons/kf6-jobwidgets-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-jobwidgets-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-jobwidgets-dev.json
@@ -2593,21 +2593,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-kcmutils.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-kcmutils.json
 
 Package: kf6-kcmutils-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-kcmutils (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-kio-dev, kf6-itemviews-dev, kf6-xmlgui-dev
+Depends: kf6-kcmutils (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-kio-dev, kf6-itemviews-dev, kf6-xmlgui-dev
 Description: Development files for KCMUtils
 Installed-Size: 224
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-kcmutils-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 22108
-MD5sum: da037a56ae214ebb561bbb4c9a533cf6
-SHA1: f53830a70f9001909ce8050a2a5deb46131c6711
-SHA256: 07d8e52c156c16022aefef85bf1460484879d00fa429dce93f0e2caeb43e49b0
+Filename: debs/kf6-kcmutils-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 22120
+MD5sum: 0ea61f9736a70800f0a80ce852e955af
+SHA1: d54eda46f5fda7286a260f50eed37e5d1aea4a62
+SHA256: 465fe88e5548f5408de57309116b94746bd73cda6b49b802f323d2ba943f38d0
 Icon: https://repo.maxleiter.com/icons/kf6-kcmutils-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-kcmutils-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-kcmutils-dev.json
@@ -2761,21 +2761,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-kirigami-addons-dev.js
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-kirigami-addons-dev.json
 
 Package: kf6-kirigami-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-kirigami (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-kirigami (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for Kirigami
 Installed-Size: 184
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-kirigami-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 16386
-MD5sum: e2d01b6764614654887195543eea9866
-SHA1: 1d2ba4d557dd80adf79e014b7d02bc301bfe3762
-SHA256: f78091809e5992074af205f1c05e7a045f9614b57292280559c176f3b719c4ae
+Filename: debs/kf6-kirigami-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 16398
+MD5sum: 2d70bb8982c30f85f509fe08c0572b20
+SHA1: db55d9877728857a553459744777073bb7cd519d
+SHA256: e871aeca5229e235fe08a6eb8866109b811414c56d876a94b96001f153693b71
 Icon: https://repo.maxleiter.com/icons/kf6-kirigami-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-kirigami-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-kirigami-dev.json
@@ -2887,21 +2887,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-notifications.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-notifications.json
 
 Package: kf6-notifications-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-notifications (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev
+Depends: kf6-notifications (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev
 Description: Development files for KNotifications
 Installed-Size: 128
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-notifications-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 12840
-MD5sum: e435eeceff18c7f6de25392b17ce6eef
-SHA1: 82b079d3f492e6f8581a2af94514ecd8f2353dbb
-SHA256: 7635fd73bd22a876a21a71dcfb33df6a8a4987eb5cc78887a7425dbcc6e321d7
+Filename: debs/kf6-notifications-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 12860
+MD5sum: a7849cccd193785ad1fe11448e0666af
+SHA1: b47d3068b381492a4ad76974c07af759d57f51cb
+SHA256: 3a811ea0e516ae3ce818431d70e0de9ab0a1788b4df3bb448acfd97a337df6d9
 Icon: https://repo.maxleiter.com/icons/kf6-notifications-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-notifications-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-notifications-dev.json
@@ -2971,21 +2971,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-package.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-package.json
 
 Package: kf6-package-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-package (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-coreaddons-dev, kf6-i18n-dev
+Depends: kf6-package (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-coreaddons-dev, kf6-i18n-dev
 Description: Development files for KPackage
 Installed-Size: 136
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-package-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 13350
-MD5sum: b2c76b4b1c02fbf13b218fc2ab39374f
-SHA1: dc609be84260ad6c5708026e1115bee957edced0
-SHA256: 87ba946f462441044707610f597018553a80e480662c846c4b92a90bf5400fa5
+Filename: debs/kf6-package-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 13360
+MD5sum: 32b626ec2252061a7cc221e26dc1e831
+SHA1: 2959c887d8c093e07be452d2a48bea8c9a543eb9
+SHA256: 605f3abca16ed214462c60c2a080e6038323479d3dacb93e70d70b715688487c
 Icon: https://repo.maxleiter.com/icons/kf6-package-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-package-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-package-dev.json
@@ -3223,21 +3223,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-service.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-service.json
 
 Package: kf6-service-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-service (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-i18n-dev
+Depends: kf6-service (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-i18n-dev
 Description: Development files for KService
 Installed-Size: 148
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-service-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 18376
-MD5sum: 469e2f7a4c2796f58e73efd28642533d
-SHA1: 9397f2573e78af7a3f59e2016f4de011dc491677
-SHA256: 3d3977ad2a6b065f77f3fd7d88f1a60a93aeae616af7122188333bc371bb4472
+Filename: debs/kf6-service-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 18386
+MD5sum: bdbc0f5b1c62a55288f16bc7dc55d8a4
+SHA1: 2d92b2b4146446fead9741f99ed40f4452aa6789
+SHA256: a12b2feef00a8d932d104ab0890e73dacbd447b37e133fc18beccdd8f6a6a2f6
 Icon: https://repo.maxleiter.com/icons/kf6-service-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-service-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-service-dev.json
@@ -3307,21 +3307,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-sonnet.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-sonnet.json
 
 Package: kf6-sonnet-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-sonnet (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-sonnet (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for Sonnet
 Installed-Size: 196
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-sonnet-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 15888
-MD5sum: e86a0aff7b95b03112b98172ad527c01
-SHA1: 6a0b1d272279efc82fcfe29042a9e4293bc30837
-SHA256: 6f9e26103803817d168f962bb666340feabde19269f4ae1eb25c0a5dd5159fd0
+Filename: debs/kf6-sonnet-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 15900
+MD5sum: a9544b23872bf6d6eb6b65fefa4531a5
+SHA1: e25cee71c7a0f411cb3efbb0a76d68f57d3f8d3a
+SHA256: 21a9a2c2e83ee0e43f59ecdd6db30cd72f2d6022092fe4517af25e2adaf78a9e
 Icon: https://repo.maxleiter.com/icons/kf6-sonnet-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-sonnet-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-sonnet-dev.json
@@ -3391,21 +3391,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-svg.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-svg.json
 
 Package: kf6-svg-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-svg (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-kirigami-dev
+Depends: kf6-svg (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-kirigami-dev
 Description: Development files for KSvg
 Installed-Size: 128
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-svg-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 15016
-MD5sum: 047c210c3c3582ca0ff395f53e317a52
-SHA1: d3bf19354ee57c27e5fdb59aa4b35e70c329405b
-SHA256: c334144cbc94236b90fd2faeae56ca56617c990be6be7081b1ca68faa23f81f0
+Filename: debs/kf6-svg-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 15034
+MD5sum: cdbed9c06a3dd74bda1ad7a6f44a9620
+SHA1: 8d7f048748bbfc53db2a8ce60044bd1095e87cf2
+SHA256: 958d5ca02b99d3bad53ee674c667214968cc1c0bba03a71b2ef6db4462e179d5
 Icon: https://repo.maxleiter.com/icons/kf6-svg-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-svg-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-svg-dev.json
@@ -3519,21 +3519,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-textwidgets.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-textwidgets.json
 
 Package: kf6-textwidgets-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-textwidgets (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-completion-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-sonnet-dev, kf6-widgetsaddons-dev
+Depends: kf6-textwidgets (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-completion-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-i18n-dev, kf6-sonnet-dev, kf6-widgetsaddons-dev
 Description: Development files for KTextWidgets
 Installed-Size: 188
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-textwidgets-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 22062
-MD5sum: 891891562f9f450a9d2a1c52ef57c175
-SHA1: 32efbe35360c6c6d7d2ae2af69390ef62f825525
-SHA256: 4de7acad2e6850a9617fc563aa9173f45be49cd230edc645317c87188d7f2c47
+Filename: debs/kf6-textwidgets-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 22070
+MD5sum: 313a368cf04f65830a83632083edd413
+SHA1: f0870b49638b6e1337c55d3fc0a58d31cf30cbc9
+SHA256: 75b4c94072ac2882d73c32a5427cbaf8664503dcbe754cf48e57a31fd1de33a7
 Icon: https://repo.maxleiter.com/icons/kf6-textwidgets-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-textwidgets-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-textwidgets-dev.json
@@ -3687,21 +3687,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-widgetsaddons.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-widgetsaddons.json
 
 Package: kf6-widgetsaddons-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-widgetsaddons (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-widgetsaddons (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KWidgetsAddons
 Installed-Size: 1016
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-widgetsaddons-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 105636
-MD5sum: b87535dac89f4a122a357057b5f99b76
-SHA1: bab4eaa953f81d7897ed1346cb45ad9735a2ade6
-SHA256: 52ee6bb2dc272652f173e6d512a343eb5cfdb9dddc1393327788b5f11d9a480b
+Filename: debs/kf6-widgetsaddons-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 105648
+MD5sum: f881a6821a5ec90c4f3c3da29afc0f28
+SHA1: 7e1555b96032117a6a489c01f58c65d5b0180898
+SHA256: c3f7b0a8f7cd90b62581681e0bf380f035f3f4f19e6cf92e5cc63ae33ea7c5b2
 Icon: https://repo.maxleiter.com/icons/kf6-widgetsaddons-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-widgetsaddons-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-widgetsaddons-dev.json
@@ -3729,21 +3729,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-windowsystem.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-windowsystem.json
 
 Package: kf6-windowsystem-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-windowsystem (= 6.3.0), extra-cmake-modules, qt6-base-dev
+Depends: kf6-windowsystem (>= 6.3.0), extra-cmake-modules, qt6-base-dev
 Description: Development files for KWindowSystem
 Installed-Size: 176
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-windowsystem-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 19228
-MD5sum: df620e395e3c2e24761147917e7477e9
-SHA1: 19168d21710aeaf136f0f7fe158660f0791d36e7
-SHA256: 388bd59538431a6131db13faf5c7261c8109ca2f4ba19c5b73160999380022b3
+Filename: debs/kf6-windowsystem-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 19242
+MD5sum: 8d6183b1ea9c69dc5700b6daf1151a5f
+SHA1: 0c0fd45acc1ad2db051e0ff2e095bc33d0686023
+SHA256: 1cda60bd5efde42c203d8ca7b6b687fbd44c6d0145ad0abbe35f7a4ed967a619
 Icon: https://repo.maxleiter.com/icons/kf6-windowsystem-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-windowsystem-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-windowsystem-dev.json
@@ -3771,21 +3771,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-xmlgui.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-xmlgui.json
 
 Package: kf6-xmlgui-dev
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-xmlgui (= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-globalaccel-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-iconthemes-dev, kf6-itemviews-dev, kf6-textwidgets-dev, kf6-widgetsaddons-dev, kf6-windowsystem-dev
+Depends: kf6-xmlgui (>= 6.3.0), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-configwidgets-dev, kf6-coreaddons-dev, kf6-globalaccel-dev, kf6-guiaddons-dev, kf6-i18n-dev, kf6-iconthemes-dev, kf6-itemviews-dev, kf6-textwidgets-dev, kf6-widgetsaddons-dev, kf6-windowsystem-dev
 Description: Development files for KXmlGui
 Installed-Size: 352
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-xmlgui-dev_6.3.0+ios1_iphoneos-arm64.deb
-Size: 48496
-MD5sum: 2e8c435b92b04b842f8357c0809bb3c2
-SHA1: 189f70a3779f92c2d0d3c21f83c7f37487fc3ab8
-SHA256: 551d4fb5ded7cc895d24d6402dc47892bbefbb0b6abf5737f28063533d856de7
+Filename: debs/kf6-xmlgui-dev_6.3.0+ios2_iphoneos-arm64.deb
+Size: 48508
+MD5sum: 2d6c792094a80f2c9e4a10fb6589a377
+SHA1: 5722cc4a6d274cad83d0666d6c2412772896e5c9
+SHA256: a41c0da733d6c23a188935963f81930524bb573fa935a9af58ae6a439b24d40f
 Icon: https://repo.maxleiter.com/icons/kf6-xmlgui-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-xmlgui-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-xmlgui-dev.json
@@ -3813,21 +3813,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kglobalacceld.json
 Native Depiction: https://repo.maxleiter.com/depictions/kglobalacceld.json
 
 Package: kglobalacceld-dev
-Version: 6.1.5+ios1
+Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kglobalacceld (= 6.1.5), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-crash-dev, kf6-dbusaddons-dev, kf6-globalaccel-dev, kf6-jobwidgets-dev, kf6-kio-dev, kf6-service-dev, kf6-windowsystem-dev
+Depends: kglobalacceld (>= 6.1.5), extra-cmake-modules, qt6-base-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-crash-dev, kf6-dbusaddons-dev, kf6-globalaccel-dev, kf6-jobwidgets-dev, kf6-kio-dev, kf6-service-dev, kf6-windowsystem-dev
 Description: Development files for kglobalacceld
 Installed-Size: 76
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kglobalacceld-dev_6.1.5+ios1_iphoneos-arm64.deb
-Size: 7648
-MD5sum: e6ef07304229a6cb9d3a13b4cfcff1ff
-SHA1: 15dfebed3d912dbc69f24f372a3dda8dc0e38353
-SHA256: 52619dc6fd45e2d932cf5f17e0d27b45dd37ae31a7c64952c58c8c87e9cd57c5
+Filename: debs/kglobalacceld-dev_6.1.5+ios2_iphoneos-arm64.deb
+Size: 7660
+MD5sum: e86d8f228029c29679d39e957c73bb5e
+SHA1: cd00dbfb31a7dceb84cf24ecb1114ff0ffc04542
+SHA256: 2983852e2780511385b01734912a766b2b0bb7a8e8abc99b7eeec91cb02fe29b
 Icon: https://repo.maxleiter.com/icons/kglobalacceld-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kglobalacceld-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kglobalacceld-dev.json
@@ -3918,21 +3918,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland.json
 
 Package: kwayland-dev
-Version: 6.1.5+ios1
+Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kwayland (= 6.1.5), extra-cmake-modules, qt6-base-dev
+Depends: kwayland (>= 6.1.5), extra-cmake-modules, qt6-base-dev
 Description: Development files for KWayland
 Installed-Size: 536
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwayland-dev_6.1.5+ios1_iphoneos-arm64.deb
-Size: 64410
-MD5sum: 17c568867b28e261a2e01e330a064fe9
-SHA1: 3284c1124f8f6a9d308d72452a478ec794086878
-SHA256: e9b81e86414f75bfa96423ed1d762f68048233b90149bfaa2993244d7ba0303f
+Filename: debs/kwayland-dev_6.1.5+ios2_iphoneos-arm64.deb
+Size: 64422
+MD5sum: 79efc865bcb19f55fcc482c8db3f6591
+SHA1: c7ce1060d2b6d90abd419c0601a2a2f6deed1ba0
+SHA256: 73a1c257d36ce6ce4b6b658fb1f4d7c329a4af0e378f55357029b09a92ed4265
 Icon: https://repo.maxleiter.com/icons/kwayland-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
@@ -3960,21 +3960,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin.json
 
 Package: kwin-dev
-Version: 6.1.5+ios29
+Version: 6.1.5+ios30
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: kwin (= 6.1.5+ios29), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
+Depends: kwin (>= 6.1.5+ios29), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
 Description: Development files for KWin
 Installed-Size: 1912
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin-dev_6.1.5+ios29_iphoneos-arm64.deb
-Size: 268254
-MD5sum: d26748d38223a3f5ccd5163f692676c8
-SHA1: 48d1f115647fd3a56678ce2a88eebde0126f71d1
-SHA256: 26fd23884566e1596dc9ee0b89cbf3b4090d7a85e275eb58e0f67a3e2bf799ee
+Filename: debs/kwin-dev_6.1.5+ios30_iphoneos-arm64.deb
+Size: 268270
+MD5sum: 0ab099af329d7b3f2b2ac9dc1a8655ce
+SHA1: c8f95b3f7e464f80d06e9982b295e095f9c2a898
+SHA256: 1daed4ceb488253d0ac3f86d3cacea838d2c262c5fed5cdb2a3b20b68edec79d
 Icon: https://repo.maxleiter.com/icons/kwin-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwin-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
@@ -6978,21 +6978,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-3-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgtk-3-0.json
 
 Package: libgtk-3-dev
-Version: 3.24.38+ios2
+Version: 3.24.38+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libgtk-3-0 (= 3.24.38+ios2), gtk-3-bin (= 3.24.38+ios2), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libatk1.0-dev, libcairo2-dev, libepoxy-dev, libwayland-dev, libxkbcommon-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev, libxcomposite-dev
+Depends: libgtk-3-0 (>= 3.24.38+ios2), gtk-3-bin (>= 3.24.38+ios2), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libatk1.0-dev, libcairo2-dev, libepoxy-dev, libwayland-dev, libxkbcommon-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev, libxcomposite-dev
 Description: Development files for the GTK library
 Installed-Size: 3380
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgtk-3-dev_3.24.38+ios2_iphoneos-arm64.deb
-Size: 544354
-MD5sum: a2584812f9301eaba3b5771a5fbfe750
-SHA1: 76f8ecf7d022a271e9fa8ab91a38e7249f7bbe0a
-SHA256: 73d0bee9b59c80466de4a857214709d48606d83086cadc8f1171dd5459ba54b3
+Filename: debs/libgtk-3-dev_3.24.38+ios3_iphoneos-arm64.deb
+Size: 544388
+MD5sum: 8a327a9db30f3c84826c8284fccb2407
+SHA1: fe113ee6204ac2e4bb6320c0dac2bc4b9e12f7b7
+SHA256: 557e6c0e2eef865b39e10b537159974ed2e135a088ed6cfd7abd27bdeea24d9a
 Icon: https://repo.maxleiter.com/icons/libgtk-3-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.json
@@ -7083,25 +7083,25 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-layer-shell0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgtk-layer-shell0.json
 
 Package: libgtkintl
-Version: 1.0
+Version: 1.1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
-Depends: libintl8
+Homepage: https://www.gtk.org/
+Depends: libiosexec1 (>= 1.3.1), libintl8
 Description: proxy-libintl symbol shim for GTK on iOS
-Installed-Size: 51
+Installed-Size: 296
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgtkintl_1.0_iphoneos-arm64.deb
-Size: 2332
-MD5sum: d5e1fb9856ee946ef45e261538f0c2b1
-SHA1: fe448302bc1ab9134d8f0de10b2ee7a40d109425
-SHA256: 20d90609fcb419772b50610b59e7c4780ed24d0c0dfcbfe840bf654ea3a2b59c
+Filename: debs/libgtkintl_1.1_iphoneos-arm64.deb
+Size: 200114
+MD5sum: cdd25074402444cf520802063b801067
+SHA1: ac6da429a4ee44bc1d1ff19e6c4ced0897e73113
+SHA256: 077465ef3b02783ab672b48f4c1e35500fb90882d022164574fa34937258fdba
 Icon: https://repo.maxleiter.com/icons/libgtkintl.png
 Depiction: https://repo.maxleiter.com/depictions/libgtkintl.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgtkintl.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgtkintl.json
-Homepage: https://repo.maxleiter.com
 
 Package: libgtkmm-3.0-1v5
 Version: 3.24.9+ios1
@@ -8130,20 +8130,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libmutter-14-0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libmutter-14-dev
-Version: 46.0+ios8
+Version: 46.0+ios10
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libmutter-14-0 (= 46.0+ios8), libgtk-4-dev, libglib2.0-dev, libgraphene-1.0-dev, libjson-glib-dev, liblcms2-dev, libcolord-dev, libxcomposite-dev, libxfixes-dev, libpixman-1-dev, libxkbcommon-dev
+Depends: libmutter-14-0 (>= 46.0+ios8), libgtk-4-dev, libglib2.0-dev, libgraphene-1.0-dev, libjson-glib-dev, liblcms2-dev, libcolord-dev, libxcomposite-dev, libxfixes-dev, libpixman-1-dev, libxkbcommon-dev
 Section: Development
 Priority: optional
 Description: window manager library from the Mutter window manager (development files)
 Installed-Size: 1904
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libmutter-14-dev_46.0+ios8_iphoneos-arm64.deb
-Size: 309298
-MD5sum: a957ea787ef7d3e7147d4f38584d803d
-SHA1: dd71e77daadb40b712864a2c06dced26c26e8912
-SHA256: ab71f60d5855546600af07f0fc359339ce2115680de083725a6a0dd7df2ec0cb
+Filename: debs/libmutter-14-dev_46.0+ios10_iphoneos-arm64.deb
+Size: 309308
+MD5sum: b8f3c24f5ff14df398cdd10de88dfff3
+SHA1: 7c404bfbfea0112b66502b74bb4888e326497a1c
+SHA256: 2282df6691dc1cd8a711dfd7f29f825e3e10c3f429da74f42a7dd1db702dedee
 Icon: https://repo.maxleiter.com/icons/libmutter-14-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libmutter-14-dev.json
@@ -11348,21 +11348,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-activities.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-activities.json
 
 Package: plasma-activities-dev
-Version: 6.1.5+ios1
+Version: 6.1.5+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: plasma-activities (= 6.1.5), extra-cmake-modules, qt6-base-dev
+Depends: plasma-activities (>= 6.1.5), extra-cmake-modules, qt6-base-dev
 Description: Development files for PlasmaActivities
 Installed-Size: 156
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-activities-dev_6.1.5+ios1_iphoneos-arm64.deb
-Size: 11642
-MD5sum: 6ab6058d1d3f882f72772212f44523e0
-SHA1: da9ef4bb84f572516c118652f175b19f6893ac89
-SHA256: 5e5aebfe42dd267f34af112d713840a812ea180257cde0512e22cc13705b7f14
+Filename: debs/plasma-activities-dev_6.1.5+ios2_iphoneos-arm64.deb
+Size: 11650
+MD5sum: de9994d087f3955540052f1056914e61
+SHA1: 5647755fdef0e0f9893e57c16ca18567814db369
+SHA256: 74f8fe55d2ae98e74dccb1cef1b5de105633fbf6edc1c8dacce8a565ad743cc6
 Icon: https://repo.maxleiter.com/icons/plasma-activities-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-activities-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-activities-dev.json
@@ -11495,21 +11495,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-mobile.json
 
 Package: plasma-mobile-dev
-Version: 6.1.5+ios22
+Version: 6.1.5+ios23
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
 Priority: optional
 Homepage: https://kde.org/plasma-mobile/
-Depends: plasma-mobile (= 6.1.5+ios22), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
+Depends: plasma-mobile (>= 6.1.5+ios22), qt6-base-dev, qt6-declarative-dev, kf6-kirigami-addons-dev
 Description: Development files for Plasma Mobile on Xios
 Installed-Size: 16
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-mobile-dev_6.1.5+ios22_iphoneos-arm64.deb
-Size: 782
-MD5sum: 9d0a0ae5969b31596749252c45c3fbb8
-SHA1: bf9538c2d41d49069f59d28d53235c648381eb15
-SHA256: 679e92ec1ba63b2ab1d6b8f197d73e4b0d5db2fa27220e3497cff5da68e914ca
+Filename: debs/plasma-mobile-dev_6.1.5+ios23_iphoneos-arm64.deb
+Size: 796
+MD5sum: 4b2a403141b61293bd2c479219a34259
+SHA1: 69206e8ad3dced052d23d019b705da1d6d453ed5
+SHA256: 98eead32eee21bdfbc71a516cdb53ea01f49b5cd169f9780f0044c91ec667e60
 Icon: https://repo.maxleiter.com/icons/plasma-mobile-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-mobile-dev.json
@@ -11642,21 +11642,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
 
 Package: plasma-workspace-dev
-Version: 6.1.5+ios11
+Version: 6.1.5+ios12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: plasma-workspace (= 6.1.5+ios11), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, kf6-kquickcharts-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
+Depends: plasma-workspace (>= 6.1.5+ios11), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, kf6-kquickcharts-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
 Description: Development files for Plasma Workspace on Xios
 Installed-Size: 416
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-workspace-dev_6.1.5+ios11_iphoneos-arm64.deb
-Size: 44096
-MD5sum: 76db6b5d9a18cc764a1922076fe217ed
-SHA1: 5e00e8d62fdcdddc6bcb508c25c3e8c86a7000fc
-SHA256: d8f87e0fa66ff242d80513078de7e9504211cc34610bd52330d9475470217a25
+Filename: debs/plasma-workspace-dev_6.1.5+ios12_iphoneos-arm64.deb
+Size: 44118
+MD5sum: e930e13bc2fa560ae1be7d6632ee9e5b
+SHA1: af7f5f872330e12c088a6b311ad6b0577f424707
+SHA256: 1f89ba614436ada447159a31bbbf09e23fde2a6ab9cb58263ba6fa051dca57da
 Icon: https://repo.maxleiter.com/icons/plasma-workspace-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.json
@@ -11876,21 +11876,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-5compat.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-5compat.json
 
 Package: qt6-5compat-dev
-Version: 6.6.3+ios1
+Version: 6.6.3+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-5compat (= 6.6.3), qt6-base-dev
+Depends: qt6-5compat (>= 6.6.3), qt6-base-dev
 Description: Development files for the Qt 6 compatibility library
 Installed-Size: 528
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-5compat-dev_6.6.3+ios1_iphoneos-arm64.deb
-Size: 38512
-MD5sum: f22ea384be827aa614999ba37d8d1384
-SHA1: da771f6bfc76a37eb0f01120f0194bd20c616b0c
-SHA256: bf7cf3a7d1936b824362b3740f99f11d13e5656f94d8b4ce72a19f9646179510
+Filename: debs/qt6-5compat-dev_6.6.3+ios2_iphoneos-arm64.deb
+Size: 38524
+MD5sum: 06065dea572a343c028b37c1bfddad1e
+SHA1: 86c89cd62e7a4afb128f1bcbd6e198fce80d2c4b
+SHA256: 15e0b70828b1ca0309962b8038080325f79210d4e77afeaa6bb870eb5ba1abcb
 Icon: https://repo.maxleiter.com/icons/qt6-5compat-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-5compat-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-5compat-dev.json
@@ -12024,21 +12024,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-sensors.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-sensors.json
 
 Package: qt6-sensors-dev
-Version: 6.6.3+ios1
+Version: 6.6.3+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-sensors (= 6.6.3), qt6-base-dev, qt6-declarative-dev
+Depends: qt6-sensors (>= 6.6.3), qt6-base-dev, qt6-declarative-dev
 Description: Development files for Qt 6 Sensors
 Installed-Size: 816
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-sensors-dev_6.6.3+ios1_iphoneos-arm64.deb
-Size: 31784
-MD5sum: eb3ef800f8c70abb08759f224745091b
-SHA1: 59d6de3464ab31e8d365f020d9ac4303272b7b52
-SHA256: 613a804a59a89117c132c157e32a23a85bc43a0dc2648cc46c3152ec8c51ed2f
+Filename: debs/qt6-sensors-dev_6.6.3+ios2_iphoneos-arm64.deb
+Size: 31790
+MD5sum: 83195a2a071348a113fe8ce252b4ba0a
+SHA1: f74a782c00a4528b9bf5e9df8a84736327cb9eca
+SHA256: 4e5eb0bc081b5584ba2f2a937563cbdf4502c0457e4095208bb03787c5ce8406
 Icon: https://repo.maxleiter.com/icons/qt6-sensors-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-sensors-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-sensors-dev.json
@@ -12066,21 +12066,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-shadertools.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-shadertools.json
 
 Package: qt6-shadertools-dev
-Version: 6.6.3+ios1
+Version: 6.6.3+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-shadertools (= 6.6.3), qt6-base-dev
+Depends: qt6-shadertools (>= 6.6.3), qt6-base-dev
 Description: Development files for Qt 6 shader tools
 Installed-Size: 196
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-shadertools-dev_6.6.3+ios1_iphoneos-arm64.deb
-Size: 12396
-MD5sum: d7879a080810f3123bbc40c834529aa3
-SHA1: 5d58061e53287cb0471db6c211fe22dff01cd683
-SHA256: 5aa23582809c4b58d3782508716fe325158a5b07772527b7725a0d844bef0473
+Filename: debs/qt6-shadertools-dev_6.6.3+ios2_iphoneos-arm64.deb
+Size: 12402
+MD5sum: 41ab69527bc2298887b7037b622697d0
+SHA1: 95b1d4f6bfb8767b723d528d097ed4fae4b06f6b
+SHA256: 92ee0fce0ea6e25dba99dc9fd7bee39b1620bbc7b1fa336ff42312d0a810747a
 Icon: https://repo.maxleiter.com/icons/qt6-shadertools-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-shadertools-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-shadertools-dev.json
@@ -12108,21 +12108,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-svg.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-svg.json
 
 Package: qt6-svg-dev
-Version: 6.6.3+ios1
+Version: 6.6.3+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-svg (= 6.6.3), qt6-base-dev
+Depends: qt6-svg (>= 6.6.3), qt6-base-dev
 Description: Development files for the Qt 6 SVG libraries
 Installed-Size: 400
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-svg-dev_6.6.3+ios1_iphoneos-arm64.deb
-Size: 26062
-MD5sum: 1654186eb6bb9063cf659d4469b5e2ce
-SHA1: 916b17871fbe982d5809f3bfeaca8d7a5ecdeca0
-SHA256: 6a359c0690767d8d0c020f42d186c16abfbdf45d64d0d99d5bf171187da9829e
+Filename: debs/qt6-svg-dev_6.6.3+ios2_iphoneos-arm64.deb
+Size: 26054
+MD5sum: 469108e8487d1afc246f845b6a9fb648
+SHA1: 0afe56aefc4bb34780b612f69ef2c4214f85dffe
+SHA256: acfcda00ca03842dbfab1709306e81d63a34ac2769018dc0bd5357d6307a9ac0
 Icon: https://repo.maxleiter.com/icons/qt6-svg-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-svg-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-svg-dev.json
@@ -12150,21 +12150,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-tools.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-tools.json
 
 Package: qt6-tools-dev
-Version: 6.6.3+ios1
+Version: 6.6.3+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-tools (= 6.6.3), qt6-base-dev
+Depends: qt6-tools (>= 6.6.3), qt6-base-dev
 Description: Development files for Qt 6 UiTools
 Installed-Size: 360
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-tools-dev_6.6.3+ios1_iphoneos-arm64.deb
-Size: 16440
-MD5sum: 87dafeb7aa9ba695cb4bdbab4d381dcc
-SHA1: 2dc53138e6a767cd1262ed9cd09bdd8f47388916
-SHA256: 05ca50e5ece702262323273e412f09da5b1fa497d31474df0be13967b1bc15b7
+Filename: debs/qt6-tools-dev_6.6.3+ios2_iphoneos-arm64.deb
+Size: 16444
+MD5sum: 1ee343e7a3ee0a594a8c1d81b6836b62
+SHA1: 7d4e372e5fe3f7828985a5198e26e7d5affac031
+SHA256: a8024285f65780765703d2eb8fce9b3299ae72b372f709b1f69358c30355942e
 Icon: https://repo.maxleiter.com/icons/qt6-tools-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-tools-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-tools-dev.json
