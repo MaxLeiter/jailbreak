@@ -1,0 +1,38 @@
+Subject: [PATCH] wayland-client: poll() fallback for ppoll() on Darwin/iOS
+
+wayland 1.24 added wl_display_dispatch_queue_timeout(), whose helper wl_display_poll() calls
+ppoll(). iOS has no ppoll, so use poll() with the remaining time rounded up to milliseconds.
+Behaviour matches the original (no signal mask).
+
+--- a/src/wayland-client.c	2026-10-01 22:01:57
++++ b/src/wayland-client.c	2026-10-01 22:01:57
+@@ -32,6 +32,7 @@
+ #include <stdio.h>
+ #include <stdbool.h>
+ #include <errno.h>
++#include <limits.h>
+ #include <string.h>
+ #include <unistd.h>
+ #include <sys/socket.h>
+@@ -2003,7 +2004,21 @@
+ 			timespec_sub_saturate(&result, &deadline, &now);
+ 			remaining_timeout = &result;
+ 		}
++#ifdef __APPLE__
++		/* Darwin/iOS has no ppoll(); poll() takes milliseconds, so round up to avoid
++		 * returning early. No signal mask is applied by the original call (NULL). */
++		{
++			int timeout_ms = -1;
++			if (remaining_timeout) {
++				int64_t ms = (int64_t)remaining_timeout->tv_sec * 1000 +
++					     (remaining_timeout->tv_nsec + 999999) / 1000000;
++				timeout_ms = ms > INT_MAX ? INT_MAX : (int)ms;
++			}
++			ret = poll(pfd, 1, timeout_ms);
++		}
++#else
+ 		ret = ppoll(pfd, 1, remaining_timeout, NULL);
++#endif
+ 	} while (ret == -1 && errno == EINTR);
+ 
+ 	return ret;
