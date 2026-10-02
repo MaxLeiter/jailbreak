@@ -63,7 +63,7 @@ xios_clang19_setup() {
   local t
   for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \
            segedit size nmedit; do
-    [ -e "$cct/aarch64-apple-darwin-$t" ] && ln -sf "$cct/aarch64-apple-darwin-$t" "$dir/ld/$t"
+    [ -e "$cct/aarch64-apple-darwin-$t" ] && [ "$(readlink "$dir/ld/$t" 2>/dev/null)" != "$cct/aarch64-apple-darwin-$t" ] && ln -sf "$cct/aarch64-apple-darwin-$t" "$dir/ld/$t"
   done
   # The image's aarch64-apple-darwin-ar can be clobbered into a self-exec loop: use llvm-ar in
   # Darwin archive format (cctools ld64/ranlib accept it), expanding @response files first.
