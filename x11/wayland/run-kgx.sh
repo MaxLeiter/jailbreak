@@ -10,7 +10,7 @@
 set -u
 # Resolve the jailbreak prefix. Prefer where this script is installed -- the iosc
 # deb stages it under the prefix -- but fall back to probing, because the
-# documented way to run this is `ssh root@ipad 'bash -s' < run-iosc.sh`, where
+# documented way to run this is `ssh root@ipad 'bash -s' < run-kgx.sh`, where
 # the script has no path on disk at all. Set XS_JB= to force rootful.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 if [ "${XS_JB+x}" != x ]; then
