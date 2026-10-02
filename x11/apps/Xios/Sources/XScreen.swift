@@ -256,8 +256,14 @@ final class XScreenView: UIView {
     private var clipRxGen: UInt32 = 0
     private var clipRxItems: [UInt32: Data] = [:]
     private var clipDeferredPushTicks = 0   // connect grace: desktop wins if it speaks
-    private var clipSuppressText: String?   // echo guards: what we last wrote/read
-    private var clipSuppressPNG: Data?
+    // Echo guards: what we last wrote to or read from the desktop. Touched only
+    // on clipboardQueue, where every push is decided, so each push sees every
+    // earlier push and receive in order even though its PNG encode runs there.
+    private final class ClipboardEcho {
+        var text: String?
+        var png: Data?
+    }
+    private let clipEcho = ClipboardEcho()
     // Clipboard socket work that can block (connect + HELLO, item writes) runs
     // on this serial queue so the display-link tick never waits on it.
     private let clipboardQueue = DispatchQueue(
@@ -2217,14 +2223,17 @@ final class XScreenView: UIView {
     private func commitReceivedClipboard() {
         let pb = UIPasteboard.general
         var item: [String: Any] = [:]
+        var echoText: String?, echoPNG: Data?
         if let t = clipRxItems[kClipText], let s = String(data: t, encoding: .utf8) {
             item["public.utf8-plain-text"] = s
-            clipSuppressText = s
-        } else { clipSuppressText = nil }
+            echoText = s
+        }
         if let png = clipRxItems[kClipPNG] {
             item["public.png"] = png
-            clipSuppressPNG = png
-        } else { clipSuppressPNG = nil }
+            echoPNG = png
+        }
+        let echo = clipEcho
+        clipboardQueue.async { echo.text = echoText; echo.png = echoPNG }
         if let u = clipRxItems[kClipURI], let s = String(data: u, encoding: .utf8) {
             let uris = s.split(whereSeparator: { $0 == "\r" || $0 == "\n" })
                         .filter { !$0.hasPrefix("#") }
@@ -2245,66 +2254,74 @@ final class XScreenView: UIView {
         pasteboardChangeCount = pb.changeCount   // our own write, not an iOS copy
     }
 
+    /// Main only reads the pasteboard. Everything after that runs on the serial
+    /// clipboard queue, so pushes keep their order: re-encoding a non-PNG image
+    /// (a camera photo is real CPU), the echo check, and the writes.
     private func pushPasteboard(onConnect: Bool) {
         let pb = UIPasteboard.general
         pasteboardChangeCount = pb.changeCount
         let text = pb.hasStrings ? pb.string : nil
-        let png: Data? = pb.hasImages
-            ? (pb.data(forPasteboardType: "public.png") ?? pb.image?.pngData())
-            : nil
+        let rawPNG = pb.hasImages ? pb.data(forPasteboardType: "public.png") : nil
+        let image = pb.hasImages && rawPNG == nil ? pb.image : nil
         let urls = pb.hasURLs ? (pb.urls ?? []) : []
-        if text == nil && png == nil && urls.isEmpty {
-            // Empty pasteboard: on connect that's "nothing to contribute", not
-            // "clear the desktop clipboard".
-            if !onConnect { writeClipboard([], generation: iosc_clipboard_send_begin()) }
-            clipSuppressText = nil; clipSuppressPNG = nil
-            return
+        let fd = iosc_clipboard_writer_fd()
+        let epoch = clipEpoch
+        let echo = clipEcho
+        let kText = kClipText, kPNG = kClipPNG, kURI = kClipURI
+        clipboardQueue.async { [weak self] in
+            let png = rawPNG ?? image?.pngData()
+            var items: [(kind: UInt32, data: Data)]?   // nil: nothing to send
+            if text == nil && png == nil && urls.isEmpty {
+                // Empty pasteboard: on connect that's "nothing to contribute",
+                // not "clear the desktop clipboard".
+                if !onConnect { items = [] }
+                echo.text = nil; echo.png = nil
+            } else if onConnect || text != echo.text || png != echo.png {
+                // (Otherwise it is an echo of our own commitReceivedClipboard write.)
+                // Text goes out as its C string did: the UTF-8 up to any NUL.
+                func cText(_ s: String) -> Data { Data(s.utf8.prefix { $0 != 0 }) }
+                var records: [(kind: UInt32, data: Data)] = []
+                if let t = text { records.append((kText, cText(t))) }
+                if let p = png { records.append((kPNG, p)) }
+                if !urls.isEmpty {
+                    let list = urls.map(\.absoluteString).joined(separator: "\r\n") + "\r\n"
+                    records.append((kURI, cText(list)))
+                    if text == nil { records.append((kText, cText(list))) }
+                }
+                items = records
+                echo.text = text; echo.png = png
+            }
+            guard fd >= 0 else { return }
+            guard let items else { close(fd); return }
+            Self.writeClipboard(fd: fd, items, generation: iosc_clipboard_send_begin(),
+                                epoch: epoch, owner: self)
         }
-        if !onConnect && text == clipSuppressText && png == clipSuppressPNG {
-            return   // echo of our own commitReceivedClipboard write
-        }
-        // Text goes out as its C string did: the UTF-8 up to any NUL.
-        func cText(_ s: String) -> Data { Data(s.utf8.prefix { $0 != 0 }) }
-        let generation = iosc_clipboard_send_begin()
-        var items: [(kind: UInt32, data: Data)] = []
-        if let t = text { items.append((kClipText, cText(t))) }
-        if let p = png { items.append((kClipPNG, p)) }
-        if !urls.isEmpty {
-            let list = urls.map(\.absoluteString).joined(separator: "\r\n") + "\r\n"
-            items.append((kClipURI, cText(list)))
-            if text == nil { items.append((kClipText, cText(list))) }
-        }
-        writeClipboard(items, generation: generation)
-        clipSuppressText = text; clipSuppressPNG = png
     }
 
-    /// Write one copy event's records (no items: a clear) on the clipboard
-    /// queue. A PNG can be 16 MB, and SO_SNDTIMEO bounds each write() call,
-    /// not the record, so this never runs on the display link. The serial
-    /// queue keeps records in the order they were queued, and the writer uses
+    /// On the clipboard queue: write one copy event's records (no items: a
+    /// clear). A PNG can be 16 MB, and SO_SNDTIMEO bounds each write() call,
+    /// not the record, so this never runs on the display link. The writer uses
     /// its own dup of the connection, so main keeps polling (or closes it)
     /// meanwhile. A failed write may have cut a record short: shut that socket
     /// down, so writes still queued for it fail instead of following a torn
     /// record, and close it on main, which reconnects on the 30-tick poll.
-    private func writeClipboard(_ items: [(kind: UInt32, data: Data)], generation: UInt32) {
-        let fd = iosc_clipboard_writer_fd()
-        guard fd >= 0 else { return }
-        let epoch = clipEpoch
-        clipboardQueue.async { [weak self] in
-            var failed = items.isEmpty && iosc_clipboard_write_clear(fd, generation) < 0
-            for item in items where !failed {
-                failed = item.data.withUnsafeBytes {
-                    iosc_clipboard_write_item(fd, generation, item.kind,
-                                              $0.baseAddress, $0.count) < 0
-                }
+    /// iosc_clipboard_send_begin() is only ever called here, on this queue.
+    private static func writeClipboard(fd: Int32, _ items: [(kind: UInt32, data: Data)],
+                                       generation: UInt32, epoch: Int,
+                                       owner: XScreenView?) {
+        var failed = items.isEmpty && iosc_clipboard_write_clear(fd, generation) < 0
+        for item in items where !failed {
+            failed = item.data.withUnsafeBytes {
+                iosc_clipboard_write_item(fd, generation, item.kind,
+                                          $0.baseAddress, $0.count) < 0
             }
-            if failed { Darwin.shutdown(fd, SHUT_RDWR) }
-            close(fd)
-            guard failed else { return }
-            DispatchQueue.main.async {
-                guard let self, self.clipEpoch == epoch else { return }
-                self.closeClipboard()
-            }
+        }
+        if failed { Darwin.shutdown(fd, SHUT_RDWR) }
+        close(fd)
+        guard failed else { return }
+        DispatchQueue.main.async { [weak owner] in
+            guard let owner, owner.clipEpoch == epoch else { return }
+            owner.closeClipboard()
         }
     }
 

@@ -31,6 +31,8 @@ bool iosc_clipboard_is_open(void);
 // a writer thread, against that thread's own dup of the connection from
 // writer_fd (the writer closes it). They touch no module state, so the main
 // thread can keep polling, or close and replace the connection, meanwhile.
+// send_begin's counter is unlocked: call it from one thread only (Xios calls
+// it on its clipboard queue).
 uint32_t iosc_clipboard_send_begin(void);
 int iosc_clipboard_writer_fd(void);   // dup of the open connection, or -1
 // 1 written; 0 refused (bad kind, or over ITEM_MAX), nothing sent; -1 the
