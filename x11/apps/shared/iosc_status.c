@@ -130,15 +130,26 @@ static void write_sidecar(void)
     if (s_file_broken) return;
 
     snprintf(tmp, sizeof(tmp), "%s.tmp.%d", s_file, (int)getpid());
-    FILE *f = fopen(tmp, "w");
+    /* The directory is world-writable, so anyone can plant this predictable
+     * name first. fopen("w") would follow a planted symlink and have root iosc
+     * truncate and rewrite its target; create the temp file fresh instead and
+     * refuse anything already there. */
+    unlink(tmp);
+    int fd = open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
+    FILE *f = fd >= 0 ? fdopen(fd, "w") : NULL;
     if (!f) {
+        int err = errno;
+        if (fd >= 0) close(fd);
         s_file_broken = 1;
         fprintf(stderr, "iosc-status: cannot write %s (%s); stderr only from here\n",
-                s_file, strerror(errno));
+                s_file, strerror(err));
         return;
     }
     for (int i = 0; i < s_nentries; i++)
         fprintf(f, "%s\t%s\n", s_entries[i].key, s_entries[i].value);
+    /* ioscd runs as root and Xios.app as mobile; either may need to read the
+     * other's table, so the sidecars are world-readable whatever the umask. */
+    fchmod(fileno(f), 0644);
     fclose(f);
     if (rename(tmp, s_file) != 0) {
         unlink(tmp);
@@ -147,9 +158,6 @@ static void write_sidecar(void)
                 s_file, strerror(errno));
         return;
     }
-    /* ioscd runs as root and Xios.app as mobile; either may need to read the
-     * other's table, so the sidecars are world-readable. */
-    chmod(s_file, 0644);
 }
 
 /* Newlines and tabs would break the sidecar's line/field framing. */
