@@ -46,6 +46,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var presentFenceEvent: MTLSharedEvent?
     private var presentFenceValue: UInt64 = 0
     private var fenceFailureLogged = false
+    // A token whose broker import is running off the main thread, and the
+    // newest frame value that arrived for it meanwhile (applied when it lands).
+    private var fenceImportToken: Data?
+    private var fenceImportPendingValue: UInt64 = 0
     private var displayLink: CADisplayLink?
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
     override class var layerClass: AnyClass { CAMetalLayer.self }
@@ -180,6 +184,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         // the matching NATIVE_FRAME arrives with a producer completion fence.
         canvasFrameReady = false
         presentFenceValue = 0
+        fenceImportPendingValue = 0   // a frame held for an import was the old canvas's
         needsPresent = false
     }
 
@@ -198,17 +203,18 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             return
         }
         if token != presentFenceToken {
-            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
-                guard let base = raw.baseAddress else { return nil }
-                return xios_metal_event_broker_copy_event(device, base, raw.count)
-            }
-            guard let event else {
-                logFenceFailure("broker token import failed")
-                return
-            }
-            presentFenceToken = token
-            presentFenceEvent = event
+            // A new token costs a broker round trip, a blocking XPC call. Run it
+            // off the main thread and hold this frame (the newest one wins)
+            // until the event lands; nothing is sampled unfenced meanwhile.
+            fenceImportPendingValue = value
+            importFenceEvent(token)
+            return
         }
+        fenceImportPendingValue = 0   // newer than any frame held for an import
+        acceptFencedFrame(value)
+    }
+
+    private func acceptFencedFrame(_ value: UInt64) {
         guard presentFenceEvent != nil else {
             logFenceFailure("broker event unavailable")
             return
@@ -217,6 +223,36 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         fenceFailureLogged = false
         canvasFrameReady = true
         needsPresent = true
+    }
+
+    private func importFenceEvent(_ token: Data) {
+        guard fenceImportToken != token else { return }   // already on its way
+        fenceImportToken = token
+        let device = self.device
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
+                guard let device, let base = raw.baseAddress else { return nil }
+                return xios_metal_event_broker_copy_event_timeout(
+                    device, base, raw.count, XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC)
+            }
+            DispatchQueue.main.async { self?.fenceImportFinished(token, event: event) }
+        }
+    }
+
+    private func fenceImportFinished(_ token: Data, event: MTLSharedEvent?) {
+        guard fenceImportToken == token else { return }   // superseded, or torn down
+        fenceImportToken = nil
+        let value = fenceImportPendingValue
+        fenceImportPendingValue = 0
+        guard let event else {
+            // As before: the held frame is dropped and the next one retries.
+            logFenceFailure("broker token import failed")
+            return
+        }
+        presentFenceToken = token
+        presentFenceEvent = event
+        guard metalReady, canvasTexture != nil, value > 0 else { return }
+        acceptFencedFrame(value)
     }
 
     private func logFenceFailure(_ reason: String) {
@@ -1081,6 +1117,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         presentFenceToken = nil
         presentFenceEvent = nil
         presentFenceValue = 0
+        fenceImportToken = nil
+        fenceImportPendingValue = 0
         lastReportedSceneSize = nil
         accessibilityElements = nil
     }

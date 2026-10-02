@@ -154,6 +154,13 @@ final class XScreenView: UIView {
     private var presentFenceToken: Data?
     private var presentFenceEvent: MTLSharedEvent?
     private var presentFenceDecodeFailed = false
+    // Broker imports run off the main thread (a blocking XPC round trip). While
+    // one is out the frame that needs it stays pending; a failed one is
+    // remembered so the next tick fails that frame exactly as a synchronous
+    // failure used to.
+    private var presentFenceImportPending = false
+    private var presentFenceImportToken: Data?
+    private var presentFenceImportFailedToken: Data?
     private var releaseFenceToken: Data?
     private var releaseFenceEvent: MTLSharedEvent?
     private var pendingStreamFrame = false
@@ -495,6 +502,8 @@ final class XScreenView: UIView {
         iosConnectStarted = true
         let path = ddxSockPath
         let gen = loadGeneration
+        let device = self.device
+        let cachedRelease = (token: releaseFenceToken, event: releaseFenceEvent)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Retry until the X server's socket is up (it may launch after the app),
             // but bail the moment a newer load() superseded this connect.
@@ -502,9 +511,13 @@ final class XScreenView: UIView {
                 guard let self, self.loadGeneration == gen,
                       !self.appIsBackgrounded else { return }
                 if let conn = xsurface_connect(path) {
+                    // The release-fence import is a broker round trip (blocking
+                    // XPC), so it happens here, before the hop, not on main.
+                    let release = Self.importReleaseFence(conn, device: device,
+                                                          cached: cachedRelease)
                     DispatchQueue.main.async {
                         if self.loadGeneration == gen, !self.appIsBackgrounded {
-                            self.adoptIOSurface(conn)
+                            self.adoptIOSurface(conn, releaseFence: release)
                         }
                         else { xsurface_close(conn) }   // user switched away mid-connect
                     }
@@ -518,7 +531,7 @@ final class XScreenView: UIView {
         }
     }
 
-    private func adoptIOSurface(_ conn: OpaquePointer) {
+    private func adoptIOSurface(_ conn: OpaquePointer, releaseFence: ReleaseFenceImport) {
         guard !appIsBackgrounded else {
             xsurface_close(conn)
             iosConnectStarted = false
@@ -526,7 +539,12 @@ final class XScreenView: UIView {
         }
         xconn = conn
         iosurfaceCompositorID = String(cString: xsurface_compositor_id(conn))
-        guard syncSurfaceGeometry(conn), importReleaseFence(conn) else {
+        if let failure = releaseFence.failure { dbg(failure) }
+        if releaseFence.ok {
+            releaseFenceToken = releaseFence.token
+            releaseFenceEvent = releaseFence.event
+        }
+        guard syncSurfaceGeometry(conn), releaseFence.ok else {
             dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil
             iosurfaceCompositorID = ""
             iosTexture = nil
@@ -599,31 +617,40 @@ final class XScreenView: UIView {
         return true
     }
 
-    private func importReleaseFence(_ conn: OpaquePointer) -> Bool {
+    /// A connection's release-fence import, done on the connect thread and
+    /// applied by adoptIOSurface. ok == false fails the adopt.
+    private struct ReleaseFenceImport {
+        var ok: Bool
+        var token: Data? = nil
+        var event: MTLSharedEvent? = nil
+        var failure: String? = nil
+    }
+
+    /// Runs off the main thread, before the connection is handed to main, so it
+    /// reads only `conn` (not yet shared) and the values captured for it.
+    private static func importReleaseFence(
+        _ conn: OpaquePointer, device: MTLDevice?,
+        cached: (token: Data?, event: MTLSharedEvent?)
+    ) -> ReleaseFenceImport {
         var bytes: UnsafeRawPointer?
         var length = 0
         guard xsurface_release_fence_token(conn, &bytes, &length) != 0 else {
             /* Fixed one-surface producers (currently Mutter/Xorg) retain their
              * legacy contract. They never rotate an allocation, so no consumer
              * release timeline is required. */
-            releaseFenceToken = nil
-            releaseFenceEvent = nil
-            return true
+            return ReleaseFenceImport(ok: true)
         }
-        guard let bytes, length > 0 else { return false }
+        guard let bytes, length > 0, let device else { return ReleaseFenceImport(ok: false) }
         let token = Data(bytes: bytes, count: length)
-        if token == releaseFenceToken, releaseFenceEvent != nil {
-            return true
+        if token == cached.token, let event = cached.event {
+            return ReleaseFenceImport(ok: true, token: token, event: event)
         }
-        guard let event = xios_metal_event_broker_copy_event(
-            device, bytes, length
+        guard let event = xios_metal_event_broker_copy_event_timeout(
+            device, bytes, length, XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC
         ) else {
-            dbg("release-fence-broker-import-failed")
-            return false
+            return ReleaseFenceImport(ok: false, failure: "release-fence-broker-import-failed")
         }
-        releaseFenceToken = token
-        releaseFenceEvent = event
-        return true
+        return ReleaseFenceImport(ok: true, token: token, event: event)
     }
 
     private func submitHeldStreamRelease(_ conn: OpaquePointer) -> Bool {
@@ -1187,6 +1214,8 @@ final class XScreenView: UIView {
         iosSurfaceFlags = 0
         presentFenceToken = nil
         presentFenceEvent = nil
+        presentFenceImportToken = nil
+        presentFenceImportFailedToken = nil
         releaseFenceToken = nil
         releaseFenceEvent = nil
         pendingStreamFrame = false
@@ -1278,6 +1307,9 @@ final class XScreenView: UIView {
                     return
                 }
                 let fence = gpuFence(for: conn)
+                // Its broker import is still out: keep the frame pending (no
+                // drain, no RELEASE) and present it on a later tick.
+                if presentFenceImportPending { return }
                 if presentFenceDecodeFailed {
                     dbg("gpu-fence-decode-failed")
                     teardownIOSurface(lost: true)
@@ -1385,6 +1417,7 @@ final class XScreenView: UIView {
     /// Draw the texture using the current fit/zoom/pan transform.
     private func gpuFence(for conn: OpaquePointer) -> (MTLSharedEvent, UInt64)? {
         presentFenceDecodeFailed = false
+        presentFenceImportPending = false
         var bytes: UnsafeRawPointer?
         var length = 0
         var value: UInt64 = 0
@@ -1400,21 +1433,47 @@ final class XScreenView: UIView {
 
         let token = Data(bytes: bytes, count: length)
         if token != presentFenceToken {
-            guard let event = xios_metal_event_broker_copy_event(
-                device, bytes, length
-            ) else {
+            if token == presentFenceImportFailedToken {
+                presentFenceImportFailedToken = nil
                 dbg("gpu-fence-broker-import-failed")
                 presentFenceDecodeFailed = true
                 return nil
             }
-            presentFenceToken = token
-            presentFenceEvent = event
+            importPresentFence(token)
+            presentFenceImportPending = true
+            return nil
         }
         guard let event = presentFenceEvent else {
             presentFenceDecodeFailed = true
             return nil
         }
         return (event, value)
+    }
+
+    /// Import a present-fence token on a worker queue and hand the event back
+    /// to main; the tick that is holding the frame picks it up. A result for
+    /// a token nobody is waiting on any more (torn down, superseded) is dropped.
+    private func importPresentFence(_ token: Data) {
+        guard presentFenceImportToken != token else { return }   // already out
+        presentFenceImportToken = token
+        let device = self.device
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
+                guard let device, let base = raw.baseAddress else { return nil }
+                return xios_metal_event_broker_copy_event_timeout(
+                    device, base, raw.count, XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC)
+            }
+            DispatchQueue.main.async {
+                guard let self, self.presentFenceImportToken == token else { return }
+                self.presentFenceImportToken = nil
+                if let event {
+                    self.presentFenceToken = token
+                    self.presentFenceEvent = event
+                } else {
+                    self.presentFenceImportFailedToken = token
+                }
+            }
+        }
     }
 
     @discardableResult
@@ -3242,6 +3301,8 @@ final class XScreenView: UIView {
         iosSurfaceFlags = 0
         presentFenceToken = nil
         presentFenceEvent = nil
+        presentFenceImportToken = nil
+        presentFenceImportFailedToken = nil
         releaseFenceToken = nil
         releaseFenceEvent = nil
         pendingStreamFrame = false
