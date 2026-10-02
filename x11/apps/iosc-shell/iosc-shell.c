@@ -124,7 +124,7 @@ static struct {
     struct sd_cairo_pool wm_pool;
     int   wm_w, wm_h, wm_configured;
     struct panel_hits wm_hits;
-    int   wm_idx;                      /* task index the menu was opened for */
+    struct zwlr_foreign_toplevel_handle_v1 *wm_handle;  /* window the menu acts on */
 
     /* input routing: which of our surfaces the pointer/touch is on */
     struct wl_surface *ptr_surf;
@@ -430,12 +430,13 @@ static void wm_close(void)
     zwlr_layer_surface_v1_destroy(P.wm_layer); P.wm_layer = NULL;
     wl_surface_destroy(P.wm_surf);             P.wm_surf = NULL;
     P.wm_configured = 0;
+    P.wm_handle = NULL;
 }
 
 static void wm_open(int task_idx)
 {
     if (P.wm_surf) { wm_close(); return; }
-    P.wm_idx = task_idx;
+    P.wm_handle = P.tasks[task_idx].handle;
 
     double ui = pl_ui();
     P.wm_w = (int)lround(WM_W * ui);
@@ -618,20 +619,20 @@ static void act_on_hit(const struct panel_hit *r)
     case PL_HIT_STATUS:   P.want_qs_toggle = 1; break;
     case PL_HIT_APPNAME:  P.want_wm_toggle = 1; break;
     case WM_HIT_CLOSE:
-        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
-            zwlr_foreign_toplevel_handle_v1_close(P.tasks[P.wm_idx].handle);
+        if (P.wm_handle) {
+            zwlr_foreign_toplevel_handle_v1_close(P.wm_handle);
             wm_close();
         }
         break;
     case WM_HIT_MINIMIZE:
-        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
-            zwlr_foreign_toplevel_handle_v1_set_minimized(P.tasks[P.wm_idx].handle);
+        if (P.wm_handle) {
+            zwlr_foreign_toplevel_handle_v1_set_minimized(P.wm_handle);
             wm_close();
         }
         break;
     case WM_HIT_MAXIMIZE:
-        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
-            zwlr_foreign_toplevel_handle_v1_set_maximized(P.tasks[P.wm_idx].handle);
+        if (P.wm_handle) {
+            zwlr_foreign_toplevel_handle_v1_set_maximized(P.wm_handle);
             wm_close();
         }
         break;
@@ -747,6 +748,7 @@ static void ft_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h){ (void)d
 static void ft_closed(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
 {
     (void)d;
+    if (h == P.wm_handle) wm_close();   /* its window is gone */
     for (int i = 0; i < P.ntasks; i++) if (P.tasks[i].handle == h) {
         if (P.tasks[i].icon) cairo_surface_destroy(P.tasks[i].icon);
         zwlr_foreign_toplevel_handle_v1_destroy(h);
