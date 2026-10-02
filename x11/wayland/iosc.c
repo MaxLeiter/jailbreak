@@ -1216,6 +1216,19 @@ static int output_damage_add_overlay_surface(struct iosc_surface *s)
     return 0;
 }
 
+/* Damage what `s` covers on screen right now, for callers about to drop its
+ * buffer (NULL attach, wl_buffer destroyed). surface_rect() and the overlay
+ * paths size a surface by its current buffer, so damaging only after the
+ * buffer is gone added nothing: the repaint was skipped and the window's last
+ * frame stayed on screen. Returns nonzero if damage was added. */
+static int output_damage_add_surface_before_detach(struct iosc_surface *s)
+{
+    if (output_damage_add_overlay_surface(s)) return 1;
+    if (!s->mapped || !s->current_buffer) return 0;
+    output_damage_add_surface(s);
+    return 1;
+}
+
 static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y, int w, int h)
 {
     if (!s || w <= 0 || h <= 0 || !s->mapped) return;
@@ -2632,12 +2645,13 @@ static void on_buffer_destroyed(struct wl_listener *l, void *data)
     (void)data;
     struct iosc_surface *s = wl_container_of(l, s, buffer_destroy);
     int was_mapped = s->mapped;
+    int damaged = output_damage_add_surface_before_detach(s);
     s->current_buffer = NULL;          /* listener auto-removed by libwayland */
     s->buffer_listener_active = 0;
-    if (was_mapped) {
+    if (was_mapped)
         surface_unmap(s);
+    if (was_mapped || damaged)
         recomposite_all();
-    }
 }
 
 /* Replace a surface's current buffer; release the old one (double-buffering). */
@@ -3198,6 +3212,7 @@ static void surface_commit_apply(struct iosc_surface *s)
                 output_damage_add_surface(s);
         } else {
             /* NULL buffer attach + commit = unmap the surface */
+            output_damage_add_surface_before_detach(s);
             surface_set_buffer(s, NULL, 0, 0, 1);
             surface_unmap(s);
         }
