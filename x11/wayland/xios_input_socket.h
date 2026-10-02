@@ -65,7 +65,8 @@ int xios_input_socket_broadcast_bound(xios_input_socket *s, uint32_t bound_windo
                                       const void *buf, size_t len);
 
 /* Send `len` bytes to every client that registered XIOS_IN_IMPROXY (header plus
- * payload must be one contiguous buffer, as on the wire). Returns the number of
+ * payload must be one contiguous buffer, as on the wire). Only a root peer may
+ * register; anyone else sending it is dropped. Returns the number of
  * proxies written to; 0 means no proxy is registered, so the caller must handle
  * the record itself (iosc's own text-input commit / keysym fallback). */
 int xios_input_socket_send_improxy(xios_input_socket *s, const void *buf, size_t len);

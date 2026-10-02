@@ -36,6 +36,7 @@ struct xios_in_client {
     uint32_t id;              /* kevent udata; never reused, so a stale event misses */
     uint32_t bound_window;
     int improxy;              /* registered XIOS_IN_IMPROXY: input-method proxy */
+    uid_t peer_uid;           /* getpeereid() at accept; (uid_t)-1 if unknown */
     int hello_received;
     int dead;                 /* shut down after a failed write; read path frees */
     uint8_t hdr[sizeof(xios_msg)];
@@ -165,8 +166,8 @@ static int is_client_message(uint32_t type)
     case XIOS_IN_BRIGHTNESS:
         return 1;
     case XIOS_IN_TRAITS:
-        return 1; /* accepted below only from a client that sent XIOS_IN_IMPROXY
-                   * (self-declared: any peer that can connect may register) */
+        return 1; /* accepted below only from a client that sent XIOS_IN_IMPROXY,
+                   * which only a root peer may do */
     default:
         return 0;
     }
@@ -209,6 +210,17 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
                     c->bound_window = XIOS_INPUT_CODE(&c->msg);
                     client_reset(c);
                 } else if (c->msg.type == XIOS_IN_IMPROXY) {
+                    /* The proxy receives every iOS keyboard TEXT record in place
+                     * of the focused field, so it must not be claimable by any
+                     * process that can reach a mobile-owned socket. The one
+                     * legitimate proxy, ios-inputd --proxy, is started by
+                     * kwin_wayland, which the KDE session runs as root. */
+                    if (XIOS_INPUT_CODE(&c->msg) && c->peer_uid != 0) {
+                        fprintf(stderr, "xios_input_socket: refusing XIOS_IN_IMPROXY "
+                                        "from uid %d (the proxy runs as root)\n",
+                                (int)c->peer_uid);
+                        goto drop;
+                    }
                     c->improxy = XIOS_INPUT_CODE(&c->msg) ? 1 : 0;
                     client_reset(c);
                 } else if (c->msg.type == XIOS_IN_TRAITS && !c->improxy) {
@@ -271,6 +283,9 @@ static void accept_clients(xios_input_socket *s)
         struct xios_in_client *c = calloc(1, sizeof(*c));
         if (!c) { close(cfd); continue; }
         c->fd = cfd;
+        gid_t peer_gid;
+        if (getpeereid(cfd, &c->peer_uid, &peer_gid) != 0)
+            c->peer_uid = (uid_t)-1;
         if (++s->next_id == 0) ++s->next_id;   /* 0 is the listener's udata */
         c->id = s->next_id;
         struct kevent kev;

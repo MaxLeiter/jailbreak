@@ -121,6 +121,33 @@ static void test_full_peer_is_queued(xios_input_socket *s, const char *path)
     close(fd);
 }
 
+/* Registering as the input-method proxy routes iOS keyboard text to the
+ * registrant, so a non-root peer that tries is dropped. */
+static void test_improxy_needs_root(xios_input_socket *s, const char *path)
+{
+    int fd = connect_client(path);
+    pump_until_clients(s, 1);
+    xios_msg m;
+    read_exact(fd, &m, sizeof(m));
+    check(xios_protocol_is_exact_hello(&m));
+    xios_msg reg = xios_input_message(XIOS_IN_IMPROXY, 0, 0, 1, 0, 0);
+    check(write(fd, &reg, sizeof(reg)) == (ssize_t)sizeof(reg));
+    if (geteuid() == 0) {
+        for (int i = 0; i < 500 && !xios_input_socket_has_improxy(s); i++) {
+            check(xios_input_socket_dispatch(s, NULL, NULL) >= 0);
+            nap();
+        }
+        check(xios_input_socket_has_improxy(s));
+        close(fd);
+        pump_until_clients(s, 0);
+        return;
+    }
+    pump_until_clients(s, 0);
+    check(!xios_input_socket_has_improxy(s));
+    check(read(fd, &m, sizeof(m)) == 0);   /* the reader hung up on it */
+    close(fd);
+}
+
 int main(void)
 {
     const char *tmp = getenv("TMPDIR");
@@ -135,6 +162,7 @@ int main(void)
     check(s != NULL);
 
     test_full_peer_is_queued(s, path);
+    test_improxy_needs_root(s, path);
 
     xios_input_socket_free(s);
     rmdir(dir);
