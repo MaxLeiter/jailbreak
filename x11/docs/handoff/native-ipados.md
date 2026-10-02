@@ -60,6 +60,22 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   command shell, and launches the application as `mobile`. Native uses
   `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`; classic
   uses `wayland-0` + `iosc-input.sock`, so both can coexist.
+- **Raw touch opt-in (2026-10-01, host-built, not yet device-tested).** A
+  desktop entry with `X-Xios-RawTouch=true` in `[Desktop Entry]` makes
+  `xios-launcher-sync` (and `gen-launchers.sh --native`) write
+  `<key>IOSCRawTouch</key><true/>` into that app's native bundle `Info.plist`,
+  next to `IOSCAppID`/`IOSCName`. `IOSCHost` reads it from its own bundle and
+  then installs none of the recognizers that can claim a direct touch
+  (keyboard-reveal pan, two-finger pan, pinch, rotation) and sends no emulated
+  single-finger `wl_pointer`, so every finger reaches the client as `wl_touch`
+  only. Indirect input (trackpad/wheel scroll pans, hover, pointer buttons),
+  the hardware keyboard, and the TRAITS auto-keyboard are unchanged; the iOS
+  system gestures are the way out. It is a presentation hint only: ioscd never
+  sees it and the launch request stays `LAUNCH_NATIVE\t<app_id>`. Absent key
+  means the old behavior. Classic bundles never carry it. Opted-in apps must
+  handle `wl_touch` themselves (games with on-screen controls; Crispy Doom is
+  the first). Ships in `xios-launcher-tools 0.1.10`; existing bundles pick it
+  up on the next `xios-launcher-sync --sync`.
 - Build the compositor with just `x11/wayland/build-iosc.sh` (no docker flags): on the Mac it re-execs inside the cross-build image with the mounts wired, reads dev debs from `linux-build/out` then `repo/debs` as a fallback, and host-signs `wayland/out/iosc` (GPU/IOSurface/task_for_pid DER entitlements) so it is device-ready. `IOSC_NO_SIGN=1` skips signing; `IOSC_XBUILD_IMAGE=` overrides the image.
 
 ## On-device Home Screen app sync
