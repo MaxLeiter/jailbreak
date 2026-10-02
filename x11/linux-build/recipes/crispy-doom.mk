@@ -19,7 +19,7 @@ endif
 
 SUBPROJECTS          += crispy-doom
 CRISPY_DOOM_VERSION  := 7.1
-DEB_CRISPY_DOOM_V    ?= $(CRISPY_DOOM_VERSION)+ios1
+DEB_CRISPY_DOOM_V    ?= $(CRISPY_DOOM_VERSION)+ios2
 # GitHub's tag archive for crispy-doom-7.1 (upstream publishes no source
 # tarball). Pinned so a re-rolled or truncated download fails loudly.
 CRISPY_DOOM_SHA256   := f0eb02afb81780165ddc81583ed5648cbee8b3205bcc27e181b3f61eb26f8416
@@ -100,7 +100,12 @@ crispy-doom-package: crispy-doom-stage
 	printf '%s\n' \
 		'#!/bin/sh' \
 		'export SDL_VIDEODRIVER="$${SDL_VIDEODRIVER:-wayland}"' \
-		'export SDL_AUDIODRIVER="$${SDL_AUDIODRIVER:-pulseaudio}"' \
+		'# profile.d/xios-audio.sh (xios-audio-server) exports SDL_AUDIODRIVER=coreaudio' \
+		'# to every login shell, including the session app launcher. xios-sdl2 has no' \
+		'# CoreAudio driver, so that value makes SDL_Init(AUDIO) fail and the game runs' \
+		'# silent. Treat it like unset; any other explicit choice is respected.' \
+		'case "$${SDL_AUDIODRIVER:-}" in ""|coreaudio) SDL_AUDIODRIVER=pulseaudio ;; esac' \
+		'export SDL_AUDIODRIVER' \
 		'# xios-sdl2 is vendored in a private directory so it never stands in for' \
 		'# Procursus SDL2. This is the only thing that puts it on the search path.' \
 		'export DYLD_LIBRARY_PATH="$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/xios-sdl2$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"' \
