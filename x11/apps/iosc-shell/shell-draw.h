@@ -29,6 +29,11 @@
 #include <sys/wait.h>
 #include <time.h>
 
+/* The user's Documents. mobile's home is not under the jbroot: ioscd runs apps
+ * as mobile with HOME from getpwnam("mobile"), i.e. /var/mobile, so this is
+ * where they and "Open Documents" look. */
+#define SD_USER_DOCUMENTS "/var/mobile/Documents"
+
 static const char *sd_jbroot(void)
 {
     const char *env = getenv("IOSC_JBROOT");

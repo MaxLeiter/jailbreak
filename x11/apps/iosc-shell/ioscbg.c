@@ -753,7 +753,7 @@ static void menu_reset_wallpaper(void)
 static void menu_new_folder(void)
 {
     char docs[256], path[320], name[96];
-    sd_join_path(docs, sizeof docs, sd_jbroot(), "/var/mobile/Documents");
+    snprintf(docs, sizeof docs, "%s", SD_USER_DOCUMENTS);
     mkdir(docs, 0755);
     for (int i = 0; i < 100; i++) {
         snprintf(name, sizeof name, i == 0 ? "Untitled Folder" : "Untitled Folder %d", i + 1);
@@ -791,7 +791,7 @@ static void menu_act(int action)
         menu_new_folder();
         break;
     case MENU_ACT_OPEN_DOCUMENTS:
-        sd_launch("xdg-open /var/mobile/Documents");
+        sd_launch("xdg-open " SD_USER_DOCUMENTS);
         break;
     case MENU_ACT_SET_WALLPAPER:
         if (kind == BG_PRESS_PIN) menu_set_wallpaper_from_pin(idx);

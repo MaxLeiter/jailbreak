@@ -571,7 +571,7 @@ static void take_screenshot(void)
     strftime(name, sizeof name, "xios-%Y%m%d-%H%M%S.png", &tm);
 
     char docs[256], tmpdir[256];
-    sd_join_path(docs, sizeof docs, sd_jbroot(), "/var/mobile/Documents");
+    snprintf(docs, sizeof docs, "%s", SD_USER_DOCUMENTS);
     sd_join_path(tmpdir, sizeof tmpdir, sd_jbroot(), "/tmp");
     const char *dirs[] = { docs, tmpdir };
     char path[300] = "";
