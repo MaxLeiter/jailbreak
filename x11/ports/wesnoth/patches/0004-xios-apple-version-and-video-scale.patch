@@ -1,0 +1,58 @@
+Take the generic os_version and DPI paths on Xios.
+
+The remaining two callers of the Objective-C++ sources 0001 excludes:
+desktop::apple::os_version() in desktop/version.cpp and
+desktop::apple::get_scale_factor() in video.cpp. Same fix as 0003; these were
+missed there because they guard on different macros.
+
+version.cpp falls through to its _X11 branch, which this build already selects
+(_X11 is defined), so os_version() keeps working via uname/freedesktop.
+
+video.cpp is the more interesting one. It guarded the scale-factor correction
+with "#ifdef TARGET_OS_OSX", which is TRUE on iOS: TargetConditionals.h defines
+TARGET_OS_OSX as 0 rather than leaving it undefined, so #ifdef sees a defined
+macro and takes the macOS path. Testing the value would fix it too, but the
+guard is spelled to match the rest of the series. The correction it skips exists
+to undo a scale multiplication SDL applies on macOS Retina displays; iosc
+reports DPI unscaled, so skipping it is correct here rather than merely benign.
+
+--- a/src/desktop/version.cpp
++++ b/src/desktop/version.cpp
+@@ -29,7 +29,7 @@
+ #include <sys/utsname.h>
+ #endif
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ 
+ #include "apple_version.hpp"
+ #include "serialization/string_utils.hpp"
+@@ -225,7 +225,7 @@
+ 	}
+ #endif
+ 
+-#if defined(__APPLE__)
++#if defined(__APPLE__) && !defined(WESNOTH_XIOS)
+ 
+ 	//
+ 	// Standard Mac OS X version
+--- a/src/video.cpp
++++ b/src/video.cpp
+@@ -30,7 +30,7 @@
+ #include "sdl/window.hpp"
+ #include "widgets/menu.hpp" // for bluebg_style.unload_images
+ 
+-#ifdef TARGET_OS_OSX
++#if defined(TARGET_OS_OSX) && !defined(WESNOTH_XIOS)
+ #include "desktop/apple_video.hpp"
+ #include "game_version.hpp"
+ #endif
+@@ -848,7 +848,7 @@
+ {
+ 	float hdpi = 0.0f, vdpi = 0.0f;
+ 	if(window && SDL_GetDisplayDPI(window->get_display_index(), nullptr, &hdpi, &vdpi) == 0) {
+-#ifdef TARGET_OS_OSX
++#if defined(TARGET_OS_OSX) && !defined(WESNOTH_XIOS)
+ 		// SDL 2.0.12 changes SDL_GetDisplayDPI. Function now returns DPI
+ 		// multiplied by screen's scale factor. This part of code reverts
+ 		// this multiplication.

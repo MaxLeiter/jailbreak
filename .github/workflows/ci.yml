@@ -28,7 +28,7 @@ jobs:
       - name: Guard local-only files
         run: |
           set -euo pipefail
-          bad="$(git ls-files | grep -E '(^|/)(device\.env|\.env($|\.)|node_modules/|\.DS_Store|\.vercel/|design/\.sf/|.*\.mobileprovision$|.*\.p12$)' || true)"
+          bad="$(git ls-files | grep -E '(^|/)(device\.env|\.env($|\.)|node_modules/|\.DS_Store|\.vercel/|design/\.sf/|.*\.mobileprovision$|.*\.p12$|.*\.deb$)' || true)"
           if [ -n "$bad" ]; then
             echo "Local-only files are tracked:"
             echo "$bad"

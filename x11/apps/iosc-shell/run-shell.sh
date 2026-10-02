@@ -21,6 +21,28 @@
 # desktop — no Mutter, no JS, pure C/Wayland. Package: package-shell.sh.
 set -e
 
+# The slot comes from WAYLAND_DISPLAY, NOT from a positional argument, and every
+# derived path (json, ddx/input/clipboard sockets) follows it. Passing a slot
+# name here used to be accepted and silently ignored, so `run-shell.sh my-slot`
+# started a compositor on the DEFAULT slot and overwrote that session's
+# descriptor -- on 2026-08-06 that clobbered xios.json with a second
+# compositor's portrait geometry, and the Xios app then presented a shape no
+# live compositor was serving (black pillarbox, sheared screencopy). Reject
+# anything that is not a known flag, and name the right way to select a slot.
+for arg in "$@"; do
+    case "$arg" in
+        --no-compositor) ;;
+        *)
+            echo "run-shell.sh: unexpected argument '$arg'" >&2
+            echo "  Usage: run-shell.sh [--no-compositor]" >&2
+            echo "  To choose a slot, set WAYLAND_DISPLAY (e.g." >&2
+            echo "  WAYLAND_DISPLAY=wayland-$arg run-shell.sh), or preferably use" >&2
+            echo "  'xios-device session --slot $arg iosc', which tracks slot state." >&2
+            exit 2
+            ;;
+    esac
+done
+
 detect_jbroot() {
     if [ -n "${IOSC_JBROOT:-}" ]; then printf '%s\n' "${IOSC_JBROOT%/}"; return; fi
     if [ -n "${JBROOT:-}" ]; then printf '%s\n' "${JBROOT%/}"; return; fi

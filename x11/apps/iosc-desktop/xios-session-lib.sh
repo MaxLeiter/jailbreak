@@ -398,7 +398,7 @@ xs_start_native_helper() {  # xs_start_native_helper <binary> <log> <busdir> <bu
         DBUS_SYSTEM_BUS_ADDRESS="$bus_addr" \
         XIOS_HWBRIDGE_BUS=session \
         PULSE_SERVER="${PULSE_SERVER:-unix:$XS_TMP/pulse/native}" \
-        PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$XS_TMP/pulse}" \
+        PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$XS_TMP/pulse-daemon}" \
         GSETTINGS_BACKEND=memory \
         HOME="$XS_VAR/root" \
         PATH="$XS_BIN:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH" \
@@ -1342,6 +1342,30 @@ EOF
     esac
 }
 
+# Regenerate the iOS-app desktop entries so apps installed since the last
+# session show up in the launcher. Fire-and-forget on purpose: a launcher-menu
+# nicety must never delay or fail a session start, so this is backgrounded, its
+# output goes to a log, and every failure is swallowed. A warm run is a no-op
+# (it rewrites nothing when the entries are current). XIOS_IOS_APP_ENTRIES=0
+# skips it.
+xs_refresh_ios_app_entries() {
+    case "${XIOS_IOS_APP_ENTRIES:-1}" in
+        0|no|NO|false|FALSE|off|OFF) return 0 ;;
+    esac
+    local helper
+    for helper in \
+        "${XIOS_IOS_APPS_BIN:-}" \
+        "$XS_BIN/xios-ios-apps" \
+        "$XS_LIBEXEC_DIR/xios-ios-apps"; do
+        [ -n "$helper" ] && [ -x "$helper" ] || continue
+        nohup "$helper" refresh --quiet \
+            >>"$XS_TMP/xios-ios-apps.log" 2>&1 </dev/null &
+        disown 2>/dev/null || true
+        return 0
+    done
+    return 0
+}
+
 xios_session_run() {
     local preset="${1:-}" rc
     case "$preset" in
@@ -1364,6 +1388,7 @@ xios_session_run() {
     xs_acquire_session_lock "$preset" || return $?
     trap 'xs_release_session_lock' EXIT HUP INT TERM
     xs_sweep_stale_slot_registry
+    xs_refresh_ios_app_entries
     xios_session_run_unlocked "$@"
     rc=$?
     xs_release_session_lock

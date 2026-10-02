@@ -1,0 +1,50 @@
+#!/bin/sh
+# xios-open-ios-app <bundle id> — foreground an iOS app from inside the session.
+#
+# The Exec target of every entry xios-ios-apps generates. Launching one leaves
+# the Wayland session: FrontBoard brings the iOS app up fullscreen and Xios.app
+# (the compositor's display surface) goes to the background. iosc keeps running,
+# so the app switcher — or re-tapping the Xios icon — returns to the desktop
+# exactly where it was.
+#
+# `uiopen -b` (open as if tapped, foreground) and NOT the bare `uiopen <id>`
+# form: the latter returns 0 but FrontBoard suspends the background-launched app
+# immediately. Same lesson as x11/wayland/run-kgx.sh.
+set -u
+
+# Probe the well-known logical prefix rather than deriving it from $0: Dopamine's
+# /var/jb is a symlink into /private/preboot/<hash>/dopamine-XXXX/procursus, so a
+# resolved self-path never starts with /var/jb.
+if [ -n "${XIOS_JB_PREFIX+x}" ]; then
+    JB="$XIOS_JB_PREFIX"
+elif [ -d /var/jb/usr ]; then
+    JB=/var/jb
+else
+    JB=""
+fi
+UIOPEN="${XS_UIOPEN:-$JB/usr/bin/uiopen}"
+LOG="${XIOS_IOS_OPEN_LOG:-$JB/tmp/xios-ios-apps.log}"
+
+BUNDLE_ID="${1:-}"
+if [ -z "$BUNDLE_ID" ]; then
+    echo "usage: xios-open-ios-app <bundle id>" >&2
+    exit 2
+fi
+
+if [ ! -x "$UIOPEN" ]; then
+    echo "xios-open-ios-app: $UIOPEN missing (install uikittools)" >&2
+    exit 1
+fi
+
+# Best-effort breadcrumb: when a tap appears to do nothing, this says whether we
+# ran at all and what FrontBoard said.
+{
+    printf '%s open %s\n' "$(date '+%Y-%m-%d %H:%M:%S' 2>/dev/null)" "$BUNDLE_ID"
+} >>"$LOG" 2>/dev/null
+
+if ! out="$("$UIOPEN" -b "$BUNDLE_ID" 2>&1)"; then
+    printf 'xios-open-ios-app: uiopen -b %s failed: %s\n' "$BUNDLE_ID" "$out" >&2
+    printf '  failed: %s\n' "$out" >>"$LOG" 2>/dev/null
+    exit 1
+fi
+exit 0

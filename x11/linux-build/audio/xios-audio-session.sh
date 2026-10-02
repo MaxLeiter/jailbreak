@@ -2,7 +2,10 @@
 export XIOS_AUDIO_SERVER="${XIOS_AUDIO_SERVER:-/var/jb/tmp/xios-audio.sock}"
 # PulseAudio owns PULSE_SERVER. This XIOA socket is reserved for xios-audiod and
 # module-xios-sink, plus the local xios-audio-play smoke test.
-export SDL_AUDIODRIVER="${SDL_AUDIODRIVER:-coreaudio}"
+# No SDL_AUDIODRIVER default: every login shell, and so every app the session
+# launches through bash -lc, inherits whatever this exports. xios-sdl2 and SDL3
+# have no coreaudio driver, and Procursus's UIKit SDL2 picks coreaudio unaided,
+# so each SDL wrapper names its own driver.
 
 xios_audio_start() {
     # No pgrep on the device (ps|grep is the working idiom); a failed check

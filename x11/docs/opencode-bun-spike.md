@@ -18,6 +18,12 @@ bun 1.4.0~canary.1+git5b55beb711+ios0.4
 opencode 1.17.13~ios0.5
 ```
 
+`bun ...+ios0.5` (JavaScriptCore JIT, below) is built but **not yet published**
+and not yet installed from its deb — the device it was validated on went off
+the network mid-session, so the deb in `linux-build/out/` has not been through
+an install-and-verify pass. See the acceptance tests in
+`linux-build/probes-bun-jit/`.
+
 On-device verification:
 
 ```sh
@@ -31,6 +37,40 @@ Expected output includes the real `/private/preboot/.../procursus/tmp` path and:
 1.17.13
 ```
 
+## JavaScriptCore JIT
+
+`+ios0.5` turns the JIT on (baseline + DFG). Everything through `+ios0.4` ran
+`ENABLE_JIT=OFF`, which is not as slow as it sounds — `ENABLE_C_LOOP` was never
+on, so those builds ran the assembly LLInt rather than the C-loop interpreter.
+
+FTL stays off, and with it the wasm BBQ/OMG tiers (they depend on it in
+`WebKitFeatures.cmake`). FTL wants B3/Air and signal-based wasm memory, and the
+iOS SDK ships no `mach/mach_exc.defs`, so `HAVE(MACH_EXCEPTIONS)` is 0 here and
+JSC falls back to POSIX signal handlers. Revisiting FTL means solving that
+first.
+
+The memory model is the interesting part, and it is not JSC's default. Measured
+on the A10 (probes and full results in `linux-build/probes-bun-jit/`):
+
+- `MAP_JIT` is refused (`EINVAL`) bare-fakesigned.
+- An RWX mapping is created without complaint and then **SIGBUSes on the first
+  instruction fetch**, so writing straight through an RWX pool is out.
+- `mach_vm_remap` gives a working RW alias of an RX region — which is exactly
+  `ENABLE(SEPARATED_WX_HEAP)`, still present in bun's WebKit.
+- But iOS will not fault a dirty anonymous page into a *fresh* executable
+  mapping. It will re-protect a page that already has an entry there. So every
+  page of the pool has to pass through the exec mapping as RW once and flip to
+  RX; after that, alias writes are executed by the RX view for the life of the
+  process.
+
+`patches/bun-webkit/0002-ios-separated-wx-jit.patch` implements that: it turns
+on `HAVE_REMAP_JIT` and `ENABLE_SEPARATED_WX_HEAP` for the port (JSCOnly defines
+no `PLATFORM()`, so every gate that would have selected this path was off),
+drops `MAP_JIT` from the reservation, does the RW→touch→RX pass in
+`OSAllocator::commit()`, and leaves the exec view's *maximum* protection at RWX
+so that pass is permitted. `USE(EXECUTE_ONLY_JIT_WRITE_FUNCTION)` stays off —
+it needs execute-only memory, which the A10 does not have.
+
 ## Rebuild
 
 Pinned inputs:
@@ -39,7 +79,7 @@ Pinned inputs:
 - OpenCode: `linux-build/build_info/opencode.lock`
 - Bun patch: `linux-build/patches/bun/0001-add-iphoneos-a10-target.patch`
 - TinyCC patch: `linux-build/patches/tinycc/tccrun-ios-mmap.patch`
-- WebKit patch: `linux-build/patches/bun-webkit/0001-jsconly-skip-mach-exceptions-ios.patch`
+- WebKit patches: `linux-build/patches/bun-webkit/` (applied in glob order)
 
 Build Bun:
 

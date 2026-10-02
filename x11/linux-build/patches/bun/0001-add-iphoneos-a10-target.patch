@@ -133,7 +133,7 @@ index 499a83bc16..c7980c0465 100644
        // CONFIG_USR_INCLUDE was set to sysroot in the cmake version. tccrun
        // uses it to find system headers at runtime; bun:ffi doesn't exercise
 diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
-index 3c8091adc8..38ab4a9acf 100644
+index 3c8091adc8..0cb76143fd 100644
 --- a/scripts/build/deps/webkit.ts
 +++ b/scripts/build/deps/webkit.ts
 @@ -278,6 +278,9 @@ export const webkit: Dependency = {
@@ -168,7 +168,7 @@ index 3c8091adc8..38ab4a9acf 100644
        USE_THIN_ARCHIVES: "OFF",
 -      ENABLE_FTL_JIT: "ON",
 +      ENABLE_FTL_JIT: cfg.applePlatform === "ios" ? "OFF" : "ON",
-+      ...(cfg.applePlatform === "ios" ? { ENABLE_JIT: "OFF" } : {}),
++      ...(cfg.applePlatform === "ios" ? { ENABLE_JIT: "ON", ENABLE_DFG_JIT: "ON" } : {}),
        CMAKE_EXPORT_COMPILE_COMMANDS: "ON",
        USE_BUN_JSC_ADDITIONS: "ON",
        USE_BUN_EVENT_LOOP: "ON",
@@ -993,10 +993,19 @@ index 621e11102c..f3e4b27da3 100644
  extern "C" void Bun__noOrphans_begin(int, int) {}
  extern "C" void Bun__noOrphans_releaseKq() {}
 diff --git a/src/jsc/bindings/NodeVMScript.cpp b/src/jsc/bindings/NodeVMScript.cpp
-index 90d1df51b5..9d9ecf262a 100644
+index 90d1df51b5..e84d40fbe0 100644
 --- a/src/jsc/bindings/NodeVMScript.cpp
 +++ b/src/jsc/bindings/NodeVMScript.cpp
-@@ -164,6 +164,7 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+@@ -3,6 +3,8 @@
+ #include "ErrorCode.h"
+ 
+ #include "JavaScriptCore/Completion.h"
++// JIT.h returns CompilationResult but CodeBlock.h only forward-declares it.
++#include "JavaScriptCore/CompilationResult.h"
+ #include "JavaScriptCore/JIT.h"
+ #include "JavaScriptCore/JSWeakMap.h"
+ #include "JavaScriptCore/JSWeakMapInlines.h"
+@@ -164,6 +166,7 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
                  codeBlock = JSC::ProgramCodeBlock::create(vm, executable, unlinkedBlock, jsScope);
                  RETURN_IF_EXCEPTION(scope, {});
              }
@@ -1004,7 +1013,7 @@ index 90d1df51b5..9d9ecf262a 100644
              JSC::CompilationResult compilationResult = JIT::compileSync(vm, codeBlock, JITCompilationEffort::JITCompilationCanFail);
              if (compilationResult != JSC::CompilationResult::CompilationFailed) {
                  executable->installCode(codeBlock);
-@@ -171,6 +172,9 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
+@@ -171,6 +174,9 @@ constructScript(JSGlobalObject* globalObject, CallFrame* callFrame, JSValue newT
              } else {
                  script->cachedDataRejected(TriState::True);
              }
@@ -1015,10 +1024,19 @@ index 90d1df51b5..9d9ecf262a 100644
      } else if (produceCachedData) {
          script->cacheBytecode();
 diff --git a/src/jsc/bindings/NodeVMSourceTextModule.cpp b/src/jsc/bindings/NodeVMSourceTextModule.cpp
-index ae87e5b014..4096456f41 100644
+index ae87e5b014..5d33619802 100644
 --- a/src/jsc/bindings/NodeVMSourceTextModule.cpp
 +++ b/src/jsc/bindings/NodeVMSourceTextModule.cpp
-@@ -141,12 +141,14 @@ NodeVMSourceTextModule* NodeVMSourceTextModule::create(VM& vm, JSGlobalObject* g
+@@ -9,6 +9,8 @@
+ #include "wtf/Scope.h"
+ 
+ #include "JavaScriptCore/BuiltinNames.h"
++// JIT.h returns CompilationResult but CodeBlock.h only forward-declares it.
++#include "JavaScriptCore/CompilationResult.h"
+ #include "JavaScriptCore/JIT.h"
+ #include "JavaScriptCore/JSModuleEnvironment.h"
+ #include "JavaScriptCore/JSModuleRecord.h"
+@@ -141,12 +143,14 @@ NodeVMSourceTextModule* NodeVMSourceTextModule::create(VM& vm, JSGlobalObject* g
              RETURN_IF_EXCEPTION(scope, nullptr);
          }
          if (codeBlock) {
