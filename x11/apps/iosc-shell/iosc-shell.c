@@ -650,9 +650,17 @@ static int pdbg(void)
     return on;
 }
 
+/* Each of our surfaces records its own hit table (reference space). */
+static const struct panel_hits *hits_for(struct wl_surface *sf)
+{
+    if (P.qs_surf && sf == P.qs_surf) return &P.qs_hits;
+    if (P.wm_surf && sf == P.wm_surf) return &P.wm_hits;
+    return &P.hits;
+}
+
 static void hit_at(struct wl_surface *sf, int x, int y)
 {
-    const struct panel_hits *hs = sf == P.qs_surf && P.qs_surf ? &P.qs_hits : &P.hits;
+    const struct panel_hits *hs = hits_for(sf);
     /* x,y are logical (surface-local); the hit table is in reference space */
     int rx = pl_to_ref(x), ry = pl_to_ref(y);
     int i = pl_hit_test(hs, rx, ry);
@@ -772,12 +780,14 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener ftm_listener = {
 
 static void rerender_for(struct wl_surface *sf)
 {
-    if (P.qs_surf && sf == P.qs_surf) render_qs(); else render();
+    if (P.qs_surf && sf == P.qs_surf) render_qs();
+    else if (P.wm_surf && sf == P.wm_surf) wm_render();
+    else render();
 }
 
 static void ptr_update_hover(struct wl_surface *sf)
 {
-    const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
+    const struct panel_hits *hs = hits_for(sf);
     int i = P.have_ptr ? pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py)) : -1;
     P.ptr_kind = i >= 0 ? hs->v[i].kind : -1;
     P.ptr_idx = i >= 0 ? hs->v[i].idx : -1;
@@ -854,7 +864,7 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     P.press_ms = mono_ms();
     P.px = wl_fixed_to_int(x); P.py = wl_fixed_to_int(y);
     P.touch_x0 = P.px; P.touch_y0 = P.py; P.touch_moved = 0;
-    const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
+    const struct panel_hits *hs = hits_for(sf);
     int i = pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py));
     if (pdbg()) fprintf(stderr, "%s: tc_down id=%d %s logical(%d,%d) ui=%.3f -> press %d\n",
                         mode_name(), id, sf == P.qs_surf ? "qs" : mode_name(), P.px, P.py, pl_ui(), i);
