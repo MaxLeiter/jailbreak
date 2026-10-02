@@ -2,14 +2,17 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
+# 25.11.0 is the last C++20 poppler (26.01+ is C++23); soname libpoppler.154 (was 140), so the core package is
+# libpoppler154 and the old libpoppler140 stays installable for rollback. libpoppler-glib8 keeps its soname,
+# which is why papers/zathura-pdf-poppler/gimp (glib consumers) need no rebuild.
 # glib bindings only (libpoppler-glib) for Papers; qt5/qt6/cpp frontends, utils, tests,
 # and every optional codec that would pull a new lib (nss/gpgme/libcurl/lcms/openjpeg/
 # libtiff/boost) are off. GObject-Introspection is OFF — Papers links poppler-glib
 # directly, not via typelib.
 
 SUBPROJECTS      += poppler
-POPPLER_VERSION  := 24.08.0
-POPPLER_SOV      := 140
+POPPLER_VERSION  := 25.11.0
+POPPLER_SOV      := 154
 DEB_POPPLER_V    ?= $(POPPLER_VERSION)+ios1
 
 poppler-setup: setup

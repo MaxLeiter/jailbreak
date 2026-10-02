@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://poppler.freedesktop.org/
-Depends: libpoppler140 (= @DEB_POPPLER_V@), libpoppler-glib8 (= @DEB_POPPLER_V@), libglib2.0-dev, libcairo2-dev
+Depends: libpoppler154 (= @DEB_POPPLER_V@), libpoppler-glib8 (= @DEB_POPPLER_V@), libglib2.0-dev, libcairo2-dev
 Description: PDF rendering library - development files
  Headers, pkg-config metadata, and the unversioned shared-library symlinks for
  building software against Poppler's core and GLib interfaces (e.g. the Papers

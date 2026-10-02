@@ -2,10 +2,10 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# Qt6 binding split from poppler.mk's core libpoppler140 (same upstream version).
+# Qt6 binding split from poppler.mk's core libpoppler154 (same upstream version).
 
 SUBPROJECTS           += poppler-qt6
-POPPLER_QT6_VERSION   := 24.08.0
+POPPLER_QT6_VERSION   := 25.11.0
 POPPLER_QT6_SOV       := 3
 DEB_POPPLER_QT6_V     ?= $(POPPLER_QT6_VERSION)+qt6ios1+ios1
 
