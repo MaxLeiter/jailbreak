@@ -1,0 +1,10 @@
+Package: vulkan-headers
+Version: @DEB_VULKANHEADERS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://github.com/KhronosGroup/Vulkan-Headers
+Description: Vulkan header files (build-time only)
+ Khronos Vulkan headers and CMake config. Needed to compile KWin's Vulkan render
+ path; there is no Vulkan loader or driver on this platform.

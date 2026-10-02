@@ -1,0 +1,13 @@
+Package: kf6-prison
+Version: @DEB_PRISON_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative, libqrencode4
+Description: Prison for the Xios desktop
+ Barcode API (QR/DataMatrix) with QML bindings.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

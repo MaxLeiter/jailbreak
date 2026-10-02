@@ -1,0 +1,11 @@
+Package: kf6-prison-dev
+Version: @DEB_PRISON_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://kde.org/
+Depends: kf6-prison (= @DEB_PRISON_V@), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev
+Description: Development files for Prison
+ Headers and CMake package files for Prison. Needed to cross-build the
+ KDE components that depend on it.

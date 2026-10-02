@@ -209,15 +209,15 @@ kde_lane_pmr_setup
 # --- stage 2: Procursus cross builds ---------------------------------------------------
 echo "==> installing KF6 recipes into makefiles/"
 # qt6-common.mk is a hard prerequisite: kf6-common.mk builds on its flag block.
-for r in qt6-common.mk kf6-common.mk; do
+for r in qt6-common.mk kf6-common.mk libqrencode.mk; do
   cp -v /work/recipes/$r makefiles/
 done
 for t in $TARGETS; do
   cp -v /work/recipes/$t.mk makefiles/
 done
-cp -v /work/build_info/kf6-*.control build_info/ 2>/dev/null || true
+cp -v /work/build_info/kf6-*.control /work/build_info/libqrencode*.control build_info/ 2>/dev/null || true
 for c in extra-cmake-modules plasma-wayland-protocols plasma-activities kwayland \
-         kdecoration kglobalacceld layer-shell-qt; do
+         kdecoration kglobalacceld layer-shell-qt knighttime; do
   cp -v /work/build_info/$c*.control build_info/ 2>/dev/null || true
 done
 
@@ -264,6 +264,8 @@ find . \( -name "kf6-*_*_$XIOS_DEB_ARCH.deb" \
        -o -name "kwayland*_*_$XIOS_DEB_ARCH.deb" \
        -o -name "kdecoration*_*_$XIOS_DEB_ARCH.deb" \
        -o -name "kglobalacceld*_*_$XIOS_DEB_ARCH.deb" \
-       -o -name "layer-shell-qt*_*_$XIOS_DEB_ARCH.deb" \) \
+       -o -name "layer-shell-qt*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "knighttime*_*_$XIOS_DEB_ARCH.deb" \
+       -o -name "libqrencode*_*_$XIOS_DEB_ARCH.deb" \) \
   -exec cp -v {} /out/ \; 2>/dev/null || true
 echo "==> done"
