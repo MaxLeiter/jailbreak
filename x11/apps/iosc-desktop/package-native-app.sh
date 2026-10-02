@@ -117,13 +117,13 @@ Description: $DESCRIPTION
 CONTROL
 
 cat > "$STAGE/DEBIAN/postinst" <<POSTINST
-#!/var/jb/bin/sh
+#!$XIOS_SHELL_PATH
 chmod 0755 "$XIOS_PREFIX/Applications/$BUNDLE_BASENAME.app/IOSCHost" 2>/dev/null || true
 $XIOS_PREFIX/usr/bin/uicache -p "$XIOS_PREFIX/Applications/$BUNDLE_BASENAME.app" >/dev/null 2>&1 || true
 exit 0
 POSTINST
 cat > "$STAGE/DEBIAN/postrm" <<POSTRM
-#!/var/jb/bin/sh
+#!$XIOS_SHELL_PATH
 $XIOS_PREFIX/usr/bin/uicache -u "$XIOS_PREFIX/Applications/$BUNDLE_BASENAME.app" >/dev/null 2>&1 || true
 exit 0
 POSTRM
