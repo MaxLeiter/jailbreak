@@ -41,9 +41,19 @@ Toolchain: clang >= 19 still the minimum; Rust 1.96 -> 1.98 (rustup); no compile
 
 ## Device bring-up findings (iPad7,12, iPadOS 17.6.1)
 
-Fixups 1-6 (patches/ios-app-fixups-N.patch) came out of compiling and running on device:
-- `AK/ThreadID.cpp` returned 0 on iOS, so every IPC `m_owner_thread_id.is_current_thread()` VERIFY failed (UI crashed at launch).
-- iOS caps a process at roughly 8-10 GiB of virtual address space. Upstream's GC reserves a 4 TiB primitive-storage cage (and 128 GiB heap region for non-macOS AArch64); both are now 1 GiB on iOS (`HeapRegion.h`, `PrimitiveStorage.h`).
-- The host `generate_interpreter_layout` tool must be compiled with `-D__IOS__`, otherwise the generated JS interpreter bakes the Linux masks (SIGBUS in `asm_handler_GetById` on JS-heavy pages).
+Status: ladybird-app 0.1.26+ios1 built from b9c913c0 runs on device: first paint, HTTPS news, JS-heavy (react.dev, Wikimedia Commons) and image-heavy pages render, the software keyboard is summoned from the new input_method_state path, no SIGILL/LSE crash (mimalloc-secure has 0 LSE instructions). All helpers launch, including the new MediaServer (started when a page uses a media element; decoders are still disabled).
+
+Runtime fixes (patches/ios-app-fixups-N.patch):
+- **Virtual address space.** iOS caps a process at roughly 8-10 GiB of total virtual address space; a single PROT_NONE reservation above about 6 GiB fails (measured with a Python mmap probe on the A10 iPad). Upstream's GC reserves a 4 TiB primitive-storage cage (all platforms) and a 128 GiB heap region (non-macOS AArch64), so WebContent died on mmap in `VM::VM`. On iOS both are now 1 GiB (`LibGC/HeapRegion.h`, `LibGC/PrimitiveStorage.h`); the heap region is reserved at twice its size to align it, so 1 GiB is the practical maximum. Consequence: JS heap and typed-array storage are capped at 1 GiB each; watch for OOM on very heavy pages.
+- **ThreadID.** `AK/ThreadID.cpp` returned 0 on iOS (only macOS was handled), so every `LibIPC` `m_owner_thread_id.is_current_thread()` VERIFY failed and the UI crashed at launch.
+- **Host layout tool needs `-D__IOS__`.** The JS interpreter is generated from constants printed by the host-native `generate_interpreter_layout`; the heap-region and cage masks are per platform. Built without `__IOS__` it baked the Linux masks (0x1FFFFFFFFF / 0x3FFFFFFFFFF) and JS-heavy pages died with SIGBUS in `asm_handler_GetById`. `build-ladybird-wave4b.sh` now passes `-D__IOS__` (layout.conf must show 0x3FFFFFFF for both) and the LibJS layout custom command depends on the tool so a rebuilt tool regenerates the interpreter. `FORCE_HOSTTOOLS=1` forces the rebuild.
 - WebContent's own SIGSEGV/SIGBUS handler is not installed on iOS so CrashReporter writes .ips files.
-Debug aids in the UIKit frontend, all behind the existing `/var/jb/tmp/ladybird-trace` sentinel: stderr of UI + helpers goes to `ladybird-stderr.log`; `ladybird-load-url`, `ladybird-dump` (writes the presented frame to `ladybird-dump.png`) and `ladybird-tap` ("x y" in points) files are polled twice a second. The sentinel files must be removed by the writer (root-created files cannot be unlinked by the app).
+- **Upstream bug seen:** rapid repeated reloads of one page (a debugging script re-issued a navigation every 0.5 s) crash WebContent with a Rust panic, `RefCell already borrowed` at `Libraries/LibWeb/Rust/src/painting/paintable_rows.rs:910`. Not reproduced in normal navigation; worth reporting upstream.
+
+Debug aids used during bring-up (stderr capture, load-url/dump/tap polling) were removed from the release build; only the pre-existing `lb_trace` file log (gated on `/var/jb/tmp/ladybird-trace`) remains.
+
+## Notes for the Qt desktop flavor (Wayland/iosc), once Qt 6.10 exists
+
+- Upstream deleted UI/Gtk (2026-07-09) and the AppKit UI; the desktop frontend is `UI/Qt`, which needs Qt 6.10 (we have 6.6.3). The old GTK patches are parked in `patches-wayland-pending/`.
+- Reuse from the iOS app port: the engine patch series (Mach IPC on iOS, IOSurface, VA caps, ThreadID, `__IOS__` layout tool), the MediaServer helper, and the fixups above. A desktop iOS process hits the same 8-10 GiB limit.
+- To redo in Qt what the GTK flavor had: IOSurface presentation into the iosc Wayland surface (upstream's Qt-on-macOS CALayer-contents path is the reference), a memory-texture fallback equivalent, Mach bootstrap for the desktop launch, the text-input-v3 keyboard bridge with Return/Tab sent as keys, scale from xios.json, helper rpath and ladybird-tls vendoring for the Qt binaries (OpenSSL 3.6 vs base 3.2.1 shadow rule), and the Wayland launcher's DYLD_FALLBACK_LIBRARY_PATH trick.
