@@ -1,1 +1,4 @@
-0001-ios-rootless-iosurface-glamor.patch
+0001-os-rootless-popen-shell.patch
+0002-glamor-gles-border-clamp-optional.patch
+0003-build-iosurface-glamor-backend.patch
+0004-window-buffers-iosurface-acquire-fence.patch

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-builds Xwayland 23.2 (GPU-accelerated via ANGLE-Metal glamor -> IOSurface ->
+# Cross-builds Xwayland 24.1 (GPU-accelerated via ANGLE-Metal glamor -> IOSurface ->
 # iosc_iosurface) + its new dep libxcvt, for rootless iOS. See recipes/xwayland.mk,
 # recipes/libxcvt.mk, recipes/ports/xwayland/patches, recipes/build_info/xwayland-glamor-iosurface.c.
 # Run on a volume that already has the wayland stack + libepoxy+angle (procursus-vol-gtk or
