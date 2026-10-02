@@ -282,3 +282,30 @@ has no libc++ headers by default (`apt install libc++-19-dev` supplies them; hea
 Decision: **use mode B from the start; C stays the fallback.** Libc++ headers come from the
 `libc++-19-dev` apt package (headers only), with our own Darwin `__config_site`, installed by the
 new `xios-clang19-env.sh` at build time.
+
+## 13. Build result (2026-10-02, phase 2 up to the device gate)
+
+Built on `procursus-vol-gtk` (work dir `webkitgtk-modern`, no change to the 2.44 trees) through
+`x11/linux-build/build-webkit-modern.sh`; recipe `recipes/webkitgtk-modern.mk`; patch stack
+`x11/ports/webkitgtk-modern/patches` (0003, 0004, 0007, 0010-0012 carried from the 2.44 stack, plus
+0015-0036 new). Result: `libwebkit2gtk-4.1` 24.3 / `libjavascriptcoregtk-4.1` 11.7, minos 16.0, Mach-O
+install names `@rpath/lib*-4.1.0.dylib` (same scheme as 2.44), no CoreFoundation/Foundation/libedit
+dependency, only `/usr/lib/libc++.1.dylib` + libSystem from the base system, zero libc++ symbols missing.
+
+What the 2.54 port needed (all in the patch stack): shadow APPLE for the GTK port (0018) and restore it
+only at generate time for Mach-O dylib naming (0036); export the Darwin SPI headers WTF includes
+(0019, 0021, 0022); plain-C++ replacements for Apple-only pieces (entitlements stub 0020, bmalloc
+ProcessCheck/TZoneLog 0024, OSLogPrintStream as C++ 0022, Skia bundle lookup 0034); libpas ulock-flags
+API missing in the 16.5 SDK (0016); memory footprint via task_info (0017); TZone and libdispatch
+threading off like the Linux port (0025, 0026); ANGLE: accept the iOS 16 SDK, select iOS platform
+sources, use the EGL display backend, system-info and dma-buf utils (0027-0029, 0033); IPC on Unix
+sockets rather than Mach/XPC (0030); config fixes for VIDEO/GBM/LIBDRM/2022-API off (0031, 0032, 0033);
+no readline for `jsc` (0035). Patches 0001, 0002, 0005, 0006, 0008, 0009, 0013, 0014 of the 2.44
+stack are not needed in 2.54 (upstream moved or the APPLE shadow removes the need).
+
+Build-system lesson: `xios_clang19_setup` rewrote the compiler wrappers on every container run;
+the mtime bump made ninja rebuild everything each time. Fixed (idempotent writes).
+
+Not done / flagged: WebGL is compiled (`ENABLE_WEBGL=ON`) but untested on device; JIT stays off
+(C-loop), hardware compositing is the dormant lane's work (patches 0015-0018 there need a forward port
+to 2.54). Device tests are the next gate.
