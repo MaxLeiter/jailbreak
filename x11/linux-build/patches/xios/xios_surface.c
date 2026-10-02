@@ -1507,7 +1507,12 @@ int xios_read_client_iosurface(void *client_surface, unsigned char *dst,
     const unsigned char *src = IOSurfaceGetBaseAddress(surface);
     size_t stride = IOSurfaceGetBytesPerRow(surface);
     size_t sw = IOSurfaceGetWidth(surface), sh = IOSurfaceGetHeight(surface);
-    int ok = src && (size_t) width <= sw && (size_t) height <= sh;
+    /* The copy below assumes 4-byte pixels. The surface is the CLIENT's: one
+     * with another pixel format (or a row pitch under width*4) would have each
+     * row read past its end and the last rows past the allocation. */
+    int ok = src && (size_t) width <= sw && (size_t) height <= sh &&
+             IOSurfaceGetBytesPerElement(surface) == 4 &&
+             stride >= (size_t) width * 4;
     if (ok) {
         for (int row = 0; row < height; row++) {
             /* GL origin is bottom-left; the wire format is top-down. */
@@ -1541,6 +1546,11 @@ void xios_probe_client_iosurface(void *client_surface, const char *tag)
     size_t stride = IOSurfaceGetBytesPerRow(s);
     int w = (int) IOSurfaceGetWidth(s);
     int h = (int) IOSurfaceGetHeight(s);
+    if (IOSurfaceGetBytesPerElement(s) != 4 || stride < (size_t) w * 4) {
+        IOSurfaceUnlock(s, XIOS_LOCK_READONLY, NULL);   /* walk below is 4 B/px */
+        fprintf(stderr, "xios-probe[%s]: not a 4-byte-per-pixel surface\n", tag);
+        return;
+    }
 
     /* BGRA8: [0]=B [1]=G [2]=R [3]=A. Colour and alpha are counted separately
      * on purpose — see the header. */
