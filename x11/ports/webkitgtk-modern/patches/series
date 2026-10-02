@@ -4,3 +4,4 @@
 0010-wkbundle-viewport-api-feature-guard.patch
 0011-ios-allow-gigacage-allocation-failure.patch
 0012-ios-load-rootless-angle-egl.patch
+0015-gtk-darwin-skip-webkitlegacy.patch

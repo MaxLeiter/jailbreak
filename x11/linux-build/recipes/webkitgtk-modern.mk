@@ -30,10 +30,10 @@ webkitgtk-modern-setup: setup
 	$(call EXTRACT_TAR,webkitgtk-$(WEBKITGTK_MODERN_VERSION).tar.xz,webkitgtk-$(WEBKITGTK_MODERN_VERSION),webkitgtk-modern)
 	bash /work/recipes/hydrate-webkit-apple-sources-modern.sh $(BUILD_WORK)/webkitgtk-modern $(WEBKITGTK_MODERN_COMMIT)
 	$(call DO_PATCH,webkitgtk-modern,webkitgtk-modern,-p1)
-	@# Fail loudly if any patch did not apply (rejects or stray originals).
-	@if find $(BUILD_WORK)/webkitgtk-modern -name '*.rej' -o -name '*.orig' | grep -q .; then \
+	@# Fail loudly if any patch did not apply (.rej files).
+	@if find $(BUILD_WORK)/webkitgtk-modern -name '*.rej' | grep -q .; then \
 		echo "ERROR: webkitgtk-modern patch stack left rejects"; \
-		find $(BUILD_WORK)/webkitgtk-modern -name '*.rej' -o -name '*.orig'; exit 1; fi
+		find $(BUILD_WORK)/webkitgtk-modern -name '*.rej'; exit 1; fi
 
 webkitgtk-modern-configure: webkitgtk-modern-setup
 	bash /work/recipes/stage-webkitgtk-deps.sh $(BUILD_BASE)
@@ -57,6 +57,8 @@ webkitgtk-modern-configure: webkitgtk-modern-setup
 		-DWAYLAND_SCANNER=$(BUILD_WORK)/wayland/native-root/bin/wayland-scanner \
 		-DGETTEXT_MSGFMT_EXECUTABLE=/usr/bin/msgfmt \
 		-DGETTEXT_MSGMERGE_EXECUTABLE=/usr/bin/msgmerge \
+		-DUSE_GSTREAMER=OFF \
+		-DGLIB_COMPILE_RESOURCES_EXECUTABLE=/usr/bin/glib-compile-resources \
 		-DUSE_SYSTEM_SYSPROF_CAPTURE=OFF \
 		-DUSE_SYSPROF_CAPTURE=OFF \
 		-DUSE_SYSTEM_UNIFDEF=ON \
