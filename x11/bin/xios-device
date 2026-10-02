@@ -276,9 +276,9 @@ cmd_session() {
     esac
 
     local env_prefix=""
-    [ -n "$width" ] && env_prefix="$env_prefix XIOS_SESSION_WIDTH=$width"
-    [ -n "$height" ] && env_prefix="$env_prefix XIOS_SESSION_HEIGHT=$height"
-    [ -n "$dpi" ] && env_prefix="$env_prefix XIOS_SESSION_DPI=$dpi"
+    [ -n "$width" ] && env_prefix="$env_prefix XIOS_SESSION_WIDTH=$(printf '%q' "$width")"
+    [ -n "$height" ] && env_prefix="$env_prefix XIOS_SESSION_HEIGHT=$(printf '%q' "$height")"
+    [ -n "$dpi" ] && env_prefix="$env_prefix XIOS_SESSION_DPI=$(printf '%q' "$dpi")"
     local daemon_arg=""
     [ "$via" = 1 ] && daemon_arg="--via-daemon"
     local slot_arg=""
