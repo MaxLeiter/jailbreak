@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Games
 Priority: optional
 Homepage: https://fabiangreffrath.github.io/crispy-doom/
-Depends: xios-sdl2, libsdl2-mixer-2.0-0, libpng16-16
+Depends: xios-sdl2, libsdl2-mixer-2.0-0, libpng16-16, libz1
 Recommends: freedoom
 Description: Crispy Doom source port for Xios
  The limit-removing, enhanced-resolution Doom source port that stays faithful
