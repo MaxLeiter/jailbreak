@@ -48,6 +48,16 @@ cp -v /work/recipes/*.mk makefiles/
 # sure clang resolves plain "ld" to cctools' ld64 instead of Debian's GNU ld.
 ln -sf aarch64-apple-darwin-ld /root/cctools/bin/ld
 
+# That symlink also shadows GNU ld for HOST links (PATH starts with /root/cctools/bin), so
+# cargo's host-side build scripts / proc-macros fail with "ld: unknown option: -plugin".
+# Route host links through a cc wrapper that looks in /usr/bin first.
+cat > /usr/local/bin/xios-host-cc <<'EOF'
+#!/bin/sh
+exec cc -B/usr/bin "$@"
+EOF
+chmod +x /usr/local/bin/xios-host-cc
+export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=/usr/local/bin/xios-host-cc
+
 echo "==> installing -Wno-unused-command-line-argument clang wrappers"
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
