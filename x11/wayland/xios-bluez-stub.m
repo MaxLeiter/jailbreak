@@ -476,7 +476,7 @@ register_device (id dev)
                err ? err->message : "?");
     g_clear_error (&err);
     [g_dev_keepalive removeObjectForKey:[NSString stringWithUTF8String:addr]];
-    g_free (o);
+    device_obj_free (o);
     return;
   }
   g_hash_table_insert (g_devices, g_strdup (addr), o);
@@ -763,12 +763,16 @@ pump_cfrunloop (gpointer data)
   return G_SOURCE_CONTINUE;
 }
 
-/* Periodic reconcile (belt-and-suspenders on top of notifications). */
+/* Periodic reconcile (belt-and-suspenders on top of notifications). GLib callbacks run
+ * inside main()'s outer @autoreleasepool, which never drains while the loop runs, so give
+ * each pass its own pool or every BluetoothManager autorelease accumulates forever. */
 static gboolean
 periodic_sync (gpointer data)
 {
   (void) data;
-  sync_devices ();
+  @autoreleasepool {
+    sync_devices ();
+  }
   return G_SOURCE_CONTINUE;
 }
 
