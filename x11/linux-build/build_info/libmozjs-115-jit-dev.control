@@ -1,9 +1,9 @@
 Package: libmozjs-115-jit-dev
-Version: 115.12.0
+Version: @DEB_MOZJSJIT_V@
 Architecture: iphoneos-arm64
 MinimumOSVersion: 14.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libmozjs-115-jit-0 (= 115.12.0)
+Depends: libmozjs-115-jit-0 (>= @DEB_MOZJSJIT_V@)
 Provides: libmozjs-115-dev
 Conflicts: libmozjs-115-dev
 Replaces: libmozjs-115-dev
