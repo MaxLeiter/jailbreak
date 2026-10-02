@@ -52,15 +52,14 @@
 
 /* ------------------------------------------------------------------ config */
 /* Reference design space (matches preview-host.c + shell-theme.h tuning). The
- * panel is always drawn PL_REF_W wide x PL_REF_H tall in these units, then
- * scaled to the real output by P.ui so its on-glass size is -logical-invariant. */
+ * panel is always drawn PL_REF_W wide x its role's reference height (BAR_REF_H
+ * or DOCK_REF_H) in these units, then scaled to the real output by P.ui so its
+ * on-glass size is -logical-invariant. */
 /* Must track package-shell.sh's VER (deb version); this is an internal build
  * stamp only and bumping it does NOT bump the shipped package version. */
 #define IOSC_SHELL_VER "0.9.11"
 
 #define PL_REF_W    1440
-#define PL_REF_H    64     /* >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
-#define PANEL_H     PL_REF_H
 #define DOCK_REORDER_HOLD_MS 540
 
 enum shell_surface_mode {
@@ -105,7 +104,7 @@ static struct {
     int   width, height, scale, scale_env, configured, running;
     /* UI scale: keep the chrome a CONSTANT on-glass size at any -logical.
      * ui = logical_width / PL_REF_W. The panel is drawn in a fixed
-     * PL_REF_W x PL_REF_H reference space (what shell-theme.h is tuned for) and
+     * PL_REF_W-wide reference space (what shell-theme.h is tuned for) and
      * scaled by ui, so raising -logical shrinks app content WITHOUT shrinking
      * the panel's 44pt+ touch targets. ui = 1.0 at the 1440x1080 default. */
     double ui;
@@ -315,10 +314,8 @@ static void render(void)
     build_model(&m);
     if (P.mode == MODE_BAR)
         panel_draw_statusbar(cr, &t, wref, BAR_REF_H, &m, &P.hits);
-    else if (P.mode == MODE_DOCK)
-        panel_draw_dock(cr, &t, wref, DOCK_REF_H, &m, &P.hits);
     else
-        panel_draw_topbar(cr, &t, wref, PL_REF_H, &m, &P.hits);
+        panel_draw_dock(cr, &t, wref, DOCK_REF_H, &m, &P.hits);
     pr_text_ctx_free(&t);
 
     cairo_surface_flush(surf);
@@ -612,10 +609,6 @@ static void act_on_hit(const struct panel_hit *r)
     case PL_HIT_ACTIVATE:
         if (r->idx < P.ntasks && P.tasks[r->idx].handle)
             zwlr_foreign_toplevel_handle_v1_activate(P.tasks[r->idx].handle, P.seat);
-        break;
-    case PL_HIT_CLOSE:
-        if (r->idx < P.ntasks && P.tasks[r->idx].handle)
-            zwlr_foreign_toplevel_handle_v1_close(P.tasks[r->idx].handle);
         break;
     case PL_HIT_APPGRID:  P.want_overview = 1; break;
     case PL_HIT_STATUS:   P.want_qs_toggle = 1; break;
