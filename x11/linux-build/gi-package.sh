@@ -3,10 +3,10 @@
 # Runs ON the iPad. Produces: libgirepository-1.0-1, libgirepository-1.0-dev,
 # gobject-introspection, gir1.2-glib-2.0, gir1.2-freedesktop.
 set -e
-_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
-. "$_xt/linux-build/target-lib.sh"
-xios_load_target "${XIOS_TARGET:-rootless-1900}"
+# This runs under the device's dash with no repo checkout beside it, so it can't
+# source the bash-only target-lib.sh. Same default as target-env.sh; a rootful
+# device passes XIOS_PREFIX= explicitly.
+if [ -z "${XIOS_PREFIX+set}" ]; then XIOS_PREFIX=/var/jb; fi
 SPIKE=$XIOS_PREFIX/tmp/gi-spike
 SRC=$SPIKE/gobject-introspection-1.78.0
 BUILD=$SRC/_build
