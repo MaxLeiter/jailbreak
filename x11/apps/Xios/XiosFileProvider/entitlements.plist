@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- The extension runs in its OWN process with its OWN sandbox, so none of the
+         host app's exceptions apply to it. It needs far less than the app does: no
+         GPU, no IOSurface, no camera — only the shared folder it publishes.
+
+         Both spellings of the path are listed because /var is a symlink to
+         /private/var and the sandbox matches the resolved path, so an exception for
+         only one of them silently fails to cover the other. -->
+    <key>com.apple.private.amfi.can-allow-non-platform</key>
+    <true/>
+    <key>com.apple.security.exception.files.absolute-path.read-write</key>
+    <array>
+        <string>/var/mobile/Xios/</string>
+        <string>/private/var/mobile/Xios/</string>
+    </array>
+</dict>
+</plist>

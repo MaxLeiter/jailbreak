@@ -5,6 +5,7 @@ xlib/
 Xios.xcodeproj/
 Resources/Info.generated.plist
 XiosShare/Info.generated.plist
+XiosFileProvider/Info.generated.plist
 
 # Build artifacts
 build/
