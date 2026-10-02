@@ -1426,11 +1426,18 @@ static int native_canvas_size_for_surface(struct iosc_surface *s, int *w, int *h
     int lw = 0, lh = 0;
     surface_display_size(s, &lw, &lh);
     int os = output_scale();
-    int pw = (lw > 0 ? lw : 1) * os;
-    int ph = (lh > 0 ? lh : 1) * os;
+    /* The display size can be any positive wp_viewport destination, so multiply
+     * in 64 bits and clamp to the largest target the GPU binds (a bigger canvas
+     * could not be bound anyway); the int size handed to xios_canvas_create()
+     * and iosc_gl_bind_target() then cannot wrap negative. */
+    int64_t max = iosc_gl_max_target_size() > 0 ? iosc_gl_max_target_size() : INT32_MAX;
+    int64_t pw = (int64_t)(lw > 0 ? lw : 1) * os;
+    int64_t ph = (int64_t)(lh > 0 ? lh : 1) * os;
+    if (pw > max) pw = max;
+    if (ph > max) ph = max;
     if (pw <= 0 || ph <= 0) return -1;
-    if (w) *w = pw;
-    if (h) *h = ph;
+    if (w) *w = (int)pw;
+    if (h) *h = (int)ph;
     return 0;
 }
 
