@@ -54,6 +54,7 @@ struct app {
     char bundle_id[320];
     char bundle_name[256];
     char bundle_path[PATH_MAX];
+    int raw_touch;              /* X-Xios-RawTouch=true -> IOSCRawTouch */
 };
 
 static int opt_native = 1;
@@ -194,6 +195,7 @@ static int parse_desktop(const char *path, struct app *a)
     snprintf(a->exec, sizeof(a->exec), "%s", entry.exec);
     snprintf(a->icon, sizeof(a->icon), "%s", entry.icon);
     snprintf(a->app_id, sizeof(a->app_id), "%s", entry.app_id);
+    a->raw_touch = entry.raw_touch;
     char san[256];
     sanitize_id(a->app_id, san, sizeof(san));
     snprintf(a->bundle_id, sizeof(a->bundle_id), "com.max.iosc.%s", san);
@@ -306,6 +308,12 @@ static void write_info_plist(const struct app *a, const char *path)
     }
     fputs("  <key>IOSCAppID</key><string>", f); xml_escape(f, a->app_id); fputs("</string>\n", f);
     fputs("  <key>IOSCName</key><string>", f); xml_escape(f, a->name); fputs("</string>\n", f);
+    /* Presentation hint read by IOSCHost from its own bundle (no direct-touch
+     * gesture recognizers, no emulated pointer). Never sent to ioscd: the
+     * launch request stays LAUNCH_NATIVE\t<app_id>. Classic bundles run
+     * IOSCLaunch, which presents nothing, so only native bundles carry it. */
+    if (opt_native && a->raw_touch)
+        fputs("  <key>IOSCRawTouch</key><true/>\n", f);
     fputs("  <key>CFBundleIcons</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key>"
           "<array><string>AppIcon60x60</string><string>AppIcon76x76</string></array></dict></dict>\n"
           "  <key>CFBundleIcons~ipad</key><dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key>"
