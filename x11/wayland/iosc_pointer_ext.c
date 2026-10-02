@@ -227,6 +227,7 @@ struct iosc_constraint {
     int region_x0, region_y0, region_x1, region_y1; /* surface-local bbox */
     int hint_has;
     int hint_x, hint_y;   /* surface-local logical coordinates */
+    struct wl_listener surface_destroy;   /* on surface's wl_surface while ->surface is set */
 };
 static struct iosc_constraint *g_constraints[IOSC_MAX_CONSTRAINTS]; static int g_nconstraints;
 static struct iosc_constraint *g_active_constraint;
@@ -302,19 +303,36 @@ int confine_point(struct iosc_surface *s, int *x, int *y)
     if (y1 > y0) *y = clampi(*y, s->dy + y0, s->dy + y1 - 1);
     return 1;
 }
+static void constraint_detach_surface(struct iosc_constraint *cc)
+{
+    if (!cc->surface) return;
+    if (cc->active) constraint_deactivate(cc);
+    wl_list_remove(&cc->surface_destroy.link);
+    cc->surface = NULL;
+}
 void constraints_surface_gone(struct iosc_surface *s)
 {
     for (int i = 0; i < g_nconstraints; i++)
-        if (g_constraints[i]->surface == s) {
-            if (g_constraints[i]->active) constraint_deactivate(g_constraints[i]);
-            g_constraints[i]->surface = NULL;
-        }
+        if (g_constraints[i]->surface == s)
+            constraint_detach_surface(g_constraints[i]);
+}
+/* surface_unmap() only reaches constraints_surface_gone() for a MAPPED surface,
+ * so a constraint made on a surface that is destroyed before it ever maps would
+ * keep a dangling ->surface. The next surface allocated at that address then
+ * matched it in constraint_for_surface() and inherited the lock: a frozen
+ * cursor over an unrelated window. Track the wl_surface itself instead. */
+static void constraint_surface_destroyed(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct iosc_constraint *cc = wl_container_of(l, cc, surface_destroy);
+    constraint_detach_surface(cc);
 }
 
 static void constraint_res_destroy(struct wl_resource *r)
 {
     struct iosc_constraint *cc = wl_resource_get_user_data(r);
     if (!cc) return;
+    if (cc->surface) wl_list_remove(&cc->surface_destroy.link);
     if (g_active_constraint == cc) g_active_constraint = NULL;
     for (int i = 0; i < g_nconstraints; i++)
         if (g_constraints[i] == cc) { g_constraints[i] = g_constraints[--g_nconstraints]; break; }
@@ -366,6 +384,10 @@ static void constraint_new(struct wl_client *c, struct wl_resource *r, uint32_t 
     cc->resource = wl_resource_create(c, iface, wl_resource_get_version(r), id);
     if (!cc->resource) { free(cc); wl_client_post_no_memory(c); return; }
     cc->surface  = surface ? wl_resource_get_user_data(surface) : NULL;
+    if (cc->surface) {
+        cc->surface_destroy.notify = constraint_surface_destroyed;
+        wl_resource_add_destroy_listener(surface, &cc->surface_destroy);
+    }
     cc->type     = type;
     cc->lifetime = lifetime;
     constraint_copy_region(cc, region);
