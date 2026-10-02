@@ -5,8 +5,8 @@ endif
 # exiv2.mk - image metadata library for Gwenview.
 
 SUBPROJECTS += exiv2
-EXIV2_VERSION = 0.28.3
-DEB_EXIV2_V ?= $(EXIV2_VERSION)+ios2
+EXIV2_VERSION = 0.28.9
+DEB_EXIV2_V ?= $(EXIV2_VERSION)+ios1
 
 exiv2-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/Exiv2/exiv2/archive/refs/tags/v$(EXIV2_VERSION).tar.gz)
