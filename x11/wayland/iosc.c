@@ -5546,17 +5546,76 @@ static int clip_item_set(const char *mime, const char *data, size_t len)
     return 0;
 }
 
-static int write_all_fd(int fd, const void *buf, size_t len)
+/* Clipboard bytes owed to a client's receive() fd. A pipe holds far less than
+ * a clipboard item (up to XIOS_CLIP_ITEM_MAX), and a client may roundtrip to us
+ * before it starts reading, so one blocking write of the whole item stalled the
+ * compositor until the reader caught up, or forever if it never read. Copy the
+ * bytes and feed the fd from the event loop as it drains instead. The caps bound
+ * what readers that never read can pin; past them the fd is closed at once and
+ * that reader sees an empty paste. */
+#define IOSC_MAX_CLIP_WRITERS      32
+#define IOSC_MAX_CLIP_WRITER_BYTES (64u * 1024u * 1024u)
+struct iosc_clip_writer {
+    int fd;
+    struct wl_event_source *src;
+    char *data;
+    size_t len, off;
+};
+static int g_nclip_writers;
+static size_t g_clip_writer_bytes;
+
+static void clip_writer_free(struct iosc_clip_writer *w)
 {
-    const char *p = buf;
-    size_t put = 0;
-    while (put < len) {
-        ssize_t w = write(fd, p + put, len - put);
-        if (w > 0) { put += (size_t)w; continue; }
-        if (w < 0 && errno == EINTR) continue;
-        return -1;
+    if (w->src) wl_event_source_remove(w->src);
+    close(w->fd);
+    g_nclip_writers--;
+    g_clip_writer_bytes -= w->len;
+    free(w->data);
+    free(w);
+}
+
+static int clip_writer_writable(int fd, uint32_t mask, void *data)
+{
+    struct iosc_clip_writer *w = data;
+    while (w->off < w->len) {
+        ssize_t n = write(fd, w->data + w->off, w->len - w->off);
+        if (n > 0) { w->off += (size_t)n; continue; }
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) &&
+            !(mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)))
+            return 0;                  /* pipe full: wait until it drains */
+        break;                         /* EPIPE (reader gone) or a real error */
     }
+    clip_writer_free(w);
     return 0;
+}
+
+/* Send `len` bytes of `data` to a receive() fd without blocking. Takes
+ * ownership of fd (closed once the bytes are out, or on any failure). */
+static void clip_send_to_fd(int fd, const char *data, size_t len)
+{
+    struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
+    struct iosc_clip_writer *w = NULL;
+    if (!loop || len == 0 || g_nclip_writers >= IOSC_MAX_CLIP_WRITERS ||
+        len > IOSC_MAX_CLIP_WRITER_BYTES - g_clip_writer_bytes ||
+        !(w = calloc(1, sizeof(*w))) || !(w->data = malloc(len))) {
+        free(w);
+        close(fd);
+        return;
+    }
+    memcpy(w->data, data, len);
+    w->fd = fd;
+    w->len = len;
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    w->src = wl_event_loop_add_fd(loop, fd, WL_EVENT_WRITABLE, clip_writer_writable, w);
+    if (!w->src) {
+        free(w->data);
+        free(w);
+        close(fd);
+        return;
+    }
+    g_nclip_writers++;
+    g_clip_writer_bytes += len;
 }
 
 static void clipboard_selection_send_to_device(struct iosc_data_device *d)
@@ -5659,7 +5718,7 @@ static void data_offer_receive(struct wl_client *c, struct wl_resource *r,
         if (!m && is_text_mime(mime_type))
             for (int i = 0; i < o->nitems; i++)
                 if (is_text_mime(o->items[i].mime)) { m = &o->items[i]; break; }
-        if (m && m->data) write_all_fd(fd, m->data, m->len);
+        if (m && m->data) { clip_send_to_fd(fd, m->data, m->len); return; }
     }
     close(fd);
 }
@@ -6751,7 +6810,7 @@ static void data_control_offer_receive(struct wl_client *c, struct wl_resource *
     struct iosc_data_control_offer *o = wl_resource_get_user_data(r);
     if (o && o->is_primary) { primary_forward_send(mime, fd); return; }
     struct iosc_mime_data *m = clip_find_item(mime);
-    if (m && m->data) write_all_fd(fd, m->data, m->len);
+    if (m && m->data) { clip_send_to_fd(fd, m->data, m->len); return; }
     close(fd);
 }
 static void data_control_offer_destroy_req(struct wl_client *c, struct wl_resource *r)
