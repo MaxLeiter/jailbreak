@@ -1513,15 +1513,48 @@ static int native_composite_toplevel(struct iosc_surface *s)
     return 1;
 }
 
+/* Paint a live canvas plain black (the session-lock state of a native window). */
+static int native_blank_toplevel(struct iosc_surface *s)
+{
+    void *canvas = xios_canvas_surface(s->window_id);
+    if (!canvas) return 0;
+    if (iosc_gl_bind_target(canvas, s->native_canvas_w, s->native_canvas_h) != 0)
+        return 0;
+    iosc_gl_begin();   /* clears to black */
+    iosc_gl_end();
+    if (notify_native_gpu_frame(s->window_id) != 0)
+        return 0;
+    s->native_canvas_dirty = 0;
+    return 1;
+}
+
 static void native_recomposite_now(void)
 {
     if (!iosc_gl_ok()) return;
     int painted = 0;
     int skipped = 0;
+    /* Session lock. The classic output shows nothing but the lock surface while
+     * locked (recomposite_now); native windows each have their own canvas, so
+     * blank every live one once when the lock lands, create no new ones, and
+     * repaint them all for real once it lifts. */
+    static int painted_locked;
+    int locked = g_slock.locked != 0;
+    int lock_changed = locked != painted_locked;
+    painted_locked = locked;
     for (int i = 0; i < g_nmapped; i++) {
         struct iosc_surface *s = g_mapped[i];
         if (s->role != IOSC_ROLE_TOPLEVEL)
             continue;
+        if (locked) {
+            if (s->native_canvas_live && lock_changed)
+                painted += native_blank_toplevel(s);
+            else
+                skipped++;
+            s->native_canvas_dirty = 0;
+            continue;
+        }
+        if (lock_changed)
+            s->native_canvas_dirty = 1;
         if (!s->native_canvas_dirty && s->native_canvas_live) {
             skipped++;
             continue;
@@ -6522,14 +6555,14 @@ static void iosc_input_record(const xios_msg *m, const char *text,
         /* AXIS x,y are fixed-point scroll DELTAS, not positions — pass raw
          * (handle_axis does its own /output_scale), NOT the physical_to_logical'd
          * locals. */
-        case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
+        case XIOS_IN_AXIS:   if (bound && !g_slock.locked) g_ptr_focus = bound;
                              handle_axis(XIOS_INPUT_X(m), XIOS_INPUT_Y(m),
                                          XIOS_INPUT_CODE(m),
                                          (int)(XIOS_INPUT_STATE(m) & 1u),
                                          XIOS_INPUT_MODS(m)); break;
         /* GESTURE x,y are fixed-point translation DELTAS like AXIS, so pass the
          * raw wire values, not the physical_to_logical'd locals. */
-        case XIOS_IN_GESTURE: if (bound) g_ptr_focus = bound;
+        case XIOS_IN_GESTURE: if (bound && !g_slock.locked) g_ptr_focus = bound;
                              handle_gesture(XIOS_INPUT_CODE(m), XIOS_INPUT_X(m),
                                             XIOS_INPUT_Y(m), XIOS_INPUT_STATE(m),
                                             XIOS_INPUT_MODS(m)); break;
