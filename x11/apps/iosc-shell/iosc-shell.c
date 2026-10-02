@@ -392,9 +392,9 @@ static void qs_close(void)
     if (!P.qs_surf) return;
     if (P.ptr_surf == P.qs_surf) P.ptr_surf = NULL;
     if (P.touch_surf == P.qs_surf) { P.touch_surf = NULL; P.press_kind = 0; }
-    sd_cairo_pool_destroy(&P.qs_pool);
     zwlr_layer_surface_v1_destroy(P.qs_layer); P.qs_layer = NULL;
     wl_surface_destroy(P.qs_surf);             P.qs_surf = NULL;
+    sd_cairo_pool_destroy(&P.qs_pool);
     if (P.qs_backdrop) { cairo_surface_destroy(P.qs_backdrop); P.qs_backdrop = NULL; }
     P.qs_configured = 0;
     render();   /* un-light the status cluster */
@@ -426,9 +426,9 @@ static void wm_close(void)
     if (!P.wm_surf) return;
     if (P.ptr_surf == P.wm_surf) P.ptr_surf = NULL;
     if (P.touch_surf == P.wm_surf) { P.touch_surf = NULL; P.press_kind = 0; }
-    sd_cairo_pool_destroy(&P.wm_pool);
     zwlr_layer_surface_v1_destroy(P.wm_layer); P.wm_layer = NULL;
     wl_surface_destroy(P.wm_surf);             P.wm_surf = NULL;
+    sd_cairo_pool_destroy(&P.wm_pool);
     P.wm_configured = 0;
     P.wm_handle = NULL;
 }

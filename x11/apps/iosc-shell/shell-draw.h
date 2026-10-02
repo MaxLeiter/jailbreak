@@ -252,13 +252,15 @@ static struct sd_cairo_slot *sd_cairo_pool_begin(struct sd_cairo_pool *pool,
     return chosen;
 }
 
+/* Frees every slot, attached or not. Call it after destroying the wl_surface
+ * the pool drew into (or at exit): iosc never sends wl_buffer.release for a
+ * destroyed surface's last buffer, so a busy slot left to wait for one would
+ * stay busy forever and the next surface reusing the pool would run dry. */
 static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
 {
     if (!pool) return;
-    for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++) {
-        if (pool->slots[i].busy) pool->slots[i].retire = 1;
-        else sd_cairo_slot_destroy(&pool->slots[i]);
-    }
+    for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++)
+        sd_cairo_slot_destroy(&pool->slots[i]);
 }
 
 #endif /* SD_CAIRO */
