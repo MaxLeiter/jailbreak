@@ -6,11 +6,11 @@ endif
 # avoiding KF6Pty and KFileMetaData.
 
 SUBPROJECTS += ark
-ARK_VERSION = 24.08.0
+ARK_VERSION = 26.08.1
 DEB_ARK_V ?= $(ARK_VERSION)+ios1
 
 ark-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/ark-$(ARK_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/ark-$(ARK_VERSION).tar.xz)
 	$(call EXTRACT_TAR,ark-$(ARK_VERSION).tar.xz,ark-$(ARK_VERSION),ark)
 	sed -i '/DocTools/d;/FileMetaData/d' $(BUILD_WORK)/ark/CMakeLists.txt
 	perl -0777 -i -pe 's/\nif \(NOT WIN32\)\n\s*find_package\(KF6 [^\n]* COMPONENTS Pty\)\nendif\(\)\n//s' $(BUILD_WORK)/ark/CMakeLists.txt

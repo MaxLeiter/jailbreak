@@ -462,6 +462,10 @@ TABLE = [
                 "Kirigami2 UI polish or feed support, so both optional branches are disabled.",
                 "The helper app is not installed in this cut, so the package removes its",
                 "desktop entry instead of advertising a missing knewstuff-dialog6 binary."]),
+    dict(t="kholidays", kind="kf", deb="kf6-holidays", deps=[],
+         qt_deps=["qt6-base", "qt6-declarative"],
+         desc="Holiday calendar computation library.",
+         notes=["Added for the 6.7 lane: plasma5support/plasma-workspace 6.7 REQUIRE KF6::Holidays."]),
     dict(t="kwallet", kind="kf", deb="kf6-wallet",
          deps=["kconfig", "kcoreaddons", "ki18n", "kwindowsystem"],
          qt_deps=["qt6-base"],
@@ -735,6 +739,7 @@ def pretty_name(e):
                "kstatusnotifieritem": "KStatusNotifierItem",
                "kunitconversion": "KUnitConversion", "kparts": "KParts",
                "knewstuff": "KNewStuff", "kwallet": "KWallet",
+               "kholidays": "KHolidays",
                "knotifyconfig": "KNotifyConfig",
                "qqc2-desktop-style": "QQC2DesktopStyle",
                "solid": "Solid", "sonnet": "Sonnet", "kirigami": "Kirigami"}

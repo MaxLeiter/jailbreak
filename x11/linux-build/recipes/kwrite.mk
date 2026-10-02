@@ -5,11 +5,11 @@ endif
 # kwrite.mk - KWrite from the Kate source tree.
 
 SUBPROJECTS += kwrite
-KWRITE_VERSION = 24.08.0
-DEB_KWRITE_V ?= $(KWRITE_VERSION)+ios3
+KWRITE_VERSION = 26.08.1
+DEB_KWRITE_V ?= $(KWRITE_VERSION)+ios1
 
 kwrite-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kate-$(KWRITE_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/kate-$(KWRITE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,kate-$(KWRITE_VERSION).tar.xz,kate-$(KWRITE_VERSION),kwrite)
 	# kwrite ships libkateprivate, which BOTH kwrite and kate link, so the
 	# daemon()/SingleApplication surgery has to be applied here too -- kate's

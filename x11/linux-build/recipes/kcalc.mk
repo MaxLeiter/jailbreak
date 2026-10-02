@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kcalc.mk - KDE scientific calculator (KDE Gear 24.08.0).
+# kcalc.mk - KDE scientific calculator (KDE Gear 26.08.1).
 #
 # The cheapest of the KDE app batch: Qt6 Core + Widgets, seven already-published KF6
 # frameworks, and GMP + MPFR, which Procursus already ships as libgmp10 / libmpfr6.
@@ -32,11 +32,11 @@ endif
 # overwrite MacOSXBundleInfo.plist.in in the setup step.
 
 SUBPROJECTS += kcalc
-KCALC_VERSION = 24.08.0
+KCALC_VERSION = 26.08.1
 DEB_KCALC_V ?= $(KCALC_VERSION)+ios1
 
 kcalc-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kcalc-$(KCALC_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/kcalc-$(KCALC_VERSION).tar.xz)
 	$(call EXTRACT_TAR,kcalc-$(KCALC_VERSION).tar.xz,kcalc-$(KCALC_VERSION),kcalc)
 	sed -i 's/add_subdirectory( tests )/# ios-bringup-no-tests: add_subdirectory( tests )/' $(BUILD_WORK)/kcalc/knumber/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)

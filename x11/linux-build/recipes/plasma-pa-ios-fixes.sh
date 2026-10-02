@@ -28,8 +28,13 @@ python3 - "$src/src/CMakeLists.txt" <<'PY'
 import pathlib, sys
 p = pathlib.Path(sys.argv[1])
 s = p.read_text()
+import re
+# 6.1 listed one file per line; 6.7 lists "canberracontext.cpp canberracontext.h" together.
 s = s.replace("    canberracontext.cpp\n", "")
+s = re.sub(r"(?m)^[ \t]*canberracontext\.cpp canberracontext\.h[ \t]*\n", "", s)
 s = s.replace("    Canberra::Canberra\n", "")
+if "canberracontext" in s:
+    raise SystemExit("plasma-pa-ios-fixes.sh: canberracontext still referenced in src/CMakeLists.txt")
 p.write_text(s)
 PY
 
@@ -50,6 +55,7 @@ cpp.write_text("""/*
 
 VolumeFeedback::VolumeFeedback(QObject *parent)
     : QObject(parent)
+    , m_config(nullptr) // 6.7: const member, must be initialised even though the sound stub never uses it
 {
 }
 

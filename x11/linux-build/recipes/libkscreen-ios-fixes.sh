@@ -44,12 +44,10 @@ if(NOT APPLE)
     list(APPEND kscreen_dpms_SRCS waylanddpmshelper.cpp xcbdpmshelper.cpp)
 endif()
 target_sources(KF6ScreenDpms PRIVATE ${kscreen_dpms_SRCS})
-target_link_libraries(KF6ScreenDpms PUBLIC Qt::Gui)
+# 6.7 generates the dpms Wayland protocol code unconditionally, so the Wayland libs are linked on APPLE too.
+target_link_libraries(KF6ScreenDpms PUBLIC Qt::Gui PRIVATE Qt::GuiPrivate Qt::WaylandClient Wayland::Client)
 if(NOT APPLE)
-    target_link_libraries(KF6ScreenDpms PRIVATE
-        XCB::XCB XCB::DPMS XCB::RANDR
-        Qt::GuiPrivate Qt::WaylandClient Wayland::Client
-    )
+    target_link_libraries(KF6ScreenDpms PRIVATE XCB::XCB XCB::DPMS XCB::RANDR)
 endif()
 """
 if new not in text:
@@ -140,6 +138,12 @@ if "#endif\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged
     connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged, this, &Dpms::supportedChanged);
 """,
     )
+if "#endif\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged" not in text:
+    # 6.7 words the final else-branch differently (Platform is not Wayland or X11...), so close the #else generically.
+    anchor = "    }\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged"
+    if anchor not in text:
+        raise SystemExit("dpms: constructor tail not found for #endif")
+    text = text.replace(anchor, "    }\n#endif\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged", 1)
 trigger_call = "    m_helper->trigger(mode, screens.isEmpty() ? qGuiApp->screens() : screens);\n"
 guarded_trigger = (
     "    if (m_helper.isNull()) {\n"

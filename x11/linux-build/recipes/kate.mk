@@ -2,18 +2,18 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# kate.mk - Kate, from the same kate-24.08.0 tarball kwrite.mk already builds.
+# kate.mk - Kate, from the same kate-26.08.1 tarball kwrite.mk already builds.
 #
 # kwrite.mk builds this tree with apps/kate commented out; this recipe is its mirror
 # image - apps/kwrite commented out - so the two never fight over the kwrite binary.
 #
 # IMPORTANT packaging constraint: apps/lib builds `libkateprivate`, which BOTH Kate and
-# KWrite link, and the published kwrite 24.08.0+ios2 deb already ships
-# /var/jb/usr/lib/libkateprivate.24.08.0.dylib (verified in the deb payload). Shipping
+# KWrite link, and the published kwrite 26.08.1+ios2 deb already ships
+# /var/jb/usr/lib/libkateprivate.26.08.1.dylib (verified in the deb payload). Shipping
 # it again from a kate deb would be a dpkg file conflict. So the kate package drops
 # libkateprivate* at package time and Depends on kwrite instead. That keeps kwrite.mk
 # untouched, and it is safe because both packages build the identical library from the
-# identical 24.08.0 sources with the identical flags below - if kwrite.mk's flags ever
+# identical 26.08.1 sources with the identical flags below - if kwrite.mk's flags ever
 # change, this recipe has to change with them.
 #
 # Cuts, all inherited from kwrite.mk for exactly the same reasons:
@@ -33,11 +33,11 @@ endif
 # /var/jb/Applications/KDE/kate.app is the wanted outcome. No CLI helper in this tree.
 
 SUBPROJECTS += kate
-KATE_VERSION = 24.08.0
-DEB_KATE_V ?= $(KATE_VERSION)+ios4
+KATE_VERSION = 26.08.1
+DEB_KATE_V ?= $(KATE_VERSION)+ios1
 
 kate-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/kate-$(KATE_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/kate-$(KATE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,kate-$(KATE_VERSION).tar.xz,kate-$(KATE_VERSION),kate)
 	bash $(BUILD_INFO)/kate-ios-fixes.sh $(BUILD_WORK)/kate
 	sed -i 's/ecm_optional_add_subdirectory(addons)/# ios-bringup-no-addons: ecm_optional_add_subdirectory(addons)/;s/ecm_optional_add_subdirectory(doc)/# ios-bringup-no-doc: ecm_optional_add_subdirectory(doc)/;s/add_subdirectory(appiumtests)/# ios-bringup-no-appiumtests: add_subdirectory(appiumtests)/' $(BUILD_WORK)/kate/CMakeLists.txt

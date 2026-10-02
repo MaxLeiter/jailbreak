@@ -12,6 +12,11 @@ src=${2:?usage: run-fixes.sh <fix-script-name> <source-dir> [args...]}
 shift 2
 here="$(cd "$(dirname "$0")" && pwd)"
 
+# A re-run of `make <unit>-setup` on an already-patched tree must not re-apply (many hunks are not idempotent and the
+# changed-file count would legitimately be lower): a stamp marks a tree this script already fixed successfully.
+stamp="$src/.xios-fixes-$name"
+if [ -e "$stamp" ]; then echo "run-fixes.sh: $name already applied to $src (stamp), skipping"; exit 0; fi
+
 min=$(awk -v n="$name" '$1==n {print $2}' "$here/fix-min-files.txt")
 [ -n "$min" ] || { echo "run-fixes.sh: $name has no entry in fix-min-files.txt" >&2; exit 2; }
 
@@ -31,3 +36,4 @@ if [ "$changed" -lt "$min" ]; then
   echo "ERROR: $name changed $changed < $min files: hunks no longer match this source version (silent no-op). Re-port it." >&2
   exit 1
 fi
+touch "$stamp"
