@@ -8,8 +8,8 @@ set -euo pipefail
 QTVER=6.10.3
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 BB=$XIOS_SYSROOT
-TARGETS="${TARGETS:-phonon-package ksyntaxhighlighting-package ktexteditor-package poppler-package poppler-qt6-package kpty-package ark-package okular-package gwenview-package kwrite-package kate-package kcalc-package konsole-package dolphin-package}"
-COLLECT_DEBS=(libpoppler154 libpoppler-glib8 libpoppler-dev libpoppler-qt6-3 libpoppler-qt6-dev okular libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
+TARGETS="${TARGETS:-phonon-package ksyntaxhighlighting-package ktexteditor-package poppler-package poppler-qt6-package kpty-package ark-package okular-package kwrite-package kate-package kcalc-package konsole-package dolphin-package}"
+COLLECT_DEBS=(kf6-threadweaver kf6-filemetadata libpoppler154 libpoppler-glib8 libpoppler-dev libpoppler-qt6-3 libpoppler-qt6-dev okular libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
 
 cd /work/Procursus
 
@@ -44,6 +44,8 @@ else
   echo "NOTE: ICU 74.2 debs not in /out; konsole will not configure." >&2
 fi
 
+# gwenview 26.08 hard-requires Qt6Multimedia/MultimediaWidgets (24.08 used Phonon): deferred until a Qt Multimedia module
+# exists in the lane (needs an FFmpeg or AVFoundation backend decision). Build it explicitly with TARGETS=gwenview-package.
 # Lane staging (see build-kf6.sh/build-plasma-desktop.sh): libwayland >= 1.24, wayland-protocols, libgtkintl shim,
 # exiv2/poppler runtime+dev debs from /out, then mode B (clang-19 + LLVM-19 libc++ headers, minos 16.5).
 for pkg in libwayland0 libwayland-dev wayland-protocols libexiv2-28 libexiv2-dev libpoppler154 libpoppler-dev libpoppler-glib8; do
@@ -54,6 +56,7 @@ bash /work/recipes/ensure-gtkintl-build-shim.sh
 . /work/x11/linux-build/tools/xios-clang19-env.sh
 export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
 xios_clang19_setup
+kde_lane_pmr_setup
 
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
@@ -73,7 +76,7 @@ echo "==> installing KDE app recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
 for r in \
   qt6-common.mk kf6-common.mk \
-  poppler.mk poppler-qt6.mk okular.mk phonon.mk ksyntaxhighlighting.mk ktexteditor.mk \
+  threadweaver.mk poppler.mk poppler-qt6.mk okular.mk phonon.mk ksyntaxhighlighting.mk ktexteditor.mk \
   ark.mk gwenview.mk kwrite.mk \
   kate.mk kcalc.mk kpty.mk konsole.mk dolphin.mk; do
   cp -v /work/recipes/$r makefiles/

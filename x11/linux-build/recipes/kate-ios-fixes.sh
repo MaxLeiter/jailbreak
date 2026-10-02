@@ -23,7 +23,12 @@ path = Path(sys.argv[1])
 text = path.read_text()
 MARKER = "// ios: SingleApplication cannot work here"
 if MARKER not in text:
-    old = "    if (!force_new && app.isSecondary()) {\n"
+    # 24.08: `app.isSecondary()`; 26.08: `singleApplicationInstance->isSecondary()` (indented one level deeper).
+    for old in ("    if (!force_new && app.isSecondary()) {\n", "        if (!force_new && singleApplicationInstance->isSecondary()) {\n"):
+        if old in text:
+            break
+    else:
+        raise SystemExit("kate-ios-fixes.sh: isSecondary hand-off branch not found")
     new = (
         "#if defined(Q_OS_IOS)\n"
         "    " + MARKER + " (its ctor returns early and\n"
@@ -31,11 +36,9 @@ if MARKER not in text:
         "    // primary. Taking the hand-off branch exits before any window is created.\n"
         "    if (false) {\n"
         "#else\n"
-        "    if (!force_new && app.isSecondary()) {\n"
+        + old +
         "#endif\n"
     )
-    if old not in text:
-        raise SystemExit("kate-ios-fixes.sh: isSecondary hand-off branch not found")
     text = text.replace(old, new, 1)
     path.write_text(text)
 PY

@@ -229,6 +229,7 @@ bash /work/recipes/ensure-gtkintl-build-shim.sh
 . /work/x11/linux-build/tools/xios-clang19-env.sh
 export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
 xios_clang19_setup
+kde_lane_pmr_setup
 mkdir -p build_tools/boost-host-include
 ln -sfn /usr/include/boost build_tools/boost-host-include/boost
 

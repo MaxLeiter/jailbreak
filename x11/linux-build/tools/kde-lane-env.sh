@@ -26,3 +26,25 @@ exec /usr/bin/ninja -j"${KDE_NINJA_JOBS:-10}" "$@"
 W
   chmod +x "$KDE_CMAKE_DIR/bin/ninja"
 fi
+
+# kde_lane_pmr_setup: call AFTER xios_clang19_setup. Builds tools/xios-pmr-shim (std::pmr is missing from the 16.5
+# libc++ dylib, see that README) and swaps XIOS_CXX19 for a wrapper that appends `-L<dir> -Wl,-hidden-lxios-pmr` to
+# LINK invocations only (hidden: no KDE dylib re-exports std::pmr symbols).
+kde_lane_pmr_setup() {
+  here=/work/x11/linux-build/tools/xios-pmr-shim
+  bash "$here/build.sh" || return 1
+  pmr_dir="${XIOS_PMR_DIR:-/work/Procursus/build_tools/xios-pmr}"
+  real_cxx="${XIOS_CXX19_REAL:-$XIOS_CXX19}"
+  wrap="$(dirname "$real_cxx")/cxx19-kde"
+  cat > "$wrap.tmp" <<W
+#!/usr/bin/env bash
+link=1
+for a in "\$@"; do case "\$a" in -c|-E|-S|-fsyntax-only|-M|-MM) link=0;; esac; done
+if [ "\$link" = 1 ]; then exec "$real_cxx" "\$@" -L$pmr_dir -Wl,-hidden-lxios-pmr; fi
+exec "$real_cxx" "\$@"
+W
+  chmod +x "$wrap.tmp"
+  if ! cmp -s "$wrap.tmp" "$wrap" 2>/dev/null; then mv -f "$wrap.tmp" "$wrap"; else rm -f "$wrap.tmp"; fi
+  export XIOS_CXX19_REAL="$real_cxx" XIOS_CXX19="$wrap"
+  echo "kde-lane: std::pmr shim linked via $wrap"
+}

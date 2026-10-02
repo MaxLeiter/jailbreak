@@ -23,7 +23,7 @@ ifneq ($(wildcard $(BUILD_WORK)/gwenview/.build_complete),)
 gwenview:
 	@echo "Using previously built gwenview."
 else
-gwenview: gwenview-setup phonon exiv2
+gwenview: gwenview-setup phonon
 	rm -rf $(BUILD_WORK)/gwenview/build
 	mkdir -p $(BUILD_WORK)/gwenview/build
 	cd $(BUILD_WORK)/gwenview/build && cmake .. \

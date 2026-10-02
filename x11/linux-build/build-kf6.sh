@@ -204,6 +204,7 @@ fi
 # the KDE lane deploys at 16.5 (the iPad runs 17.6; stamp-minos must not lower these to 16.0).
 export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
 xios_clang19_setup
+kde_lane_pmr_setup
 
 # --- stage 2: Procursus cross builds ---------------------------------------------------
 echo "==> installing KF6 recipes into makefiles/"

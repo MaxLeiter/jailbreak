@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://apps.kde.org/dolphin/
-Depends: qt6-base, phonon4qt6, kf6-bookmarks, kf6-codecs, kf6-completion, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kio, kf6-newstuff, kf6-notifications, kf6-parts, kf6-solid, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem
+Depends: qt6-base, phonon4qt6, kf6-bookmarks, kf6-codecs, kf6-completion, kf6-config, kf6-coreaddons, kf6-crash, kf6-dbusaddons, kf6-filemetadata, kf6-i18n, kf6-iconthemes, kf6-kcmutils, kf6-kio, kf6-newstuff, kf6-notifications, kf6-parts, kf6-solid, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem
 Recommends: konsole
 Description: Dolphin file manager (Qt6/KF6)
  KDE's file manager. This first Xios package builds without Baloo,
