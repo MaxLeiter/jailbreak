@@ -21,8 +21,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <errno.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
 
@@ -69,6 +72,23 @@ static int sd_socket_exists(const char *path)
     return path && stat(path, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
+/* A bus socket whose dbus-daemon died without its own cleanup (SIGKILL from
+ * the session teardown's second pass, jetsam) still stat()s as a socket;
+ * only a refused connect tells it apart from a live listener. */
+static int sd_socket_dead(const char *path)
+{
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    if (!path || strlen(path) >= sizeof sa.sun_path) return 0;
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return 0;
+    int dead = connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0 && errno == ECONNREFUSED;
+    close(fd);
+    return dead;
+}
+
 static int sd_shared_session_bus(const char *root, const char *busdir,
                                  char *addr, size_t addr_n)
 {
@@ -76,7 +96,7 @@ static int sd_shared_session_bus(const char *root, const char *busdir,
     if (!busdir || !*busdir || !addr || addr_n == 0) return 0;
     snprintf(sock, sizeof sock, "%s/session-bus", busdir);
     snprintf(addr, addr_n, "unix:path=%s", sock);
-    if (sd_socket_exists(sock)) return 1;
+    if (sd_socket_exists(sock) && !sd_socket_dead(sock)) return 1;
 
     mkdir(busdir, 0700);
     chmod(busdir, 0700);
