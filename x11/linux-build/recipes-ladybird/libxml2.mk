@@ -11,7 +11,7 @@ endif
 # 2.12 with no option to bring it back.
 
 SUBPROJECTS      += libxml2
-LIBXML2_VERSION  := 2.13.8
+LIBXML2_VERSION  := 2.13.9
 LIBXML2_MAJMIN   := 2.13
 DEB_LIBXML2_V    ?= $(LIBXML2_VERSION)+ios2
 
