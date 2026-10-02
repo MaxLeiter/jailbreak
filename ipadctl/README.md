@@ -26,6 +26,13 @@ Add to Claude Code:
 claude mcp add ipad -e IPADCTL_URL=$IPADCTL_URL -e IPADCTL_TOKEN=$IPADCTL_TOKEN -- bun run /abs/path/to/ipadctl/mcp/src/index.ts
 ```
 
+Or keep the token out of the MCP config: if `IPADCTL_TOKEN` is unset, the server reads `~/.config/ipadctl/token` (override the path with `IPADCTL_TOKEN_FILE`).
+
+```sh
+mkdir -p ~/.config/ipadctl && (umask 077; ipadctl/daemon/deploy.sh token > ~/.config/ipadctl/token)
+claude mcp add --scope user ipad -e IPADCTL_URL=http://MaxsiPad.local:8790 -- bun run /abs/path/to/ipadctl/mcp/src/index.ts
+```
+
 Tools appear as `mcp__ipad__screenshot`, `zoom`, `tap`, `double_tap`, `long_press`, `swipe`, `scroll`, `type`, `key`, `button`, `open_app`, `open_url`, `list_apps`, `batch`. Coordinates are screenshot pixels.
 
 ### Auto mode config (Claude Code)

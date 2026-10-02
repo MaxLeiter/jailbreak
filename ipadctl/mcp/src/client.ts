@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type {
   Action,
   ActionsResponse,
@@ -7,6 +10,18 @@ import type {
   ScreenshotMeta,
   ScreenshotRequest,
 } from "./types.ts";
+
+// The token lives in a 0600 file so it never has to sit in plain text in an MCP config.
+const tokenFilePath = (env: NodeJS.ProcessEnv) =>
+  env.IPADCTL_TOKEN_FILE ?? join(homedir(), ".config", "ipadctl", "token");
+
+function readTokenFile(path: string): string | undefined {
+  try {
+    return readFileSync(path, "utf8").trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export class DaemonRequestError extends Error {
   constructor(
@@ -33,14 +48,14 @@ export class DaemonClient {
   static fromEnv(env = process.env): DaemonClient {
     return new DaemonClient(
       (env.IPADCTL_URL ?? "http://MaxsiPad.local:8790").replace(/\/+$/, ""),
-      env.IPADCTL_TOKEN,
+      env.IPADCTL_TOKEN || readTokenFile(tokenFilePath(env)),
     );
   }
 
   private async req(method: string, path: string, body?: unknown): Promise<Response> {
     if (!this.token) {
       throw new DaemonRequestError(
-        "IPADCTL_TOKEN is not set. Set it to the bearer token configured on ipadctld.",
+        `No bearer token: set IPADCTL_TOKEN, or put ipadctld's token in ${tokenFilePath(process.env)} (mode 0600).`,
         "unauthorized",
       );
     }
