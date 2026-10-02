@@ -136,3 +136,29 @@ Fix scripts were re-run on the host against pristine Plasma 6.1.5 and 6.7.5 tree
 
 New guard: `recipes/run-fixes.sh` + `fix-min-files.txt` (applied to 15 recipes) fail a build when a fix script changes fewer files than the version it was ported on.
 Poppler 25.11.0 recipes are done (`libpoppler154`); okular/gwenview recipes still need their Gear 26.08.1 bump with the Gear wave.
+
+## 10. Build status and notes (2026-10-02)
+
+Everything below builds and packages in `procursus-vol-kde610`; debs are in `x11/linux-build/out/`. Nothing is published, nothing was tested on a device.
+
+- Qt 6.10.3 ladder, KF6 6.30.0 (incl. kholidays, kfilemetadata, prison, knighttime, kdecoration3), Gear 26.08.1 apps (ark, dolphin, kate, kwrite, kcalc, konsole, okular, ktexteditor, poppler 25.11): built.
+- Plasma 6.7.5: kwin, plasma-workspace, plasma-desktop, systemsettings, powerdevil, kde-cli-tools, xdg-desktop-portal-kde, plasma-nano, plasma-mobile, libplasma, libkscreen, kscreen, plasma-pa, milou, plasma-integration, breeze: built.
+
+### Minimum OS version floor is 16.5
+Mode B (clang 19 with LLVM 19 libc++ headers against the system libc++ dylib) is required by KF6 6.30 and Plasma 6.7 (`std::format` and friends). The libc++ availability annotations then force `XIOS_IOS_MIN=16.5`, so KDE debs carry minos 16.5. `stamp-minos.py` keeps the per-binary floor.
+
+### std::pmr shim
+`std::pmr` landed in Apple's libc++ with iOS 17; our SDK floor is 16.5. `tools/xios-pmr-shim/` builds a static `libxios-pmr.a` from LLVM 19 `memory_resource.cpp`, linked hidden (`-Wl,-hidden-lxios-pmr`) only through the `cxx19-kde` wrapper (`kde_lane_pmr_setup` in `kde-lane-env.sh`). Verified `libKF6TextEditor` exports zero pmr symbols. The per-site non-pmr patches in kconfigwidgets and ktexteditor are now redundant and can be reverted.
+
+### Known gaps (not ported or deliberately compiled out)
+- kwin: software compositor only. The GPU/IOSurface backend (`KWIN_IOS_GPU=1`) needs a fresh port against the 6.7 scene/EGL layout. The QPA plugin has GL contexts disabled; link-only stubs for drmSyncobj and vkGet* live in `ios_link_stubs.cpp`.
+- plasma-mobile: only 25 of the 41 6.1.5 fix-script files apply (min set to 25 in fix-min-files.txt). The record tile (KPipeWire) and the flashlight KAuth helper are dropped.
+- plasma-workspace: desktop:/ kio worker skipped (kio is built without USE_DBUS, so no KDirNotify). Notification sounds compiled out (no libcanberra, `XIOS_NO_CANBERRA`). KScreenLocker/KSysGuard not ported (ScreenSaver DBus XML shipped locally).
+- xdg-desktop-portal-kde: Print portal removed (no QPrintDialog).
+- powerdevil: wakeup-source classification returns UnknownSource (no UdevQt).
+- polkit-kde-agent-1: still blocked on PolkitQt6-1.
+- gwenview: needs Qt Multimedia, follow-up. Threadweaver deb must be added to the collect list.
+- plasma-desktop: several `PORT-TODO`s in the build log (taskmanager parentPid, pager X11 branch) are 6.1-path leftovers; the 6.7 equivalents compiled without them.
+
+### Still to do before any device test
+Control files for debs changed after build (kf6-prison Depends libqrencode4; qcoro6 description now includes QML), `Breaks` on old qt6/kf6/plasma packages, the xios-kde meta, host DER re-sign, minos audit, `upstream-version-policy.json` tracks, and a rebuild of qtwayland consumers.
