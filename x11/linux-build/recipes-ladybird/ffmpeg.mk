@@ -17,7 +17,7 @@ endif
 # SONAMEs: libavutil.59 libavcodec.61 libavformat.61 libswresample.5. No CLI tools (--disable-programs).
 
 SUBPROJECTS    += ffmpeg
-FFMPEG_VERSION := 7.1.1
+FFMPEG_VERSION := 7.1.1   # upstream Ladybird pins 7.1.1 (Meta/CMake/vcpkg/overlay-ports/ffmpeg); stays 7.1.1 here
 DEB_FFMPEG_V   ?= $(FFMPEG_VERSION)+ios1
 
 ffmpeg-setup: setup
@@ -29,6 +29,13 @@ ffmpeg-setup: setup
 		rm -rf $(BUILD_WORK)/ffmpeg $(BUILD_STAGE)/ffmpeg; \
 	fi
 	$(call EXTRACT_TAR,ffmpeg-$(FFMPEG_VERSION).tar.xz,ffmpeg-$(FFMPEG_VERSION),ffmpeg)
+	# Upstream Ladybird (overlay-ports/ffmpeg/0100-ladybird-symbol-version-nodes.patch) renames the ELF/Mach
+	# symbol-version nodes so a system FFmpeg can be loaded beside this one; its CMake now looks for the
+	# libavcodec-ladybird/libavformat-ladybird/libavutil-ladybird/libswresample-ladybird .pc files, which
+	# --build-suffix=-ladybird produces.
+	for l in avcodec:AVCODEC avformat:AVFORMAT avutil:AVUTIL swresample:SWRESAMPLE; do \
+		sed -i "s/^LIB$${l#*:}_MAJOR {/LIB$${l#*:}_LADYBIRD_MAJOR {/" $(BUILD_WORK)/ffmpeg/lib$${l%%:*}/lib$${l%%:*}.v; \
+	done
 
 ifneq ($(wildcard $(BUILD_WORK)/ffmpeg/.build_complete),)
 ffmpeg:
@@ -41,6 +48,7 @@ ffmpeg: ffmpeg-setup
 		--enable-shared \
 		--enable-static \
 		--enable-pthreads \
+		--build-suffix=-ladybird \
 		--enable-cross-compile \
 		--target-os=darwin \
 		--arch=$(MEMO_ARCH) \
@@ -87,48 +95,48 @@ ffmpeg-package: ffmpeg-stage
 		$(BUILD_DIST)/libavutil{59,-dev} \
 		$(BUILD_DIST)/libswresample{5,-dev}
 	mkdir -p \
-		$(BUILD_DIST)/libavcodec61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
-		$(BUILD_DIST)/libavcodec-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include} \
-		$(BUILD_DIST)/libavformat61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
-		$(BUILD_DIST)/libavformat-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include} \
-		$(BUILD_DIST)/libavutil59/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
-		$(BUILD_DIST)/libavutil-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include} \
-		$(BUILD_DIST)/libswresample5/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
-		$(BUILD_DIST)/libswresample-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include}
+		$(BUILD_DIST)/libavcodec-ladybird61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libavcodec-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include} \
+		$(BUILD_DIST)/libavformat-ladybird61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libavformat-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include} \
+		$(BUILD_DIST)/libavutil-ladybird59/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libavutil-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include} \
+		$(BUILD_DIST)/libswresample-ladybird5/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib \
+		$(BUILD_DIST)/libswresample-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{lib/pkgconfig,include}
 
 	# runtime dylibs (versioned soname)
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavcodec.61*.dylib    $(BUILD_DIST)/libavcodec61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavformat.61*.dylib   $(BUILD_DIST)/libavformat61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavutil.59*.dylib     $(BUILD_DIST)/libavutil59/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libswresample.5*.dylib  $(BUILD_DIST)/libswresample5/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavcodec-ladybird.61*.dylib    $(BUILD_DIST)/libavcodec-ladybird61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavformat-ladybird.61*.dylib   $(BUILD_DIST)/libavformat-ladybird61/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavutil-ladybird.59*.dylib     $(BUILD_DIST)/libavutil-ladybird59/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libswresample-ladybird.5*.dylib  $(BUILD_DIST)/libswresample-ladybird5/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# -dev: unversioned .dylib + .a + headers + .pc
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavcodec.{dylib,a}    $(BUILD_DIST)/libavcodec-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libavcodec          $(BUILD_DIST)/libavcodec-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libavcodec.pc $(BUILD_DIST)/libavcodec-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavformat.{dylib,a}   $(BUILD_DIST)/libavformat-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libavformat         $(BUILD_DIST)/libavformat-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libavformat.pc $(BUILD_DIST)/libavformat-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavutil.{dylib,a}     $(BUILD_DIST)/libavutil-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libavutil           $(BUILD_DIST)/libavutil-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libavutil.pc  $(BUILD_DIST)/libavutil-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libswresample.{dylib,a} $(BUILD_DIST)/libswresample-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libswresample       $(BUILD_DIST)/libswresample-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
-	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libswresample.pc $(BUILD_DIST)/libswresample-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavcodec-ladybird.{dylib,a}    $(BUILD_DIST)/libavcodec-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libavcodec          $(BUILD_DIST)/libavcodec-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libavcodec-ladybird.pc $(BUILD_DIST)/libavcodec-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavformat-ladybird.{dylib,a}   $(BUILD_DIST)/libavformat-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libavformat         $(BUILD_DIST)/libavformat-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libavformat-ladybird.pc $(BUILD_DIST)/libavformat-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libavutil-ladybird.{dylib,a}     $(BUILD_DIST)/libavutil-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libavutil           $(BUILD_DIST)/libavutil-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libavutil-ladybird.pc  $(BUILD_DIST)/libavutil-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libswresample-ladybird.{dylib,a} $(BUILD_DIST)/libswresample-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/libswresample       $(BUILD_DIST)/libswresample-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
+	cp -a $(BUILD_STAGE)/ffmpeg/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig/libswresample-ladybird.pc $(BUILD_DIST)/libswresample-ladybird-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig
 
-	$(call SIGN,libavcodec61,general.xml)
-	$(call SIGN,libavformat61,general.xml)
-	$(call SIGN,libavutil59,general.xml)
-	$(call SIGN,libswresample5,general.xml)
+	$(call SIGN,libavcodec-ladybird61,general.xml)
+	$(call SIGN,libavformat-ladybird61,general.xml)
+	$(call SIGN,libavutil-ladybird59,general.xml)
+	$(call SIGN,libswresample-ladybird5,general.xml)
 
-	$(call PACK,libavcodec61,DEB_FFMPEG_V)
-	$(call PACK,libavcodec-dev,DEB_FFMPEG_V)
-	$(call PACK,libavformat61,DEB_FFMPEG_V)
-	$(call PACK,libavformat-dev,DEB_FFMPEG_V)
-	$(call PACK,libavutil59,DEB_FFMPEG_V)
-	$(call PACK,libavutil-dev,DEB_FFMPEG_V)
-	$(call PACK,libswresample5,DEB_FFMPEG_V)
-	$(call PACK,libswresample-dev,DEB_FFMPEG_V)
+	$(call PACK,libavcodec-ladybird61,DEB_FFMPEG_V)
+	$(call PACK,libavcodec-ladybird-dev,DEB_FFMPEG_V)
+	$(call PACK,libavformat-ladybird61,DEB_FFMPEG_V)
+	$(call PACK,libavformat-ladybird-dev,DEB_FFMPEG_V)
+	$(call PACK,libavutil-ladybird59,DEB_FFMPEG_V)
+	$(call PACK,libavutil-ladybird-dev,DEB_FFMPEG_V)
+	$(call PACK,libswresample-ladybird5,DEB_FFMPEG_V)
+	$(call PACK,libswresample-ladybird-dev,DEB_FFMPEG_V)
 
 	rm -rf \
 		$(BUILD_DIST)/libavcodec{61,-dev} \

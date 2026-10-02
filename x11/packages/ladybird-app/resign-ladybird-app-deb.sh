@@ -52,7 +52,7 @@ fi
 
 # Every executable imports @rpath/libiosexec.1.dylib. Add the selected scheme's
 # library directory before signing; the rootless engine build itself stays reusable.
-for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
     [ -f "$APP/$b" ] || { echo "missing binary: $APP/$b" >&2; exit 1; }
     for stale_rpath in /var/jb/usr/lib /usr/lib; do
         if [ "$stale_rpath" != "$XIOS_INSTALL_PREFIX/lib" ] && \
@@ -84,7 +84,7 @@ xsign "$APP/Ladybird" "$APP_ENTS" \
     AGXDeviceUserClient \
     IOSurfaceRootUserClient
 
-for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for h in WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
     [ -f "$APP/$h" ] || { echo "missing helper: $APP/$h" >&2; exit 1; }
     xsign "$APP/$h" "$HELPER_ENTS" \
         com.apple.private.amfi.can-allow-non-platform \

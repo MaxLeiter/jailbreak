@@ -18,9 +18,10 @@ PROC=/work/Procursus
 SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"
 BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim
-WORK=$PROC/ladybird-src
-BUILD=$PROC/ladybird-build            # reuse the headless build dir; app-mode deltas recompile incrementally
-HOST=$PROC/ladybird-hosttools
+LB_SUFFIX="${LB_SUFFIX--r2}"   # rebase 2026-10 dirs (see build-ladybird-wave4.sh)
+WORK=$PROC/ladybird-src$LB_SUFFIX
+BUILD=$PROC/ladybird-build$LB_SUFFIX            # reuse the headless build dir; app-mode deltas recompile incrementally
+HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
 export PATH=$CARGO_HOME/bin:$PATH
@@ -210,8 +211,8 @@ fi
 export PKG_CONFIG_PATH="$PKG_CONFIG_DIRS"
 export PKG_CONFIG_LIBDIR="$PKG_CONFIG_DIRS"
 export LB_SHIM="$SHIM"
-export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
-export LB_HOST_ASMINTGEN="$HOST/asmintgen"
+export LB_HOST_GENERATE_INTERPRETER_LAYOUT="$HOST/generate_interpreter_layout"
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
 CMAKE_UNSET_ARGS=()
 if [ "$APP_GPU_ENABLED" -eq 1 ]; then
   CMAKE_UNSET_ARGS=(-UEGL_* -UGLESv2_*)
@@ -264,7 +265,7 @@ fi
 
 # ---- build everything -----------------------------------------------------------------------
 step "build: helpers + Compositor + Ladybird UI"
-TARGETS="WebContent RequestServer ImageDecoder WebWorker Compositor Ladybird"
+TARGETS="WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer Ladybird"
 ninja -k 0 -j"$(nproc)" $TARGETS 2>&1 | tee /out/app-engine-build.log | tail -40
 p1=${PIPESTATUS[0]}
 if [ "$p1" -ne 0 ]; then
@@ -300,7 +301,7 @@ fi
 # ---- report emitted binaries ----------------------------------------------------------------
 step "emitted binaries"
 STAGE=/out/app-stage; rm -rf "$STAGE"; mkdir -p "$STAGE/share"
-for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
   p=$(find "$BUILD" -maxdepth 4 -type f -name "$b" 2>/dev/null | head -1)
   if [ -n "$p" ]; then
     echo "$b: $(file -b "$p" | cut -c1-40) | $(file -b "$p" | grep -o NOUNDEF || echo 'HAS-UNDEF')"

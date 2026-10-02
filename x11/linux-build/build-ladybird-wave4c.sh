@@ -22,9 +22,10 @@ PROC=/work/Procursus
 SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"
 BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim   # MUST match wave4/wave4b (baked into build.ninja + the toolchain's LB_SHIM default)
-WORK=$PROC/ladybird-src
-BUILD=$PROC/ladybird-build
-HOST=$PROC/ladybird-hosttools
+LB_SUFFIX="${LB_SUFFIX--r2}"   # rebase 2026-10 dirs (see build-ladybird-wave4.sh)
+WORK=$PROC/ladybird-src$LB_SUFFIX
+BUILD=$PROC/ladybird-build$LB_SUFFIX
+HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
 export PATH=$CARGO_HOME/bin:$PATH
@@ -144,8 +145,8 @@ export LB_STAGED_PREFIX=$XIOS_PREFIX
 export PKG_CONFIG_PATH=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export PKG_CONFIG_LIBDIR=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export LB_SHIM="$SHIM"
-export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
-export LB_HOST_ASMINTGEN="$HOST/asmintgen"
+export LB_HOST_GENERATE_INTERPRETER_LAYOUT="$HOST/generate_interpreter_layout"
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
 if run_stage engine; then
   cd "$WORK"
   rm -f "$BUILD/CMakeCache.txt"

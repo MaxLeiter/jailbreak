@@ -6,7 +6,7 @@ endif
 # Ships a single -dev deb.
 
 SUBPROJECTS         += fast-float
-FASTFLOAT_VERSION   := 8.1.0
+FASTFLOAT_VERSION   := 8.2.10
 DEB_FASTFLOAT_V     ?= $(FASTFLOAT_VERSION)+ios1
 
 fast-float-setup: setup

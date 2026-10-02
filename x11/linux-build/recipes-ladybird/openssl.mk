@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS     += openssl
-OPENSSL_VERSION := 3.5.3
+OPENSSL_VERSION := 3.6.3
 DEB_OPENSSL_V   ?= $(OPENSSL_VERSION)+ios1
 
 openssl-setup: setup
