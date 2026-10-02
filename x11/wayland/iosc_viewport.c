@@ -49,6 +49,11 @@ static void viewport_set_source(struct wl_client *c, struct wl_resource *r,
     (void)c;
     struct iosc_viewport *vp = wl_resource_get_user_data(r);
     if (!vp) return;
+    if (!vp->surface) {
+        wl_resource_post_error(r, WP_VIEWPORT_ERROR_NO_SURFACE,
+                               "set_source after its wl_surface was destroyed");
+        return;
+    }
     wl_fixed_t unset = wl_fixed_from_int(-1);
     if (x == unset && y == unset && w == unset && h == unset) {
         vp->has_src = 0;
@@ -63,8 +68,6 @@ static void viewport_set_source(struct wl_client *c, struct wl_resource *r,
     }
     vp->has_src = 1;
     vp->src_fx = x; vp->src_fy = y; vp->src_fw = w; vp->src_fh = h;
-    vp->src_x = wl_fixed_to_int(x);
-    vp->src_y = wl_fixed_to_int(y);
     vp->src_w = wl_fixed_to_int(w);
     vp->src_h = wl_fixed_to_int(h);
 }
@@ -74,6 +77,11 @@ static void viewport_set_destination(struct wl_client *c, struct wl_resource *r,
     (void)c;
     struct iosc_viewport *vp = wl_resource_get_user_data(r);
     if (!vp) return;
+    if (!vp->surface) {
+        wl_resource_post_error(r, WP_VIEWPORT_ERROR_NO_SURFACE,
+                               "set_destination after its wl_surface was destroyed");
+        return;
+    }
     if (w == -1 && h == -1) {
         vp->has_dst = 0;
         return;
@@ -104,11 +112,12 @@ int viewport_validate_commit(struct iosc_surface *s)
         return -1;
     }
     if (!s->current_buffer) return 0;
-    /* Compare in wl_fixed units scaled by buffer_scale, so no division rounds:
-     * (src_x + src_w) * scale <= buffer_width * 256. */
+    /* (src_x + src_w) * scale > buffer_width * 256, in wl_fixed units, written
+     * as a > floor(b / scale), which is exact for integers and cannot overflow
+     * however large a buffer_scale the client set. */
     int64_t scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
-    if (((int64_t)vp->src_fx + vp->src_fw) * scale > (int64_t)s->sw * 256 ||
-        ((int64_t)vp->src_fy + vp->src_fh) * scale > (int64_t)s->sh * 256) {
+    if ((int64_t)vp->src_fx + vp->src_fw > (int64_t)s->sw * 256 / scale ||
+        (int64_t)vp->src_fy + vp->src_fh > (int64_t)s->sh * 256 / scale) {
         wl_resource_post_error(vp->resource, WP_VIEWPORT_ERROR_OUT_OF_BUFFER,
                                "source rectangle %.2f,%.2f %.2fx%.2f is outside "
                                "the %dx%d buffer at scale %d",

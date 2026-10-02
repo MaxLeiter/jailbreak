@@ -163,9 +163,12 @@ struct iosc_positioner {
 struct iosc_viewport {
     struct wl_resource *resource;
     struct iosc_surface *surface;
+    /* Source rectangle as sent, in surface-local units (buffer pixels divided
+     * by buffer_scale), plus its size truncated to int: whole once committed
+     * without a destination (bad_size), and then the surface size. */
     int has_src;
-    int src_x, src_y, src_w, src_h;
-    wl_fixed_t src_fx, src_fy, src_fw, src_fh;   /* as sent, for the commit checks */
+    wl_fixed_t src_fx, src_fy, src_fw, src_fh;
+    int src_w, src_h;
     int has_dst;
     int dst_w, dst_h;
 };

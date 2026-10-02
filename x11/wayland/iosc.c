@@ -465,8 +465,8 @@ static void surface_display_size(struct iosc_surface *s, int *w, int *h)
         *w = s->viewport->dst_w;
         *h = s->viewport->dst_h;
     } else if (s->viewport && s->viewport->has_src) {
-        *w = buffer_to_logical(s->viewport->src_w, scale);
-        *h = buffer_to_logical(s->viewport->src_h, scale);
+        *w = s->viewport->src_w;   /* already surface-local */
+        *h = s->viewport->src_h;
     } else {
         *w = buffer_to_logical(s->sw, scale);
         *h = buffer_to_logical(s->sh, scale);
@@ -517,13 +517,33 @@ void surface_output_size(struct iosc_surface *s, int *w, int *h)
     surface_display_size(s, w, h);
 }
 
+/* A wp_viewport source coordinate (wl_fixed, surface-local) in whole buffer
+ * pixels: times buffer_scale, rounded to nearest, saturated at `lim`. Checked
+ * against lim first so a huge client-set scale cannot overflow the multiply. */
+static int64_t viewport_to_buffer_px(int64_t v, int64_t scale, int64_t lim)
+{
+    if (v > lim * 256 / scale) return lim;
+    int64_t px = (v * scale + 128) / 256;
+    return px < lim ? px : lim;
+}
+
+/* The buffer region a surface samples, in buffer pixels. A viewport source is
+ * in surface-local units, i.e. buffer pixels / buffer_scale after the buffer
+ * transform; iosc ignores wl_surface.set_buffer_transform and draws every
+ * buffer untransformed, so only the scale applies here. */
 static void surface_source_rect(struct iosc_surface *s, int *x, int *y, int *w, int *h)
 {
     if (s->viewport && s->viewport->has_src) {
-        *x = s->viewport->src_x;
-        *y = s->viewport->src_y;
-        *w = s->viewport->src_w;
-        *h = s->viewport->src_h;
+        const struct iosc_viewport *vp = s->viewport;
+        int64_t sc = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
+        int64_t x0 = viewport_to_buffer_px(vp->src_fx, sc, s->sw);
+        int64_t y0 = viewport_to_buffer_px(vp->src_fy, sc, s->sh);
+        int64_t x1 = viewport_to_buffer_px((int64_t)vp->src_fx + vp->src_fw, sc, s->sw);
+        int64_t y1 = viewport_to_buffer_px((int64_t)vp->src_fy + vp->src_fh, sc, s->sh);
+        *x = (int)x0;
+        *y = (int)y0;
+        *w = (int)(x1 - x0);
+        *h = (int)(y1 - y0);
     } else {
         *x = 0;
         *y = 0;
