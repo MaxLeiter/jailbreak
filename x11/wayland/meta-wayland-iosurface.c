@@ -59,6 +59,7 @@ struct _MetaWaylandIosurfaceBuffer
   void                  *iosurface;   /* opaque IOSurfaceRef (owned) */
   int                    width;
   int                    height;
+  gboolean               top_left;    /* IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT */
 
   MetaMultiTexture      *texture;     /* cached import, reused across attach */
   EGLSurface             pbuffer;     /* ANGLE IOSurface pbuffer aliased into `texture` */
@@ -196,7 +197,7 @@ meta_wayland_iosurface_buffer_attach (MetaWaylandBuffer  *buffer,
        * contents, so the cached MetaMultiTexture is reused (no re-import per commit). */
       g_clear_object (texture);
       *texture = g_object_ref (self->texture);
-      buffer->is_y_inverted = FALSE;
+      buffer->is_y_inverted = self->top_left;
       return TRUE;
     }
 
@@ -270,7 +271,10 @@ meta_wayland_iosurface_buffer_attach (MetaWaylandBuffer  *buffer,
 
   self->pbuffer = pbuffer;                              /* keep alive while sampled */
   self->texture = meta_multi_texture_new_simple (texture_2d);  /* takes the ref */
-  buffer->is_y_inverted = FALSE;
+  /* Mutter's is_y_inverted means "rows already run top-down" (the EGL
+   * Y_INVERTED_WL sense; shm and dma-buf set TRUE). The default format is
+   * GL-origin and needs the flip; flag_top_left buffers must not get it. */
+  buffer->is_y_inverted = self->top_left;
 
   g_clear_object (texture);
   *texture = g_object_ref (self->texture);
@@ -341,6 +345,7 @@ iosurface_create_buffer (struct wl_client   *client,
   self->iosurface = iosurface;
   self->width = w;
   self->height = h;
+  self->top_left = (flags & IOSC_IOSURFACE_FORMAT_FLAG_TOP_LEFT) != 0;
 
   wl_resource_set_implementation (buffer_resource, &buffer_impl, self,
                                   buffer_resource_destroy);
