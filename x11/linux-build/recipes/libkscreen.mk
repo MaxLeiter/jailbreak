@@ -11,7 +11,7 @@ DEB_LIBKSCREEN_V ?= $(LIBKSCREEN_VERSION)+ios2
 libkscreen-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,libkscreen))
 	$(call EXTRACT_TAR,libkscreen-$(PLASMA_VERSION).tar.xz,libkscreen-$(PLASMA_VERSION),libkscreen)
-	bash /work/recipes/libkscreen-ios-fixes.sh $(BUILD_WORK)/libkscreen
+	bash /work/recipes/run-fixes.sh libkscreen-ios-fixes.sh $(BUILD_WORK)/libkscreen
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

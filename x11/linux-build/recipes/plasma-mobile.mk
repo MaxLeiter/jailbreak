@@ -9,7 +9,7 @@ DEB_PLASMAMOBILE_V ?= $(PLASMAMOBILE_VERSION)+ios23
 plasma-mobile-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-mobile))
 	$(call EXTRACT_TAR,plasma-mobile-$(PLASMA_VERSION).tar.xz,plasma-mobile-$(PLASMA_VERSION),plasma-mobile)
-	bash /work/recipes/plasma-mobile-ios-fixes.sh $(BUILD_WORK)/plasma-mobile
+	bash /work/recipes/run-fixes.sh plasma-mobile-ios-fixes.sh $(BUILD_WORK)/plasma-mobile
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

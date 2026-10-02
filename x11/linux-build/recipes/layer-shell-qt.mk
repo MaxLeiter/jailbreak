@@ -15,7 +15,7 @@ DEB_LAYERSHELLQT_V ?= $(LAYERSHELLQT_VERSION)+ios9
 layer-shell-qt-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,layer-shell-qt))
 	$(call EXTRACT_TAR,layer-shell-qt-$(PLASMA_VERSION).tar.xz,layer-shell-qt-$(PLASMA_VERSION),layer-shell-qt)
-	bash /work/recipes/layer-shell-qt-ios-fixes.sh $(BUILD_WORK)/layer-shell-qt
+	bash /work/recipes/run-fixes.sh layer-shell-qt-ios-fixes.sh $(BUILD_WORK)/layer-shell-qt
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/layer-shell-qt/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)

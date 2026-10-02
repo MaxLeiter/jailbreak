@@ -11,7 +11,7 @@ DEB_PLASMAPA_V ?= $(PLASMAPA_VERSION)+ios2
 plasma-pa-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-pa))
 	$(call EXTRACT_TAR,plasma-pa-$(PLASMA_VERSION).tar.xz,plasma-pa-$(PLASMA_VERSION),plasma-pa)
-	bash /work/recipes/plasma-pa-ios-fixes.sh $(BUILD_WORK)/plasma-pa
+	bash /work/recipes/run-fixes.sh plasma-pa-ios-fixes.sh $(BUILD_WORK)/plasma-pa
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

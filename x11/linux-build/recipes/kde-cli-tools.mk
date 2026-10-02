@@ -23,7 +23,7 @@ DEB_KDECLITOOLS_V ?= $(KDECLITOOLS_VERSION)+ios1
 kde-cli-tools-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kde-cli-tools))
 	$(call EXTRACT_TAR,kde-cli-tools-$(PLASMA_VERSION).tar.xz,kde-cli-tools-$(PLASMA_VERSION),kde-cli-tools)
-	bash /work/recipes/kde-cli-tools-ios-fixes.sh $(BUILD_WORK)/kde-cli-tools
+	bash /work/recipes/run-fixes.sh kde-cli-tools-ios-fixes.sh $(BUILD_WORK)/kde-cli-tools
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

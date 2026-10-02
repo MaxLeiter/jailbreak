@@ -14,7 +14,7 @@ DEB_LIBPLASMA_V ?= $(LIBPLASMA_VERSION)+ios2
 libplasma-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,libplasma))
 	$(call EXTRACT_TAR,libplasma-$(PLASMA_VERSION).tar.xz,libplasma-$(PLASMA_VERSION),libplasma)
-	bash /work/recipes/libplasma-ios-fixes.sh $(BUILD_WORK)/libplasma
+	bash /work/recipes/run-fixes.sh libplasma-ios-fixes.sh $(BUILD_WORK)/libplasma
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/libplasma/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)

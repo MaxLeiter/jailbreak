@@ -5,15 +5,25 @@ src=${1:?usage: kactivitymanagerd-ios-fixes.sh <source-dir>}
 
 # The virtual desktop switch plugin includes KX11Extras even though its runtime
 # has a non-X11 DBus branch. Drop it for the iOS/Wayland bring-up.
+# (Plasma 6.1 only: the plugin was removed upstream by 6.7, so the sed is a deliberate no-op there.)
 sed -i '/^[[:space:]]*add_subdirectory[[:space:]]*(virtualdesktopswitch)/s/^/# ios-bringup-no-x11: /' \
   "$src/src/service/plugins/CMakeLists.txt"
 
 # The Apple cross compiler is invoked with an iPhoneOS sysroot, so it does not
 # search Debian's /usr/include for host-only header dependencies like Boost.
-if ! grep -q 'ios-bringup-host-boost' "$src/src/CMakeLists.txt"; then
-  sed -i '/include_directories (${Boost_INCLUDE_DIRS})/a add_compile_options(-isystem /work/Procursus/build_tools/boost-host-include) # ios-bringup-host-boost' \
-    "$src/src/CMakeLists.txt"
-fi
+python3 - "$src/src/CMakeLists.txt" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+anchor = "include_directories (${Boost_INCLUDE_DIRS})\n"
+if "ios-bringup-host-boost" not in text:
+    if anchor not in text:
+        raise SystemExit("kactivitymanagerd: Boost include_directories anchor not found")
+    text = text.replace(anchor, anchor + "add_compile_options(-isystem /work/Procursus/build_tools/boost-host-include) # ios-bringup-host-boost\n", 1)
+    path.write_text(text)
+PY
 
 # The resource module can still accept explicit resource events without X11
 # focus tracking. Guard the KX11Extras-only auto focus hooks for iOS.
@@ -86,3 +96,6 @@ if shim.strip() not in text:
 
 path.write_text(text)
 PY
+
+grep -q "emitKDirNotifySignal" "$src/src/service/plugins/sqlite/ResourceLinking.cpp" \
+  || { echo "kactivitymanagerd: KDirNotify shim did not apply" >&2; exit 1; }

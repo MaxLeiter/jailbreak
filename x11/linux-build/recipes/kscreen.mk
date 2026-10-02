@@ -11,7 +11,7 @@ DEB_KSCREEN_V ?= $(KSCREEN_VERSION)+ios2
 kscreen-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kscreen))
 	$(call EXTRACT_TAR,kscreen-$(PLASMA_VERSION).tar.xz,kscreen-$(PLASMA_VERSION),kscreen)
-	bash /work/recipes/kscreen-ios-fixes.sh $(BUILD_WORK)/kscreen
+	bash /work/recipes/run-fixes.sh kscreen-ios-fixes.sh $(BUILD_WORK)/kscreen
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

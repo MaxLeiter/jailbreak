@@ -1,0 +1,19 @@
+# script  min-files-changed   (measured on the host against Plasma 6.7.5 sources unless noted)
+libkscreen-ios-fixes.sh 7
+kscreen-ios-fixes.sh 2
+powerdevil-ios-fixes.sh 7
+kactivitymanagerd-ios-fixes.sh 2
+kde-cli-tools-ios-fixes.sh 7
+libplasma-ios-fixes.sh 5
+systemsettings-ios-fixes.sh 2
+plasma5support-ios-fixes.sh 2
+plasma-integration-ios-fixes.sh 4
+plasma-pa-ios-fixes.sh 5
+polkit-kde-agent-1-ios-fixes.sh 2
+xdg-desktop-portal-kde-ios-fixes.sh 1
+layer-shell-qt-ios-fixes.sh 3
+# KNOWN PARTIAL on 6.7.5: the minimum below is the 6.1.5 count on purpose. On 6.7.5 plasma-mobile applies
+# only 26 of 41 and plasma-nano 3 of 5 (QML files the hunks edited were moved/removed upstream), so these
+# two fail loudly until re-ported.
+plasma-mobile-ios-fixes.sh 41
+plasma-nano-ios-fixes.sh 5

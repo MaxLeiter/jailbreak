@@ -11,7 +11,7 @@ DEB_PLASMAINTEGRATION_V ?= $(PLASMAINTEGRATION_VERSION)+ios1
 plasma-integration-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-integration))
 	$(call EXTRACT_TAR,plasma-integration-$(PLASMA_VERSION).tar.xz,plasma-integration-$(PLASMA_VERSION),plasma-integration)
-	bash /work/recipes/plasma-integration-ios-fixes.sh $(BUILD_WORK)/plasma-integration
+	bash /work/recipes/run-fixes.sh plasma-integration-ios-fixes.sh $(BUILD_WORK)/plasma-integration
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
