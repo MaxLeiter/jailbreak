@@ -5417,6 +5417,7 @@ struct iosc_source_read {
     size_t len;
     size_t cap;
     char *mime;
+    struct iosc_source_read *next;   /* g_clip_readers */
 };
 
 static struct iosc_data_device *g_data_devices[IOSC_MAX_DATA_DEVICES];
@@ -5499,8 +5500,19 @@ static void mime_data_clear(struct iosc_mime_data *m)
     memset(m, 0, sizeof(*m));
 }
 
+/* Pipe readers still filling the store from the current Linux selection. */
+static struct iosc_source_read *g_clip_readers;
+static void source_read_done(struct iosc_source_read *rd, int publish);
+
+/* Starting the store over (a new selection from either side, or a clear) also
+ * abandons the readers of the selection it replaces. Left running, a slow one
+ * finished later, wrote its bytes into the NEW store and published them to iOS
+ * under the new generation; one whose source never closed the pipe kept its fd
+ * and buffer forever. */
 static void clip_clear_items(void)
 {
+    while (g_clip_readers)
+        source_read_done(g_clip_readers, 0);
     for (int i = 0; i < g_nclip_items; i++)
         mime_data_clear(&g_clip_items[i]);
     g_nclip_items = 0;
@@ -5790,6 +5802,8 @@ static void data_source_resource_destroy(struct wl_resource *r)
 
 static void source_read_done(struct iosc_source_read *rd, int publish)
 {
+    for (struct iosc_source_read **pp = &g_clip_readers; *pp; pp = &(*pp)->next)
+        if (*pp == rd) { *pp = rd->next; break; }
     if (publish && rd->mime && clip_item_set(rd->mime, rd->buf ? rd->buf : "", rd->len) == 0) {
         uint32_t k = ioscclip_kind_for_mime(rd->mime);
         if (k != XIOS_CLIP_KIND_NONE)
@@ -6151,6 +6165,9 @@ static void clip_ingest_source(struct wl_resource *src, char *const *mimes, int 
         if (!rd->mime) { close(fds[0]); close(fds[1]); free(rd); continue; }
         rd->src = wl_event_loop_add_fd(wl_display_get_event_loop(g_display), fds[0],
                                        WL_EVENT_READABLE, source_readable, rd);
+        if (!rd->src) { close(fds[1]); source_read_done(rd, 0); continue; }
+        rd->next = g_clip_readers;
+        g_clip_readers = rd;
         send_fn(src, mimes[i], fds[1]);
         close(fds[1]);
     }
