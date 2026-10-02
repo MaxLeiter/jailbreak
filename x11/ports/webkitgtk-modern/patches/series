@@ -26,3 +26,4 @@
 0034-skia-no-cf-bundle-lookup-gtk-ios.patch
 0035-wtf-no-readline-for-gtk-darwin.patch
 0036-restore-apple-for-macho-dylib-naming.patch
+0037-glib-ipc-dgram-socketpair-on-darwin.patch
