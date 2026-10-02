@@ -150,7 +150,7 @@ void sysint_send_output(int transform, int logical_w, int logical_h)
     link_send(&s_iosc, &m, &s_last_output, &s_have_output);
 }
 
-// Aux-link reader: iosc broadcasts fixed 24-byte records to every input client
+// Aux-link reader: iosc broadcasts 32-byte xios_msg records to every input client
 // (TRAITS for the keyboard bridge, HAPTIC for us). Only HAPTIC is surfaced;
 // everything else is discarded — IoscInput.c's own connection handles traits.
 static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
