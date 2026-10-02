@@ -159,7 +159,7 @@ EF="$EW/.xios_patch_series.sha256"
 if target_requests exempi; then
   EXEMPI_FP="$(sha256sum \
     /work/ports/exempi/patches/series \
-    /work/ports/exempi/patches/*.patch | sha256sum | awk '{print $1}')"
+    $(ls /work/ports/exempi/patches/*.patch 2>/dev/null) | sha256sum | awk '{print $1}')"
   EXEMPI_OLD_FP="$(cat "$EF" 2>/dev/null || true)"
   if [ -d "$EW" ] && [ "$EXEMPI_FP" != "$EXEMPI_OLD_FP" ]; then
     echo "==> wiping stale exempi build after patch changes"

@@ -2,16 +2,17 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# Pinned to 2.5.2: exempi 2.6.0+ re-synced to a newer Adobe SDK that pulls in Boost at build
-# time. 2.5.2 needs only expat/zlib/iconv (Boost there is confined to the disabled unit tests).
-# libtool CURRENT=8, so SONAME is libexempi.8 (-> libexempi8), matching Debian's package name.
+# 2.6.6 (was 2.5.2): the 2.6 series re-synced to a newer Adobe SDK with security fixes. Boost is
+# only configure-required for the unit tests (--disable-unittest), so the dep set is still just
+# expat/zlib/iconv. libtool CURRENT=9 AGE=1, so SONAME stays libexempi.8 (-> libexempi8).
+# Upstream now has --disable-samples and no -lrt, which makes the old 2.5.2 port patch obsolete.
 #
 # configure's platform switch keys on $build_vendor, not $host, so cross-building from Linux
 # takes the generic UNIX path (fine — no -framework CoreServices, which iOS lacks anyway) but
 # that path never sets a C++ standard, so add -std=c++11 by hand.
 
 SUBPROJECTS      += exempi
-EXEMPI_VERSION   := 2.5.2
+EXEMPI_VERSION   := 2.6.6
 EXEMPI_SOV       := 8
 DEB_EXEMPI_V     ?= $(EXEMPI_VERSION)+ios1
 
@@ -22,7 +23,6 @@ exempi-setup: setup
 	# with the host's modern copy.
 	find $(BUILD_WORK)/exempi -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(BUILD_WORK)/exempi -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
-	$(call DO_PATCH,exempi,exempi,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/exempi/.build_complete),)
 exempi:
@@ -34,6 +34,7 @@ exempi: exempi-setup
 	cd $(BUILD_WORK)/exempi && CXXFLAGS="$(CXXFLAGS) -std=c++11" ./configure -C \
 		$(DEFAULT_CONFIGURE_FLAGS) \
 		--disable-static \
+		--disable-samples \
 		--disable-unittest
 	+$(MAKE) -C $(BUILD_WORK)/exempi
 	+$(MAKE) -C $(BUILD_WORK)/exempi install DESTDIR="$(BUILD_STAGE)/exempi"
