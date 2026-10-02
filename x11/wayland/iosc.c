@@ -3256,6 +3256,11 @@ static void surface_commit_apply(struct iosc_surface *s)
         need_recomposite = 1;
     }
 
+    /* The buffer and scale this commit applies are in: the wp_viewport checks
+     * that depend on them. An error disconnects the client; stop here. */
+    if (viewport_validate_commit(s) != 0)
+        return;
+
     /* Damage-only commit (in-place redraw into the already-attached buffer, no
      * re-attach): the content changed, so it must repaint like an attach does.
      * gl_dirty is cleared by the next composite, so this stays one coalesced

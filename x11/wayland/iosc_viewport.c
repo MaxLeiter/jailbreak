@@ -3,9 +3,11 @@
  *
  * Split out of iosc.c. Two small scale-related protocols GTK/Qt expect:
  *
- *   wp_viewporter          per-surface source crop + destination size, latched
- *                          on commit and applied by the composite path through
- *                          s->viewport
+ *   wp_viewporter          per-surface source crop + destination size, stored
+ *                          as each request arrives (not double-buffered) and
+ *                          applied by the composite path through s->viewport;
+ *                          bad values are protocol errors per the spec, the
+ *                          ones tied to the buffer checked at commit
  *   wp_fractional_scale_v1 tells a client the fractional scale to render at;
  *                          fractional_scale_broadcast() re-notifies every bound
  *                          client when the output is reconfigured
@@ -52,7 +54,15 @@ static void viewport_set_source(struct wl_client *c, struct wl_resource *r,
         vp->has_src = 0;
         return;
     }
+    if (x < 0 || y < 0 || w <= 0 || h <= 0) {
+        wl_resource_post_error(r, WP_VIEWPORT_ERROR_BAD_VALUE,
+                               "invalid source rectangle %.2f,%.2f %.2fx%.2f",
+                               wl_fixed_to_double(x), wl_fixed_to_double(y),
+                               wl_fixed_to_double(w), wl_fixed_to_double(h));
+        return;
+    }
     vp->has_src = 1;
+    vp->src_fx = x; vp->src_fy = y; vp->src_fw = w; vp->src_fh = h;
     vp->src_x = wl_fixed_to_int(x);
     vp->src_y = wl_fixed_to_int(y);
     vp->src_w = wl_fixed_to_int(w);
@@ -68,10 +78,48 @@ static void viewport_set_destination(struct wl_client *c, struct wl_resource *r,
         vp->has_dst = 0;
         return;
     }
+    if (w <= 0 || h <= 0) {
+        wl_resource_post_error(r, WP_VIEWPORT_ERROR_BAD_VALUE,
+                               "invalid destination size %dx%d", w, h);
+        return;
+    }
     vp->has_dst = 1;
     vp->dst_w = w;
     vp->dst_h = h;
 }
+/* Called by surface_commit_apply() once the commit's buffer and scale are in.
+ * A source size that is not whole needs a destination size to land on (or the
+ * surface size would be fractional), and the source rectangle, in surface-local
+ * units, must lie inside the buffer; a NULL buffer is exempt from the latter. */
+int viewport_validate_commit(struct iosc_surface *s)
+{
+    struct iosc_viewport *vp = s->viewport;
+    if (!vp || !vp->has_src) return 0;
+    if (!vp->has_dst && ((vp->src_fw & 0xff) || (vp->src_fh & 0xff))) {
+        wl_resource_post_error(vp->resource, WP_VIEWPORT_ERROR_BAD_SIZE,
+                               "source size %.2fx%.2f is not integral and no "
+                               "destination size is set",
+                               wl_fixed_to_double(vp->src_fw),
+                               wl_fixed_to_double(vp->src_fh));
+        return -1;
+    }
+    if (!s->current_buffer) return 0;
+    /* Compare in wl_fixed units scaled by buffer_scale, so no division rounds:
+     * (src_x + src_w) * scale <= buffer_width * 256. */
+    int64_t scale = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
+    if (((int64_t)vp->src_fx + vp->src_fw) * scale > (int64_t)s->sw * 256 ||
+        ((int64_t)vp->src_fy + vp->src_fh) * scale > (int64_t)s->sh * 256) {
+        wl_resource_post_error(vp->resource, WP_VIEWPORT_ERROR_OUT_OF_BUFFER,
+                               "source rectangle %.2f,%.2f %.2fx%.2f is outside "
+                               "the %dx%d buffer at scale %d",
+                               wl_fixed_to_double(vp->src_fx), wl_fixed_to_double(vp->src_fy),
+                               wl_fixed_to_double(vp->src_fw), wl_fixed_to_double(vp->src_fh),
+                               s->sw, s->sh, (int)scale);
+        return -1;
+    }
+    return 0;
+}
+
 static const struct wp_viewport_interface viewport_impl = {
     .destroy = viewport_destroy,
     .set_source = viewport_set_source,
