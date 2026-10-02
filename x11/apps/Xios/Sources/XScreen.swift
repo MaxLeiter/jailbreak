@@ -1652,9 +1652,12 @@ final class XScreenView: UIView {
 
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
+                                     appLabel: String? = nil,
                                      display: DisplayProfile? = nil,
                                      slot: String? = nil,
                                      completion: ((Bool) -> Void)? = nil) {
+        // What the status line calls the app; the wire field may be an id.
+        let appLabel = appLabel ?? app
         guard !sessionRequestInFlight else {
             lastToolMessage = "A desktop request is already being sent"
             toolMessageLabel?.text = lastToolMessage
@@ -1664,7 +1667,7 @@ final class XScreenView: UIView {
         sessionRequestInFlight = true
         let requestDescription: String
         switch preset {
-        case "app": requestDescription = "Opening \(app ?? "app")…"
+        case "app": requestDescription = "Opening \(appLabel ?? "app")…"
         case "stop": requestDescription = "Stopping desktop…"
         case "resize": requestDescription = "Resizing desktop…"
         default: requestDescription = "Starting \(desktopLabel(preset))…"
@@ -1683,7 +1686,7 @@ final class XScreenView: UIView {
             if response?.hasPrefix("SESSION_STARTED") == true ||
                 response?.hasPrefix("SESSION_ACTIVE") == true {
                 if preset == "app" {
-                    self.lastToolMessage = "Launch requested: \(app ?? "app")"
+                    self.lastToolMessage = "Launch requested: \(appLabel ?? "app")"
                 } else {
                     self.lastToolMessage = "Session: \(preset)"
                         + (slot.map { " slot=\($0)" } ?? "")
@@ -2960,9 +2963,14 @@ final class XScreenView: UIView {
 
     private struct DesktopApp {
         let name: String    // display name (Name= or filename)
-        let exec: String    // cleaned Exec= (field codes stripped), what we launch
+        let exec: String    // cleaned Exec= (field codes stripped), shown and pinned
         let icon: String    // Icon= name/path, used by desktop pins
         let id: String      // .desktop basename, for stable identity / dedupe
+        // Desktop-file id (basename without ".desktop"): what the picker asks
+        // ioscd to launch. ioscd resolves it to the trusted, root-owned entry
+        // and runs that entry's own Exec, so no command text crosses the
+        // socket. nil when the basename can't travel as one SESSION field.
+        let desktopID: String?
     }
 
     private let applicationsDirs = [
@@ -2983,7 +2991,7 @@ final class XScreenView: UIView {
             return nil
         }
         var name = "", exec = "", icon = "", type = ""
-        var noDisplay = false, hidden = false
+        var noDisplay = false, hidden = false, terminal = false
         var inEntry = false
         for lineSub in raw.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = lineSub.trimmingCharacters(in: .whitespaces)
@@ -3003,14 +3011,33 @@ final class XScreenView: UIView {
             case "Type":      type = val
             case "NoDisplay": noDisplay = (val.lowercased() == "true")
             case "Hidden":    hidden = (val.lowercased() == "true")
+            case "Terminal":  terminal = (val.lowercased() == "true")
             default: break    // ignore Name[xx], Icon, Categories, etc.
             }
         }
-        guard type == "Application", !noDisplay, !hidden else { return nil }
+        // Terminal=true entries need a terminal around them: ioscd refuses to
+        // launch them, and they never mapped a window here anyway.
+        guard type == "Application", !noDisplay, !hidden, !terminal else { return nil }
         let cleaned = cleanExec(exec)
         guard !cleaned.isEmpty else { return nil }
         let id = (path as NSString).lastPathComponent
-        return DesktopApp(name: name.isEmpty ? id : name, exec: cleaned, icon: icon, id: id)
+        return DesktopApp(name: name.isEmpty ? id : name, exec: cleaned, icon: icon, id: id,
+                          desktopID: desktopFileID(basename: id))
+    }
+
+    /// The desktop-file id ioscd resolves: the basename minus ".desktop", held to
+    /// ioscd's own app-id rule (xios_desktop_app_id_valid: under 256 bytes, no
+    /// space, control, DEL, '/' or '\'). That rule is also what keeps the id one
+    /// tab-free, newline-free field of the SESSION line.
+    private func desktopFileID(basename: String) -> String? {
+        guard basename.hasSuffix(".desktop") else { return nil }
+        let id = String(basename.dropLast(".desktop".count))
+        let bytes = Array(id.utf8)
+        guard !bytes.isEmpty, bytes.count < 256,
+              !bytes.contains(where: { $0 < 0x21 || $0 == 0x7f ||
+                                       $0 == UInt8(ascii: "/") || $0 == UInt8(ascii: "\\") })
+        else { return nil }
+        return id
     }
 
     /// Strip freedesktop Exec field codes (%f %F %u %U %i %c %k %d %D %n %N %v %m) so
@@ -4209,11 +4236,7 @@ final class XScreenView: UIView {
         b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         b.menu = UIMenu(children: [
             UIAction(title: "Open") { [weak self] _ in
-                guard let self else { return }
-                self.writeSessionRequest("app", app: app.exec, display: nil) {
-                    [weak self] accepted in
-                    if accepted { self?.dismissPicker() }
-                }
+                self?.launchDesktopApp(app)
             },
             UIAction(title: "Pin to Desktop") { [weak self] _ in
                 guard let self else { return }
@@ -4223,13 +4246,27 @@ final class XScreenView: UIView {
         ])
         b.showsMenuAsPrimaryAction = false
         b.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            self.writeSessionRequest("app", app: app.exec, display: nil) {
-                [weak self] accepted in
-                if accepted { self?.dismissPicker() }
-            }
+            self?.launchDesktopApp(app)
         }, for: .touchUpInside)
         return b
+    }
+
+    /// Ask ioscd to open `app` by desktop-file id. The status line still names
+    /// the command the row shows. An entry without a usable id is refused here
+    /// rather than falling back to sending its Exec text.
+    private func launchDesktopApp(_ app: DesktopApp) {
+        guard let desktopID = app.desktopID else {
+            NSLog("Xios: not launching %@ (%@): no usable desktop-file id", app.name, app.id)
+            lastToolMessage = "Session request failed: \(app.id) has no usable desktop-file id"
+            toolMessageLabel?.text = lastToolMessage
+            refreshShellOverlay()
+            writeDebugSnapshot()
+            return
+        }
+        writeSessionRequest("app", app: desktopID, appLabel: app.exec, display: nil) {
+            [weak self] accepted in
+            if accepted { self?.dismissPicker() }
+        }
     }
 
     private func presentHomeScreenApps(query initialQuery: String = "",
