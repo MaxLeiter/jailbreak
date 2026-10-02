@@ -9,6 +9,7 @@ DEB_PHYSFS_V     ?= $(PHYSFS_VERSION)+ios1
 physfs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/icculus/physfs/archive/refs/tags/release-$(PHYSFS_VERSION).tar.gz)
 	$(call EXTRACT_TAR,release-$(PHYSFS_VERSION).tar.gz,physfs-release-$(PHYSFS_VERSION),physfs)
+	$(call DO_PATCH,physfs,physfs,-p1)
 	rm -rf $(BUILD_WORK)/physfs/build
 	mkdir -p $(BUILD_WORK)/physfs/build
 
@@ -21,6 +22,7 @@ physfs: physfs-setup
 		$(DEFAULT_CMAKE_FLAGS) \
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
+		-DPHYSFS_XIOS=ON \
 		-DPHYSFS_BUILD_SHARED=ON \
 		-DPHYSFS_BUILD_STATIC=OFF \
 		-DPHYSFS_BUILD_TEST=OFF \

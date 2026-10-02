@@ -4,14 +4,21 @@ endif
 
 # OpenAL Soft for Warzone 2100. PulseAudio is the sole device backend on Xios;
 # CoreAudio would bind the daemon-side game process to an iOS app lifecycle.
+# alc/alconfig.cpp still calls CFBundle under __APPLE__, but upstream only
+# links CoreFoundation inside the CoreAudio backend block, so link it here.
 
 SUBPROJECTS          += openal-soft
-OPENAL_SOFT_VERSION  := 1.25.2
+OPENAL_SOFT_VERSION  := 1.23.1
 DEB_OPENAL_SOFT_V    ?= $(OPENAL_SOFT_VERSION)+ios1
 
 openal-soft-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/kcat/openal-soft/archive/refs/tags/$(OPENAL_SOFT_VERSION).tar.gz)
-	$(call EXTRACT_TAR,$(OPENAL_SOFT_VERSION).tar.gz,openal-soft-$(OPENAL_SOFT_VERSION),openal-soft)
+	if [ ! -f "$(BUILD_WORK)/openal-soft/.xios_setup_$(DEB_OPENAL_SOFT_V)" ]; then \
+		rm -rf "$(BUILD_WORK)/openal-soft"; \
+		cd "$(BUILD_WORK)" && tar -xf "$(BUILD_SOURCE)/$(OPENAL_SOFT_VERSION).tar.gz"; \
+		mv "$(BUILD_WORK)/openal-soft-$(OPENAL_SOFT_VERSION)" "$(BUILD_WORK)/openal-soft"; \
+		touch "$(BUILD_WORK)/openal-soft/.xios_setup_$(DEB_OPENAL_SOFT_V)"; \
+	fi
 	rm -rf $(BUILD_WORK)/openal-soft/build
 	mkdir -p $(BUILD_WORK)/openal-soft/build
 
@@ -25,6 +32,7 @@ openal-soft: openal-soft-setup
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
 		-DCMAKE_PREFIX_PATH="$(BUILD_BASE)/var/jb/usr;$(BUILD_BASE)/var/jb" \
+		-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) -framework CoreFoundation" \
 		-DLIBTYPE=SHARED \
 		-DALSOFT_DLOPEN=OFF \
 		-DALSOFT_ENABLE_MODULES=OFF \

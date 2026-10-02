@@ -198,19 +198,12 @@ def main():
 
     copies = []  # (src, dst)
     collisions = []  # (package, version, out_path, repo_path)
+    stale = []  # same shape, for versions older than the newest
 
     for key in sorted(all_keys):
         name, _arch = key
         out_by_version = {version: path for version, path in out_pkgs.get(key, [])}
         repo_by_version = {version: path for version, path in repo_pkgs.get(key, [])}
-        for version in sorted(
-            out_by_version.keys() & repo_by_version.keys(),
-            key=functools.cmp_to_key(version_compare),
-        ):
-            out_path = out_by_version[version]
-            repo_path = repo_by_version[version]
-            if not filecmp.cmp(out_path, repo_path, shallow=False):
-                collisions.append((name, version, out_path, repo_path))
 
         entries = {}
         # Collect all (version, path, source) across both dirs
@@ -224,6 +217,27 @@ def main():
         versions = sorted(entries.keys(), key=functools.cmp_to_key(version_compare))
         latest_version = versions[-1]
         latest_path, latest_src = entries[latest_version]
+
+        # The operation only considers the newest version. Old build caches can
+        # contain historical bytes that differ from an already published file;
+        # that must not block adding a newer, correctly versioned artifact. A
+        # collision at the newest version is still fatal because applying would
+        # otherwise imply replacing immutable published bytes.
+        if latest_version in out_by_version and latest_version in repo_by_version:
+            out_path = out_by_version[latest_version]
+            repo_path = repo_by_version[latest_version]
+            if not filecmp.cmp(out_path, repo_path, shallow=False):
+                collisions.append((name, latest_version, out_path, repo_path))
+
+        # Older mismatches are not fatal, but they are still worth seeing: an
+        # out/ rebuild that differs from what repo/debs holds at the same
+        # version is how an unsigned recollect quietly replaces a re-signed deb.
+        for version in sorted(
+            (out_by_version.keys() & repo_by_version.keys()) - {latest_version},
+            key=functools.cmp_to_key(version_compare),
+        ):
+            if not filecmp.cmp(out_by_version[version], repo_by_version[version], shallow=False):
+                stale.append((name, version, out_by_version[version], repo_by_version[version]))
 
         # If the latest is in out/, check if it needs to be copied to repo
         repo_path_for_latest = None
@@ -241,6 +255,14 @@ def main():
     for src, _dst in copies:
         fname = os.path.basename(src)
         print(f"  cp  {fname}")
+
+    if stale:
+        print(f"\nOlder versions whose out/ bytes differ from repo/debs ({len(stale)}, not copied):")
+        for name, version, out_path, repo_path in stale:
+            print(
+                f"  WARN  {name} {version}: "
+                f"{os.path.basename(out_path)} differs from {os.path.basename(repo_path)}"
+            )
 
     print(f"\nImmutable version collisions ({len(collisions)}):")
     for name, version, out_path, repo_path in collisions:
