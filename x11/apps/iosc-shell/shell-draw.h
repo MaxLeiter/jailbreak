@@ -587,11 +587,14 @@ static void sd_wayland_socket_path(char *dst, size_t n, const char *root)
 /* ioscd hands the compositor socket to mobile before it launches anything
  * (fix_ddx_perms): libwayland binds it under the compositor's umask, so a root
  * compositor's socket is not writable, i.e. not connectable, for mobile. Same
- * here, for this one socket only, and without following a symlink. */
+ * here, for this one socket only: a root socket under this one name (not a
+ * hard link planted to another), and without following a symlink. */
 static void sd_mobile_socket(const char *path, const struct sd_mobile *m)
 {
     struct stat st;
-    if (lstat(path, &st) != 0 || !S_ISSOCK(st.st_mode) || st.st_uid != 0) return;
+    if (lstat(path, &st) != 0 || !S_ISSOCK(st.st_mode) || st.st_uid != 0 ||
+        st.st_nlink != 1)
+        return;
     if (lchown(path, m->uid, m->gid) == 0)
         (void)fchmodat(AT_FDCWD, path, 0660, AT_SYMLINK_NOFOLLOW);
 }
