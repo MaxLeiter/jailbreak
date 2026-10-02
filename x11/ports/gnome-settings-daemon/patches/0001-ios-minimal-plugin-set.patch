@@ -112,13 +112,14 @@ diff -ruN gnome-settings-daemon-46.0/plugins/power/gpm-common.c gnome-settings-d
 diff -ruN gnome-settings-daemon-46.0/plugins/power/ios-stubs/canberra-gtk.h gnome-settings-daemon-46.0.patched/plugins/power/ios-stubs/canberra-gtk.h
 --- gnome-settings-daemon-46.0/plugins/power/ios-stubs/canberra-gtk.h	1969-12-31 16:00:00
 +++ gnome-settings-daemon-46.0.patched/plugins/power/ios-stubs/canberra-gtk.h	2026-07-04 22:57:18
-@@ -0,0 +1,44 @@
+@@ -0,0 +1,45 @@
 +/* canberra-gtk.h — iOS no-op shim for the gnome-settings-daemon power plugin.
 + *
 + * The power plugin plays libcanberra event sounds (low/critical battery, UPS alert). iOS has
 + * no libcanberra and no ALSA/PulseAlert path for these, so we compile the plugin against this
-+ * stub: every ca_* call is a no-op returning success. This lets us un-drop the `power` plugin
-+ * (for the brightness slider) without pulling libcanberra-gtk / GTK3. Only the handful of
++ * stub: every ca_* call is a no-op returning success. It is groundwork for un-dropping the
++ * `power` plugin (for the brightness slider) without pulling libcanberra-gtk / GTK3; power is
++ * still in disabled_plugins and dormant (see docs/xios-fhs-plan.md). Only the handful of
 + * symbols gpm-common.c + gsd-power-manager.c reference are declared. GPL-2.0+.
 + */
 +#ifndef CANBERRA_GTK_H_XIOS_STUB

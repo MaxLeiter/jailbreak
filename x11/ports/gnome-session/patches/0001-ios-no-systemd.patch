@@ -22,11 +22,13 @@ diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-s
 diff -ruN --exclude=.build_complete --exclude=gsm-consolekit.* --exclude=gnome-session.1 --exclude=build gnome-session-46.0/gnome-session/gsm-app.c gs46-test/gnome-session/gsm-app.c
 --- a/gnome-session/gsm-app.c	2024-03-18 12:30:06
 +++ b/gnome-session/gsm-app.c	2026-06-30 23:57:30
-@@ -28,7 +28,7 @@
+@@ -28,7 +28,8 @@
  #include "org.gnome.SessionManager.App.h"
  
- /* If a component crashes twice within a minute, we count that as a fatal error */
+-/* If a component crashes twice within a minute, we count that as a fatal error */
 -#define _GSM_APP_RESPAWN_RATELIMIT_SECONDS 60
++/* If a component crashes twice within 3 seconds, we count that as a fatal error
++ * (iOS port; upstream uses a minute) */
 +#define _GSM_APP_RESPAWN_RATELIMIT_SECONDS 3
  
  typedef struct
