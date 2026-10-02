@@ -31,6 +31,7 @@ kwallet: kwallet-setup
 	cd $(BUILD_WORK)/kwallet/build && cmake .. \
 		-G Ninja \
 		$(KF6_CMAKE_FLAGS) \
+		-DBUILD_KSECRETD=OFF \
 		-DBUILD_KWALLETD=OFF \
 		-DBUILD_KWALLET_QUERY=OFF \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE

@@ -228,10 +228,30 @@ COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
 source /work/recipes/xios-cache-fingerprint.sh
 
+# download.kde.org answers transient 500s with an HTML body that Procursus' silent curl saves as the tarball.
+# Drop any such stub so the next make re-downloads it; retry each target's make once for flaky fetches.
+find build_source -name '*.tar.xz' -size -2k -print -delete 2>/dev/null || true
+clean_bad_tarballs() {
+  # download.kde.org answers transient 500s with an HTML body (silent curl keeps it) and sometimes truncates;
+  # delete stubs and corrupt archives plus their stale extraction so the next make re-downloads.
+  find build_source -name '*.tar.xz' -size -2k -print -delete 2>/dev/null || true
+  local f n
+  for f in $(find build_source -name '*.tar.xz' -mmin -600 2>/dev/null); do
+    if ! xz -t "$f" 2>/dev/null; then
+      echo "==> corrupt tarball $f: removing it and its build_work tree"
+      n=$(basename "$f" .tar.xz); rm -f "$f"; rm -rf "$XIOS_BUILD_WORK/${n%-[0-9]*}"
+    fi
+  done
+}
 for t in $TARGETS; do
+  clean_bad_tarballs
   echo "==> make ${t}-package"
   xios_cache_prepare_target "$t"
-  make ${t}-package $COMMON -j"$(nproc)"
+  make ${t}-package $COMMON -j"$(nproc)" || {
+    echo "==> ${t} failed once; clearing any stub tarballs and retrying"
+    clean_bad_tarballs
+    make ${t}-package $COMMON -j"$(nproc)"
+  }
   xios_cache_record_target "$t"
 done
 

@@ -167,6 +167,7 @@ TABLE = [
     dict(t="solid", kind="kf", deb="kf6-solid", deps=[],
          qt_deps=["qt6-base"], rev="ios2",
          seds=["bash /work/recipes/solid-ios-fixes.sh $(BUILD_WORK)/solid"],
+         flags=["-DUSE_DBUS=ON"],
          desc="Hardware discovery and power management abstraction.",
          notes=["Re-audited 2026-07-08: the elseif(APPLE) branch no longer goes fakehw-only.",
                 "It previously wanted the IOKit + DiskArbitration backend (headers/framework",
@@ -271,6 +272,9 @@ TABLE = [
     dict(t="kconfigwidgets", kind="kf", deb="kf6-configwidgets",
          deps=["kcodecs", "kcolorscheme", "kconfig", "kcoreaddons", "kguiaddons", "ki18n", "kwidgetsaddons"],
          qt_deps=["qt6-base"],
+         # std::pmr (monotonic_buffer_resource / get_default_resource) is not exported by the iPhoneOS 16.5 libc++ dylib
+         # (found at link time under libc++ mode B). Plain std::set<QUrl> is behaviour-identical.
+         seds=["sed -i -e '/std::byte memory\\[sizeof(QUrl) \\* 32\\];/d' -e '/std::pmr::monotonic_buffer_resource resource(memory, sizeof(memory));/d' -e 's/std::pmr::set<QUrl> seenUrls(&resource);/std::set<QUrl> seenUrls;/' $(BUILD_WORK)/kconfigwidgets/src/krecentfilesaction.cpp"],
          desc="Widgets for configuration dialogs."),
     dict(t="kcompletion", kind="kf", deb="kf6-completion", deps=["kcodecs", "kconfig", "kwidgetsaddons"],
          qt_deps=["qt6-base"],
@@ -317,6 +321,9 @@ TABLE = [
          deps=["kconfig", "kconfigwidgets", "kcoreaddons", "kglobalaccel", "kguiaddons",
                "ki18n", "kiconthemes", "kitemviews", "ktextwidgets", "kwidgetsaddons", "kwindowsystem"],
          qt_deps=["qt6-base"],
+         # FEATURE_printdialog is OFF (no iOS QPrintDialog impl): drop the shortcut-table "Print" dialog, keep the rest.
+         seds=["sed -i '/^#include <QPrintDialog>$$/d' $(BUILD_WORK)/kxmlgui/src/kshortcutseditor.cpp",
+               "perl -0pi -e 's/    QPrintDialog \\*dlg = new QPrintDialog\\(&printer, q\\);\\n    if \\(dlg->exec\\(\\) == QDialog::Accepted\\) \\{\\n        doc\\.print\\(&printer\\);\\n    \\}\\n    delete dlg;\\n/    \\/\\/ ios: no QPrintDialog implementation\\n    Q_UNUSED(printer)\\n/' $(BUILD_WORK)/kxmlgui/src/kshortcutseditor.cpp"],
          desc="XML-described action and menu framework.",
          notes=["REQUIREs Qt6PrintSupport (audited, unconditional): qtbase round 1 built",
                 "printsupport OFF, so the round-2 rebuild (plan Q3) must flip",
@@ -428,7 +435,7 @@ TABLE = [
          deps=["kwindowsystem"],
          qt_deps=["qt6-base"],
          flags=["-DWITHOUT_X11=ON"],
-         seds=["sed -i 's/^if(APPLE)$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kstatusnotifieritem/src/CMakeLists.txt"],
+         seds=["sed -i 's/^if(APPLE)$$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kstatusnotifieritem/src/CMakeLists.txt"],
          desc="Status notifier item support for tray-style application indicators.",
          notes=["Workspace wants KF6::StatusNotifierItem. X11 probing is disabled explicitly;",
                 "the DBus/freedesktop status notifier path remains. The APPLE source block",
@@ -458,7 +465,7 @@ TABLE = [
     dict(t="kwallet", kind="kf", deb="kf6-wallet",
          deps=["kconfig", "kcoreaddons", "ki18n", "kwindowsystem"],
          qt_deps=["qt6-base"],
-         flags=["-DBUILD_KWALLETD=OFF", "-DBUILD_KWALLET_QUERY=OFF",
+         flags=["-DBUILD_KSECRETD=OFF", "-DBUILD_KWALLETD=OFF", "-DBUILD_KWALLET_QUERY=OFF",
                 "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE"],
          desc="KWallet client API for secret storage integration.",
          notes=["API-only first-light build. Disabling kwalletd/query avoids QCA, Gcrypt,",
@@ -467,7 +474,9 @@ TABLE = [
     dict(t="knotifyconfig", kind="kf", deb="kf6-notifyconfig",
          deps=["kcompletion", "kconfig", "ki18n", "kio"],
          qt_deps=["qt6-base"],
-         seds=["sed -i 's/find_package(Phonon4Qt6 4\\.6\\.60 NO_MODULE REQUIRED)/find_package(Phonon4Qt6 4.6.60 NO_MODULE)/' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt"],
+         seds=["sed -i 's/find_package(Phonon4Qt6 4\\.6\\.60 NO_MODULE REQUIRED)/find_package(Phonon4Qt6 4.6.60 NO_MODULE)/' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt",
+               # 6.30: Qt6Multimedia is REQUIRED unless Canberra is found; neither exists here (sound preview off).
+               "sed -i 's/find_package(Qt6Multimedia REQUIRED)/find_package(Qt6Multimedia)/' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt"],
          desc="Configuration widgets for KDE notification events.",
          notes=["The source already treats Canberra/Phonon as optional after configure; this",
                 "sed demotes the fallback Phonon lookup so sound-preview support can stay off",
@@ -475,7 +484,9 @@ TABLE = [
 
     # ---- Plasma-released libraries (version 6.1.5), same layer ----
     dict(t="kwayland", kind="plasma", deb="kwayland", deps=[],
-         seds=["sed -i 's/find_package(Wayland 1.24 COMPONENTS Client)/find_package(Wayland 1.23 COMPONENTS Client) # ios: staged libwayland is 1.23.1 (floor lowered; a missing 1.24 symbol fails at link)/' $(BUILD_WORK)/kwayland/CMakeLists.txt"],
+         seds=["sed -i 's/find_package(Wayland 1.24 COMPONENTS Client)/find_package(Wayland 1.23 COMPONENTS Client) # ios: staged libwayland is 1.23.1 (floor lowered; a missing 1.24 symbol fails at link)/' $(BUILD_WORK)/kwayland/CMakeLists.txt",
+               # Darwin has no pipe2(): emulate with pipe()+fcntl()
+               "sed -i 's#pipe2(pipeFds, O_CLOEXEC | O_NONBLOCK) != 0#!(pipe(pipeFds) == 0 \\&\\& fcntl(pipeFds[0], F_SETFD, FD_CLOEXEC) == 0 \\&\\& fcntl(pipeFds[1], F_SETFD, FD_CLOEXEC) == 0 \\&\\& fcntl(pipeFds[0], F_SETFL, O_NONBLOCK) == 0 \\&\\& fcntl(pipeFds[1], F_SETFL, O_NONBLOCK) == 0)#' $(BUILD_WORK)/kwayland/src/client/plasmawindowmanagement.cpp"],
          qt_deps=["qt6-base", "qt6-wayland", "angle"],
          desc="Qt-style client library for Plasma's Wayland protocols.",
          notes=["Links EGL directly (audited REQUIRED): headers/libs resolve from the staged",

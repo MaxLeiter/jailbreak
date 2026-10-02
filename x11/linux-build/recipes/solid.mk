@@ -47,7 +47,8 @@ solid: solid-setup
 	mkdir -p $(BUILD_WORK)/solid/build
 	cd $(BUILD_WORK)/solid/build && cmake .. \
 		-G Ninja \
-		$(KF6_CMAKE_FLAGS)
+		$(KF6_CMAKE_FLAGS) \
+		-DUSE_DBUS=ON
 	+ninja -C $(BUILD_WORK)/solid/build
 	+DESTDIR="$(BUILD_STAGE)/solid" ninja -C $(BUILD_WORK)/solid/build install
 	$(call AFTER_BUILD,copy)

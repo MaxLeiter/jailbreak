@@ -17,6 +17,7 @@ knotifyconfig-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,knotifyconfig))
 	$(call EXTRACT_TAR,knotifyconfig-$(KF6_VERSION).tar.xz,knotifyconfig-$(KF6_VERSION),knotifyconfig)
 	sed -i 's/find_package(Phonon4Qt6 4\.6\.60 NO_MODULE REQUIRED)/find_package(Phonon4Qt6 4.6.60 NO_MODULE)/' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt
+	sed -i 's/find_package(Qt6Multimedia REQUIRED)/find_package(Qt6Multimedia)/' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/knotifyconfig/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)

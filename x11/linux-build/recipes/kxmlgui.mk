@@ -16,6 +16,8 @@ DEB_KXMLGUI_V ?= $(KXMLGUI_VERSION)+ios1
 kxmlgui-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,kxmlgui))
 	$(call EXTRACT_TAR,kxmlgui-$(KF6_VERSION).tar.xz,kxmlgui-$(KF6_VERSION),kxmlgui)
+	sed -i '/^#include <QPrintDialog>$$/d' $(BUILD_WORK)/kxmlgui/src/kshortcutseditor.cpp
+	perl -0pi -e 's/    QPrintDialog \*dlg = new QPrintDialog\(&printer, q\);\n    if \(dlg->exec\(\) == QDialog::Accepted\) \{\n        doc\.print\(&printer\);\n    \}\n    delete dlg;\n/    \/\/ ios: no QPrintDialog implementation\n    Q_UNUSED(printer)\n/' $(BUILD_WORK)/kxmlgui/src/kshortcutseditor.cpp
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kxmlgui/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)

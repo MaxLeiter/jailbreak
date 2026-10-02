@@ -23,6 +23,8 @@ new_dbus_guard = (
 )
 if old_dbus_guard in s:
     s = s.replace(old_dbus_guard, new_dbus_guard, 1)
+elif 'option(USE_DBUS "Build components using DBus"' in s:
+    pass  # 6.30: DBus is behind USE_DBUS (the recipe passes -DUSE_DBUS=ON), no APPLE guard on the find_package
 elif "the upower device backend below needs Qt6::DBus even on APPLE" not in s:
     raise SystemExit("solid-ios-fixes.sh: Qt6::DBus find_package guard not found")
 
