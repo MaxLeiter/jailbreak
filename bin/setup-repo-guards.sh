@@ -12,7 +12,7 @@
 #      clone), so every clone opts in explicitly.
 #
 #   2. The Claude Code PreToolUse guard (bin/lib/guard-repo-ops.sh), which blocks
-#      a bare sync-packages-to-repo.py and hand-edits of generated repo output.
+#      hand-edits of generated repo output.
 #      Hook config lives in .claude/settings.json, which is gitignored.
 #
 # Both are idempotent, so rerunning is always safe. Note the two halves have

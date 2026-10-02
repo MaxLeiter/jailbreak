@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Claude Code PreToolUse hook: refuse the two repo operations that destroy work
-# silently rather than failing.
+# Claude Code PreToolUse hook: refuse hand-edits of generated repo output, which
+# destroy work silently rather than failing.
 #
 # Wired up by bin/setup-repo-guards.sh. Reads the hook JSON on stdin; exit 2
 # blocks the call and shows stderr to the agent, exit 0 allows it.
 #
 # Scope is deliberately narrow. Guards that belong to a script live IN that
 # script, where they protect every caller (make-repo.py refuses to shrink the
-# index; publish-repo.sh refuses an uncommitted prod index). These two cannot be
-# guarded that way: one is a destructive default we do not want to change under
-# other callers, and the other is an editor action with no script involved.
+# index; publish-repo.sh refuses an uncommitted prod index;
+# sync-packages-to-repo.py is dry-run by default and --apply needs --only). An
+# edit is an editor action with no script involved, so it is guarded here.
 set -uo pipefail
 
 # Read the hook JSON here and hand it over in the environment: the python below
@@ -53,24 +53,11 @@ def strip_heredocs(cmd):
 
 
 if tool == "Bash":
+    # No Bash rule is active. The one that lived here blocked a bare
+    # sync-packages-to-repo.py back when it applied by default and deleted debs;
+    # the script is now dry-run by default and refuses --apply without --only.
+    # A rule added here should match against `cmd`, never the raw command.
     cmd = strip_heredocs(tool_input.get("command") or "")
-
-    # sync-packages-to-repo.py APPLIES BY DEFAULT -- no --dry-run means real
-    # os.remove() over repo/debs, which sweeps in-flight builds into the repo and
-    # deletes every non-newest deb. Recovering means re-fetching published bytes
-    # and hash-matching them one by one.
-    if re.search(r"sync-packages-to-repo\.py", cmd) and "--dry-run" not in cmd:
-        sys.stderr.write(
-            "BLOCKED: sync-packages-to-repo.py applies by default -- there is no\n"
-            "confirmation prompt and no --apply flag. Run it bare and it deletes every\n"
-            "non-newest deb in repo/debs and copies whatever is currently in\n"
-            "x11/linux-build/out/, including half-finished builds from other sessions.\n"
-            "\n"
-            "Run it with --dry-run first and read the plan. If that plan is genuinely\n"
-            "what you want, rerun without --dry-run in a separate call, having first\n"
-            "confirmed no other build is in flight.\n"
-        )
-        sys.exit(2)
 
 elif tool in ("Edit", "Write", "NotebookEdit"):
     path = tool_input.get("file_path") or ""

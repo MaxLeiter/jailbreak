@@ -3,24 +3,8 @@
 import json, subprocess, sys
 
 GUARD = "bin/lib/guard-repo-ops.sh"
-SYNC = "x11/tools/" + "sync-packages-to-repo.py"
-
-# The commit message that the first version of the hook wrongly blocked: prose
-# inside a heredoc that quotes the guarded command.
-commit_msg_cmd = (
-    "git commit -q -F - <<'EOF'\n"
-    "publish: guard the silent failures\n"
-    "\n"
-    "The hook blocks a bare " + SYNC + " because it applies by\n"
-    "default and deletes debs.\n"
-    "EOF"
-)
 
 CASES = [
-    ("bare invocation",              "Bash", {"command": SYNC}, 2),
-    ("bare, with a path prefix",     "Bash", {"command": "python3 " + SYNC}, 2),
-    ("with --dry-run",               "Bash", {"command": SYNC + " --dry-run"}, 0),
-    ("mentioned in a heredoc",       "Bash", {"command": commit_msg_cmd}, 0),
     ("unrelated command",            "Bash", {"command": "git status"}, 0),
     ("edit repo/Packages",           "Edit", {"file_path": "/x/repo/Packages"}, 2),
     ("edit a depiction",             "Edit", {"file_path": "/x/repo/depictions/iosc.html"}, 2),
