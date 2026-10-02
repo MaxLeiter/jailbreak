@@ -4,15 +4,17 @@ endif
 
 SUBPROJECTS    += gtk+3.0
 GTK_MAJOR_V    := 3.24
-GTK_VERSION    := $(GTK_MAJOR_V).38
-DEB_LIBGTK_V   ?= $(GTK_VERSION)+ios2
+GTK_VERSION    := $(GTK_MAJOR_V).52
+DEB_LIBGTK_V   ?= $(GTK_VERSION)+ios1
 # libgtkintl: the proxy-libintl symbol shim (see gtkintl_shim.c). Built during the
 # gtk+3.0 step and shipped as its own deb; both GTK3 and GTK4 relink onto it.
 DEB_LIBGTKINTL_V ?= 1.1
 
 gtk+3.0-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gtk+/$(GTK_MAJOR_V)/gtk+-$(GTK_VERSION).tar.xz)
-	$(call EXTRACT_TAR,gtk+-$(GTK_VERSION).tar.xz,gtk+-$(GTK_VERSION),gtk+3.0)
+	# download.gnome.org stops at 3.24.43; 3.24.44+ exist only as GitLab tag archives (meson
+	# builds straight from them, no generated files needed). The top dir is gtk-<ver>, not gtk+-<ver>.
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.gnome.org/GNOME/gtk/-/archive/$(GTK_VERSION)/gtk-$(GTK_VERSION).tar.gz)
+	$(call EXTRACT_TAR,gtk-$(GTK_VERSION).tar.gz,gtk-$(GTK_VERSION),gtk+3.0)
 	# GTK's meson force-sets `wayland_enabled = false` AND `x11_enabled = false` inside its
 	# `if os_darwin` block, overriding our -D backend options, so a darwin cross-build (our
 	# iOS target) would end up with no GDK backend. No-op both overrides (rewrite them to
