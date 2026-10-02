@@ -399,9 +399,11 @@ final class SonosController: ObservableObject {
     private func parseMeta(_ xml: String, ip: String) {
         guard let meta = value("TrackMetaData", xml) else { now = nil; return }
         let didl = unescape(meta)
-        let title = value("dc:title", didl) ?? ""
-        let artist = value("dc:creator", didl) ?? value("r:albumArtist", didl) ?? ""
-        let album = value("upnp:album", didl) ?? ""
+        // The DIDL was unescaped once to get here, so the text nodes are still
+        // entity-escaped ("Rock &amp; Roll"); parseItems unescapes them too.
+        let title = unescape(value("dc:title", didl) ?? "")
+        let artist = unescape(value("dc:creator", didl) ?? value("r:albumArtist", didl) ?? "")
+        let album = unescape(value("upnp:album", didl) ?? "")
         var art: URL?
         if let raw = value("upnp:albumArtURI", didl) {
             let u = unescape(raw)
