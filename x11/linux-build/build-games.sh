@@ -51,7 +51,7 @@ EOF
 chmod +x /usr/local/bin/wayland-scanner
 
 echo "==> installing game recipes, controls, and patches"
-for recipe in sdl2.mk sdl3.mk sdl2-image.mk sdl2-mixer.mk openal-soft.mk physfs.mk boost-games.mk enet.mk fribidi.mk libsodium.mk openttd.mk warzone2100.mk wesnoth.mk zero-ad.mk xios-sdl-smoke.mk; do
+for recipe in sdl2.mk sdl3.mk sdl2-image.mk sdl2-mixer.mk openal-soft.mk physfs.mk boost-games.mk enet.mk fribidi.mk libsodium.mk openttd.mk warzone2100.mk wesnoth.mk zero-ad.mk xios-sdl-smoke.mk crispy-doom.mk freedoom.mk; do
   cp -v "/work/recipes/$recipe" makefiles/
 done
 # These are stock Procursus recipes whose source is already portable. Mark the
@@ -84,6 +84,10 @@ cp -v /work/recipes/build_info/libopenal*.control \
   /work/recipes/build_info/libenet*.control \
   build_info/
 cp -v /work/build_info/openttd.control build_info/
+cp -v /work/build_info/crispy-doom.control \
+  /work/build_info/crispy-doom.desktop \
+  /work/build_info/freedoom.control \
+  build_info/
 cp -v /work/recipes/build_info/xios-sdl-smoke.control \
   /work/recipes/build_info/xios-sdl2-smoke.desktop \
   /work/recipes/build_info/xios-sdl3-smoke.desktop \
@@ -97,6 +101,13 @@ cp -v /work/recipes/build_info/xios-sdl-smoke.control \
 for package in sdl2 sdl3 physfs openttd warzone2100 wesnoth 0ad; do
   bash /work/recipes/stage-port-patches.sh "$package" /work/ports build_patch
 done
+# Crispy Doom stages every patch in its ports directory, in name order, with no
+# series file: 0001+ are the build patches and 0100+ is reserved for the touch
+# controls, which then need no edit here to be applied. The recipe hashes the
+# staged set into its setup stamp, so a new or changed patch forces a rebuild.
+rm -rf build_patch/crispy-doom
+mkdir -p build_patch/crispy-doom
+cp -v /work/ports/crispy-doom/patches/*.patch build_patch/crispy-doom/
 
 # Procursus' DOWNLOAD_FILES neither verifies a download nor re-fetches, and it
 # skips any file that already exists. A connection that drops mid-transfer
@@ -318,6 +329,18 @@ for target in $TARGETS; do
       echo "    using staged OpenTTD dependencies"
     fi
   fi
+  if [ "$target" = "crispy-doom-package" ]; then
+    echo "==> staging Crispy Doom development roots"
+    for package in \
+      xios-sdl2 xios-sdl2-dev \
+      libsdl2-mixer-2.0-0 libsdl2-mixer-dev \
+      libpng16-16 libpng16-dev \
+      libz1 zlib-dev; do
+      stage_rootless_deb "$package"
+    done
+    find "$XIOS_BUILD_BASE/var/jb" -type f -name '*.pc' -exec \
+      cp -f {} "$XIOS_BUILD_BASE/usr/lib/pkgconfig/" \;
+  fi
   if [ "$target" = "warzone2100-package" ]; then
     echo "==> staging Warzone 2100 development roots"
     for package in \
@@ -404,7 +427,7 @@ for package in \
   libopus0 libopus-dev libtheora0 libtheora-dev \
   libsodium23 libsodium-dev libzip5 libzip-dev \
   libssl3 libssl-dev \
-  openttd warzone2100 wesnoth 0ad xios-sdl-smoke; do
+  openttd warzone2100 wesnoth 0ad xios-sdl-smoke crispy-doom freedoom; do
   find "build_dist/$XIOS_TRIPLE" -maxdepth 2 -type f \
     -name "${package}_*_${XIOS_DEB_ARCH}.deb" -exec cp -v {} /out/ \;
 done
