@@ -14,8 +14,9 @@
 #   4. ioscdock    floating launcher/task dock (bottom layer)
 #
 # Usage:  run-shell.sh [--no-compositor]
-# Env:    IOSC_PANEL_SCALE (default 2), IOSC_WALLPAPER, IOSC_SHELL_ICONS,
-#         IOSC_PANEL_OPACITY (once iosc blends layer surfaces)
+# Env:    IOSC_PANEL_SCALE (override; unset, the clients follow iosc's
+#         wl_output scale), IOSC_WALLPAPER, IOSC_SHELL_ICONS,
+#         IOSC_PANEL_OPACITY (0-100, default 85)
 #
 # This is the future `xios-iosc` flavor: iosc + these clients are the whole
 # desktop — no Mutter, no JS, pure C/Wayland. Package: package-shell.sh.
@@ -68,7 +69,6 @@ export IOSC_INPUT_SOCK="${IOSC_INPUT_SOCK:-$TMP/iosc-input.sock}"
 export IOSC_CLIPBOARD_SOCK="${IOSC_CLIPBOARD_SOCK:-$TMP/iosc-clipboard.sock}"
 export IOSC_WM_SOCK="${IOSC_WM_SOCK:-$TMP/iosc-wm.sock}"
 IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
-export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # Logical desktop the shell designs its elements for. iosc renders a 2x-oversized
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
 # the 2160x1620 panel = ~1.5 effective scale. Override to retune.
