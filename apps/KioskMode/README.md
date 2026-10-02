@@ -39,7 +39,7 @@ Default (no file) = disarmed, so it never traps you until you opt in.
 
 There is no reliable way for a SpringBoard tweak to intercept touches over
 another app's fullscreen window, so escape is a **hardware volume pattern**:
-triple-press Volume Up (or Down) within ~1.4s toggles `paused`. A short haptic
+triple-press Volume Up (or Down) within ~2s toggles `paused`. A short haptic
 confirms. `off` means it stays locked until you flip the master switch in the app.
 
 ## Build & install
