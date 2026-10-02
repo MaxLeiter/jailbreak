@@ -419,10 +419,25 @@ static struct iosc_surface *surface_by_window_id(uint32_t window_id)
     return NULL;
 }
 
+/* Longest ->parent chain any walk follows. The requests that set a parent
+ * refuse to close a cycle (surface_is_ancestor_of() below), so this only keeps
+ * a walk finite if one ever slips through; no real chain comes near it. */
+#define IOSC_MAX_PARENT_DEPTH IOSC_MAX_SURFACES
+
+/* True if `anc` is `s` itself or one of its ancestors, i.e. giving `anc` the
+ * parent `s` would close a cycle. */
+static int surface_is_ancestor_of(struct iosc_surface *anc, struct iosc_surface *s)
+{
+    for (int d = 0; s && d < IOSC_MAX_PARENT_DEPTH; s = s->parent, d++)
+        if (s == anc) return 1;
+    return 0;
+}
+
 static struct iosc_surface *native_focus_toplevel(void)
 {
     struct iosc_surface *s = g_kbd_focus;
-    while (s && s->role != IOSC_ROLE_TOPLEVEL && s->parent)
+    for (int d = 0; s && s->role != IOSC_ROLE_TOPLEVEL && s->parent &&
+                    d < IOSC_MAX_PARENT_DEPTH; d++)
         s = s->parent;
     return (s && s->role == IOSC_ROLE_TOPLEVEL) ? s : NULL;
 }
@@ -1361,8 +1376,8 @@ static int native_toplevel_canvas_live(struct iosc_surface *s)
  * dialog's parent scene. */
 static struct iosc_surface *native_owner_toplevel(struct iosc_surface *s)
 {
-    while (s && s->role != IOSC_ROLE_TOPLEVEL)
-        s = s->parent;
+    for (int d = 0; s && s->role != IOSC_ROLE_TOPLEVEL; d++)
+        s = d < IOSC_MAX_PARENT_DEPTH ? s->parent : NULL;
     return s;
 }
 
@@ -2709,7 +2724,8 @@ static int popup_hit_is_within_grab(struct iosc_surface *hit)
 {
     if (g_popup_grab_count == 0) return 1;
     if (!hit) return 0;
-    for (struct iosc_surface *s = hit; s; s = s->parent)
+    int d = 0;
+    for (struct iosc_surface *s = hit; s && d < IOSC_MAX_PARENT_DEPTH; s = s->parent, d++)
         for (int i = 0; i < g_popup_grab_count; i++)
             if (g_popup_grab_stack[i] == s) return 1;
     return 0;
@@ -4134,7 +4150,12 @@ static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_
     struct iosc_surface *s = wl_resource_get_user_data(r);
     if (!s) return;
     struct iosc_surface *parent = p ? wl_resource_get_user_data(p) : NULL;
-    s->parent = (parent && parent != s) ? parent : NULL;
+    if (parent && surface_is_ancestor_of(s, parent)) {
+        wl_resource_post_error(r, XDG_TOPLEVEL_ERROR_INVALID_PARENT,
+                               "parent is this toplevel or one of its descendants");
+        return;
+    }
+    s->parent = parent;
 }
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
@@ -4238,6 +4259,11 @@ static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id
     struct iosc_surface *ps = parent ? wl_resource_get_user_data(parent) : NULL;
     struct iosc_positioner *pos = wl_resource_get_user_data(positioner);
     if (xs_role_taken(r, s)) return;
+    if (s && ps && surface_is_ancestor_of(s, ps)) {
+        wl_resource_post_error(r, XDG_WM_BASE_ERROR_INVALID_POPUP_PARENT,
+                               "popup parent is the popup itself or its descendant");
+        return;
+    }
     struct wl_resource *p = wl_resource_create(c, &xdg_popup_interface,
                                                wl_resource_get_version(r), id);
     if (!p) { wl_client_post_no_memory(c); return; }
@@ -5273,6 +5299,16 @@ static void subcompositor_get_subsurface(struct wl_client *c, struct wl_resource
   if (s->role != IOSC_ROLE_NONE || s->subsurface) {
       wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
                              "wl_surface already has a role");
+      return;
+  }
+  if (s == p) {
+      wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
+                             "wl_surface cannot be its own parent");
+      return;
+  }
+  if (surface_is_ancestor_of(s, p)) {
+      wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_PARENT,
+                             "parent is a descendant of the wl_surface");
       return;
   }
   struct iosc_subsurface *sub = calloc(1, sizeof(*sub));
