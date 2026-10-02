@@ -299,9 +299,10 @@ meta_backend_ios_set_keymap (MetaBackend *backend,
   MetaBackendIOS *self = META_BACKEND_IOS (backend);
   struct xkb_keymap *keymap;
 
-  /* The synthetic key path carries keysyms directly (notify_keyval), so no xkb_state is
-   * driven from this map — but gnome-shell/Clutter still query it (keybinding labels, IM,
-   * layout group). Recompile + publish it, same as the native backend. */
+  /* The synthetic key path resolves each keysym to a key in this map
+   * (MetaVirtualInputDeviceIOS notify_keyval), Mutter's Wayland keyboard sends it to clients
+   * and drives their modifier state from it, and gnome-shell/Clutter query it (keybinding
+   * labels, IM, layout group). Recompile + publish it, same as the native backend. */
   keymap = ios_compile_keymap (layouts, variants, options, model);
   if (!keymap)
     {

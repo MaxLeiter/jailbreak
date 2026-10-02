@@ -98,3 +98,11 @@ meta_clutter_backend_ios_new (MetaBackend *backend)
 
   return self;
 }
+
+MetaBackend *
+meta_clutter_backend_ios_get_backend (MetaClutterBackendIOS *clutter_backend)
+{
+  g_return_val_if_fail (META_IS_CLUTTER_BACKEND_IOS (clutter_backend), NULL);
+
+  return clutter_backend->backend;
+}

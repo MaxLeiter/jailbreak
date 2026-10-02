@@ -372,9 +372,12 @@ on_input_msg (const xios_msg           *m,
       }
 
     case XIOS_IN_TEXT:
-      /* Committed text (soft keyboard / paste): type each byte as a keyval click.
-       * '\n' -> Return; Latin-1 keysyms equal their codepoint. Multibyte UTF-8 is
-       * skipped here (the IME path in ios-inputd covers full unicode via commit_string). */
+      /* Committed text (soft keyboard / paste): type each ASCII byte as a keyval click,
+       * which notify_keyval turns into a real key (plus Shift) from the backend keymap.
+       * '\n' -> Return. Multibyte UTF-8 is skipped: this backend has no commit path for it.
+       * ios-inputd's commit_string needs zwp_input_method_v2, which Mutter does not
+       * implement, and no ClutterInputMethod bridge exists here (gnome-touch-ux.md
+       * "Phase 3" lists that as the upgrade). */
       for (size_t i = 0; i < text_len; i++)
         {
           unsigned char c = (unsigned char) text[i];
