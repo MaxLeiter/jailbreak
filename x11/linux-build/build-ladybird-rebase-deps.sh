@@ -27,6 +27,8 @@ set -uo pipefail
 cd /work/Procursus
 
 MINE="openssl simdutf simdjson libfmt fast-float mimalloc ffmpeg"
+ONLY="${ONLY:-$MINE}"   # rerun subset, e.g. ONLY="mimalloc ffmpeg"
+inonly() { case " $ONLY " in *" $1 "*) return 0;; esac; return 1; }
 echo "==> installing recipes (only the Ladybird-private ones) into makefiles/"
 for r in $MINE; do cp -v /work/recipes-ladybird/$r.mk makefiles/; done
 echo "==> installing control templates into build_info/"
@@ -55,6 +57,8 @@ declare -A RESULT
 
 wipe_shadow() {
   local pkg="$1"; shift
+  inonly "$pkg" || return 0
+  [ "${NO_WIPE:-0}" = 1 ] && { echo "--- NO_WIPE=1: leaving ${pkg} trees in place"; return 0; }
   echo "--- wiping stale ${pkg}: build_work + build_stage + staged build_base files"
   for d in "$BW/${pkg}" "$BS/${pkg}"; do [ -e "$d" ] && echo "[removed] $d"; rm -rf "$d"; done
   for g in "$@"; do
@@ -63,6 +67,7 @@ wipe_shadow() {
 }
 build_one() {
   local pkg="$1"
+  inonly "$pkg" || return 0
   echo; echo "###########################################################"; echo "==> make ${pkg}-package"
   echo "###########################################################"
   if make ${pkg}-package $COMMON -j"$(nproc)"; then RESULT[$pkg]="OK"; else RESULT[$pkg]="FAILED"; echo "!!! ${pkg} FAILED"; fi
@@ -91,7 +96,7 @@ for n in libsimdutf libsimdutf-dev;                  do collect "$n" '9.1.0+ios1
 for n in libsimdjson libsimdjson-dev;                do collect "$n" '4.6.4+ios1'; done
 for n in libfmt12 libfmt-dev;                        do collect "$n" '12.2.0+ios1'; done
 for n in fast-float-dev;                             do collect "$n" '8.2.10+ios1'; done
-for n in libmimalloc libmimalloc-dev;                do collect "$n" '2.2.7+ios1'; done
+for n in libmimalloc libmimalloc-dev;                do collect "$n" '2.2.7+ios2'; done
 for n in libavcodec-ladybird61 libavcodec-ladybird-dev libavformat-ladybird61 libavformat-ladybird-dev \
          libavutil-ladybird59 libavutil-ladybird-dev libswresample-ladybird5 libswresample-ladybird-dev; do collect "$n" '7.1.1+ios1'; done
 

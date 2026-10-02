@@ -17,7 +17,7 @@ endif
 # SONAMEs: libavutil.59 libavcodec.61 libavformat.61 libswresample.5. No CLI tools (--disable-programs).
 
 SUBPROJECTS    += ffmpeg
-FFMPEG_VERSION := 7.1.1   # upstream Ladybird pins 7.1.1 (Meta/CMake/vcpkg/overlay-ports/ffmpeg); stays 7.1.1 here
+FFMPEG_VERSION := 7.1.1
 DEB_FFMPEG_V   ?= $(FFMPEG_VERSION)+ios1
 
 ffmpeg-setup: setup

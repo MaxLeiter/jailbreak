@@ -8,8 +8,9 @@ endif
 # with llvm-objdump, not plain objdump, which hides LSE ops as `.long`).
 
 SUBPROJECTS        += mimalloc
+# ios2: MI_SECURE build, ships libmimalloc-secure.* (not drop-in for +ios1 libmimalloc.2.dylib)
 MIMALLOC_VERSION   := 2.2.7
-DEB_MIMALLOC_V     ?= $(MIMALLOC_VERSION)+ios1
+DEB_MIMALLOC_V     ?= $(MIMALLOC_VERSION)+ios2
 
 mimalloc-setup: setup
 	$(call GITHUB_ARCHIVE,microsoft,mimalloc,$(MIMALLOC_VERSION),v$(MIMALLOC_VERSION))
@@ -48,12 +49,12 @@ mimalloc-package: mimalloc-stage
 		$(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/{include,lib}
 
 	# mimalloc.mk Prep libmimalloc (runtime: versioned dylib)
-	cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmimalloc.[0-9]*.dylib $(BUILD_DIST)/libmimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmimalloc-secure.[0-9]*.dylib $(BUILD_DIST)/libmimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
 	# mimalloc.mk Prep libmimalloc-dev (headers, static, symlink, pkgconfig/cmake)
 	cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/* $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include
-	-cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmimalloc.dylib $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
-	-cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmimalloc.a $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	-cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmimalloc-secure.dylib $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	-cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libmimalloc-secure.a $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	-cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/pkgconfig $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 	-cp -a $(BUILD_STAGE)/mimalloc/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/cmake $(BUILD_DIST)/libmimalloc-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
 
