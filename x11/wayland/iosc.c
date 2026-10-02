@@ -78,6 +78,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pwd.h>
+#include <signal.h>
 
 /* xios_surface.c writes the geometry handshake JSON and references `display`
  * (the X display-number string) for it. There is no X server here; this is only
@@ -7000,6 +7001,13 @@ static void register_wayland_globals(void)
 
 int main(int argc, char **argv)
 {
+    /* iosc writes into many peers' sockets and pipes (clipboard receive() fds,
+     * the wm socket, the app streams), and any of them can close first. A write
+     * then has to fail with EPIPE, not kill the compositor. ioscd ignores SIGPIPE
+     * and its children inherit that; a root shell running xios-session or
+     * run-iosc.sh does not, so set it here rather than rely on the launcher. */
+    signal(SIGPIPE, SIG_IGN);
+
     struct iosc_options opts;
     iosc_options_init(&opts);
     iosc_parse_args(argc, argv, &opts);
