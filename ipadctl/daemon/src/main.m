@@ -15,8 +15,28 @@
 #import "spi.h"
 #import "token.h"
 
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+
 static NSString *const kDir = @"/var/jb/var/root/ipadctl";
 static const int kPort = 8790;
+
+// Raise this process's jetsam memory limit. Under launchd a "daemon"-category
+// job gets a 6 MB per-process limit, which a single panel-sized capture
+// IOSurface (~14 MB) blows instantly (JETSAM_REASON_MEMORY_PERPROCESSLIMIT).
+// Needs com.apple.private.memorystatus. (The probe never hit this: it ran from
+// an SSH shell, outside launchd's jetsam regime.)
+extern int memorystatus_control(uint32_t command, int32_t pid, uint32_t flags, void *buffer, size_t buffersize);
+#define IPC_MEMSTATUS_SET_HIGH_WATER_MARK 5  // active=inactive limit, non-fatal
+
+static void raise_jetsam_limit(int mb) {
+    int rc = memorystatus_control(IPC_MEMSTATUS_SET_HIGH_WATER_MARK, getpid(), (uint32_t)mb, NULL, 0);
+    if (rc != 0)
+        fprintf(stderr, "ipadctld: WARNING could not raise jetsam limit to %d MB: %s\n", mb, strerror(errno));
+    else
+        fprintf(stderr, "ipadctld: jetsam memory limit raised to %d MB\n", mb);
+}
 
 static void emit(id obj) {
     NSData *d = [NSJSONSerialization dataWithJSONObject:obj options:NSJSONWritingSortedKeys error:nil];
@@ -27,6 +47,8 @@ static void emit(id obj) {
 
 int main(int argc, char **argv) {
     @autoreleasepool {
+        raise_jetsam_limit(300);  // before any capture surface is allocated
+
         if (!spi_load()) {
             fprintf(stderr, "ipadctld: private symbol resolution failed (see above)\n");
             return 1;

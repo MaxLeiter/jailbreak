@@ -13,6 +13,14 @@
 	<!-- IOHIDEventSystemClientDispatchEvent silently drops events without it. -->
 	<key>com.apple.private.hid.client.event-dispatch</key>
 	<true/>
+	<!--
+	  Lets the daemon raise its own jetsam memory limit at startup. Under launchd
+	  a daemon-category job is capped at 6 MB, far below the ~14 MB of a
+	  panel-sized capture IOSurface, so without this it is killed on first
+	  capture. Added in phase 1 (the probe ran from a shell, outside launchd).
+	-->
+	<key>com.apple.private.memorystatus</key>
+	<true/>
 	<key>com.apple.security.iokit-user-client-class</key>
 	<array>
 		<!-- IOSurfaceCreate returns NULL without it. -->
