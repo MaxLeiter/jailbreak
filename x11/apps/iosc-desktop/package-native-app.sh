@@ -139,4 +139,4 @@ xsign "$APP_DEST/IOSCHost" \
   com.max.xios.metal-event-broker \
   com.apple.security.exception.files.absolute-path.read-write
 
-xmkdeb "$STAGE" "$OUT" --minos
+xmkdeb "$STAGE" "$OUT"
