@@ -18,7 +18,7 @@ artifact -- the payload filename is immutable in Blob -- so it wants a version
 bump and a rebuild, not a resolved text file.
 
 Wired up by .gitattributes:  repo/Packages merge=aptindex
-Register the driver once per clone:  bin/setup-git-merge-driver.sh
+Register the driver once per clone:  bin/setup-repo-guards.sh
 
 Invoked by git as:  merge-packages.py %O %A %B %P
   %O ancestor   %A ours (also the output file)   %B theirs   %P real pathname
@@ -110,8 +110,11 @@ def main(argv: list[str]) -> int:
             their_sha = other[1].get("SHA256", "")
             if my_sha == their_sha:
                 # Same payload, cosmetic stanza difference (a metadata or
-                # description edit). Ours wins; the next regeneration settles it.
-                merged[pkg] = mine
+                # description edit). Keep the side that made the edit: when ours
+                # still matches the ancestor the edit is theirs, and taking ours
+                # would drop it behind a clean exit. Both edited: ours wins.
+                base_stanza = base[pkg][0] if pkg in base else None
+                merged[pkg] = other if base_stanza == mine[0] else mine
             else:
                 conflicts.append(
                     f"{pkg} {my_ver}: both sides publish this version with "

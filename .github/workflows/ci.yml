@@ -46,6 +46,9 @@ jobs:
       - name: Repo-ops guard hook
         run: python bin/lib/guard-repo-ops.test.py
 
+      - name: repo/Packages merge driver
+        run: python bin/lib/merge-packages.test.py
+
       # Logic only -- no debs, no otool, so it runs on the Linux runner. The gate
       # itself is a host publish gate; this keeps its rpath-resolution rules honest.
       - name: Ladybird TLS rpath rules
