@@ -398,7 +398,7 @@ xs_start_native_helper() {  # xs_start_native_helper <binary> <log> <busdir> <bu
         DBUS_SYSTEM_BUS_ADDRESS="$bus_addr" \
         XIOS_HWBRIDGE_BUS=session \
         PULSE_SERVER="${PULSE_SERVER:-unix:$XS_TMP/pulse/native}" \
-        PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$XS_TMP/pulse}" \
+        PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$XS_TMP/pulse-daemon}" \
         GSETTINGS_BACKEND=memory \
         HOME="$XS_VAR/root" \
         PATH="$XS_BIN:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH" \
