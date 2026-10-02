@@ -11,7 +11,7 @@ endif
 # libz1 (see build_info-ladybird/libcurl4.control override — no libidn2-0).
 
 SUBPROJECTS  += curl
-CURL_VERSION := 8.20.0
+CURL_VERSION := 8.22.0
 DEB_CURL_V   ?= $(CURL_VERSION)+ios1
 
 curl-setup: setup
