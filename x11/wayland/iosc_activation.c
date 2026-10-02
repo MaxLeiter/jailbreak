@@ -22,7 +22,6 @@ struct iosc_activation_token {
     int used;
     uint32_t serial;
     struct wl_resource *seat;
-    struct wl_resource *surface;
     char app_id[256];
 };
 
@@ -31,7 +30,6 @@ static uint32_t g_activation_token_id;
 struct iosc_activation_record {
     char token[32];
     char app_id[256];
-    struct iosc_surface *surface;
     uint32_t serial;
 };
 
@@ -46,7 +44,6 @@ static void activation_remember(const char *token, const struct iosc_activation_
     memset(rec, 0, sizeof(*rec));
     snprintf(rec->token, sizeof(rec->token), "%s", token ? token : "");
     snprintf(rec->app_id, sizeof(rec->app_id), "%s", tok && tok->app_id[0] ? tok->app_id : "");
-    rec->surface = tok && tok->surface ? wl_resource_get_user_data(tok->surface) : NULL;
     rec->serial = tok ? tok->serial : 0;
 }
 
@@ -79,13 +76,13 @@ static void activation_token_set_app_id(struct wl_client *c, struct wl_resource 
     struct iosc_activation_token *tok = wl_resource_get_user_data(r);
     if (tok) snprintf(tok->app_id, sizeof(tok->app_id), "%s", app_id ? app_id : "");
 }
+/* The requesting surface is not kept. Nothing ever read it (activate() raises
+ * whatever surface the activating client names), and holding the wl_resource
+ * without a destroy listener let commit() call wl_resource_get_user_data() on
+ * a surface the client had already destroyed. */
 static void activation_token_set_surface(struct wl_client *c, struct wl_resource *r,
                                          struct wl_resource *surface)
-{
-    (void)c;
-    struct iosc_activation_token *tok = wl_resource_get_user_data(r);
-    if (tok) tok->surface = surface;
-}
+{ (void)c; (void)r; (void)surface; }
 static void activation_token_commit(struct wl_client *c, struct wl_resource *r)
 {
     (void)c;
