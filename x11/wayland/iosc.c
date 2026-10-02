@@ -7480,9 +7480,15 @@ int main(int argc, char **argv)
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
 
+    /* Tear down in reverse start order, so nothing that can still run outlives
+     * the display it feeds. The canvas server's reader thread calls the
+     * native_host_*() handlers until xios_canvas_server_stop() has joined it,
+     * and they queue commands for native_cmd_readable() on this display's
+     * loop. xios_server_stop() can follow: its threads only touch xios_surface
+     * state, never the display. */
     iosc_xwm_shutdown();
-    wl_display_destroy(g_display);
     if (g_native_mode) xios_canvas_server_stop();
+    wl_display_destroy(g_display);
     xios_server_stop();
     /* A latched table that outlives its producer reads as live state. */
     iosc_status_clear();
