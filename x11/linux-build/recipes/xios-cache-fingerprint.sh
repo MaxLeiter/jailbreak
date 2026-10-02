@@ -61,6 +61,10 @@ xios_cache_inputs_for() {
     [ -f "$input" ] && printf '%s\n' "$input"
   done
 
+  # `|| true`: grep exits 1 when the recipe names no /work/recipes path. Under
+  # the drivers' set -euo pipefail, the process substitution in
+  # xios_cache_inputs_newer_than keeps errexit, so that would end the listing
+  # here and drop every input below.
   if [ -f "$recipe" ]; then
     grep -Eoh '/work/recipes/[A-Za-z0-9._+/=-]+' "$recipe" 2>/dev/null \
       | while IFS= read -r input; do
@@ -70,7 +74,7 @@ xios_cache_inputs_for() {
               ;;
           esac
           [ -f "$input" ] && printf '%s\n' "$input"
-        done
+        done || true
   fi
 
   # Helpers a recipe reaches only through another script (a fixes script runs
