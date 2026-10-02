@@ -1,0 +1,17 @@
+Package: crispy-doom
+Version: @DEB_CRISPY_DOOM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: X11/Wayland Games
+Priority: optional
+Homepage: https://fabiangreffrath.github.io/crispy-doom/
+Depends: xios-sdl2, libsdl2-mixer-2.0-0, libpng16-16, libz1
+Recommends: freedoom
+Description: Crispy Doom source port for Xios
+ The limit-removing, enhanced-resolution Doom source port that stays faithful
+ to the original game, built as a normal Xios Wayland application with SDL2
+ video on OpenGL ES, PulseAudio sound effects, and OPL-emulated music.
+ .
+ Doom needs game data (an IWAD). Install freedoom for the free Freedoom: Phase
+ 1 and Phase 2, or copy your own doom.wad or doom2.wad into
+ /var/jb/usr/share/games/doom.

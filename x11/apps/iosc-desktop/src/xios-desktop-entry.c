@@ -141,6 +141,7 @@ int xios_desktop_entry_parse(const char *path, const char *trusted_root,
     char hidden[16] = "";
     char terminal[16] = "";
     char startup[256] = "";
+    char raw_touch[16] = "";
     int in_entry = 0, saw_entry = 0;
     char line[4096];
 
@@ -176,8 +177,11 @@ int xios_desktop_entry_parse(const char *path, const char *trusted_root,
             snprintf(entry->icon, sizeof(entry->icon), "%s", val);
         else if (strcmp(key, "StartupWMClass") == 0 && !startup[0])
             snprintf(startup, sizeof(startup), "%s", val);
+        else if (strcmp(key, "X-Xios-RawTouch") == 0)
+            snprintf(raw_touch, sizeof(raw_touch), "%s", val);
     }
     fclose(f);
+    entry->raw_touch = strcasecmp(raw_touch, "true") == 0;
 
     if (strcmp(type, "Application") != 0 ||
         strcasecmp(nodisplay, "true") == 0 ||

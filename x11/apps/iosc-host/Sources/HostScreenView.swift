@@ -15,6 +15,17 @@ import IOSurface
 final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     let window_id: UInt32
     private weak var manager: NativeManager?
+    /// Raw-touch mode (bundle IOSCRawTouch, from the desktop entry's
+    /// X-Xios-RawTouch=true). Games with on-screen controls hold one finger on a
+    /// stick while others turn and fire; UIKit reads that as a pan/pinch/rotate,
+    /// cancels the touches, and iosc turns any cancel into wl_touch.cancel for
+    /// every point. So in this mode the view installs no recognizer that can
+    /// claim a direct touch (keyboard-reveal pan, two-finger pan, pinch,
+    /// rotation) and sends no emulated single-finger wl_pointer: touches go to
+    /// the client as wl_touch only. Indirect input (trackpad/wheel scroll pans,
+    /// hover, hardware pointer buttons) and the hardware keyboard are unchanged;
+    /// the iOS system gestures remain the way out.
+    private let rawTouch: Bool
 
     private var canvasW = 1
     private var canvasH = 1
@@ -83,9 +94,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var oskHideTimer: Timer?
     private var lifecycleObservers: [NSObjectProtocol] = []
 
-    init(window_id: UInt32, manager: NativeManager) {
+    init(window_id: UInt32, manager: NativeManager, rawTouch: Bool = false) {
         self.window_id = window_id
         self.manager = manager
+        self.rawTouch = rawTouch
         super.init(frame: .zero)
         backgroundColor = .black
         isMultipleTouchEnabled = true
@@ -258,6 +270,13 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func installGestures() {
+        if !rawTouch { installDirectTouchGestures() }
+        installIndirectInputGestures()
+    }
+
+    /// Recognizers that see finger touches and so can claim or cancel them.
+    /// Skipped entirely in raw-touch mode (see `rawTouch`).
+    private func installDirectTouchGestures() {
         let keyboardPan = UIPanGestureRecognizer(target: self, action: #selector(handleKeyboardRevealPan(_:)))
         keyboardPan.minimumNumberOfTouches = 1
         keyboardPan.maximumNumberOfTouches = 1
@@ -281,7 +300,11 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         let rotation = UIRotationGestureRecognizer(target: self, action: #selector(handleRotation(_:)))
         rotation.delegate = self
         addGestureRecognizer(rotation)
+    }
 
+    /// Recognizers that take no finger touches (scroll events, hover); installed
+    /// in every mode.
+    private func installIndirectInputGestures() {
         // Trackpad / Magic-Keyboard two-finger scrolling arrives as scroll events
         // (no touches), which the two-touch pan above never sees; a dedicated
         // recognizer feeds the same handler (mirrors XScreen.swift's wheelPan).
@@ -715,12 +738,13 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     // Touch handling: forward real multitouch/Pencil AND emulate a single-finger
     // pointer (so wl_pointer clients react even if they ignore wl_touch), same
-    // additive policy as the Xios app.
+    // additive policy as the Xios app. Raw-touch mode skips the emulated pointer;
+    // pointerTouch then stays nil, so releasePointerIfNeeded is a no-op.
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         refreshAutoKeyboardFromTraits()
         if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .down) { return }
         for t in touches { forward(t, phase: 1, event: event) }
-        if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
+        if !rawTouch, (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
             lastPt = (x, y); iosc_input_motion(h, x, y); iosc_input_button(h, 1, true, x, y)
             pointerTouch = t
@@ -729,7 +753,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         if #available(iOS 13.4, *), handleHardwarePointer(touches, event: event, phase: .move) { return }
         for t in touches { forward(t, phase: 2, event: event) }
-        if (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
+        if !rawTouch, (event?.allTouches?.count ?? touches.count) == 1, let t = touches.first,
            let (x, y) = canvasPoint(from: t.location(in: self)), let h = input {
             lastPt = (x, y); iosc_input_motion(h, x, y)
         }

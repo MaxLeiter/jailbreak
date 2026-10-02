@@ -223,6 +223,14 @@ PLIST
   "$PB" -c "Set :CFBundleDisplayName $NAME"     "$BDIR/Info.plist"
   "$PB" -c "Set :IOSCAppID $APPID"              "$BDIR/Info.plist"
   "$PB" -c "Set :IOSCName $NAME"                "$BDIR/Info.plist"
+  # X-Xios-RawTouch=true -> IOSCRawTouch: the native host drops its direct-touch
+  # gesture recognizers and pointer emulation so every touch reaches the client
+  # (games). Same rule as xios-launcher-sync; host-only hint, never sent to ioscd.
+  RAW_TOUCH="$(desktop_field "$DESKTOP" X-Xios-RawTouch | tr 'A-Z' 'a-z')"
+  if [ "$NATIVE" = "1" ] && [ "$RAW_TOUCH" = "true" ]; then
+    "$PB" -c "Add :IOSCRawTouch bool true"      "$BDIR/Info.plist"
+    echo "    raw touch: IOSCRawTouch=true"
+  fi
 
   # Icons
   "$PY" "$HERE/gen-icons.py" --icon "$ICON" --name "$NAME" \

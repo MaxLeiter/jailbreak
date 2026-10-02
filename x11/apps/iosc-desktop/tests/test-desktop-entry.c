@@ -120,6 +120,42 @@ static void test_parse_and_resolve(void)
     assert(rmdir(root) == 0);
 }
 
+static void test_raw_touch_key(void)
+{
+    char dir[] = "/tmp/xios-desktop-entry-raw.XXXXXX";
+    assert(mkdtemp(dir));
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/org.example.Game.desktop", dir);
+
+    struct xios_desktop_entry entry;
+    char error[256];
+
+    /* Absent key: the default, current behavior. */
+    write_entry(path, "Game", "game", NULL);
+    assert(xios_desktop_entry_parse(path, NULL, 0, &entry, error, sizeof(error)));
+    assert(entry.raw_touch == 0);
+
+    FILE *f = fopen(path, "a");
+    assert(f);
+    fputs("X-Xios-RawTouch=true\n", f);
+    assert(fclose(f) == 0);
+    assert(xios_desktop_entry_parse(path, NULL, 0, &entry, error, sizeof(error)));
+    assert(entry.raw_touch == 1);
+
+    /* Only an explicit true opts in, and only inside [Desktop Entry]. */
+    f = fopen(path, "w");
+    assert(f);
+    fputs("[Desktop Entry]\nType=Application\nName=Game\nExec=game\n"
+          "X-Xios-RawTouch=false\n"
+          "[Desktop Action other]\nX-Xios-RawTouch=true\n", f);
+    assert(fclose(f) == 0);
+    assert(xios_desktop_entry_parse(path, NULL, 0, &entry, error, sizeof(error)));
+    assert(entry.raw_touch == 0);
+
+    assert(unlink(path) == 0);
+    assert(rmdir(dir) == 0);
+}
+
 int main(void)
 {
     test_app_id_validation();
@@ -127,6 +163,7 @@ int main(void)
     test_no_shell_interpretation();
     test_rejects_bad_field_code();
     test_parse_and_resolve();
+    test_raw_touch_key();
     puts("desktop-entry tests: ok");
     return 0;
 }

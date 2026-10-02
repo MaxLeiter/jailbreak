@@ -1,0 +1,25 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] i_main: mark SDL ready when built for Xios
+
+xios-sdl2 is compiled for the iOS target, where SDL_Init() fails with
+"Application didn't initialize properly" until SDL_SetMainReady() has run.
+With CRISPY_XIOS the program keeps its own main(), so call it first thing.
+OpenTTD and the xios-sdl smoke clients do the same.
+
+--- a/src/i_main.c
++++ b/src/i_main.c
+@@ -42,6 +42,14 @@
+ 
+ int main(int argc, char **argv)
+ {
++#ifdef CRISPY_XIOS
++    // [Xios] SDL is built for the iOS target, where it refuses SDL_Init()
++    // until SDL's own UIKit main trampoline has run. Xios runs this as an
++    // ordinary Unix Wayland client with its own main(), so mark SDL ready
++    // here, before anything initializes a subsystem.
++    SDL_SetMainReady();
++#endif
++
+     // save arguments
+ 
+     myargc = argc;

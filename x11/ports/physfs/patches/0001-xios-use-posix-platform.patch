@@ -1,0 +1,38 @@
+From: Xios Porting <xios@localhost>
+Subject: [PATCH] xios: use the POSIX platform backend
+
+Xios game processes use the Unix filesystem environment under /var/jb. Avoid
+the macOS Foundation backend, which also pulls private XPC headers into the
+rootless cross-build.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -25,8 +25,12 @@ set(PHYSFS_M_SRCS)
+ set(PHYSFS_CPP_SRCS)
+ 
+ # I hate that they define "WIN32" ... we're about to move to Win64...I hope!
++option(PHYSFS_XIOS "Use the POSIX backend for Xios" OFF)
++if(PHYSFS_XIOS)
++    add_definitions(-DPHYSFS_XIOS=1)
++endif()
+ 
+-if(APPLE)
++if(APPLE AND NOT PHYSFS_XIOS)
+     set(OTHER_LDFLAGS ${OTHER_LDFLAGS} "-framework IOKit -framework Foundation")
+     list(APPEND PHYSFS_M_SRCS src/physfs_platform_apple.m)
+ endif()
+--- a/src/physfs_platforms.h
++++ b/src/physfs_platforms.h
+@@ -10,7 +10,11 @@
+  *  PHYSFS_PLATFORM_UNIX on that system.
+  */
+ 
+-#if (defined __HAIKU__)
++#if defined(PHYSFS_XIOS)
++#  define PHYSFS_NO_CDROM_SUPPORT 1
++#  define PHYSFS_PLATFORM_UNIX 1
++#  define PHYSFS_PLATFORM_POSIX 1
++#elif (defined __HAIKU__)
+ #  define PHYSFS_PLATFORM_HAIKU 1
+ #  define PHYSFS_PLATFORM_POSIX 1
+ #elif ((defined __BEOS__) || (defined __beos__))
