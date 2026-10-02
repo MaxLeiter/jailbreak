@@ -14,7 +14,13 @@
 // replaces the clipboard. Contract lives in
 // apps/shared/XiosProtocol.h.
 
-bool iosc_clipboard_open(const char *sock_path);
+// Connecting is split so the blocking part can run off the main thread:
+// iosc_clipboard_connect() does connect() plus the HELLO exchange (up to 2 s
+// waiting on the reply) and touches no module state; the main thread then
+// hands the fd to iosc_clipboard_adopt(), which takes ownership (it closes
+// the fd and returns false if a connection is already open).
+int iosc_clipboard_connect(const char *sock_path);   // connected fd, or -1
+bool iosc_clipboard_adopt(int fd);
 void iosc_clipboard_close(void);
 bool iosc_clipboard_is_open(void);
 

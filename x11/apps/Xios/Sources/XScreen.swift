@@ -251,6 +251,15 @@ final class XScreenView: UIView {
     private var clipDeferredPushTicks = 0   // connect grace: desktop wins if it speaks
     private var clipSuppressText: String?   // echo guards: what we last wrote/read
     private var clipSuppressPNG: Data?
+    // Clipboard socket work that can block (connect + HELLO) runs on this
+    // serial queue so the display-link tick never waits on it.
+    private let clipboardQueue = DispatchQueue(
+        label: "com.max.xios.clipboard", qos: .userInitiated)
+    private var clipConnectInFlight = false
+    // Bumped whenever this side adopts or closes the clipboard connection. Work
+    // sent off the main thread carries the value it started under, and its
+    // result is dropped if the connection changed in the meantime.
+    private var clipEpoch = 0
     private var usingIosc: Bool { ioscInputSock != nil }
     var allowsAllOrientations: Bool { usingIosc }
     // Last single-finger point in output px, so a touch-up (whose UIKit location we may
@@ -1731,7 +1740,7 @@ final class XScreenView: UIView {
     private func closeInput() {
         resetInputLatches()       // releases still reach the outgoing compositor
         iosc_input_close()
-        iosc_clipboard_close()
+        closeClipboard()
         inputConnected = false
     }
 
@@ -2082,17 +2091,12 @@ final class XScreenView: UIView {
 
     private func serviceIoscClipboard() {
         guard usingIosc, let sock = ioscClipboardSock else {
-            if iosc_clipboard_is_open() { iosc_clipboard_close() }
+            if iosc_clipboard_is_open() || clipConnectInFlight { closeClipboard() }
             return
         }
         if !iosc_clipboard_is_open() {
-            guard tickCount % 30 == 0, iosc_clipboard_open(sock) else { return }
-            pasteboardChangeCount = UIPasteboard.general.changeCount
-            // On (re)connect the compositor replays the session clipboard if it
-            // has one. Push ours only if it stays silent for ~0.5 s — so a fresh
-            // desktop inherits the iOS pasteboard, but an app relaunch mid-session
-            // doesn't clobber the desktop clipboard with a stale one.
-            clipDeferredPushTicks = 30
+            if tickCount % 30 == 0, !clipConnectInFlight { connectClipboard(sock) }
+            return
         }
         var gotAny = false
         while true {
@@ -2118,6 +2122,37 @@ final class XScreenView: UIView {
         if UIPasteboard.general.changeCount != pasteboardChangeCount {
             pushPasteboard(onConnect: false)
         }
+    }
+
+    /// connect() plus the HELLO reply can take up to 2 s against a compositor
+    /// that accepted but is busy (KDE start-up), so it runs on the clipboard
+    /// queue and only the adopt happens here on main.
+    private func connectClipboard(_ sock: String) {
+        clipConnectInFlight = true
+        let epoch = clipEpoch
+        clipboardQueue.async { [weak self] in
+            let fd = iosc_clipboard_connect(sock)
+            DispatchQueue.main.async {
+                guard let self else { if fd >= 0 { close(fd) }; return }
+                self.clipConnectInFlight = false
+                guard fd >= 0 else { return }
+                guard epoch == self.clipEpoch, self.usingIosc,
+                      self.ioscClipboardSock == sock else { close(fd); return }
+                guard iosc_clipboard_adopt(fd) else { return }
+                self.clipEpoch += 1
+                self.pasteboardChangeCount = UIPasteboard.general.changeCount
+                // On (re)connect the compositor replays the session clipboard if
+                // it has one. Push ours only if it stays silent for ~0.5 s — so a
+                // fresh desktop inherits the iOS pasteboard, but an app relaunch
+                // mid-session doesn't clobber the desktop clipboard with a stale one.
+                self.clipDeferredPushTicks = 30
+            }
+        }
+    }
+
+    private func closeClipboard() {
+        clipEpoch += 1
+        iosc_clipboard_close()
     }
 
     private func commitReceivedClipboard() {

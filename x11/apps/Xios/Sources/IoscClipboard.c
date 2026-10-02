@@ -17,7 +17,7 @@ static xios_msg s_msg;
 static uint8_t *s_payload = NULL;
 static uint32_t s_payload_have = 0;
 
-static bool write_all(const void *buf, size_t len);
+static bool write_fd(int fd, const void *buf, size_t len);
 
 static void reset_rx(void) {
     free(s_payload);
@@ -27,10 +27,9 @@ static void reset_rx(void) {
     memset(&s_msg, 0, sizeof(s_msg));
 }
 
-bool iosc_clipboard_open(const char *sock_path) {
-    if (s_fd >= 0) return true;
+int iosc_clipboard_connect(const char *sock_path) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (fd < 0) return false;
+    if (fd < 0) return -1;
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
     // The fd stays BLOCKING: sends must deliver whole records (a partial
@@ -44,33 +43,39 @@ bool iosc_clipboard_open(const char *sock_path) {
     memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, sock_path, sizeof(a.sun_path) - 1);
-    if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return false; }
-    s_fd = fd;
+    if (connect(fd, (struct sockaddr *)&a, sizeof(a)) < 0) { close(fd); return -1; }
     xios_msg hello = {
         XIOS_MSG_MAGIC, XIOS_MSG_HELLO, XIOS_PROTOCOL_VERSION, 0,
         0, 0, 0, 0
     };
     xios_msg reply;
-    if (!write_all(&hello, sizeof(hello))) {
-        iosc_clipboard_close();
-        return false;
+    if (!write_fd(fd, &hello, sizeof(hello))) {
+        close(fd);
+        return -1;
     }
     size_t got = 0;
     while (got < sizeof(reply)) {
         ssize_t r = read(fd, (uint8_t *)&reply + got, sizeof(reply) - got);
         if (r > 0) { got += (size_t)r; continue; }
         if (r < 0 && errno == EINTR) continue;
-        iosc_clipboard_close();
-        return false;
+        close(fd);
+        return -1;
     }
     if (reply.magic != XIOS_MSG_MAGIC ||
         reply.type != XIOS_MSG_HELLO ||
         reply.window_id != XIOS_PROTOCOL_VERSION ||
         reply.length != 0 ||
         reply.a != 0 || reply.b != 0 || reply.c != 0 || reply.d != 0) {
-        iosc_clipboard_close();
-        return false;
+        close(fd);
+        return -1;
     }
+    return fd;
+}
+
+bool iosc_clipboard_adopt(int fd) {
+    if (fd < 0) return false;
+    if (s_fd >= 0) { close(fd); return false; }
+    s_fd = fd;
     reset_rx();
     return true;
 }
@@ -82,11 +87,11 @@ void iosc_clipboard_close(void) {
 
 bool iosc_clipboard_is_open(void) { return s_fd >= 0; }
 
-static bool write_all(const void *buf, size_t len) {
+static bool write_fd(int fd, const void *buf, size_t len) {
     const char *p = (const char *)buf;
     size_t put = 0;
     while (put < len) {
-        ssize_t w = write(s_fd, p + put, len - put);
+        ssize_t w = write(fd, p + put, len - put);
         if (w > 0) { put += (size_t)w; continue; }
         if (w < 0 && errno == EINTR) continue;
         return false;   // includes the SNDTIMEO expiring mid-record
@@ -98,7 +103,7 @@ static bool send_record(uint32_t kind, const void *data, size_t len) {
     if (s_fd < 0 || len > XIOS_CLIP_ITEM_MAX) return false;
     xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_CLIPBOARD, 0, (uint32_t)len,
                    (int32_t)kind, (int32_t)s_tx_gen, 0, 0 };
-    if (!write_all(&h, sizeof(h)) || (len > 0 && !write_all(data, len))) {
+    if (!write_fd(s_fd, &h, sizeof(h)) || (len > 0 && !write_fd(s_fd, data, len))) {
         iosc_clipboard_close();
         return false;
     }
