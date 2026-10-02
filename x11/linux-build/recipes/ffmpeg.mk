@@ -24,12 +24,12 @@ endif
 # the VideoToolbox HW decoders are kept — those are iOS-supported. (mpv builds with
 # -Dlibavdevice=disabled anyway, so it never touches libavdevice.)
 #
-# SONAMEs (5.1.2): libavutil.57 libavcodec.59 libavformat.59 libavdevice.59 libavfilter.8
+# SONAMEs (5.1.x): libavutil.57 libavcodec.59 libavformat.59 libavdevice.59 libavfilter.8
 # No `ffmpeg`/`ffplay`/`ffprobe` CLI deb (--disable-programs) — mpv only links the libs.
 
 SUBPROJECTS    += ffmpeg
-FFMPEG_VERSION := 5.1.2
-DEB_FFMPEG_V   ?= $(FFMPEG_VERSION)+ios1
+FFMPEG_VERSION := 5.1.10
+DEB_FFMPEG_V   ?= $(FFMPEG_VERSION)+ios2
 
 ffmpeg-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ffmpeg.org/releases/ffmpeg-$(FFMPEG_VERSION).tar.xz)
