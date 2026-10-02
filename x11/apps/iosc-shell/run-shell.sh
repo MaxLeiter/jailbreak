@@ -108,8 +108,11 @@ if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
 fi
 
 # -- 2 + 3 + 4. shell clients -------------------------------------------------
-is_running() {
-    ps ax | grep -v grep | grep -F "/$1" >/dev/null 2>&1
+is_running() {  # is_running <name>: a live process whose argv[0] basename is <name>
+    # Match the program, not any argv containing "/<name>" (a `tail -f
+    # $TMP/ioscbar.log` used to count). ps ax: PID TT STAT TIME COMMAND, and a
+    # defunct entry shows as "(name)" so it never matches.
+    ps ax 2>/dev/null | awk -v b="$1" 'NR > 1 { n = split($5, p, "/"); if (p[n] == b) f = 1 } END { exit !f }'
 }
 
 start() {  # start <name> (skips if already running)
