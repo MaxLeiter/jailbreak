@@ -43,7 +43,8 @@
 #define WIN_MAX   OV_MAX_WINS
 #define APP_PIN_HOLD_MS 540
 
-/* IOSC_SHELL_DEBUG=1 -> trace to $XDG_RUNTIME_DIR/ioscoverview.log */
+/* IOSC_SHELL_DEBUG=1 -> trace on stderr, which the spawning ioscbar/ioscdock
+ * shares, so it lands in that client's log */
 static int ovdbg(void)
 { static int on=-1; if(on<0){ const char*e=getenv("IOSC_SHELL_DEBUG"); on=e&&*e&&*e!='0'; } return on; }
 

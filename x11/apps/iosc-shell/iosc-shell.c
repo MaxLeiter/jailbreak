@@ -1,15 +1,16 @@
 /*
  * iosc shell chrome — status bar and dock clients for the iosc Wayland compositor.
  *
- * A self-contained zwlr_layer_shell_v1 client anchored to the top edge of the
- * iosc output. It reserves an exclusive zone (maximized toplevels don't draw
- * under it) and renders:
+ * One zwlr_layer_shell_v1 client, two roles picked by argv[0]. Each reserves an
+ * exclusive zone (maximized toplevels don't draw under it):
  *
- *   [ ⊞ apps | launcher icons | taskbar pills (open windows) | battery date time ]
+ *   ioscbar   top edge:    [ focused app | clock | wifi battery ]
+ *   ioscdock  bottom edge: [ favorites | running windows | apps ]
  *
- * plus a QUICK-SETTINGS card (a second layer surface, toggled by the status
- * cluster) with device name, date, a battery gauge, and Overview / Screenshot
- * actions over a frosted screencopy backdrop.
+ * The bar also owns a QUICK-SETTINGS card (a second layer surface, toggled by
+ * the status cluster) with device name, date, a battery gauge, and Overview /
+ * Screenshot actions over a frosted screencopy backdrop, and a window menu
+ * (Minimize / Maximize / Close) opened from the focused app's name.
  *
  * Rendering is real vector drawing via cairo + pangocairo (panel-render.h /
  * panel-layout.h): San Francisco text, rounded translucent surfaces, and PNG
@@ -18,8 +19,9 @@
  * on the CPU and iosc composites it (no GPU/IOSurface entitlements needed).
  *
  * Input: wl_pointer (hover + click) AND wl_touch (press feedback on down, act
- * on up) — this is a tablet first. The ⊞ button and the QS "Overview" action
- * fork+exec ioscoverview; launcher taps fork+exec the app (sd_launch);
+ * on up) — this is a tablet first. The dock's apps button, a swipe up on the
+ * dock and the QS "Overview" action fork+exec ioscoverview; launcher taps
+ * fork+exec the app (sd_launch);
  * "Screenshot" captures the output via zwlr_screencopy and writes a PNG.
  *
  * Status: battery via IOKit power-source APIs (dlopen'd, hides cleanly if
@@ -641,7 +643,7 @@ static void act_on_hit(const struct panel_hit *r)
     }
 }
 
-/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in $XDG_RUNTIME_DIR/<client>.log
+/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in <jbroot>/tmp/<client>.log
  * via run-shell.sh, so a dead-to-taps report can be diagnosed from the log —
  * it shows whether events arrive at all, with what coords, and what they hit. */
 static int pdbg(void)

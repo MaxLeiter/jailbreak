@@ -89,7 +89,7 @@ struct panel_model {
     int    qs_open;              /* status cluster stays lit while QS is up */
     int    px, py, have_ptr;     /* pointer, logical px */
     int    press_kind, press_idx;/* finger-down hit (touch feedback); 0 = none */
-    double bg_alpha;             /* 0..1 base opacity (1 until iosc blends layers) */
+    double bg_alpha;             /* 0..1 base opacity (iosc blends layers) */
 };
 
 /* quick-settings card model (independent surface) */

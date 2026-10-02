@@ -12,8 +12,8 @@
  * Colour model: we author straight-alpha 0xAARRGGBB and let cairo premultiply.
  * The backing buffer is CAIRO_FORMAT_ARGB32 = native-endian premultiplied, which
  * on little-endian arm64 is B,G,R,A in memory — exactly iosc's IOSurface order.
- * (iosc currently composites layer surfaces opaque; when it blends them, the
- * premultiplied alpha we emit lights up translucency for free.)
+ * iosc blends layer surfaces as premultiplied ARGB8888 (since e11aa52), so
+ * the alpha we emit is what makes the bar and dock translucent.
  *
  * Header-only, all `static`. Depends on cairo + pangocairo only.
  */

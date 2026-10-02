@@ -74,6 +74,7 @@ Env knobs: `IOSC_PANEL_SCALE`, `IOSC_WALLPAPER`, `IOSC_SHELL_ICONS`,
 ## Compositor requirements (met since iosc 0.9.0)
 
 zwlr-layer-shell v4, zwlr-foreign-toplevel-management v3, zwlr-screencopy v1
-(software). On an older iosc each client exits with a clear message. Pending
-polish: `IOSC_ROLE_LAYER` alpha blending in iosc for true shell translucency
-(the Control Center card fakes it today with a screencopy backdrop).
+(software). On an older iosc each client exits with a clear message. iosc
+blends layer surfaces with their alpha since e11aa52, which is what makes the
+bar and dock translucent; the frosted Control Center and overview backdrops
+still come from screencopy because iosc does not blur.
