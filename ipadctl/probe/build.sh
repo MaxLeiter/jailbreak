@@ -11,6 +11,8 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+IPADCTL="$(cd "$HERE/.." && pwd)"
+CORE="$IPADCTL/core"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 [ -f "$REPO_ROOT/device.env" ] && { set -a; . "$REPO_ROOT/device.env"; set +a; }
 
@@ -24,11 +26,14 @@ ENTS="${ENTS:-$HERE/ents.plist}"
 OUT="$HERE/build"
 mkdir -p "$OUT"
 
+# The reusable native core (capture, hid, display, spi) lives in ipadctl/core
+# and is shared with the daemon; the probe adds only its own CLI front end.
 xcrun -sdk iphoneos clang -arch arm64 -miphoneos-version-min=15.0 \
     -fobjc-arc -O2 -Wall -Wextra -Wno-unused-parameter \
+    -I"$CORE" \
     -framework Foundation -framework UIKit -framework CoreGraphics \
     -framework ImageIO -framework IOSurface -framework Accelerate \
-    "$HERE"/src/*.m -o "$OUT/ipadctl-probe"
+    "$CORE"/*.m "$HERE"/src/*.m -o "$OUT/ipadctl-probe"
 echo "built $OUT/ipadctl-probe"
 
 if [ "${1:-}" = "--deploy" ]; then
