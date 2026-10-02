@@ -61,9 +61,12 @@ if tool == "Bash":
 
 elif tool in ("Edit", "Write", "NotebookEdit"):
     path = tool_input.get("file_path") or ""
+    # Each profile (repo/profiles/<name>/, e.g. rootful) is its own generated
+    # tree with the same layout as the rootless one at repo/.
     generated = (
-        r"/repo/(Packages(\.gz|\.pv|\.sha)?|Release(\.gpg)?|InRelease"
-        r"|index\.html|site\.css|sileo-featured\.json"
+        r"/repo/(profiles/[^/]+/)?"
+        r"(Packages(\.gz|\.pv|\.sha)?|Release(\.gpg)?|InRelease"
+        r"|index\.html|site\.css|sileo-featured\.json|sitemap\.xml|robots\.txt"
         r"|depictions/.*|icons/.*|banners/.*)$"
     )
     if re.search(generated, path):
