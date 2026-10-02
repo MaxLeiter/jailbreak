@@ -14,7 +14,8 @@ MOZJS_SRC     := mozjs-$(MOZJS_VERSION)
 
 mozjs-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.mozilla.org/pub/firefox/releases/$(MOZJS_VERSION)esr/source/firefox-$(MOZJS_VERSION)esr.source.tar.xz)
-	$(call EXTRACT_TAR,firefox-$(MOZJS_VERSION)esr.source.tar.xz,firefox-$(MOZJS_VERSION)esr,mozjs)
+	# The ESR tarball unpacks to firefox-<ver>/ with no "esr"; a wrong dir leaves mozjs/ empty.
+	$(call EXTRACT_TAR,firefox-$(MOZJS_VERSION)esr.source.tar.xz,firefox-$(MOZJS_VERSION),mozjs)
 	# mozjs-115's bundled config.sub copies don't know 'ios' — replace with the host's modern one.
 	find $(BUILD_WORK)/mozjs -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(BUILD_WORK)/mozjs -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
