@@ -1,0 +1,14 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] libpas: do not use os_unfair_lock flags API for the GTK port (iOS 16.5 SDK lacks it)
+
+--- a/Source/bmalloc/libpas/src/libpas/pas_lock.h	2026-10-01 19:43:46
++++ b/Source/bmalloc/libpas/src/libpas/pas_lock.h	2026-10-01 19:43:46
+@@ -69,7 +69,7 @@
+ #define OS_UNFAIR_LOCK_DATA_SYNCHRONIZATION 0x00010000
+ #define OS_UNFAIR_LOCK_ADAPTIVE_SPIN 0x00040000
+ 
+-#if PAS_PLATFORM(COCOA)
++#if PAS_PLATFORM(COCOA) && !defined(BUILDING_GTK__)
+ /* After this version, OS_UNFAIR_LOCK_DATA_SYNCHRONIZATION etc. are public API */
+ #define PAS_USE_ULOCK_FLAGS_API 1
+ #else

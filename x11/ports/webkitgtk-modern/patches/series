@@ -5,3 +5,5 @@
 0011-ios-allow-gigacage-allocation-failure.patch
 0012-ios-load-rootless-angle-egl.patch
 0015-gtk-darwin-skip-webkitlegacy.patch
+0016-libpas-no-ulock-flags-api-for-gtk-darwin.patch
+0017-wtf-memory-footprint-darwin-for-gtk.patch
