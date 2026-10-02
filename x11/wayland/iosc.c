@@ -2881,6 +2881,17 @@ void surface_unmap(struct iosc_surface *s)
             dnd_end();
         }
     }
+    /* A window going away mid move/resize ends the operation. Only a pointer
+     * button release cleared g_interactive_surface, so motion in the meantime
+     * kept moving (and configuring) the gone window: freed memory, if it was
+     * destroyed. Before the mapped gate: move/resize never required a mapped
+     * window. */
+    if (g_interactive_surface == s) {
+        s->toplevel_resizing = 0;
+        g_interactive_surface = NULL;
+        g_interactive_op = IOSC_INTERACTIVE_NONE;
+        g_interactive_edges = 0;
+    }
     /* The lock surface going away mid-lock: back to a blank locked screen (the
      * session itself stays locked). Also before the mapped gate: never mapped. */
     if (g_slock.surface == s) {
