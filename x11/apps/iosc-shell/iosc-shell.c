@@ -21,7 +21,7 @@
  * Input: wl_pointer (hover + click) AND wl_touch (press feedback on down, act
  * on up) — this is a tablet first. The dock's apps button, a swipe up on the
  * dock and the QS "Overview" action fork+exec ioscoverview; launcher taps
- * fork+exec the app (sd_launch);
+ * fork+exec the app as mobile (sd_launch);
  * "Screenshot" captures the output via zwlr_screencopy and writes a PNG.
  *
  * Status: battery via IOKit power-source APIs (dlopen'd, hides cleanly if
