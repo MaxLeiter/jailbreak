@@ -229,3 +229,14 @@
 
 ## Verify
 `/var/jb/tmp/iosc.log` (logical/output/clients), shell stderr logs (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.
+
+## Xwayland 24.1.13+ios2 (2026-10-01, branch claude/xwayland-24, unpublished)
+
+- Ported the IOSurface/ANGLE glamor backend from 23.2.7 to 24.1.13 (24.1 removed `xwl_egl_backend`). With glamor and no gbm, meson sets `build_iosurface` and `recipes/build_info/xwayland-glamor-iosurface.c` replaces `xwayland-glamor.c` + `-gbm.c`; series `ports/xwayland/patches/0001-0005`. The Metal acquire fence is exported from `xwl_window_handle_pixmap_sync()`.
+- Device-verified rootful under the iosc desktop (installed iosc has no rootless XWM, built without `IOSC_BUILD_XWM`): glamor on ANGLE A10, X windows presented via `iosc_iosurface` (iosc logs `imported client IOSurface` from the Xwayland pid), no fence FatalError over a multi-minute soak. Evidence (gitignored): `x11/artifacts/device-runs/xwayland-24-20261001/`.
+- 0005 matters: glamor 24.1 checks `glGetError()` after the depth-8 probe `glTexImage2D`; a stale GL_INVALID_OPERATION (0x502, raised inside `glamor_init`, not in our EGL init) dropped the a8 format to software and X11 text rendered as black boxes. Verbose log line: `glamor: dropping stale GL error 0x502 before probing depth 8`.
+- es2gears_x11 segfaults in `XGetVisualInfo` on 23.2.7 and 24.1.13 alike (client bug); GL over X is software GLX.
+
+### Open follow-up: one glamor glyph shader does not link on ANGLE-Metal
+
+24.1 no longer forces GLSL 120 on GLES, so glamor uses ES 3.0 programs. The ES 3.0 glyph facet (`glamor_facet_composite_glyphs_es300` in `glamor/glamor_composite_glyphs.c`) always declares `color0`/`color1`, but `glamor_program.c` only binds their locations for the dual-blend alpha mode. ANGLE-Metal fails to link the atlas program once at startup (`Failed to link ... invalid return type 'ANGLE_FragmentOut'`, outputs `_ucolor0/_ucolor1` `__unassigned_output__`); glamor falls back for that program, text still renders correctly, but that path is probably software. Tried and abandoned on device: binding the locations for all ES 3.0 programs (no change), disabling dual blend plus a single-output glyph facet (`glamor_render.c` then fatals on `frag_color`/`color0`), re-forcing `glsl_version = 120` (every program fails "Fragment shader version does not match", glxgears 38 FPS). A proper fix needs the glyph/render facets reworked to declare only the outputs they write. Repro: start Xwayland with `-verbose 3`, run Hitori with `GDK_BACKEND=x11`, grep the log for `Failed to link`.
