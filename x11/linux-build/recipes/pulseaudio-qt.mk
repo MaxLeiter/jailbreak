@@ -5,7 +5,7 @@ endif
 # pulseaudio-qt.mk — KF6 PulseAudioQt library needed by plasma-pa.
 
 SUBPROJECTS += pulseaudio-qt
-PULSEAUDIOQT_VERSION = 1.5.0
+PULSEAUDIOQT_VERSION = 1.8.1
 DEB_PULSEAUDIOQT_V ?= $(PULSEAUDIOQT_VERSION)+ios1
 
 pulseaudio-qt-setup: setup

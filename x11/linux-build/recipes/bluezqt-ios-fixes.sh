@@ -35,3 +35,18 @@ s = s.replace(
 )
 p.write_text(s)
 PY
+
+# KF 6.30: RfkillThread::doSetSoftBlocked() writes to /dev/rfkill with linux/rfkill.h types outside any platform
+# guard (the rest of rfkill.cpp is Q_OS_LINUX-guarded). iOS has no rfkill: make the write a no-op there.
+python3 - "$src/src/rfkill.cpp" <<'PY'
+import pathlib, sys, re
+p = pathlib.Path(sys.argv[1])
+s = p.read_text()
+marker = "ios: no /dev/rfkill"
+if marker not in s:
+    m = re.search(r"(void RfkillThread::doSetSoftBlocked\(quint8 blocked\)\n\{\n)(.*?)(\n\};?\n)", s, re.S)
+    if not m:
+        raise SystemExit("bluezqt-ios-fixes.sh: RfkillThread::doSetSoftBlocked not found")
+    s = s.replace(m.group(0), m.group(1) + "#ifdef Q_OS_LINUX\n" + m.group(2) + "\n#else\n    Q_UNUSED(blocked) // " + marker + "\n#endif" + m.group(3), 1)
+    p.write_text(s)
+PY
