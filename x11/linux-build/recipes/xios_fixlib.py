@@ -51,7 +51,7 @@ def guard_x11_tree(root, subdirs=("",)):
                     t = f.read_text()
                 except (UnicodeDecodeError, OSError):
                     continue
-                if "KX11Extras" in t or "KStartupInfo" in t or "NETRootInfo" in t or "NETWinInfo" in t:
+                if _re.search(r"KX11Extras|KStartupInfo|NETRootInfo|NETWinInfo|<netwm\.h>|<NETWM>|<X11/|fixx11h\.h|qtx11extras_p\.h", t):
                     total += guard_x11(f)
     return total
 

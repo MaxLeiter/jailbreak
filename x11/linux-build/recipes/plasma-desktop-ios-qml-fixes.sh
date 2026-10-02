@@ -26,6 +26,6 @@ new = """        // On iOS/QtWayland the desktop containment is anchored to the 
 """
 if old in text:
     path.write_text(text.replace(old, new))
-elif "not managed by a Qt Quick Layout. Omit the attached layout hints" not in text:
+elif "not managed by a Qt Quick Layout. Omit the attached layout hints" not in text and "Layout bindings need to be set delayed" not in text:
     raise SystemExit(f"desktop containment layout block not found in {path}")
 PY
