@@ -211,6 +211,16 @@ timeout 3 parec --raw --format=float32le --rate=48000 --channels=1 --device=xios
 pactl set-sink-volume xios 50%  # audibly quieter (proves the gvc path)
 ```
 
+To count daemons, match the process name, not the command line:
+`ps -Ao pid,comm | awk '$2=="xios-audiod"'`. A `ps ax | grep '[x]ios-audiod'`
+also matches any shell whose argv mentions `xios-audiod.log`, including the
+remote `sh -c` that runs it over ssh and that shell's `$(...)` subshell. On
+2026-10-01 that showed three "daemons" when only one was running. The
+`ps aux | grep -q xios-audiod` / `[p]ulseaudio` checks in `xios_pulse_start`
+have the same looseness in the other direction: a leftover
+`tail -f xios-audiod.log` satisfies them, and the daemon is not started.
+Nobody has hit that yet, so the check is unchanged.
+
 Then the desktop: launch the GNOME session, open the shell volume slider
 (gvc), confirm it tracks `pactl get-sink-volume xios` and, with a current
 Xios app foregrounded, changes the iOS hardware volume. The reverse path was
