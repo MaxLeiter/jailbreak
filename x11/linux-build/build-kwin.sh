@@ -5,6 +5,7 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+export KDE_NINJA_K="${KDE_NINJA_K:-0}"   # list every compile error per pass during the kwin port
 . /work/x11/linux-build/tools/kde-lane-env.sh   # cmake >= 3.29
 
 QTVER=6.10.3
@@ -44,7 +45,7 @@ kde_lane_pmr_setup
 
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gettext python3 meson libmount-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  gettext python3 meson hwdata libmount-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
 
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
@@ -81,10 +82,8 @@ stage_deb() {
     dpkg-deb -x "$deb" build_base/$XIOS_TRIPLE
   fi
 }
-stage_deb /out/libepoll-shim0_0.0.20240608_$XIOS_DEB_ARCH.deb
-stage_deb /out/libepoll-shim-dev_0.0.20240608_$XIOS_DEB_ARCH.deb
-stage_deb /out/libxcvt0_0.1.2_$XIOS_DEB_ARCH.deb
-stage_deb /out/libxcvt-dev_0.1.2_$XIOS_DEB_ARCH.deb
+for d in /out/libepoll-shim0_0.0.20240608*_$XIOS_DEB_ARCH.deb /out/libepoll-shim-dev_0.0.20240608*_$XIOS_DEB_ARCH.deb; do stage_deb "$d"; done
+for d in /out/libxcvt0_0.1.2*_$XIOS_DEB_ARCH.deb /out/libxcvt-dev_0.1.2*_$XIOS_DEB_ARCH.deb; do stage_deb "$d"; done
 
 # KWin's nested IOSurface consumer uses the GPU-fence ABI exported by the
 # matched ANGLE libEGL. Do not silently link against whichever older ANGLE

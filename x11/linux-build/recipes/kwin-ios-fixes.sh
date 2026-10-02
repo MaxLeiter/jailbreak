@@ -46,19 +46,53 @@ EOF
 # shims and epoll-shim's eventfd provider for the shared kwin library.
 cat > "$src/src/backends/wayland/CMakeLists.txt" <<'EOF'
 target_sources(kwin PRIVATE
+    color_manager.cpp
+    ios_link_stubs.cpp
     wayland_backend.cpp
     wayland_display.cpp
     wayland_egl_backend.cpp
+    wayland_layer.cpp
     wayland_logging.cpp
     wayland_output.cpp
     wayland_qpainter_backend.cpp
 )
 
 find_library(EPOLL_SHIM_LIBRARY epoll-shim)
-target_link_libraries(kwin PRIVATE Plasma::KWaylandClient Wayland::Client gbm::gbm Libdrm::Libdrm)
+target_link_libraries(kwin PRIVATE Plasma::KWaylandClient Wayland::Client gbm::gbm Libdrm::Libdrm PkgConfig::Libxcvt)
 if (EPOLL_SHIM_LIBRARY)
     target_link_libraries(kwin PRIVATE ${EPOLL_SHIM_LIBRARY})
 endif()
+EOF
+
+# Symbols libkwin references that this stack has no provider for. The nested backend never creates a Vulkan
+# device or a DRM syncobj (no DRM fd exists), so inert definitions are exact, not approximations: the callers
+# only reach them behind a valid DRM fd / VkPhysicalDevice. Kept here, not in the shared libdrm shim deb.
+cat > "$src/src/backends/wayland/ios_link_stubs.cpp" <<'EOF'
+// iOS: link-only stubs, see kwin-ios-fixes.sh. Never reached at runtime (no DRM fd, no Vulkan device).
+#include <cerrno>
+#include <cstdint>
+#include <vulkan/vulkan.h>
+
+extern "C" {
+__attribute__((visibility("default"))) int drmSyncobjHandleToFD(int, uint32_t, int *)
+{
+    return -ENOSYS;
+}
+__attribute__((visibility("default"))) int drmSyncobjTimelineWait(int, uint32_t *, uint64_t *, unsigned, int64_t, unsigned, uint32_t *)
+{
+    return -ENOSYS;
+}
+__attribute__((visibility("default"))) VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFormatProperties2(VkPhysicalDevice, VkFormat, VkFormatProperties2 *properties)
+{
+    if (properties) {
+        properties->formatProperties = {};
+    }
+}
+__attribute__((visibility("default"))) VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice, const VkPhysicalDeviceImageFormatInfo2 *, VkImageFormatProperties2 *)
+{
+    return VK_ERROR_FORMAT_NOT_SUPPORTED;
+}
+}
 EOF
 
 # src/plugins/CMakeLists.txt is left as UPSTREAM ships it.
@@ -100,6 +134,14 @@ pperl 's/QPlatformTheme \*Integration::createPlatformTheme\(const QString &name\
 pperl_opt 's/QStringList Integration::themeNames\(\) const\n\{\n    if \(qEnvironmentVariableIsSet\("KDE_FULL_SESSION"\)\) \{\n        return QStringList\(\{QStringLiteral\("kde"\)\}\);\n    \}\n    return QStringList\(\{QLatin1String\(QGenericUnixTheme::name\)\}\);\n\}/QStringList Integration::themeNames() const\n{\n    return {};\n}/g' "$src/src/plugins/qpa/integration.cpp"
 pperl_opt 's/QPlatformOpenGLContext \*Integration::createPlatformOpenGLContext\(QOpenGLContext \*context\) const\n\{\n    if \(kwinApp\(\)->outputBackend\(\)->sceneEglGlobalShareContext\(\) == EGL_NO_CONTEXT\) \{\n        qCWarning\(KWIN_QPA\) << "Attempting to create a QOpenGLContext before the scene is initialized";\n        return nullptr;\n    \}\n    const auto eglDisplay = kwinApp\(\)->outputBackend\(\)->sceneEglDisplayObject\(\);\n    if \(eglDisplay\) \{\n        EGLPlatformContext \*platformContext = new EGLPlatformContext\(context, eglDisplay\);\n        return platformContext;\n    \}\n    return nullptr;\n\}/QPlatformOpenGLContext *Integration::createPlatformOpenGLContext(QOpenGLContext *context) const\n{\n    Q_UNUSED(context)\n    qCWarning(KWIN_QPA) << "QPA OpenGL contexts are disabled on the iOS first-light build";\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
 pperl 's/#include "core\/outputbackend\.h"\n//g; s/#include "main\.h"\n//g; s/#include "opengl\/egldisplay\.h"\n//g' "$src/src/plugins/qpa/offscreensurface.cpp"
+# 6.7 shape of the QPA GL context factory (the 6.1 one-liner above never matched): replace the whole body.
+pperl 's/QPlatformOpenGLContext \*Integration::createPlatformOpenGLContext\(QOpenGLContext \*context\) const\n\{\n.*?\n\}\n/QPlatformOpenGLContext *Integration::createPlatformOpenGLContext(QOpenGLContext *context) const\n{\n    Q_UNUSED(context)\n    qCWarning(KWIN_QPA) << "QPA OpenGL contexts are disabled on the iOS first-light build";\n    return nullptr;\n}\n/s' "$src/src/plugins/qpa/integration.cpp"
+# window.h pulls core/drm_formats.h (epoxy) before QtGui's qopengl.h, which on iOS takes the OpenGLES.framework
+# branch. Enable the epoxy/GLES coexistence shim (see kwin-ios-compat.h) for the QPA objects too.
+grep -q 'ios-bringup-gl-coexist-target' "$src/src/plugins/qpa/CMakeLists.txt" || cat >> "$src/src/plugins/qpa/CMakeLists.txt" <<'EOF'
+target_compile_definitions(KWinQpaPlugin PRIVATE KWIN_IOS_GL_COEXIST=1) # ios-bringup-gl-coexist-target
+EOF
+
 pperl 's@// this needs to be on top, epoxy has an error if you include it after GL/gl.h,\n// which Qt does include\n#include "utils/drm_format_helper\.h"\n\n@@g; s/#include "core\/drmdevice\.h"\n//g; s/#include "core\/renderbackend\.h"\n//g' "$src/src/plugins/qpa/window.cpp"
 pperl 's/        GraphicsBufferAllocator \*allocator;\n        if \(software\) \{\n            static ShmGraphicsBufferAllocator shmAllocator;\n            allocator = \&shmAllocator;\n        \} else \{\n            allocator = Compositor::self\(\)->backend\(\)->drmDevice\(\)->allocator\(\);\n        \}\n\n        for \(auto it = formats\.begin\(\); it != formats\.end\(\); it\+\+\) \{\n            if \(auto info = FormatInfo::get\(it\.key\(\)\); info && info->bitsPerColor == 8 && info->alphaBits == 8\) \{\n                const auto options = GraphicsBufferOptions\{\n                    \.size = nativeSize,\n                    \.format = it\.key\(\),\n                    \.modifiers = it\.value\(\),\n                    \.software = software,\n                \};\n                auto buffer = allocator->allocate\(options\);\n                if \(!buffer\) \{\n                    continue;\n                \}\n                m_swapchain = std::make_unique<Swapchain>\(allocator, options, buffer\);\n                m_eglContext = context;\n                break;\n            \}\n        \}/        if (!software) {\n            qCWarning(KWIN_QPA) << "QPA OpenGL windows are disabled on the iOS first-light build";\n            return nullptr;\n        }\n\n        static ShmGraphicsBufferAllocator shmAllocator;\n        GraphicsBufferAllocator *allocator = \&shmAllocator;\n        const auto modifiers = formats.value(DRM_FORMAT_ARGB8888, {DRM_FORMAT_MOD_LINEAR});\n        const auto options = GraphicsBufferOptions{\n            .size = nativeSize,\n            .format = DRM_FORMAT_ARGB8888,\n            .modifiers = modifiers,\n            .software = true,\n        };\n        auto buffer = allocator->allocate(options);\n        if (buffer) {\n            m_swapchain = std::make_unique<Swapchain>(allocator, options, buffer);\n            m_eglContext = context;\n        }/g' "$src/src/plugins/qpa/window.cpp"
 
@@ -131,7 +173,7 @@ fi
 # CPU-readable GraphicsBuffer so the existing QPainter compositor can copy them.
 cp /work/x11/wayland/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
 if ! grep -q 'ios-bringup-iosurface-protocol' "$src/src/wayland/CMakeLists.txt"; then
-    pperl 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    PROTOCOL \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n    BASENAME iosc-iosurface\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
+    pperl 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    FILES \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
 fi
 if ! grep -q 'ios-bringup-iosurface-display' "$src/src/wayland/display.cpp"; then
     pperl 's/#include "linuxdmabufv1clientbuffer_p\.h"/#include "linuxdmabufv1clientbuffer_p.h"\n#include "ioscclientbuffer.h" \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
@@ -345,7 +387,7 @@ IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t 
     m_attributes.size = size;
     m_attributes.format = DRM_FORMAT_ARGB8888;
 
-    connect(this, &GraphicsBuffer::released, [this]() {
+    connect(this, &GraphicsBuffer::released, this, [this]() {
         if (m_resource) {
             wl_buffer_send_release(m_resource);
         }
@@ -687,7 +729,12 @@ std::unique_ptr<UdevDevice> Udev::deviceFromSyspath(const char *syspath)
     return {};
 }
 
-std::unique_ptr<UdevMonitor> Udev::monitor()
+std::vector<std::unique_ptr<UdevDevice>> Udev::listRenderNodes()
+{
+    return {};
+}
+
+std::unique_ptr<UdevMonitor> Udev::createMonitor()
 {
     return nullptr;
 }
@@ -698,6 +745,11 @@ UdevDevice::UdevDevice(udev_device *device)
 }
 
 UdevDevice::~UdevDevice() = default;
+
+QByteArrayView UdevDevice::sysName() const
+{
+    return {};
+}
 
 QString UdevDevice::devNode() const
 {
@@ -1210,7 +1262,13 @@ edit("src/plugins/CMakeLists.txt", "add_subdirectory(systembell)\n",
 PY
 
 if [ "${#NOMATCH[@]}" -gt 0 ]; then
-    echo "kwin-ios-fixes.sh: ${#NOMATCH[@]} perl hunk(s) matched nothing in this KWin source:" >&2
-    printf '  - %s\n' "${NOMATCH[@]}" >&2
-    [ "${KWIN_FIXES_REPORT:-0}" = 1 ] || exit 1
+    if [ -f "$src/.xios-kwin-fixes-applied" ]; then
+        # Re-run on an already-patched tree: every hunk is a no-op by design. The stamp is only written after a clean run.
+        echo "kwin-ios-fixes.sh: tree already patched (stamp present), ${#NOMATCH[@]} hunk(s) no-op"
+    else
+        echo "kwin-ios-fixes.sh: ${#NOMATCH[@]} perl hunk(s) matched nothing in this KWin source:" >&2
+        printf '  - %s\n' "${NOMATCH[@]}" >&2
+        [ "${KWIN_FIXES_REPORT:-0}" = 1 ] || exit 1
+    fi
 fi
+[ "${KWIN_FIXES_REPORT:-0}" = 1 ] || touch "$src/.xios-kwin-fixes-applied"

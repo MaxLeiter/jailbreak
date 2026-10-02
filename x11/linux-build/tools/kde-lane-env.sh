@@ -18,11 +18,12 @@ cmake --version | head -1
 # build, and an uncapped -j18 KDE compile next to it got the container OOM-killed with no error in the log.
 # The wrapper lives next to the volume's cmake (first on PATH, also through make's PATH override) and only adds -j when
 # the caller did not pass one.
-if [ ! -x "$KDE_CMAKE_DIR/bin/ninja" ] || ! grep -q KDE_NINJA_JOBS "$KDE_CMAKE_DIR/bin/ninja" 2>/dev/null; then
+if [ ! -x "$KDE_CMAKE_DIR/bin/ninja" ] || ! grep -q KDE_NINJA_K "$KDE_CMAKE_DIR/bin/ninja" 2>/dev/null; then
   cat > "$KDE_CMAKE_DIR/bin/ninja" <<'W'
 #!/bin/sh
 for a in "$@"; do case "$a" in -j*) exec /usr/bin/ninja "$@";; esac; done
-exec /usr/bin/ninja -j"${KDE_NINJA_JOBS:-10}" "$@"
+# KDE_NINJA_K=0 keeps going past failures so a port pass lists every error at once.
+exec /usr/bin/ninja -j"${KDE_NINJA_JOBS:-10}" ${KDE_NINJA_K:+-k "$KDE_NINJA_K"} "$@"
 W
   chmod +x "$KDE_CMAKE_DIR/bin/ninja"
 fi
