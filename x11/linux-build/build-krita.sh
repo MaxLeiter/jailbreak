@@ -68,7 +68,7 @@ for package in \
     exit 1
   fi
   echo "    staging $deb"
-  dpkg-deb -x "$deb" "$BB"
+  dpkg-deb -x "$deb" "$XIOS_BUILD_BASE"   # the payload already carries $XIOS_PREFIX
 done
 
 for target in $TARGETS; do
