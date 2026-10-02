@@ -82,7 +82,12 @@ static void wm_client_drop(struct iosc_wm_client *c)
 static int wm_client_readable(int fd, uint32_t mask, void *data)
 {
     struct iosc_wm_client *c = data;
-    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) { wm_client_drop(c); return 0; }
+    /* HANGUP is not a reason to stop reading: ioscd's iosc_raise() connects,
+     * writes its one line and closes, normally before this loop has even
+     * accepted it, so the line arrives in the same wakeup as the hangup.
+     * Dropping on HANGUP threw such a raise away unread. Drain first; read()
+     * returning 0 drops the client. */
+    if (mask & WL_EVENT_ERROR) { wm_client_drop(c); return 0; }
     for (;;) {
         if (c->have >= IOSC_WM_BUF - 1) c->have = 0;   /* overflow: drop partial */
         ssize_t r = read(fd, c->buf + c->have, IOSC_WM_BUF - 1 - c->have);
@@ -104,6 +109,7 @@ static int wm_client_readable(int fd, uint32_t mask, void *data)
         if (errno == EINTR) continue;
         wm_client_drop(c); return 0;
     }
+    if (mask & WL_EVENT_HANGUP) wm_client_drop(c);   /* never re-poll a dead fd */
     return 0;
 }
 
