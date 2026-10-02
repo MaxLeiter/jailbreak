@@ -108,6 +108,8 @@ typedef struct {
   __unsafe_unretained id dev;/* the BluetoothDevice; kept alive by g_dev_keepalive (ARC) */
   char     *alias;           /* BlueZ-local user-visible alias */
   gboolean trusted;         /* BlueZ trust bit (iOS treats paired devices as trusted) */
+  gboolean connected;       /* Connected/Paired as last published, so sync_devices only */
+  gboolean paired;          /* emits PropertiesChanged when iOS reports a change */
 } XiosBTDeviceObj;
 
 static GHashTable *g_devices;  /* address(str, owned) -> XiosBTDeviceObj* */
@@ -465,6 +467,8 @@ register_device (id dev)
   NSString *device_name = [(id<XiosBTDevice>) dev name];
   o->alias = g_strdup (device_name ? [device_name UTF8String] : "Unknown");
   o->trusted = [(id<XiosBTDevice>) dev paired];
+  o->connected = [(id<XiosBTDevice>) dev connected];
+  o->paired = [(id<XiosBTDevice>) dev paired];
   g_dev_keepalive[[NSString stringWithUTF8String:addr]] = dev;  /* ARC keeps it alive */
 
   GError *err = NULL;
@@ -748,10 +752,20 @@ sync_devices (void)
       g_hash_table_iter_remove (&it);
       continue;
     }
-    if ([(id<XiosBTDevice>) o->dev paired]) o->trusted = TRUE;
-    device_emit_changed (o, "Connected", g_variant_new_boolean ([(id<XiosBTDevice>) o->dev connected]));
-    device_emit_changed (o, "Paired", g_variant_new_boolean ([(id<XiosBTDevice>) o->dev paired]));
-    device_emit_changed (o, "Trusted", g_variant_new_boolean (o->trusted));
+    gboolean connected = [(id<XiosBTDevice>) o->dev connected] ? TRUE : FALSE;
+    gboolean paired = [(id<XiosBTDevice>) o->dev paired] ? TRUE : FALSE;
+    if (connected != o->connected) {
+      o->connected = connected;
+      device_emit_changed (o, "Connected", g_variant_new_boolean (connected));
+    }
+    if (paired != o->paired) {
+      o->paired = paired;
+      device_emit_changed (o, "Paired", g_variant_new_boolean (paired));
+    }
+    if (paired && !o->trusted) {
+      o->trusted = TRUE;
+      device_emit_changed (o, "Trusted", g_variant_new_boolean (TRUE));
+    }
   }
   g_hash_table_unref (seen);
 }
