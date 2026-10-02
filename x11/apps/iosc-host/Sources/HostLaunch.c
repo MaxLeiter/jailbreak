@@ -12,6 +12,10 @@ int ioscd_send_launch(const char *app_id)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
+    /* Same convention as the other connectors: a daemon that closes before our
+     * request lands must fail the write with EPIPE, not SIGPIPE the host. */
+    int on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
     struct sockaddr_un a;
     memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
