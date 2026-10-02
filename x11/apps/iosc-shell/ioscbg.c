@@ -104,6 +104,7 @@ struct desktop_pin {
      * fields above truncate long names/Execs that another writer can produce */
     char *raw;
     int   raw_head_len, raw_x, raw_y;   /* type..target prefix, x/y as read */
+    int   raw_target_off;               /* where target starts in raw */
 };
 
 static struct {
@@ -363,6 +364,7 @@ static void pins_load(void)
         struct desktop_pin *p = &B.pins[B.npins++];
         p->raw = raw;
         p->raw_head_len = (int)(target - line + strlen(target));
+        p->raw_target_off = (int)(target - line);
         snprintf(p->type, sizeof p->type, "%s", type);
         snprintf(p->name, sizeof p->name, "%s", name);
         snprintf(p->icon, sizeof p->icon, "%s", icon ? icon : "");
@@ -647,14 +649,25 @@ static void pin_launch(int idx)
 {
     if (idx < 0 || idx >= B.npins) return;
     struct desktop_pin *p = &B.pins[idx];
+    /* launch what the line says, not p->target's 255-byte copy */
+    char *target = p->raw ? strndup(p->raw + p->raw_target_off,
+                                    (size_t)(p->raw_head_len - p->raw_target_off))
+                          : strdup(p->target);
+    if (!target) return;
     if (!strcmp(p->type, "file")) {
-        char q[320], cmd[384];
-        quote_sh(q, sizeof q, p->target);
-        snprintf(cmd, sizeof cmd, "xdg-open %s", q);
-        sd_launch(cmd);
+        static const char opener[] = "xdg-open ";
+        size_t n = sizeof opener + strlen(target) * 4 + 2;
+        char *cmd = malloc(n);
+        if (cmd) {
+            memcpy(cmd, opener, sizeof opener - 1);
+            quote_sh(cmd + sizeof opener - 1, n - (sizeof opener - 1), target);
+            sd_launch(cmd);
+            free(cmd);
+        }
     } else {
-        sd_launch(p->target);
+        sd_launch(target);
     }
+    free(target);
 }
 
 static int menu_actions(int kind, int idx, const char **labels, int *actions)
