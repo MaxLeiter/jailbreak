@@ -19,7 +19,7 @@ endif
 
 SUBPROJECTS          += crispy-doom
 CRISPY_DOOM_VERSION  := 7.1
-DEB_CRISPY_DOOM_V    ?= $(CRISPY_DOOM_VERSION)+ios2
+DEB_CRISPY_DOOM_V    ?= $(CRISPY_DOOM_VERSION)+ios3
 # GitHub's tag archive for crispy-doom-7.1 (upstream publishes no source
 # tarball). Pinned so a re-rolled or truncated download fails loudly.
 CRISPY_DOOM_SHA256   := f0eb02afb81780165ddc81583ed5648cbee8b3205bcc27e181b3f61eb26f8416
@@ -106,6 +106,10 @@ crispy-doom-package: crispy-doom-stage
 		'# silent. Treat it like unset; any other explicit choice is respected.' \
 		'case "$${SDL_AUDIODRIVER:-}" in ""|coreaudio) SDL_AUDIODRIVER=pulseaudio ;; esac' \
 		'export SDL_AUDIODRIVER' \
+		'# SDL2 has no executable-name lookup on this target, so its Wayland app_id' \
+		'# would be "SDL_App". Native iPadOS mode hands a window to its Home Screen host' \
+		'# by app_id, which must match the desktop entry (crispy-doom.desktop).' \
+		'export SDL_VIDEO_WAYLAND_WMCLASS="$${SDL_VIDEO_WAYLAND_WMCLASS:-crispy-doom}"' \
 		'# xios-sdl2 is vendored in a private directory so it never stands in for' \
 		'# Procursus SDL2. This is the only thing that puts it on the search path.' \
 		'export DYLD_LIBRARY_PATH="$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/xios-sdl2$${DYLD_LIBRARY_PATH:+:$$DYLD_LIBRARY_PATH}"' \
