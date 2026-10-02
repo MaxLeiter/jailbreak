@@ -1,0 +1,6 @@
+0003-jsc-supply-muloti4-on-darwin.patch
+0004-gtk-use-unix-ipc-attachments-on-darwin.patch
+0007-wtf-xpc-sendability-compat-for-old-sdk.patch
+0010-wkbundle-viewport-api-feature-guard.patch
+0011-ios-allow-gigacage-allocation-failure.patch
+0012-ios-load-rootless-angle-egl.patch

@@ -1,0 +1,60 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Supply the missing muloti4 builtin on Darwin
+
+The Procursus iOS cctools toolchain does not ship or automatically link a
+compiler-rt builtins archive. Clang lowers JavaScriptCore's checked signed
+128-bit multiplication to __muloti4, leaving the final dylib with one undefined
+symbol. Supply the standard overflow operation locally for Darwin GTK builds.
+
+--- a/Source/JavaScriptCore/PlatformGTK.cmake
++++ b/Source/JavaScriptCore/PlatformGTK.cmake
+@@ -2,6 +2,12 @@ include(GLib.cmake)
+ include(inspector/remote/GLib.cmake)
+ set(JavaScriptCore_OUTPUT_NAME javascriptcoregtk-${WEBKITGTK_API_VERSION})
+ 
++if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
++    list(APPEND JavaScriptCore_SOURCES
++        runtime/DarwinCompilerRTCompat.cpp
++    )
++endif ()
++
+ configure_file(javascriptcoregtk.pc.in ${JavaScriptCore_PKGCONFIG_FILE} @ONLY)
+ 
+ if (EXISTS "${TOOLS_DIR}/glib/apply-build-revision-to-files.py")
+--- /dev/null
++++ b/Source/JavaScriptCore/runtime/DarwinCompilerRTCompat.cpp
+@@ -0,0 +1,34 @@
++/*
++ * The iOS cross toolchain used by Xios has no compiler-rt builtins archive.
++ * Keep the one operation emitted by this non-JIT JavaScriptCore build local
++ * to the library rather than imposing a new runtime dependency.
++ */
++
++using SignedInt128 = __int128;
++using UnsignedInt128 = unsigned __int128;
++
++extern "C" SignedInt128 __muloti4(SignedInt128 left, SignedInt128 right, int* overflow)
++{
++    constexpr unsigned bitCount = sizeof(SignedInt128) * 8;
++    constexpr UnsignedInt128 signBit = static_cast<UnsignedInt128>(1) << (bitCount - 1);
++    constexpr SignedInt128 minimum = static_cast<SignedInt128>(signBit);
++    constexpr SignedInt128 maximum = static_cast<SignedInt128>(signBit - 1);
++
++    *overflow = 0;
++    SignedInt128 result = static_cast<SignedInt128>(
++        static_cast<UnsignedInt128>(left) * static_cast<UnsignedInt128>(right));
++
++    if (left > 0) {
++        if (right > 0)
++            *overflow = left > maximum / right;
++        else
++            *overflow = right < minimum / left;
++    } else {
++        if (right > 0)
++            *overflow = left < minimum / right;
++        else if (left)
++            *overflow = right < maximum / left;
++    }
++
++    return result;
++}
