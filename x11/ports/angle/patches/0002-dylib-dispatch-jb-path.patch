@@ -57,7 +57,7 @@ diff --git a/src/common/system_utils_posix.cpp b/src/common/system_utils_posix.c
 index 1caeb18a09..3a58f4ef1e 100644
 --- a/src/common/system_utils_posix.cpp
 +++ b/src/common/system_utils_posix.cpp
-@@ -202,8 +202,17 @@ void *OpenSystemLibraryWithExtensionAndGetError(const char *libraryName,
+@@ -202,8 +202,24 @@ void *OpenSystemLibraryWithExtensionAndGetError(const char *libraryName,
      if (searchType == SearchType::ModuleDir)
      {
  #if ANGLE_PLATFORM_IOS_FAMILY
@@ -66,13 +66,20 @@ index 1caeb18a09..3a58f4ef1e 100644
 +        // X11-on-iOS (Procursus/jailbreak): consumers are CLI/daemon processes, not app
 +        // bundles, so resolve the dispatch library from a fixed system prefix instead of
 +        // <exe>/Frameworks. Overridable via ANGLE_FRAMEWORK_PATH (e.g. an embedding app bundle).
++        // A rootful install has no /var/jb; there, use the directory this library was
++        // loaded from, which is where the package installs libGLESv2.dylib beside it.
++        struct stat jbAngleDir;
 +        if (const char *angleLibDir = getenv("ANGLE_FRAMEWORK_PATH"))
 +        {
 +            directory = std::string(angleLibDir) + "/";
 +        }
-+        else
++        else if (stat("/var/jb/lib/angle", &jbAngleDir) == 0 && S_ISDIR(jbAngleDir.st_mode))
 +        {
 +            directory = "/var/jb/lib/angle/";
++        }
++        else
++        {
++            directory = GetModuleDirectoryAndGetError(errorOut);
 +        }
  #elif ANGLE_PLATFORM_FUCHSIA
          // On Fuchsia the dynamic loader always looks up libraries in /pkg/lib

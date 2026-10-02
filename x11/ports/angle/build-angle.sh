@@ -46,8 +46,9 @@ gclient sync -r "$ANGLE_REV"
 #    - framework->dylib dispatch: BUILD.gn ANGLE_DISPATCH_LIBRARY gets a literal
 #      ".dylib" name; system_utils.cpp takes concrete .dylib names verbatim (skips
 #      the iOS .framework/name mangling); system_utils_posix.cpp resolves ModuleDir
-#      from /var/jb/lib/angle (ANGLE_FRAMEWORK_PATH overrides) instead of
-#      <exe>/Frameworks — CLI/daemon consumers have no app bundle.
+#      from /var/jb/lib/angle (ANGLE_FRAMEWORK_PATH overrides; without /var/jb it
+#      falls back to the loading library's own directory, for rootful installs)
+#      instead of <exe>/Frameworks, since CLI/daemon consumers have no app bundle.
 #    - metal-es3-apple3: DisplayMtl getMaxSupportedESVersion admits Apple GPU
 #      Family 3 (A10) to ES3 so GDK 4.14's GL renderer gets an ES3 config.
 git checkout -- BUILD.gn src/common src/libANGLE 2>/dev/null || true
