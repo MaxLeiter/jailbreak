@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS       += libgsf
 LIBGSF_MAJOR_V    := 1.14
-LIBGSF_VERSION    := $(LIBGSF_MAJOR_V).58
+LIBGSF_VERSION    := $(LIBGSF_MAJOR_V).60
 DEB_LIBGSF_V      ?= $(LIBGSF_VERSION)+ios1
 
 libgsf-setup: setup
