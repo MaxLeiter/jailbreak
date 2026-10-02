@@ -121,3 +121,18 @@ Pilot go/no-go: (1) qtbase 6.10.3 incl. Wayland client configures, builds, packa
 - KWin/plasma-workspace 6.7 cannot build on the 6.6-era compiler lane; they wait for webkit-toolchain mode B.
 - Poppler 25.11 now, 26.x later.
 - Reclaiming `procursus-vol-kf6-closure-20260719` if disk tightens.
+
+## 9. Host-side port status (2026-10-01, no Docker used)
+
+Fix scripts were re-run on the host against pristine Plasma 6.1.5 and 6.7.5 trees (GNU-sed shim for macOS; harness not committed).
+
+| Script | 6.7.5 status |
+|---|---|
+| libkscreen, kscreen, powerdevil, kactivitymanagerd, kde-cli-tools | **Ported** (apply cleanly to 6.7.5 and still to 6.1.5). powerdevil gets a 6.7 variant of `xiosbacklight` (`DisplayBrightness` gained `id/label/isInternal`, `setBrightness(int,bool)`, `externalBrightnessChangeObserved`). Compile-unverified. Note: powerdevil 6.7 also has a Wayland `kde-external-brightness-v1` path that may replace our sysfs detector later. |
+| libplasma, systemsettings, plasma5support, plasma-integration, plasma-pa, polkit-kde-agent-1, xdg-desktop-portal-kde, layer-shell-qt | Apply with unchanged changed-file counts. |
+| plasma-nano (3 of 5 files), plasma-mobile (26 of 41) | **Partial**: `desktoptoolbox/*.qml`, `volumeosd/*`, `quicksettings/*`, folio `*.qml` and others were moved/removed upstream. `run-fixes.sh` fails these two loudly (min = 6.1.5 count) until re-ported. Plasma Mobile is a deeper QML rework. |
+| plasma-workspace, plasma-desktop | **Not ported**: hard-fail (`substring not found`; taskmanager `qmldir` moved). Needs a compile loop. |
+| kwin | **Not ported.** `kwin-ios-fixes.sh` now reports every silent perl no-op (`pperl`, `KWIN_FIXES_REPORT=1` lists, default fails): on 6.1.5 only 2 harmless no-ops; on 6.7.5 **23 perl hunks match nothing** plus 2 python hunks fail (nested-backend fractional-scale and fixed-host-pixel-size). Classification: *obsolete in 6.7* (input.cpp libinput x5, cursor.cpp xcb include, X11 find_package, main_wayland x2); *inert with our OpenGL Qt, drop on this lane* (offscreenquickview x8, the QT_NO_OPENGL cleanup); *to rework* (tabletmodemanager x2, qpa/integration.cpp x3, which the gpu-backend script later re-adds; wayland_backend/wayland_output python hunks). The qpa "first-light trim then re-add" dance should be removed rather than ported. Cheapest next step is the compile loop in Docker. |
+
+New guard: `recipes/run-fixes.sh` + `fix-min-files.txt` (applied to 15 recipes) fail a build when a fix script changes fewer files than the version it was ported on.
+Poppler 25.11.0 recipes are done (`libpoppler154`); okular/gwenview recipes still need their Gear 26.08.1 bump with the Gear wave.
