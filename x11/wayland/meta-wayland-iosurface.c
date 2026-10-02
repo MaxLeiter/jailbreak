@@ -6,10 +6,10 @@
  * Modeled on src/wayland/meta-wayland-dma-buf.c (GPL-2.0+). A GPU client renders into its
  * own IOSurface, IOSurfaceCreateMachPort()s it, and calls iosc_iosurface.create_buffer with
  * the port name + geometry; the compositor reaches into the client task (libxios_glue) to
- * import the surface and wraps it as a wl_buffer. On attach, the surface is bridged to a
- * Cogl texture via an ANGLE EGLImage and returned as a MetaMultiTexture — exactly the path
- * egl_image_buffer_attach() / the dma-buf attach take, so the IOSurface type composites
- * through the same Cogl/Clutter machinery as every other GPU buffer.
+ * import the surface and wraps it as a wl_buffer. On attach, the surface is aliased into a
+ * Cogl-owned GL texture through an ANGLE IOSurface pbuffer + eglBindTexImage and returned as
+ * a MetaMultiTexture, so the IOSurface type composites through the same Cogl/Clutter
+ * machinery as every other GPU buffer.
  */
 
 #include "config.h"

@@ -10,8 +10,8 @@
  * the view's framebuffer is a CoglOnscreenEgl whose EGLSurface is the ANGLE iosurface pbuffer
  * (EGL_ANGLE_iosurface_client_buffer, the proven pbuffer-as-FBO-0 path). Cogl then renders to
  * FBO 0 == the IOSurface with no copy. This subclass only overrides the present: a pbuffer has
- * no swappable back buffer, so swap_buffers_with_damage does cogl_framebuffer_finish (commit the
- * writes to Metal) + fenced app notification, NOT eglSwapBuffers.
+ * no swappable back buffer, so swap_buffers_with_damage enqueues a brokered Metal shared-event
+ * signal + fenced app notification (no CPU wait), NOT eglSwapBuffers.
  * GPL-2.0+, modeled on meta-onscreen-native.c.
  */
 #pragma once
