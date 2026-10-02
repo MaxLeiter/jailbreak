@@ -595,6 +595,31 @@ static char *g_agent_owner;
 static char *g_agent_path;
 static char *g_agent_capability;
 static gboolean g_agent_is_default;
+static guint g_agent_watch_id;    /* g_bus_watch_name on g_agent_owner (0 = none) */
+
+static void
+agent_clear (void)
+{
+  if (g_agent_watch_id) g_bus_unwatch_name (g_agent_watch_id);
+  g_agent_watch_id = 0;
+  g_clear_pointer (&g_agent_owner, g_free);
+  g_clear_pointer (&g_agent_path, g_free);
+  g_clear_pointer (&g_agent_capability, g_free);
+  g_agent_is_default = FALSE;
+}
+
+/* The registering client left the bus without UnregisterAgent (gnome-shell crashed or
+ * restarted). Drop its registration, as bluetoothd does, so the next owner's
+ * RegisterAgent is not refused with AlreadyExists. */
+static void
+agent_owner_vanished (GDBusConnection *connection, const gchar *name, gpointer user_data)
+{
+  (void) connection; (void) user_data;
+  if (g_agent_owner && g_str_equal (g_agent_owner, name)) {
+    g_message ("bluez bridge: agent %s owner %s left the bus", g_agent_path, name);
+    agent_clear ();
+  }
+}
 
 static void
 agentmgr_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
@@ -602,7 +627,7 @@ agentmgr_method_call (GDBusConnection *c, const gchar *sender, const gchar *path
                       GDBusMethodInvocation *inv, gpointer user_data)
 {
   const char *agent_path;
-  (void) c; (void) path; (void) iface; (void) user_data;
+  (void) path; (void) iface; (void) user_data;
 
   if (g_str_equal (method, "RegisterAgent")) {
     const char *capability;
@@ -613,10 +638,12 @@ agentmgr_method_call (GDBusConnection *c, const gchar *sender, const gchar *path
         inv, "org.bluez.Error.AlreadyExists", "A Bluetooth agent is already registered");
       return;
     }
-    g_free (g_agent_owner); g_agent_owner = g_strdup (sender);
-    g_free (g_agent_path); g_agent_path = g_strdup (agent_path);
-    g_free (g_agent_capability); g_agent_capability = g_strdup (capability);
-    g_agent_is_default = FALSE;
+    agent_clear ();
+    g_agent_owner = g_strdup (sender);
+    g_agent_path = g_strdup (agent_path);
+    g_agent_capability = g_strdup (capability);
+    g_agent_watch_id = g_bus_watch_name_on_connection (c, sender, G_BUS_NAME_WATCHER_FLAGS_NONE,
+                                                       NULL, agent_owner_vanished, NULL, NULL);
   } else if (g_str_equal (method, "UnregisterAgent")) {
     g_variant_get (params, "(&o)", &agent_path);
     if (!g_agent_path || !g_str_equal (g_agent_path, agent_path) ||
@@ -625,10 +652,7 @@ agentmgr_method_call (GDBusConnection *c, const gchar *sender, const gchar *path
         inv, "org.bluez.Error.DoesNotExist", "The Bluetooth agent is not registered");
       return;
     }
-    g_clear_pointer (&g_agent_owner, g_free);
-    g_clear_pointer (&g_agent_path, g_free);
-    g_clear_pointer (&g_agent_capability, g_free);
-    g_agent_is_default = FALSE;
+    agent_clear ();
   } else if (g_str_equal (method, "RequestDefaultAgent")) {
     g_variant_get (params, "(&o)", &agent_path);
     if (!g_agent_path || !g_str_equal (g_agent_path, agent_path) ||
