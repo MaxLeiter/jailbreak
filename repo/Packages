@@ -271,6 +271,27 @@ SileoDepiction: https://repo.maxleiter.com/depictions/com.max.autolockpicker.jso
 Native Depiction: https://repo.maxleiter.com/depictions/com.max.autolockpicker.json
 Homepage: https://repo.maxleiter.com
 
+Package: com.max.hush
+Name: Hush
+Description: Fixes two iOS 17 battery drains: the once-a-minute calendar alarm wake before first unlock, and wifid re-ingesting thousands of duplicate scan records while Wi-Fi settings are open.
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Tweaks
+Depends: mobilesubstrate
+Architecture: iphoneos-arm64
+Version: 0.1.0
+Installed-Size: 404
+Filename: debs/com.max.hush_0.1.0_iphoneos-arm64.deb
+Size: 8548
+MD5sum: b38496df455371e01d20e78d9b0b0c59
+SHA1: 8b2270bd5e14eca88dec5adc21965dd60fb29ac0
+SHA256: 846e8fc23eeb6069d967805bfd0cd3ed634eee05857831c147d015c256bd07d8
+Icon: https://repo.maxleiter.com/icons/com.max.hush.png
+Depiction: https://repo.maxleiter.com/depictions/com.max.hush.html
+SileoDepiction: https://repo.maxleiter.com/depictions/com.max.hush.json
+Native Depiction: https://repo.maxleiter.com/depictions/com.max.hush.json
+Homepage: https://repo.maxleiter.com
+
 Package: com.max.kioskmode-app
 Name: Kiosk Mode
 Version: 0.3.2

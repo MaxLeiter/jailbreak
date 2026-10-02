@@ -11,6 +11,7 @@ brotli=1.1.0+ios1
 bun=1.4.0~canary.1+git5b55beb711+ios0.4
 bun-preflight=0.0.1
 com.max.autolockpicker=0.1.0
+com.max.hush=0.1.0
 com.max.kioskmode-app=0.3.2
 com.max.kitchenhub=0.3.0
 com.max.pulltorespring2=2.0.1
