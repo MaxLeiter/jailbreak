@@ -64,7 +64,7 @@ if compgen -G "/work/build_info/iosc-*.xml" >/dev/null 2>&1; then
   cp /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 fi
 
-for pkg in swaybg tofi swayimg waybar yad nwg-look geary webkitgtk gnumeric transmission libsigcplusplus; do
+for pkg in swaybg tofi swayimg waybar yad nwg-look geary webkitgtk gnumeric transmission libsigcplusplus libxslt; do
   target_requests "$pkg" && stage_port_patch_stack "$pkg"
 done
 target_needs_gtk3_wayland && stage_port_patch_stack gtk+3.0
