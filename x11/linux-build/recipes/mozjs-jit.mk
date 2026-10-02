@@ -21,8 +21,8 @@ mozjs-jit-setup: setup
 	# config.sub copies in the tree don't know 'ios' — replace with the host's modern one.
 	find $(MOZJSJIT_WORK) -name config.sub  -exec cp -f /usr/share/misc/config.sub  {} \; || true
 	find $(MOZJSJIT_WORK) -name config.guess -exec cp -f /usr/share/misc/config.guess {} \; || true
-	# Shared iOS portability series (0001-0004) + the JIT W^X patch (0005). DO_PATCH's .done
-	# tracking means re-running after 0005 is added applies only 0005.
+	# The shared ports/mozjs series: iOS portability 0001-0004 plus 0005, the wasm signal-handler
+	# guard that keeps iOS off Mach exception ports. DO_PATCH's .done markers skip applied ones.
 	$(call DO_PATCH,mozjs,mozjs-jit,-p1)
 	# moz's ld64 probe hardcodes -fuse-ld=ld: give clang an `ld` next to the cross toolchain.
 	ln -sf $(GNU_HOST_TRIPLE)-ld $(dir $(shell command -v $(GNU_HOST_TRIPLE)-ld))ld || true
