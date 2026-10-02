@@ -3112,7 +3112,7 @@ final class XScreenView: UIView {
         // Desktop-file id (basename without ".desktop"): what the picker asks
         // ioscd to launch. ioscd resolves it to the trusted, root-owned entry
         // and runs that entry's own Exec, so no command text crosses the
-        // socket. nil when the basename can't travel as one SESSION field.
+        // socket. nil when the basename is not an id ioscd accepts.
         let desktopID: String?
     }
 
@@ -3168,17 +3168,25 @@ final class XScreenView: UIView {
                           desktopID: desktopFileID(basename: id))
     }
 
-    /// The desktop-file id ioscd resolves: the basename minus ".desktop", held to
-    /// ioscd's own app-id rule (xios_desktop_app_id_valid: under 256 bytes, no
-    /// space, control, DEL, '/' or '\'). That rule is also what keeps the id one
-    /// tab-free, newline-free field of the SESSION line.
+    /// The desktop-file id ioscd resolves: the basename minus ".desktop", held
+    /// to ioscd's own rule (xios_desktop_file_id_valid: 1 to 200 bytes of
+    /// [A-Za-z0-9._+-], no leading '.' or '-', no ".."). ioscd refuses anything
+    /// else, and the rule also keeps the id one tab-free, newline-free field of
+    /// the SESSION line.
     private func desktopFileID(basename: String) -> String? {
         guard basename.hasSuffix(".desktop") else { return nil }
         let id = String(basename.dropLast(".desktop".count))
         let bytes = Array(id.utf8)
-        guard !bytes.isEmpty, bytes.count < 256,
-              !bytes.contains(where: { $0 < 0x21 || $0 == 0x7f ||
-                                       $0 == UInt8(ascii: "/") || $0 == UInt8(ascii: "\\") })
+        guard (1...200).contains(bytes.count),
+              bytes[0] != UInt8(ascii: "."), bytes[0] != UInt8(ascii: "-"),
+              !id.contains(".."),
+              bytes.allSatisfy({ b in
+                  (b >= UInt8(ascii: "a") && b <= UInt8(ascii: "z")) ||
+                  (b >= UInt8(ascii: "A") && b <= UInt8(ascii: "Z")) ||
+                  (b >= UInt8(ascii: "0") && b <= UInt8(ascii: "9")) ||
+                  b == UInt8(ascii: ".") || b == UInt8(ascii: "_") ||
+                  b == UInt8(ascii: "+") || b == UInt8(ascii: "-")
+              })
         else { return nil }
         return id
     }
