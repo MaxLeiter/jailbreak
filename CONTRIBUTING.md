@@ -12,7 +12,8 @@ Fast-moving status lives in `x11/docs/handoff/`.
 
 - Keep changes focused. Separate code, packaging, generated repo output, and docs when practical.
 - Do not commit local secrets, `.env` files, device hostnames beyond documented examples, Vercel project state, signing keys, certificates, provisioning profiles, or copied proprietary Apple assets.
-- Do not commit `.deb` files or generated package outputs unless a maintainer explicitly asks for a release artifact change.
+- Do not commit `.deb` files. Payloads reach users through Vercel Blob, and CI fails on any tracked `.deb`.
+- Do not commit generated package outputs unless a maintainer explicitly asks for a release artifact change.
 - Use the existing scripts instead of reconstructing signing, deployment, or Procursus commands by hand.
 - For `x11/`, keep rootless `/var/jb` assumptions unless the change is explicitly target-aware.
 

@@ -1510,9 +1510,12 @@ def main():
         # writing that out silently retires every package whose deb is merely
         # absent. Check before generating anything, so a refusal leaves the tree
         # untouched. --from-index is what the caller almost always wanted.
-        guard_shrink(sorted(os.listdir(DEBS)))
+        # Nothing under repo/debs is tracked, so a fresh checkout has no
+        # directory at all; treat that as empty and let the guard explain.
+        on_disk = sorted(os.listdir(DEBS)) if os.path.isdir(DEBS) else []
+        guard_shrink(on_disk)
 
-        for fn in sorted(os.listdir(DEBS), key=functools.cmp_to_key(compare_deb_filenames)):
+        for fn in sorted(on_disk, key=functools.cmp_to_key(compare_deb_filenames)):
             if not fn.endswith(".deb"):
                 continue
             blob = open(os.path.join(DEBS, fn), "rb").read()

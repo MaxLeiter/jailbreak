@@ -1,0 +1,17 @@
+Package: freedoom
+Name: Freedoom
+Version: @DEB_FREEDOOM_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Author: Contributors to the Freedoom project
+Section: Games
+Priority: optional
+Homepage: https://freedoom.github.io/
+Description: Free game data for Doom source ports
+ Freedoom: Phase 1 (freedoom1.wad) and Freedoom: Phase 2 (freedoom2.wad), the
+ complete free replacement IWADs for Doom and Doom II. They install into
+ /var/jb/usr/share/games/doom, where crispy-doom looks for game data, so the
+ game starts with no other files.
+ .
+ Freedoom is under the BSD license; see
+ /var/jb/usr/share/doc/freedoom/COPYING.

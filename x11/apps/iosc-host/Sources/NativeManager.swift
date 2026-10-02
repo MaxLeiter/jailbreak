@@ -18,6 +18,11 @@ final class NativeManager: NSObject {
 
     private var appID = ""
     private var appName = "app"
+    /// IOSCRawTouch in this bundle's Info.plist (written from the desktop entry's
+    /// X-Xios-RawTouch=true by xios-launcher-sync / gen-launchers.sh --native).
+    /// A presentation hint only: it never reaches ioscd, whose launch request
+    /// stays LAUNCH_NATIVE\t<app_id>. See HostScreenView.rawTouch.
+    private var rawTouch = false
 
     private var client: OpaquePointer?          // iosc_native_client*
     private var reader: Thread?
@@ -72,6 +77,8 @@ final class NativeManager: NSObject {
         let info = Bundle.main.infoDictionary ?? [:]
         appID   = (info["IOSCAppID"] as? String) ?? ""
         appName = (info["IOSCName"]  as? String) ?? (info["CFBundleDisplayName"] as? String) ?? "app"
+        rawTouch = (info["IOSCRawTouch"] as? Bool) ?? false
+        if rawTouch { NSLog("IOSCHost: raw touch mode for %@", appID) }
         rememberSceneMetrics(bounds: UIScreen.main.bounds, scale: UIScreen.main.scale)
 
         // Ask ioscd to resolve and launch this installed desktop app outside our sandbox.
@@ -331,9 +338,10 @@ final class NativeManager: NSObject {
     private func bind(scene: UIWindowScene, to id: UInt32) {
         guard let p = pending[id] else { return }
         pending[id] = nil
-        let view = HostScreenView(window_id: id, manager: self)
+        let view = HostScreenView(window_id: id, manager: self, rawTouch: rawTouch)
         let vc = HostSceneViewController()
         vc.view = view
+        vc.rawTouch = rawTouch
         let win = UIWindow(windowScene: scene)
         win.rootViewController = vc
         win.makeKeyAndVisible()

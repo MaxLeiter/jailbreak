@@ -9,7 +9,7 @@ OUT=/out
 BUILD=/tmp/xios-audio-build
 PREFIX=$XIOS_PREFIX/usr
 ARCH=iphoneos-arm64
-VERSION=0.1.0
+VERSION=0.1.1
 
 CC="${CC:-aarch64-apple-darwin-clang}"
 SYSROOT="${SYSROOT:-/root/cctools/SDK/iPhoneOS.sdk}"

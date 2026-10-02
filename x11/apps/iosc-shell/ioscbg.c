@@ -141,7 +141,7 @@ static void render_desktop(void);
 static void render_desktop_widgets(int mask);
 static void rerender(void);
 static void pin_clamp(struct desktop_pin *p);
-static void pin_place_without_overlap(struct desktop_pin *p, int self_idx);
+static void pin_place_without_overlap(struct desktop_pin *p, int self_idx, int keep);
 static int pins_resolve_collisions(void);
 #ifdef __APPLE__
 static CGImageRef load_wallpaper(const char *path);
@@ -289,7 +289,7 @@ static void pin_add_file(const char *name, const char *target, const char *icon,
     snprintf(p->target, sizeof p->target, "%s", target);
     p->x = x; p->y = y; p->visible = 1;
     pin_clamp(p);
-    pin_place_without_overlap(p, B.npins - 1);
+    pin_place_without_overlap(p, B.npins - 1, B.npins);
     pin_load_icon(p);
     pins_save();
 }
@@ -493,18 +493,24 @@ static void pin_clamp(struct desktop_pin *p)
     if (B.height > 0 && p->y + PIN_H > B.height - 8) p->y = B.height - 8 - PIN_H;
 }
 
-static int pin_rects_overlap(int ax, int ay, int bx, int by)
+static int pin_rect_overlaps(int x, int y, int bx, int by, int bw, int bh)
 {
     const int gap = 8;
-    return ax < bx + PIN_W + gap && ax + PIN_W + gap > bx &&
-           ay < by + PIN_H + gap && ay + PIN_H + gap > by;
+    return x < bx + bw + gap && x + PIN_W + gap > bx &&
+           y < by + bh + gap && y + PIN_H + gap > by;
 }
 
-static int pin_position_occupied(int self_idx, int x, int y)
+/* A pin at x,y is blocked by a visible widget or by any visible pin below
+ * index `upto` other than itself. */
+static int pin_position_occupied(int self_idx, int upto, int x, int y)
 {
-    for (int i = 0; i < B.npins; i++) {
-        if (i >= self_idx || !B.pins[i].visible) continue;
-        if (pin_rects_overlap(x, y, B.pins[i].x, B.pins[i].y)) return 1;
+    for (int i = 0; i < upto && i < B.npins; i++) {
+        if (i == self_idx || !B.pins[i].visible) continue;
+        if (pin_rect_overlaps(x, y, B.pins[i].x, B.pins[i].y, PIN_W, PIN_H)) return 1;
+    }
+    for (int i = 0; i < WIDGET_MAX; i++) {
+        struct widget *w = &B.widgets[i];
+        if (w->visible && pin_rect_overlaps(x, y, w->x, w->y, w->w, w->h)) return 1;
     }
     return 0;
 }
@@ -534,10 +540,13 @@ static void pin_slot_xy(int slot, int *x, int *y)
     *y = 48 + (slot / cols) * step_y;
 }
 
-static void pin_place_without_overlap(struct desktop_pin *p, int self_idx)
+/* Pins below index `keep` hold their spot: p moves only if it overlaps one of
+ * them or a widget. The slot it moves to avoids every other pin, so bumping one
+ * pin never lands it on a later one and cascades the rest of the row. */
+static void pin_place_without_overlap(struct desktop_pin *p, int self_idx, int keep)
 {
     pin_clamp(p);
-    if (!pin_position_occupied(self_idx, p->x, p->y)) return;
+    if (!pin_position_occupied(self_idx, keep, p->x, p->y)) return;
 
     int cols = pin_grid_cols();
     int rows = pin_grid_rows();
@@ -553,7 +562,7 @@ static void pin_place_without_overlap(struct desktop_pin *p, int self_idx)
     for (int n = 0; n < slots; n++) {
         int x, y;
         pin_slot_xy((start + n) % slots, &x, &y);
-        if (!pin_position_occupied(self_idx, x, y)) {
+        if (!pin_position_occupied(self_idx, B.npins, x, y)) {
             p->x = x;
             p->y = y;
             pin_clamp(p);
@@ -565,11 +574,12 @@ static void pin_place_without_overlap(struct desktop_pin *p, int self_idx)
 static int pins_resolve_collisions(void)
 {
     int changed = 0;
+    for (int i = 0; i < WIDGET_MAX; i++) widget_clamp(&B.widgets[i]);
     for (int i = 0; i < B.npins; i++) {
         struct desktop_pin *p = &B.pins[i];
         if (!p->visible) continue;
         int old_x = p->x, old_y = p->y;
-        pin_place_without_overlap(p, i);
+        pin_place_without_overlap(p, i, i);
         if (p->x != old_x || p->y != old_y) changed = 1;
     }
     return changed;
@@ -1149,10 +1159,18 @@ static void maybe_begin_drag(uint64_t now)
     rerender();
 }
 
+/* A dropped pin snaps to a free slot if it landed on a pin or widget; a
+ * dropped widget stays put and bumps any pins it now covers. */
 static void drag_finish(void)
 {
-    if (B.drag_idx >= 0) widgets_save();
-    if (B.pin_drag_idx >= 0) pins_save();
+    if (B.drag_idx >= 0) {
+        widgets_save();
+        if (pins_resolve_collisions()) pins_save();
+    }
+    if (B.pin_drag_idx >= 0 && B.pin_drag_idx < B.npins) {
+        pin_place_without_overlap(&B.pins[B.pin_drag_idx], B.pin_drag_idx, B.npins);
+        pins_save();
+    }
     B.drag_idx = -1;
     B.pin_drag_idx = -1;
     B.ptr_idx = B.touch_idx = -1;

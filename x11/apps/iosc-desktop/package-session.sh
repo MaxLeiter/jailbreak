@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.78"
+VER="1.0.79"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 
@@ -64,7 +64,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.34)
+Depends: iosc (>= 0.9.34), uikittools
 Recommends: iosc-shell, xios
 Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
@@ -96,6 +96,21 @@ Description: pick-a-desktop session launcher for the Xios stack
  Plasma app raises the iPad keyboard and what you type is committed into the
  field with full Unicode. Set KDE_AUTO_KEYBOARD=0 to leave it off.
 EOF
+
+# 2b. prerm — the iOS-app desktop entries are generated at runtime, so dpkg does
+# not own them and would otherwise leave ~60 dead launchers behind on removal.
+cat > "$STAGE/DEBIAN/prerm" <<'EOF'
+#!/bin/sh
+set -e
+case "$1" in
+  remove|purge)
+    [ -x /var/jb/usr/local/bin/xios-ios-apps ] \
+      && /var/jb/usr/local/bin/xios-ios-apps clean >/dev/null 2>&1 || true
+    ;;
+esac
+exit 0
+EOF
+chmod 0755 "$STAGE/DEBIAN/prerm"
 
 echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort

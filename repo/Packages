@@ -11748,7 +11748,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/powerdevil.json
 Native Depiction: https://repo.maxleiter.com/depictions/powerdevil.json
 
 Package: pulseaudio
-Version: 17.0-7+ios2
+Version: 17.0-7+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
@@ -11758,11 +11758,11 @@ Depends: libgtkintl, libiosexec1 (>= 1.3.1), libpulse0 (>= 17.0), libltdl7, libs
 Description: PulseAudio sound server for the Xios desktop
 Installed-Size: 6356
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/pulseaudio_17.0-7+ios2_iphoneos-arm64.deb
-Size: 640132
-MD5sum: 8dca89f0d98db48cc0486c9b993b7a7d
-SHA1: 5e59b007863a0dddfc0558980d383d1d58ba523a
-SHA256: e30d4b63fb92cb561f5663381aa8126dc98639ab601846a367c5953980164fbd
+Filename: debs/pulseaudio_17.0-7+ios3_iphoneos-arm64.deb
+Size: 640406
+MD5sum: 3ce5f19a215d7ed9bac1df5eaf73a13c
+SHA1: bb77a89673242fb44070d96b6450ab1bad370a0d
+SHA256: 1bdee9d823f552a05e35d5e2442d8fea1dd5368a27e4873968d2e7d05b221439
 Icon: https://repo.maxleiter.com/icons/pulseaudio.png
 Depiction: https://repo.maxleiter.com/depictions/pulseaudio.html
 SileoDepiction: https://repo.maxleiter.com/depictions/pulseaudio.json
@@ -12702,18 +12702,18 @@ Native Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.json
 Homepage: https://repo.maxleiter.com
 
 Package: xios-audio-server
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: sound
 Priority: optional
 Description: CoreAudio bridge daemon for Xios desktop audio
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/xios-audio-server_0.1.0_iphoneos-arm64.deb
-Size: 8884
-MD5sum: 88625cf2a12645a7e826609dcf37a135
-SHA1: c610ab57bb18850775329d293db16a61b58d06dc
-SHA256: f8d4e61c92dd478a896f3c3b44a22457669adb5716755fd1b8b9735db9dee209
+Filename: debs/xios-audio-server_0.1.1_iphoneos-arm64.deb
+Size: 9028
+MD5sum: f42aeb1ebe1d8aab1a8812ae846f13da
+SHA1: 1fda7deb5e5c69826ab17c03ec1f24b62c7b8170
+SHA256: fc3375778d9e250cf96aa6d065cad1edda77e34ae1891b0aaa83fe7e1fc42334
 Icon: https://repo.maxleiter.com/icons/xios-audio-server.png
 Depiction: https://repo.maxleiter.com/depictions/xios-audio-server.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-audio-server.json
