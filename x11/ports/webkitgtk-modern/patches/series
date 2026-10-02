@@ -14,3 +14,5 @@
 0022-wtf-oslog-printstream-for-gtk-darwin.patch
 0023-no-gnu-ld-undefined-flag-on-darwin.patch
 0024-bmalloc-process-check-cxx-for-gtk-darwin.patch
+0025-gtk-darwin-disable-tzone.patch
+0026-gtk-darwin-no-libdispatch-threading.patch
