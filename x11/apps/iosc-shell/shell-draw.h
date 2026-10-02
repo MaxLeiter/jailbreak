@@ -121,6 +121,84 @@ static int sd_drop_to_mobile(const struct sd_mobile *m)
     return 0;
 }
 
+/* ------------------------------------------ files in mobile's own dirs ---
+ * The clients run as root, but the shell's settings live in mobile's
+ * Preferences and the user's files in mobile's Documents, where any mobile
+ * process can plant a symlink, a hard link or a FIFO. So a file there is used
+ * only if it is a regular file with one link, owned by mobile or root, and
+ * never through a symlink (refused and logged); a whole file is replaced by
+ * an O_EXCL temp renamed into place; and whatever the shell creates there is
+ * handed to mobile, so the Xios app and mobile apps can still edit it. */
+
+static void sd_user_give(int fd)
+{
+    struct sd_mobile m;
+    if (geteuid() != 0) return;
+    sd_mobile_account(&m);
+    (void)fchown(fd, m.uid, m.gid);
+}
+
+static int sd_user_file_ok(int fd, const char *path)
+{
+    struct sd_mobile m;
+    struct stat st;
+    sd_mobile_account(&m);
+    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_nlink == 1 &&
+        (st.st_uid == 0 || st.st_uid == m.uid))
+        return 1;
+    fprintf(stderr, "iosc-shell: leaving %s alone: not a singly linked file of mobile or root\n",
+            path);
+    return 0;
+}
+
+static FILE *sd_user_fopen_read(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno == ELOOP)
+            fprintf(stderr, "iosc-shell: not reading %s: it is a symlink\n", path);
+        return NULL;
+    }
+    if (!sd_user_file_ok(fd, path)) { close(fd); return NULL; }
+    FILE *f = fdopen(fd, "r");
+    if (!f) close(fd);
+    return f;
+}
+
+#ifdef SD_USER_REPLACE
+/* Starts a whole-file replace of <path>: an O_EXCL temp beside it, mobile's.
+ * Refused (and logged) when <path> exists as anything but a regular file. */
+static FILE *sd_user_replace_begin(const char *path, char *tmp, size_t tmpn)
+{
+    struct stat st;
+    if (lstat(path, &st) == 0 && !S_ISREG(st.st_mode)) {
+        fprintf(stderr, "iosc-shell: not writing %s: it is %s\n", path,
+                S_ISLNK(st.st_mode) ? "a symlink" : "not a regular file");
+        return NULL;
+    }
+    if ((size_t)snprintf(tmp, tmpn, "%s.XXXXXX", path) >= tmpn) return NULL;
+    int fd = mkstemp(tmp);              /* O_CREAT|O_EXCL: never through a link */
+    if (fd < 0) return NULL;
+    (void)fchmod(fd, 0644);
+    sd_user_give(fd);
+    FILE *f = fdopen(fd, "w");
+    if (!f) { close(fd); unlink(tmp); }
+    return f;
+}
+
+/* Finishes it: renamed into place if everything was written (ok), else the
+ * temp is dropped. */
+static int sd_user_replace_end(FILE *f, const char *tmp, const char *path, int ok)
+{
+    ok = fflush(f) == 0 && ok;
+    ok = fclose(f) == 0 && ok;
+    if (ok && rename(tmp, path) == 0) return 1;
+    unlink(tmp);
+    fprintf(stderr, "iosc-shell: could not write %s\n", path);
+    return 0;
+}
+#endif /* SD_USER_REPLACE */
+
 /* A live listener from a dbus-daemon running as <uid>. dbus-daemon admits
  * only its own uid by default, so a bus an older shell started as root still
  * answers connect() but refuses every mobile app: replace it, don't reuse it. */
@@ -425,11 +503,30 @@ static void sd_desktop_pins_path(char *out, size_t n)
 #endif
 
 #ifdef SD_DESKTOP_PINNING
+/* Appends to the pins file (the Xios app appends to it too), creating it
+ * mobile's if missing and handing an older root-made one back to mobile;
+ * same rules as the other files in mobile's dirs. */
+static FILE *sd_user_fopen_append(const char *path)
+{
+    int fd = open(path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC,
+                  0644);
+    if (fd < 0) {
+        if (errno == ELOOP)
+            fprintf(stderr, "iosc-shell: not writing %s: it is a symlink\n", path);
+        return NULL;
+    }
+    if (!sd_user_file_ok(fd, path)) { close(fd); return NULL; }
+    sd_user_give(fd);
+    FILE *f = fdopen(fd, "a");
+    if (!f) close(fd);
+    return f;
+}
+
 static int sd_desktop_pin_exists(const char *exec)
 {
     if (!exec || !*exec) return 1;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
-    FILE *f = fopen(path, "r");
+    FILE *f = sd_user_fopen_read(path);
     if (!f) return 0;
     char line[768];
     int found = 0;
@@ -453,11 +550,11 @@ static void sd_pin_app_to_desktop(const struct sd_app *app)
 {
     if (!app || !app->exec[0] || sd_desktop_pin_exists(app->exec)) return;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
-    FILE *f = fopen(path, "a");
+    FILE *f = sd_user_fopen_append(path);
     if (!f) return;
     int slot = 0;
     {
-        FILE *r = fopen(path, "r");
+        FILE *r = sd_user_fopen_read(path);
         char line[768];
         while (r && fgets(line, sizeof line, r)) slot++;
         if (r) fclose(r);

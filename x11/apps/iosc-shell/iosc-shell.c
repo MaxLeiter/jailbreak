@@ -31,6 +31,7 @@
  */
 #define _GNU_SOURCE
 #define SD_APP_SCAN
+#define SD_USER_REPLACE            /* dock order, screenshots */
 #define SD_CAIRO                   /* sd_cairo_pool from shell-draw.h */
 #include "shell-draw.h"
 #include "shell-theme.h"
@@ -202,7 +203,7 @@ static void dock_order_path(char *out, size_t n)
 static void dock_apply_saved_order(void)
 {
     char path[256]; dock_order_path(path, sizeof path);
-    FILE *f = fopen(path, "r");
+    FILE *f = sd_user_fopen_read(path);
     if (!f) return;
     struct sd_app ordered[LAUNCH_MAX];
     int used[LAUNCH_MAX] = {0}, n = 0;
@@ -226,12 +227,12 @@ static void dock_apply_saved_order(void)
 
 static void dock_save_order(void)
 {
-    char path[256]; dock_order_path(path, sizeof path);
-    FILE *f = fopen(path, "w");
+    char path[256], tmp[272]; dock_order_path(path, sizeof path);
+    FILE *f = sd_user_replace_begin(path, tmp, sizeof tmp);
     if (!f) return;
     for (int i = 0; i < P.nlaunch; i++)
         fprintf(f, "%s\n", P.launch[i].exec);
-    fclose(f);
+    sd_user_replace_end(f, tmp, path, 1);
 }
 
 static void dock_move_launcher(int from, int to)
@@ -555,6 +556,13 @@ static void wm_dismiss_on_other_tap(struct wl_surface *sf)
     if (P.wm_surf && sf != P.wm_surf) wm_close();
 }
 
+static cairo_status_t png_to_file(void *closure, const unsigned char *data,
+                                  unsigned int len)
+{
+    return fwrite(data, 1, len, closure) == len ? CAIRO_STATUS_SUCCESS
+                                                : CAIRO_STATUS_WRITE_ERROR;
+}
+
 /* Full-output screenshot -> PNG. Runs from the main loop (roundtrips inside). */
 static void take_screenshot(void)
 {
@@ -571,14 +579,20 @@ static void take_screenshot(void)
     snprintf(docs, sizeof docs, "%s", SD_USER_DOCUMENTS);
     sd_join_path(tmpdir, sizeof tmpdir, sd_jbroot(), "/tmp");
     const char *dirs[] = { docs, tmpdir };
-    char path[300] = "";
+    char path[300] = "", tmp[320];
     for (size_t i = 0; i < sizeof(dirs)/sizeof(dirs[0]); i++) {
         struct stat st;
         if (stat(dirs[i], &st) != 0 || !S_ISDIR(st.st_mode)) continue;
         snprintf(path, sizeof path, "%s/%s", dirs[i], name);
-        if (cairo_surface_write_to_png(cap, path) == CAIRO_STATUS_SUCCESS) {
-            fprintf(stderr, "%s: screenshot -> %s\n", mode_name(), path);
-            break;
+        /* Documents is mobile's: a temp beside it, then rename (shell-draw.h) */
+        FILE *f = sd_user_replace_begin(path, tmp, sizeof tmp);
+        if (f) {
+            int wrote = cairo_surface_write_to_png_stream(cap, png_to_file, f) ==
+                        CAIRO_STATUS_SUCCESS;
+            if (sd_user_replace_end(f, tmp, path, wrote)) {
+                fprintf(stderr, "%s: screenshot -> %s\n", mode_name(), path);
+                break;
+            }
         }
         path[0] = 0;
     }
