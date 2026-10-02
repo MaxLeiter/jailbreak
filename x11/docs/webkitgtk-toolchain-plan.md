@@ -179,6 +179,13 @@ published, and **do not apply to 2.52/2.54** (their target files moved). This pl
 published stack 0001-0014 and keeps the 2.44 recipe and patch dir untouched. If Max wants JIT +
 hardware compositing in the 2.54 build, that lane's patches need a second forward port after it lands.
 
+**Decision 2026-10-01 (main):** that lane is dormant (no changes for 3+ days); its uncommitted 2.44
+patches 0015-0018 stay preserved as files in that worktree, which we do not touch. **Patches 0015-0018
+need a forward port to 2.54 later** (not part of this task). Overwriting its 2.44 build state in
+`procursus-vol-gtk` is acceptable. No clone volume (host disk ~61 GiB free): the build uses the shared
+`procursus-vol-gtk` with distinct work dirs, after `upd-wave-gnome` releases it (that wave also bumps
+libsoup3 to 3.8.0, so we build against libsoup 3.8; 2.54 needs only >= 3.0).
+
 ## 8. Opt-in mechanics (nothing existing changes)
 
 New files only; no edit to `webkitgtk.mk`, `epiphany.mk`, `geary.mk`, `Dockerfile`, `target-env.sh`,
