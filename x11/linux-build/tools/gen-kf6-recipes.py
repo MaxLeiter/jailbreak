@@ -161,7 +161,7 @@ TABLE = [
                 "(deb exists) feeds language name lookups at runtime.",
                 "Host build is a dependency of host kpackage (stage 1)."]),
     dict(t="solid", kind="kf", deb="kf6-solid", deps=[],
-         qt_deps=["qt6-base"],
+         qt_deps=["qt6-base"], rev="ios2",
          seds=["bash /work/recipes/solid-ios-fixes.sh $(BUILD_WORK)/solid"],
          desc="Hardware discovery and power management abstraction.",
          notes=["Re-audited 2026-07-08: the elseif(APPLE) branch no longer goes fakehw-only.",
