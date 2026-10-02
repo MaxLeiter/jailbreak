@@ -2093,8 +2093,11 @@ static void cursor_image_publish(void)
     int32_t h = wl_shm_buffer_get_height(shm);
     int32_t stride = wl_shm_buffer_get_stride(shm);
     uint32_t format = wl_shm_buffer_get_format(shm);
+    /* stride >= w*4 too: libwayland only checks stride >= w, and the row copy
+     * below reads w*4 bytes per row, past the buffer on the last rows. */
     if (w <= 0 || h <= 0 ||
         w > XIOS_CURSOR_IMAGE_MAX || h > XIOS_CURSOR_IMAGE_MAX ||
+        stride < w * 4 ||
         (format != WL_SHM_FORMAT_ARGB8888 && format != WL_SHM_FORMAT_XRGB8888)) {
         cursor_image_note("cursor-size-or-format-unsupported");
         if (g_cursor_image_sent) {
