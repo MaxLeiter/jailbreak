@@ -640,7 +640,8 @@ def emit_recipe(e):
                 "\t$(call PACK,%s,DEB_%s_V)" % (deb, uv),
                 "\t$(call PACK,%s-dev,DEB_%s_V)" % (deb, uv)]
         if t == "ki18n":
-            pkg.append("\tbash /work/recipes/relink-gtkintl.sh $(BUILD_DIST)/ki18n")
+            # PACK writes the debs to $(BUILD_DIST)/../<make target>, not under BUILD_DIST.
+            pkg.append("\tbash /work/recipes/relink-gtkintl.sh $(BUILD_DIST)/../ki18n")
         pkg.append("\trm -rf $(BUILD_DIST)/%s $(BUILD_DIST)/%s-dev" % (deb, deb))
     pkg += ["", ".PHONY: %s %s-package" % (t, t), ""]
 
