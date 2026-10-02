@@ -88,9 +88,8 @@ void  xios_release_client_iosurface (void *iosurface);
  * it as an IOSurface pbuffer, binds that to a GL texture and calls
  * eglCreateImageKHR(EGL_GL_TEXTURE_2D). ANGLE-Metal does not expose
  * EGL_KHR_gl_texture_2D_image at runtime (see meta-wayland-iosurface.c), so this fails on
- * device, and the mutter buffer
- * type (meta-wayland-iosurface.c) does not use it: it binds an IOSurface pbuffer straight
- * onto a Cogl texture instead. Kept as part of the checked glue contract.
+ * device, and the mutter buffer type does not use it: it binds an IOSurface pbuffer
+ * straight onto a Cogl texture instead. Kept as part of the checked glue contract.
  * Returns EGL_NO_IMAGE_KHR on failure. */
 EGLImageKHR xios_egl_image_from_iosurface (void *iosurface, int width, int height);
 void        xios_egl_destroy_image (EGLImageKHR image);
