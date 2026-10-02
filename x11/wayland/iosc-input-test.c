@@ -14,6 +14,7 @@
  *   iosc-input-test -t 500 400           # two-finger touch gesture (wl_touch)
  *   iosc-input-test -p 300 300 900 500   # pencil stroke w/ pressure ramp (tablet-v2)
  *   iosc-input-test -k 0x6e 3            # one keysym tap w/ modifiers
+ *   iosc-input-test -H 680 400           # press everything at once, exit holding it
  *
  *   iosc-input-test --socket /var/jb/tmp/mutter-input.sock -c 1080 810
  *
@@ -113,6 +114,9 @@ static void usage(const char *argv0)
             "  -t x y             two-finger touch gesture (wl_touch)\n"
             "  -p x0 y0 x1 y1     pencil stroke w/ pressure ramp (tablet-v2)\n"
             "  -k keysym [mods]   one key tap; mods bits: shift,ctrl,alt,super,caps,num\n"
+            "  -H x y             press a button, Shift+a, a touch and the pencil at x,y,\n"
+            "                     then exit without releasing any of them (the compositor\n"
+            "                     must release them for us; stuck-input test)\n"
             "  -T utf8...         send each arg as an XIOS_IN_TEXT record (full UTF-8,\n"
             "                     the iOS-keyboard path: text-input or the IM proxy)\n"
             "  text...            type each arg as a line of KEYSYM taps, ASCII only\n"
@@ -316,6 +320,26 @@ int main(int argc, char **argv)
             .code = 2u | (2u << 8) | (2u << 16), .state = (unsigned)(scale_pct * 256 / 100) };
         send_msg(fd, &end);
         fprintf(stderr, "pinched to %d%% (rot %ddeg) at %d,%d\n", scale_pct, deg, x, y);
+        usleep(100000); close(fd); return 0;
+    }
+
+    /* -H x y: an input client that dies mid-press. Everything goes down and the
+     * process exits holding it, the way the app does when iOS kills it with a
+     * finger on the glass. iosc must release all of it on the disconnect: no
+     * drag on the next pointer move, no endlessly repeating 'A'. */
+    if (argc - argi >= 3 && !strcmp(argv[argi], "-H")) {
+        int x = atoi(argv[argi + 1]), y = atoi(argv[argi + 2]);
+        uint32_t tilt = (uint32_t)90 | ((uint32_t)90 << 8);
+        xios_msg mv = { .type = XIOS_IN_MOTION, .x = x, .y = y };
+        xios_msg bd = { .type = XIOS_IN_BUTTON, .x = x, .y = y, .code = 1, .state = 1 };
+        xios_msg kd = { .type = XIOS_IN_KEY, .code = 'A', .state = 1, .mods = 1 };
+        xios_msg td = { .type = XIOS_IN_TOUCH, .x = x, .y = y, .code = 9, .state = 1 };
+        xios_msg pd = { .type = XIOS_IN_TABLET, .x = x, .y = y,
+                        .code = 65535 / 2, .state = 1, .mods = tilt };
+        send_msg(fd, &mv); send_msg(fd, &bd); send_msg(fd, &kd);
+        send_msg(fd, &td); send_msg(fd, &pd);
+        fprintf(stderr, "holding button 1, Shift+A, touch 9 and the pencil at %d,%d; "
+                        "exiting without releasing\n", x, y);
         usleep(100000); close(fd); return 0;
     }
 
