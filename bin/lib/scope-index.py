@@ -24,6 +24,7 @@ import argparse
 import email.utils
 import gzip
 import hashlib
+import importlib.util
 import os
 import sys
 import urllib.request
@@ -55,6 +56,15 @@ def field(stanza, key):
     return ""
 
 
+def compare_deb_versions(a, b):
+    # make-repo.py's dpkg comparison, the one every other repo gate uses.
+    spec = importlib.util.spec_from_file_location(
+        "make_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "make-repo.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.compare_deb_versions(a, b)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--repo", required=True, help="deploy copy of repo/ to rewrite")
@@ -65,6 +75,12 @@ def main():
         "--allow-noop",
         action="store_true",
         help="rewrite the live index even when every scoped package is byte-identical",
+    )
+    ap.add_argument(
+        "--allow-rollback",
+        action="store_true",
+        help="publish a named package at a version OLDER than the live one (a deliberate "
+             "rollback); refused otherwise, because it downgrades every device",
     )
     args = ap.parse_args()
 
@@ -118,6 +134,19 @@ def main():
         print(f"   {name}: NEW at {ver}")
     for name, ver in identical:
         print(f"   {name}: {ver} is already live, byte-identical")
+
+    # Swapping in an older stanza is a rollback for every device on the target.
+    rollbacks = [(name, was, now) for name, was, now in replaced
+                 if compare_deb_versions(now, was) < 0]
+    if rollbacks and not args.allow_rollback:
+        sys.exit("scope-index: refusing to roll back "
+                 + ", ".join(f"{n} {was} -> {now}" for n, was, now in rollbacks)
+                 + ". The target serves a newer version than this index, so publishing "
+                 "would downgrade every device. Rebase/rebuild to pick up the live version, "
+                 "or pass --allow-rollback if the rollback is deliberate.")
+    for name, was, now in rollbacks:
+        print(f"!! ROLLBACK {name}: {was} -> {now} (--allow-rollback): every device on "
+              f"this target will be downgraded", file=sys.stderr)
     if not replaced and not added:
         if not args.allow_noop:
             sys.exit("scope-index: every named package is already live unchanged. Nothing "
