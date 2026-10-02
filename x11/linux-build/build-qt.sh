@@ -7,8 +7,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=8 \
 #     -v procursus-vol-kde610:/work/Procursus \
 #     -v "$PWD/build-qt.sh:/work/build-qt.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
-#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/tools:/work/tools:ro" \
-#     -v "$PWD/../ports:/work/ports:ro" -v "$PWD/out:/out" \
+#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="qtbase" \
 #     procursus-xbuild:bookworm-arm64 -c 'bash /work/build-qt.sh' 2>&1 | tee qt-build.log
 #
@@ -20,7 +19,7 @@ set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
 # KDE 6.10 lane: cmake >= 3.29 from the volume (see tools/kde-lane-env.sh)
-. /work/tools/kde-lane-env.sh
+. /work/x11/linux-build/tools/kde-lane-env.sh
 
 QTVER=6.10.3
 QTMINOR=6.10

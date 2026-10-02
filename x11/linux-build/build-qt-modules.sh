@@ -9,8 +9,7 @@
 #   docker run --rm --platform linux/arm64 --cpus=8 \
 #     -v procursus-vol-kde610:/work/Procursus \
 #     -v "$PWD/build-qt-modules.sh:/work/build-qt-modules.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
-#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/tools:/work/tools:ro" \
-#     -v "$PWD/../ports:/work/ports:ro" -v "$PWD/out:/out" \
+#     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="qtshadertools qtdeclarative qt5compat qtsvg qtimageformats qttools qtsensors qtpositioning qtlocation qtwayland" \
 #     procursus-xbuild:bookworm-arm64 -c 'bash /work/build-qt-modules.sh' 2>&1 | tee qt-modules-build.log
 #
@@ -21,7 +20,7 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
-. /work/tools/kde-lane-env.sh
+. /work/x11/linux-build/tools/kde-lane-env.sh
 
 QTVER=6.10.3
 QTMINOR=6.10
