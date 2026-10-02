@@ -17,6 +17,9 @@ for old, new in [
     ("find_package(KF6KirigamiAddons 0.6 REQUIRED)", "find_package(KF6KirigamiAddons 0.6)"),
     ("find_package(XCB REQUIRED COMPONENTS XCB)", "find_package(XCB COMPONENTS XCB)"),
     ("find_package(Libudev REQUIRED)", "find_package(Libudev)"),
+    # 6.7 additions: KPipeWire (screen casting) and the KWin plugin SDK (kwin/ subdir is skipped on iOS).
+    ("find_package(KPipeWire ${PROJECT_DEP_VERSION} REQUIRED)", "find_package(KPipeWire ${PROJECT_DEP_VERSION})"),
+    ("find_package(KWin ${PROJECT_DEP_VERSION} REQUIRED COMPONENTS\n    kwin\n)", "find_package(KWin ${PROJECT_DEP_VERSION} COMPONENTS\n    kwin\n)"),
     ("    TYPE REQUIRED\n    PURPOSE \"Needed for virtual keyboard toggle button\"", "    TYPE OPTIONAL\n    PURPOSE \"Needed for virtual keyboard toggle button\""),
 ]:
     text = text.replace(old, new)
@@ -226,7 +229,7 @@ path = Path(sys.argv[1])
 text = path.read_text()
 # flashlight is WIRED (torch backend swapped to the xios-fhs leds bridge below), so it
 # stays built. nightcolor/screenrotation remain hidden pending their unblock work.
-for name in ("nightcolor", "screenrotation"):
+for name in ("nightcolor", "screenrotation", "record"):  # record: needs KPipeWire (not ported)
     old = f"add_subdirectory({name})\n"
     new = f"# xios-quicksettings-hide ({name}): no iOS backend, see plasma-mobile-ios-fixes.sh\n# add_subdirectory({name})\n"
     if old in text and new not in text:
@@ -372,6 +375,8 @@ path = Path(sys.argv[1])
 text = path.read_text()
 text = text.replace("    Qt::DBus\n", "")
 text = text.replace("    udev\n", "")
+# 6.7 added a KAuth root helper (libudev) for the sysfs write; the xios-fhs bridge below needs no helper.
+text = text.replace("\nadd_subdirectory(kauth)\n", "\n# xios: no KAuth sysfs helper, the torch bridge is below\n# add_subdirectory(kauth)\n")
 path.write_text(text)
 PY
 

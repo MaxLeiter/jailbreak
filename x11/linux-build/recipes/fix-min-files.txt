@@ -12,8 +12,8 @@ plasma-pa-ios-fixes.sh 5
 polkit-kde-agent-1-ios-fixes.sh 2
 xdg-desktop-portal-kde-ios-fixes.sh 1
 layer-shell-qt-ios-fixes.sh 3
-# KNOWN PARTIAL on 6.7.5: the minimum below is the 6.1.5 count on purpose. On 6.7.5 plasma-mobile applies
-# only 26 of 41 and plasma-nano 3 of 5 (QML files the hunks edited were moved/removed upstream), so these
-# two fail loudly until re-ported.
-plasma-mobile-ios-fixes.sh 41
-plasma-nano-ios-fixes.sh 5
+# KNOWN PARTIAL on 6.7.5: plasma-mobile's minimum below (25) is the count measured on 6.7.5; the 6.1.5 count was 41, so
+# 15 files' worth of QML hunks (moved/removed upstream) are NOT ported: see plan section 9. plasma-nano: its two
+# desktoptoolbox hunks are obsolete (6.7 removed that directory); the 3 remaining hunks all apply.
+plasma-mobile-ios-fixes.sh 25
+plasma-nano-ios-fixes.sh 3

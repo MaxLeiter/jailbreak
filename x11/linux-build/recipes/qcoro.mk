@@ -8,11 +8,14 @@ endif
 
 SUBPROJECTS += qcoro
 QCORO_VERSION = 0.10.0
-DEB_QCORO_V ?= $(QCORO_VERSION)+ios1
+DEB_QCORO_V ?= $(QCORO_VERSION)+ios2
 
 qcoro-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/danvratil/qcoro/archive/refs/tags/v$(QCORO_VERSION).tar.gz)
 	$(call EXTRACT_TAR,v$(QCORO_VERSION).tar.gz,qcoro-$(QCORO_VERSION),qcoro)
+	# the versionless Qt::QmlPrivate target is not created by this Qt's QmlPrivate config; the real one is Qt6::QmlPrivate
+	sed -i 's/Qt::QmlPrivate/Qt6::QmlPrivate/' $(BUILD_WORK)/qcoro/qcoro/qml/CMakeLists.txt
+	grep -q 'find_package(Qt6QmlPrivate' $(BUILD_WORK)/qcoro/qcoro/qml/CMakeLists.txt || sed -i '1i find_package(Qt6QmlPrivate REQUIRED)' $(BUILD_WORK)/qcoro/qcoro/qml/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
@@ -33,7 +36,7 @@ qcoro: qcoro-setup
 		-DQCORO_WITH_QTNETWORK=OFF \
 		-DQCORO_WITH_QTWEBSOCKETS=OFF \
 		-DQCORO_WITH_QTQUICK=OFF \
-		-DQCORO_WITH_QML=OFF \
+		-DQCORO_WITH_QML=ON \
 		-DQCORO_WITH_QTTEST=OFF
 	+ninja -C $(BUILD_WORK)/qcoro/build
 	+DESTDIR="$(BUILD_STAGE)/qcoro" ninja -C $(BUILD_WORK)/qcoro/build install
