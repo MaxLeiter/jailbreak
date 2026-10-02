@@ -1,0 +1,45 @@
+diff --git a/Libraries/LibGC/HeapRegion.h b/Libraries/LibGC/HeapRegion.h
+index 22dfb5e991..dc1e4006a4 100644
+--- a/Libraries/LibGC/HeapRegion.h
++++ b/Libraries/LibGC/HeapRegion.h
+@@ -18,6 +18,11 @@ namespace GC {
+ // address space between userspace and the kernel. Keep room for the second
+ // region-sized reservation used to align the cage base.
+ static constexpr size_t HEAP_REGION_SIZE = 64ull * GiB;
++#elif defined(AK_OS_IOS)
++// iOS caps a process's total virtual address space at roughly 8-10 GiB (measured on an A10 iPad: a single
++// PROT_NONE reservation above ~6 GiB fails), so even the 128 GiB used on other AArch64 systems cannot be
++// reserved. The region is reserved twice its size to align its base, so keep it at 1 GiB.
++static constexpr size_t HEAP_REGION_SIZE = 1ull * GiB;
+ #elif AK_IS_ARCH_AARCH64() && !defined(AK_OS_MACOS)
+ // Some AArch64 systems provide only 39 or 42 bits of user virtual address
+ // space. Keep the cage small enough to fit those systems, including the
+diff --git a/Libraries/LibGC/PrimitiveStorage.h b/Libraries/LibGC/PrimitiveStorage.h
+index e7da4bb7e0..016ad8919f 100644
+--- a/Libraries/LibGC/PrimitiveStorage.h
++++ b/Libraries/LibGC/PrimitiveStorage.h
+@@ -30,7 +30,12 @@ public:
+         Yes,
+     };
+ 
++#if defined(AK_OS_IOS)
++    // See HEAP_REGION_SIZE: iOS cannot reserve more than a few GiB of address space per process.
++    static constexpr size_t default_cage_size = 1ull * GiB;
++#else
+     static constexpr size_t default_cage_size = 4ull * TiB;
++#endif
+     static_assert(is_power_of_two(default_cage_size));
+     static constexpr size_t cage_offset_mask = default_cage_size - 1;
+     static constexpr size_t invalid_offset = NumericLimits<size_t>::max();
+diff --git a/Libraries/LibJS/CMakeLists.txt b/Libraries/LibJS/CMakeLists.txt
+index 6efe64847f..13aca2223b 100644
+--- a/Libraries/LibJS/CMakeLists.txt
++++ b/Libraries/LibJS/CMakeLists.txt
+@@ -370,6 +370,7 @@ if (DEFINED FLAP_ARCH)
+         add_custom_command(
+             OUTPUT "${INTERPRETER_LAYOUT_FILE}"
+             COMMAND "$ENV{LB_HOST_GENERATE_INTERPRETER_LAYOUT}" > "${INTERPRETER_LAYOUT_FILE}"
++            DEPENDS "$ENV{LB_HOST_GENERATE_INTERPRETER_LAYOUT}"
+             COMMENT "Generating JS interpreter layout (host tool)"
+         )
+     else()

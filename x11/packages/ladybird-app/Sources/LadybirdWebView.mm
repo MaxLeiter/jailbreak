@@ -20,6 +20,7 @@
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <ImageIO/ImageIO.h>
 // iOS ships IOSurfaceRef.h (the C API used by the zero-copy present path) but NOT the macOS
 // umbrella <IOSurface/IOSurface.h>. Include the concrete header directly.
 #import <IOSurface/IOSurfaceRef.h>
@@ -201,6 +202,9 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 {
     __weak LadybirdWebView* weakSelf = self;
 
+    if (lb_trace_enabled()) {
+        [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer*) { [weakSelf lbDebugPoll]; }];
+    }
     _bridge->on_ready_to_paint = [weakSelf]() {
         static int s_paint_count = 0;
         if (s_paint_count++ < 3)
@@ -526,6 +530,74 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 }
 
 #pragma mark - Navigation wrappers
+
+// Debug aids, opt-in via the ladybird-trace sentinel (see LBTrace.h): drop a URL into
+// <tmp>/ladybird-load-url to navigate, and touch <tmp>/ladybird-dump to write the next presented
+// frame to <tmp>/ladybird-dump.png (pixel truth without a screenshot tool). Polled at most 2x/s.
+- (void)lbDebugPoll
+{
+    if (!lb_trace_enabled())
+        return;
+    char path[160];
+    lb_runtime_path(path, sizeof(path), "ladybird-load-url");
+    if (FILE* f = fopen(path, "r")) {
+        char buf[2048] = {};
+        fgets(buf, sizeof(buf), f);
+        fclose(f);
+        unlink(path);
+        NSString* u = [[NSString stringWithUTF8String:buf] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+        if (u.length) {
+            lb_trace("debug: load-url %s", u.UTF8String);
+            [self loadURL:u];
+        }
+    }
+    // "<x> <y>" in view points: synthesize the same MouseDown/MouseUp pair touchesBegan/Ended send.
+    lb_runtime_path(path, sizeof(path), "ladybird-tap");
+    if (FILE* f = fopen(path, "r")) {
+        double x = 0, y = 0;
+        int n = fscanf(f, "%lf %lf", &x, &y);
+        fclose(f);
+        unlink(path);
+        if (n == 2) {
+            lb_trace("debug: tap %.1f,%.1f", x, y);
+            _keyboardSyncGeneration++;
+            _bridge->enqueue_input_event(LadybirdIOS::mouse_event_at(self, CGPointMake(x, y), Web::MouseEvent::Type::MouseDown, Web::UIEvents::MouseButton::Primary));
+            _bridge->enqueue_input_event(LadybirdIOS::mouse_event_at(self, CGPointMake(x, y), Web::MouseEvent::Type::MouseUp, Web::UIEvents::MouseButton::Primary));
+            [self syncKeyboardWithFocusedInputSoon];
+        }
+    }
+    lb_runtime_path(path, sizeof(path), "ladybird-dump");
+    if (access(path, F_OK) != 0)
+        return;
+    unlink(path);
+    IOSurfaceRef surface = (IOSurfaceRef)_bridge->front_iosurface();
+    if (!surface) {
+        lb_trace("debug: dump requested but no frame yet");
+        return;
+    }
+    IOSurfaceLock(surface, kIOSurfaceLockReadOnly, nullptr);
+    size_t w = IOSurfaceGetWidth(surface), h = IOSurfaceGetHeight(surface), bpr = IOSurfaceGetBytesPerRow(surface);
+    CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
+    CGContextRef ctx = CGBitmapContextCreate(IOSurfaceGetBaseAddress(surface), w, h, 8, bpr, cs,
+        kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little);
+    CGImageRef img = ctx ? CGBitmapContextCreateImage(ctx) : nullptr;
+    char out[160];
+    lb_runtime_path(out, sizeof(out), "ladybird-dump.png");
+    if (img) {
+        NSURL* url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:out]];
+        CGImageDestinationRef dest = CGImageDestinationCreateWithURL((__bridge CFURLRef)url, CFSTR("public.png"), 1, nullptr);
+        if (dest) {
+            CGImageDestinationAddImage(dest, img, nullptr);
+            bool ok = CGImageDestinationFinalize(dest);
+            lb_trace("debug: dump %zux%zu -> %s ok=%d", w, h, out, ok);
+            CFRelease(dest);
+        }
+        CGImageRelease(img);
+    }
+    if (ctx) CGContextRelease(ctx);
+    CGColorSpaceRelease(cs);
+    IOSurfaceUnlock(surface, kIOSurfaceLockReadOnly, nullptr);
+}
 
 - (void)loadURL:(NSString*)urlString
 {

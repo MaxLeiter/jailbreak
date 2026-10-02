@@ -129,6 +129,14 @@ ErrorOr<void> Application::boot(int argc, char** argv)
 int main(int argc, char* argv[])
 {
     lb_trace("main: enter (argc=%d)", argc);
+    if (lb_trace_enabled()) {
+        // Debug aid (opt-in via the ladybird-trace sentinel): capture stderr of the UI process and of
+        // every helper it spawns (they inherit fd 2), so helper startup failures are visible without USB.
+        char err_path[128];
+        lb_runtime_path(err_path, sizeof(err_path), "ladybird-stderr.log");
+        freopen(err_path, "a", stderr);
+        setvbuf(stderr, nullptr, _IOLBF, 0);
+    }
     @autoreleasepool {
         // Point HOME + XDG dirs at the app's writable sandbox container so LibWebView's data dir
         // (SQL cookies/history DB), config, and caches can be created. The engine defaults

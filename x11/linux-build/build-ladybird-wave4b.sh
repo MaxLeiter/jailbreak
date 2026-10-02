@@ -206,7 +206,7 @@ ensure_generated_headers() {
   ( cd "$BUILD" && ninja -k 0 -j"${JOBS:-8}" WebContent > /out/wave4b-codegen.log 2>&1; grep -A12 "^FAILED" /out/wave4b-codegen.log | head -60; tail -2 /out/wave4b-codegen.log )
 }
 
-if run_stage hosttools && [ -x "$HOST/generate_interpreter_layout" ] && [ -x "$HOST/rust-bin/flapc" ] && [ -x "$HOST/rust-bin/generate-libjs-bytecode" ]; then
+if run_stage hosttools && [ "${FORCE_HOSTTOOLS:-0}" != 1 ] && [ -x "$HOST/generate_interpreter_layout" ] && [ -x "$HOST/rust-bin/flapc" ] && [ -x "$HOST/rust-bin/generate-libjs-bytecode" ]; then
   echo "  host tools already built ($HOST/generate_interpreter_layout + rust-bin/*); skipping rebuild"
 elif run_stage hosttools; then
   ensure_generated_headers
@@ -244,7 +244,9 @@ elif run_stage hosttools; then
     || { echo "  !! fmt FAIL"; exit 1; }
 
   echo "==> host generate_interpreter_layout (private/protected exposed for offsetof)"
-  clang++-19 $CXXFLAGS -Dprivate=public -Dprotected=public \
+  # -D__IOS__: the layout constants (GC heap-region / primitive-cage masks) are per-platform, so the host tool must
+  # see the same platform macros as the iOS target or the generated interpreter masks the wrong number of bits.
+  clang++-19 $CXXFLAGS -D__IOS__ -Dprivate=public -Dprotected=public \
     "$WORK/Libraries/LibJS/Interpreter/GenerateLayout.cpp" \
     "$HOST/libAK.a" "$HOST/simdutf.o" "$HOST/mimalloc.o" "$HOST/fmt.o" -lpthread \
     -o "$HOST/generate_interpreter_layout" || { echo "  !! generate_interpreter_layout link FAIL"; exit 1; }

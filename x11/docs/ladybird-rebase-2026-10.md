@@ -38,3 +38,12 @@ Bumped here (Ladybird-private): OpenSSL 3.6.3, simdutf 9.1.0, simdjson 4.6.4, fm
 Owned by upd-wave-core, not touched: curl, nghttp2, libxml2, libpng, sqlite, freetype, harfbuzz (no hard minimum in new CMake).
 Not bumped, listed for follow-up: libjpeg-turbo 3.2.0, brotli 1.2.0, zlib, libwebp (unchanged pin), tiff.
 Toolchain: clang >= 19 still the minimum; Rust 1.96 -> 1.98 (rustup); no compiler upgrade needed.
+
+## Device bring-up findings (iPad7,12, iPadOS 17.6.1)
+
+Fixups 1-6 (patches/ios-app-fixups-N.patch) came out of compiling and running on device:
+- `AK/ThreadID.cpp` returned 0 on iOS, so every IPC `m_owner_thread_id.is_current_thread()` VERIFY failed (UI crashed at launch).
+- iOS caps a process at roughly 8-10 GiB of virtual address space. Upstream's GC reserves a 4 TiB primitive-storage cage (and 128 GiB heap region for non-macOS AArch64); both are now 1 GiB on iOS (`HeapRegion.h`, `PrimitiveStorage.h`).
+- The host `generate_interpreter_layout` tool must be compiled with `-D__IOS__`, otherwise the generated JS interpreter bakes the Linux masks (SIGBUS in `asm_handler_GetById` on JS-heavy pages).
+- WebContent's own SIGSEGV/SIGBUS handler is not installed on iOS so CrashReporter writes .ips files.
+Debug aids in the UIKit frontend, all behind the existing `/var/jb/tmp/ladybird-trace` sentinel: stderr of UI + helpers goes to `ladybird-stderr.log`; `ladybird-load-url`, `ladybird-dump` (writes the presented frame to `ladybird-dump.png`) and `ladybird-tap` ("x y" in points) files are polled twice a second. The sentinel files must be removed by the writer (root-created files cannot be unlinked by the app).
