@@ -116,10 +116,12 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   package ships `ioscd`,
   `xios-icon-render`, `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`,
   `default.metallib`, the entitlements, and
-  `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst re-signs the
-  payloads best-effort and bootstraps `ioscd`; it does **not** run a mass
-  `xios-launcher-sync --sync`, so Home Screen app creation remains settings- or
-  user-triggered.
+  `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst only fixes
+  modes/ownership (chmod/chown) and re-bootstraps `ioscd` (`launchctl bootout`
+  then `bootstrap`); it signs nothing. Bundle executables are signed by
+  `xios-launcher-sync` during a sync (`ldid -S` with the shipped entitlements).
+  Postinst does **not** run a mass `xios-launcher-sync --sync`, so Home Screen
+  app creation remains settings- or user-triggered.
 - `ioscd` exposes settings-pane-ready verbs on `/var/jb/tmp/ioscd.sock`:
   `APPS_LIST`, `APPS_SYNC\t<native|classic>\t<dry>`,
   `APP_ENABLE\t<app_id>`, and `APP_DISABLE\t<app_id>`. Responses are streamed
