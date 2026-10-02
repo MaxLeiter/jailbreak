@@ -417,8 +417,10 @@ static void sd_launch(const char *exec)
     setsid();
     const char *root = sd_jbroot();
     char tmp[256], wayland[256], home[256], path[512], busdir[256], bus_addr[320];
-    char dbus_run[256], sh_bin[256], usr_sh[256];
+    char dbus_run[256], sh_bin[256], usr_sh[256], angle[256], a11y_force[256];
     sd_join_path(tmp, sizeof tmp, root, "/tmp");
+    sd_join_path(angle, sizeof angle, root, "/lib/angle/libEGL.angle.dylib");
+    sd_join_path(a11y_force, sizeof a11y_force, root, "/tmp/xios-a11y-force");
     sd_join_path(wayland, sizeof wayland, root, "/tmp/wayland-0");
     sd_join_path(home, sizeof home, root, "/var/root");
     sd_join_path(busdir, sizeof busdir, root, "/tmp/iosc-shell-bus");
@@ -439,10 +441,10 @@ static void sd_launch(const char *exec)
     if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
     setenv("GDK_BACKEND", "wayland", 1);
     setenv("GSK_RENDERER", "ngl", 1);
-    setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
+    setenv("ANGLE_REAL_LIBEGL", angle, 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
     setenv("LC_CTYPE", "UTF-8", 0);
-    int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") || access("/var/jb/tmp/xios-a11y-force", F_OK) == 0;
+    int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") || access(a11y_force, F_OK) == 0;
     if (enable_a11y) unsetenv("GTK_A11Y");
     else setenv("GTK_A11Y", "none", 1);
     setenv("SHELL", sh_bin, 1);
