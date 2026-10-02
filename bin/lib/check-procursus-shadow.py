@@ -161,16 +161,31 @@ def dylib_exports(path: str) -> set[str] | None:
 def fetch(url: str, dest: str) -> None:
     # Procursus's CDN 403s urllib's default UA; present as apt.
     req = urllib.request.Request(url, headers={"User-Agent": "Debian APT-HTTP/1.3"})
-    with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as f:
-        while chunk := r.read(1 << 20):
-            f.write(chunk)
+    # Download beside dest and rename into place. Writing dest directly truncated
+    # the previous copy first, so a transfer that died mid-body left a partial
+    # file where every cache lookup (and the "using cached index" fallback) reads.
+    part = f"{dest}.part.{os.getpid()}"
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
+            while chunk := r.read(1 << 20):
+                f.write(chunk)
+        os.replace(part, dest)
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
 
 
 def fetch_procursus_deb(fields: dict[str, str]) -> str:
     os.makedirs(os.path.join(CACHE_DIR, "debs"), exist_ok=True)
     dest = os.path.join(CACHE_DIR, "debs", os.path.basename(fields["Filename"]))
-    if not os.path.exists(dest):
+    # A cached deb is only reused if it is the one the index describes, so a
+    # truncated download from an older run gets fetched again instead of failing
+    # the parity/symbol checks into a WARNING on every run after it.
+    want = fields.get("SHA256")
+    if not os.path.exists(dest) or (want and sha256(dest) != want):
         fetch(f"{PROCURSUS_BASE}/{fields['Filename']}", dest)
+        if want and sha256(dest) != want:
+            raise OSError(f"{fields['Filename']}: SHA256 does not match the Procursus index")
     return dest
 
 
