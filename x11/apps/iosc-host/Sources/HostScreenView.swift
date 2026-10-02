@@ -75,7 +75,15 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var hardwareButtonMask = 0
     // An `.indirectPointer` touch is live, i.e. at least one button is held.
     private var hardwarePointerTouchDown = false
-    private let hardwareKeyboard = XiosHardwareKeyboard()
+    // GameController keeps ONE keyChangedHandler per process, so a bridge per
+    // view meant the last window to start owned every keystroke (typing into the
+    // key window landed in another window's input connection) and closing that
+    // window cleared the handler for all of them. One shared bridge instead,
+    // routed to the host window with keyboard focus: the one whose window most
+    // recently became key or whose scene most recently activated (the same edge
+    // NativeManager.sceneBecameKey reports to iosc).
+    private static let hardwareKeyboard = XiosHardwareKeyboard()
+    private static weak var keyboardFocus: HostScreenView?
 
     // UITextInputTraits — literal keyboard (one tap one char).
     @objc var autocorrectionType: UITextAutocorrectionType = .no
@@ -124,9 +132,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         makePlaceholder()
         openInput()
         installLifecycleObservers()
-        hardwareKeyboard.start { [weak self] keysym, down, modifiers in
-            self?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
+        Self.hardwareKeyboard.start { keysym, down, modifiers in
+            Self.keyboardFocus?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
         }
+        if window?.isKeyWindow == true { takeKeyboardFocus() }
         let dl = CADisplayLink(target: self, selector: #selector(tick))
         // Asked for nothing before, which means the panel's maximum. A range lets
         // CoreAnimation throttle a thermally constrained A10 on its own instead of
@@ -539,14 +548,48 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             forName: UIScene.didActivateNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, note.object as? UIScene === self.window?.windowScene else { return }
+            if self.window?.isKeyWindow == true { self.takeKeyboardFocus() }
             self.refreshAutoKeyboardFromTraits()
         })
         lifecycleObservers.append(center.addObserver(
             forName: UIWindow.didBecomeKeyNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, note.object as? UIWindow === self.window else { return }
+            self.takeKeyboardFocus()
             self.refreshAutoKeyboardFromTraits()
         })
+        lifecycleObservers.append(center.addObserver(
+            forName: UIScene.willDeactivateNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, note.object as? UIScene === self.window?.windowScene else { return }
+            self.yieldKeyboardFocus()
+        })
+    }
+
+    /// Route the shared hardware keyboard here. Keys still held went down in the
+    /// previous focus, so release them there first (the bridge does the same on
+    /// an app-level resign) rather than delivering their key-ups to this window.
+    private func takeKeyboardFocus() {
+        guard Self.keyboardFocus !== self else { return }
+        Self.hardwareKeyboard.releasePressedKeys()
+        Self.keyboardFocus = self
+    }
+
+    /// This window is leaving (scene deactivating or torn down): release what it
+    /// holds, then hand focus to a key window still in an active scene, if any.
+    private func yieldKeyboardFocus() {
+        guard Self.keyboardFocus === self else { return }
+        Self.hardwareKeyboard.releasePressedKeys()
+        Self.keyboardFocus = nil
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes
+        where scene !== window?.windowScene && scene.activationState == .foregroundActive {
+            for w in scene.windows where w.isKeyWindow {
+                if let view = w.rootViewController?.view as? HostScreenView {
+                    Self.keyboardFocus = view
+                    return
+                }
+            }
+        }
     }
 
     private func aspectFitRect(content: CGSize, in container: CGSize) -> CGRect {
@@ -617,7 +660,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private func openInput() {
         if let h = input, iosc_input_is_open(h) { return }
         if input != nil {
-            hardwareKeyboard.releasePressedKeys()
+            if Self.keyboardFocus === self { Self.hardwareKeyboard.releasePressedKeys() }
             releaseHardwarePointerButtons()
             iosc_input_close(input); input = nil
         }
@@ -1009,7 +1052,9 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         NotificationCenter.default.removeObserver(
             self, name: UIApplication.didBecomeActiveNotification, object: nil)
         deferredCanvas = nil
-        hardwareKeyboard.stop()
+        // Release held keys through this window while its input is still open;
+        // the shared bridge itself stays up for the other windows.
+        yieldKeyboardFocus()
         releaseHardwarePointerButtons()
         displayLink?.invalidate(); displayLink = nil
         for obs in lifecycleObservers { NotificationCenter.default.removeObserver(obs) }
@@ -1048,7 +1093,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 extension HostScreenView: UIKeyInput {
     var hasText: Bool { true }
     func insertText(_ text: String) {
-        if hardwareKeyboard.isLikelyUIKitEcho() { return }
+        if Self.hardwareKeyboard.isLikelyUIKitEcho() { return }
         if !modCtrl && !modAlt && !modShift { sendTextWithKeyBreaks(text); return }
         for ch in text where keysym(for: ch) != nil {
             sendKeysym(keysym(for: ch)!, ctrl: modCtrl, alt: modAlt, shift: modShift)
@@ -1056,7 +1101,7 @@ extension HostScreenView: UIKeyInput {
         clearStickyMods()
     }
     func deleteBackward() {
-        if hardwareKeyboard.isLikelyUIKitEcho() { return }
+        if Self.hardwareKeyboard.isLikelyUIKitEcho() { return }
         sendKeysym(0xff08, ctrl: modCtrl, alt: modAlt, shift: modShift)
         clearStickyMods()
     }
