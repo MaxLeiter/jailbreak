@@ -22,8 +22,8 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
 . "$_x/lib/xlib.sh"
-OUTDIR=/Users/max/Documents/jailbreak/x11/linux-build/out
-REPODEBS=/Users/max/Documents/jailbreak/repo/debs
+OUTDIR="$XLIB_ROOT/linux-build/out"
+REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-shell-deb
 STAGE="$STAGEROOT/iosc-shell"
 VER="0.9.11"
