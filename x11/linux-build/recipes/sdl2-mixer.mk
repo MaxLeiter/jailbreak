@@ -4,7 +4,7 @@ endif
 
 SUBPROJECTS        += sdl2-mixer
 SDL2_MIXER_VERSION := 2.8.2
-DEB_SDL2_MIXER_V   ?= $(SDL2_MIXER_VERSION)+ios1
+DEB_SDL2_MIXER_V   ?= $(SDL2_MIXER_VERSION)+ios2
 
 sdl2-mixer-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/libsdl-org/SDL_mixer/releases/download/release-$(SDL2_MIXER_VERSION)/SDL2_mixer-$(SDL2_MIXER_VERSION).tar.gz)
