@@ -64,6 +64,7 @@ static AtspiEventListener *event_listener;
 static volatile sig_atomic_t pending_event_snapshot;
 
 static void client_clear_refs(struct client *c);
+static void close_client(struct client *c);
 
 static char *json_escape(const char *s)
 {
@@ -95,8 +96,7 @@ static void client_printf(struct client *c, const char *fmt, ...)
     if (n <= 0) return;
     if ((size_t)n >= sizeof(buf)) n = (int)sizeof(buf) - 1;
     if (write(c->fd, buf, (size_t)n) < 0 && (errno == EPIPE || errno == ECONNRESET)) {
-        close(c->fd);
-        c->fd = -1;
+        close_client(c);
     }
 }
 
@@ -546,10 +546,10 @@ static void snapshot_client(struct client *c)
     c->last_snapshot = g_strdup(snapshot->str);
     c->gen = global_gen++;
     client_printf(c, "{\"t\":\"reset\",\"gen\":%u}\n", c->gen);
-    if (snapshot->len > 0 && write(c->fd, snapshot->str, snapshot->len) < 0 &&
+    if (snapshot->len > 0 && c->fd >= 0 &&
+        write(c->fd, snapshot->str, snapshot->len) < 0 &&
         (errno == EPIPE || errno == ECONNRESET)) {
-        close(c->fd);
-        c->fd = -1;
+        close_client(c);
     }
     g_string_free(snapshot, TRUE);
 }
