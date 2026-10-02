@@ -142,19 +142,26 @@ void iosc_input_key(unsigned keysym, bool down, unsigned mods) {
 
 void iosc_input_text(const char *utf8) {
     if (!utf8) return;
-    size_t len = strlen(utf8);
-    if (len == 0) return;
-    if (len > 4096) {
-        // The compositor drops a record over 4096 bytes. Cut on a code point
-        // boundary: a split multi-byte sequence would reach the client as
-        // invalid UTF-8.
-        len = 4096;
-        while (len > 0 && ((unsigned char)utf8[len] & 0xC0) == 0x80) len--;
-        if (len == 0) return;
+    size_t left = strlen(utf8);
+    // The compositor drops a TEXT record over 4096 bytes, so longer text (a
+    // paste, dictation) goes out as several records, each cut on a code point
+    // boundary: a split multi-byte sequence would reach the client as invalid
+    // UTF-8. Text beyond what the send queue can hold is cut off rather than
+    // costing the connection.
+    while (left > 0 && s_fd >= 0) {
+        size_t len = left;
+        if (len > 4096) {
+            len = 4096;
+            while (len > 0 && ((unsigned char)utf8[len] & 0xC0) == 0x80) len--;
+            if (len == 0) return;
+        }
+        if (s_outq_len + sizeof(xios_msg) + len > OUTQ_MAX) return;
+        xios_msg m = xios_input_message(XIOS_IN_TEXT, 0, 0, (uint32_t)len, 0, 0);
+        m.length = (uint32_t)len;
+        send_record(&m, sizeof(m), utf8, len);
+        utf8 += len;
+        left -= len;
     }
-    xios_msg m = xios_input_message(XIOS_IN_TEXT, 0, 0, (uint32_t)len, 0, 0);
-    m.length = (uint32_t)len;
-    send_record(&m, sizeof(m), utf8, len);
 }
 
 void iosc_input_touch(int slot, int phase, int x, int y) {
