@@ -13,7 +13,7 @@
  *   panel_draw_qs()     — the quick-settings card (a second layer surface the
  *     panel maps under the status cluster): device name, date, battery gauge,
  *     Overview / Screenshot actions, over a frosted screencopy backdrop.
- *   panel_draw_window_menu() — Minimize / Maximize / Close for the focused app.
+ *   panel_draw_window_menu(): Minimize / Maximize / Close for the focused app.
  *
  * All coordinates are LOGICAL px; the caller sets a cairo scale so 1 unit = 1pt.
  */
