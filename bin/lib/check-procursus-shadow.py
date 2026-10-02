@@ -42,10 +42,18 @@ exists in the Procursus index:
 
 Waivers live in bin/lib/shadow-waivers.json: {"package": {"rule": "reason"}}.
 Procursus debs and verdicts are cached in ~/.cache/xios-shadow-check/.
+
+A check that cannot run FAILS the gate, it does not pass it: the Procursus index
+unreachable with no cached copy, a Procursus deb that will not download, a deb
+that will not unpack, a dylib nm cannot read. Each is reported as [check-error].
+(An unreachable index WITH a cached copy still runs every rule against the cache.)
+Override, deliberately and per run: ALLOW_SHADOW_SKIP=1 turns those into
+warnings and skips what could not be checked. Waivers never cover them.
 """
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import os
 import re
@@ -208,14 +216,21 @@ def main() -> int:
     if os.path.exists(verdicts_path):
         verdicts = json.load(open(verdicts_path))
 
+    allow_skip = os.environ.get("ALLOW_SHADOW_SKIP") == "1"
     index_cache = os.path.join(CACHE_DIR, f"Packages-{PROCURSUS_DIST}")
     try:
         fetch(PACKAGES_URL, index_cache)
-    except OSError:
+    except (OSError, http.client.HTTPException) as e:
         if not os.path.exists(index_cache):
-            print("shadow-check: SKIP (Procursus index unreachable, no cache)")
-            return 0
-        print("shadow-check: WARNING using cached Procursus index (fetch failed)")
+            if allow_skip:
+                print("shadow-check: SKIP (Procursus index unreachable, no cache; "
+                      "ALLOW_SHADOW_SKIP=1)", file=sys.stderr)
+                return 0
+            print(f"shadow-check: FAILED: cannot fetch {PACKAGES_URL} ({e}) and there is "
+                  "no cached copy, so nothing was checked. Retry, or set "
+                  "ALLOW_SHADOW_SKIP=1 to publish unchecked deliberately.", file=sys.stderr)
+            return 1
+        print(f"shadow-check: WARNING using cached Procursus index (fetch failed: {e})")
     procursus = parse_index(open(index_cache, encoding="utf-8").read())
 
     # newest local deb per package name
@@ -239,6 +254,18 @@ def main() -> int:
             waived += 1
             return
         errors.append(f"{pkg} [{rule}]: {msg}")
+
+    def check_error(pkg: str, msg: str) -> None:
+        # Not waivable: a waiver vouches for a divergence someone looked at, and
+        # nobody has looked at a check that never ran.
+        if allow_skip:
+            print(f"shadow-check: WARNING {pkg}: {msg} (unchecked: ALLOW_SHADOW_SKIP=1)",
+                  file=sys.stderr)
+        else:
+            errors.append(f"{pkg} [check-error]: {msg}")
+
+    check_failures = (subprocess.CalledProcessError, OSError, StopIteration,
+                      http.client.HTTPException)
 
     for pkg, (ver, path) in sorted(newest.items()):
         if pkg.endswith("-dev"):
@@ -264,6 +291,11 @@ def main() -> int:
 
         try:
             key = f"{sha256(path)}:{fields.get('SHA256', fields.get('Version'))}"
+        except OSError as e:
+            check_error(pkg, f"could not read {path}: {e}")
+            continue
+
+        try:
             if key in verdicts:
                 missing = json.loads(verdicts[key])
             else:
@@ -278,8 +310,8 @@ def main() -> int:
                 violation(pkg, "parity",
                           f"missing dylib(s) Procursus ships: {', '.join(missing[:4])}"
                           + (" ..." if len(missing) > 4 else ""))
-        except (subprocess.CalledProcessError, OSError, StopIteration) as e:
-            print(f"shadow-check: WARNING could not parity-check {pkg}: {e}")
+        except check_failures as e:
+            check_error(pkg, f"could not parity-check: {e}")
 
         # symbols: our exports must be a superset of theirs, per shared dylib.
         try:
@@ -288,6 +320,7 @@ def main() -> int:
                 dropped = json.loads(verdicts[skey])
             else:
                 dropped = {}
+                unread = []
                 with tempfile.TemporaryDirectory() as td:
                     ours_root = os.path.join(td, "ours")
                     theirs_root = os.path.join(td, "theirs")
@@ -305,17 +338,22 @@ def main() -> int:
                         ours_syms = dylib_exports(ours_f)
                         theirs_syms = dylib_exports(theirs_f)
                         if ours_syms is None or theirs_syms is None:
+                            unread.append(os.path.basename(rel))
                             continue
                         gone = sorted(theirs_syms - ours_syms)
                         if gone:
                             dropped[os.path.basename(rel)] = gone
-                verdicts[skey] = json.dumps(dropped)
+                if unread:
+                    # No verdict is cached, so the next run tries these again.
+                    check_error(pkg, f"nm could not read the exports of {', '.join(unread)}")
+                else:
+                    verdicts[skey] = json.dumps(dropped)
             for lib, gone in sorted(dropped.items()):
                 violation(pkg, "symbols",
                           f"{lib} drops {len(gone)} symbol(s) Procursus exports: "
                           + ", ".join(gone[:4]) + (" ..." if len(gone) > 4 else ""))
-        except (subprocess.CalledProcessError, OSError, StopIteration) as e:
-            print(f"shadow-check: WARNING could not symbol-check {pkg}: {e}")
+        except check_failures as e:
+            check_error(pkg, f"could not symbol-check: {e}")
 
     json.dump(verdicts, open(verdicts_path, "w"))
 
@@ -325,6 +363,9 @@ def main() -> int:
             print(f"  - {e}", file=sys.stderr)
         print(f"\n  (waive intentional divergence in {WAIVERS_PATH}: "
               '{"<package>": {"<rule>": "<reason>"}})', file=sys.stderr)
+        if any("[check-error]" in e for e in errors):
+            print("  ([check-error] means the check itself could not run; retry, or set "
+                  "ALLOW_SHADOW_SKIP=1 to skip it deliberately)", file=sys.stderr)
         return 1
     print(f"Procursus shadow check OK "
           f"({sum(1 for p in newest if p in procursus)} shadowing package(s), "

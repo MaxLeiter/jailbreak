@@ -98,6 +98,14 @@
 #                   edge request with its path, so filter on /debs/ there instead.
 #                   Retention is short (~1 day, 30 days with Observability Plus);
 #                   that is the accepted tradeoff for keeping installs static.
+#
+# OVERRIDES -- environment variables, each deliberate and for one run only:
+#   ALLOW_UNSIGNED=1           publish staging/prod without the signing key
+#   ALLOW_UNREACHABLE_INDEX=1  let the drift check skip a published index it
+#                              cannot read (check-version-collisions.py); a 404
+#                              already counts as "never deployed" without it
+#   ALLOW_SHADOW_SKIP=1        let the Procursus shadow check pass checks it could
+#                              not run (check-procursus-shadow.py)
 set -euo pipefail
 
 TARGET=prod

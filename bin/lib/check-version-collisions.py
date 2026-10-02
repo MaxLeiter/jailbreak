@@ -21,9 +21,17 @@ Usage:
   check-version-collisions.py --against git:origin/main
   check-version-collisions.py --against /path/to/Packages --warn-regressions
 
-A reference that cannot be read (404 on a repo that was never deployed, a git
-ref that does not exist) is skipped with a note, not an error, so the first
-deploy of a fresh environment is not a chicken-and-egg failure.
+A reference that is cleanly NOT THERE -- HTTP 404 on a repo that was never
+deployed, or a git ref that does not exist -- is skipped with a note, so the
+first deploy of a fresh environment is not a chicken-and-egg failure. Anything
+else that stops us reading it (connection refused, DNS, timeout, a 5xx or other
+HTTP error, a failing git command, a missing file, a body that does not parse
+as a Packages index) FAILS the gate: a drift check that cannot see the published
+index has not checked anything. Network reads are retried twice first.
+
+Override, deliberately and per run: ALLOW_UNREACHABLE_INDEX=1 turns an
+unreadable reference into a loud warning and skips just that reference; every
+other reference is still checked.
 
 Exit 0 = clean, 1 = at least one hard failure.
 """
@@ -34,6 +42,7 @@ import importlib.util
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -66,34 +75,57 @@ def parse_index(text: str) -> dict[str, dict[str, str]]:
     return out
 
 
-def read_reference(spec: str) -> tuple[str, str] | None:
-    """Resolve a reference spec to (label, Packages text), or None if absent."""
-    if spec.startswith(("http://", "https://")):
+def fetch_url(url: str) -> str | None:
+    """Body of url, or None for a clean 404. Every other failure raises."""
+    for attempt in range(3):
         try:
-            with urllib.request.urlopen(spec, timeout=30) as resp:
-                return spec, resp.read().decode("utf-8", "replace")
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                return resp.read().decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
                 return None
-            raise
-        except urllib.error.URLError as exc:
-            print(f"WARNING: cannot reach {spec}: {exc}", file=sys.stderr)
-            return None
+            if exc.code < 500 or attempt == 2:
+                raise
+        except OSError:  # URLError (refused, DNS), timeouts, resets mid-body
+            if attempt == 2:
+                raise
+        time.sleep(2 * (attempt + 1))
+    raise AssertionError("unreachable")
 
-    if spec.startswith("git:"):
+
+def read_reference(spec: str) -> tuple[str, str] | None:
+    """Resolve a reference spec to (label, Packages text).
+
+    None means cleanly absent (HTTP 404, or a git ref that does not exist); any
+    other failure raises, and so does text that does not parse as an index.
+    """
+    if spec.startswith(("http://", "https://")):
+        text = fetch_url(spec)
+        if text is None:
+            return None
+    elif spec.startswith("git:"):
         ref = spec[4:]
+        exists = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+            cwd=REPO_ROOT, capture_output=True, text=True,
+        )
+        if exists.returncode == 1:
+            return None  # the ref does not exist; anything else is a git failure
         proc = subprocess.run(
             ["git", "show", f"{ref}:repo/Packages"],
             cwd=REPO_ROOT, capture_output=True, text=True,
         )
-        if proc.returncode != 0:
-            return None
-        return spec, proc.stdout
-
-    if os.path.exists(spec):
+        if exists.returncode != 0 or proc.returncode != 0:
+            raise RuntimeError(f"git could not read {ref}:repo/Packages: "
+                               f"{(exists.stderr + proc.stderr).strip()}")
+        text = proc.stdout
+    else:
         with open(spec, encoding="utf-8", errors="replace") as fh:
-            return spec, fh.read()
-    return None
+            text = fh.read()
+
+    if text.strip() and not parse_index(text):
+        raise ValueError("no Package stanzas in it; this is not a Packages index")
+    return spec, text
 
 
 def main() -> int:
@@ -136,7 +168,11 @@ def main() -> int:
     only = {n for n in (x.strip() for x in args.only.split(",")) if n}
 
     with open(args.index, encoding="utf-8", errors="replace") as fh:
-        ours = parse_index(fh.read())
+        text = fh.read()
+    ours = parse_index(text)
+    if text.strip() and not ours:
+        print(f"ERROR: {args.index} has no Package stanzas", file=sys.stderr)
+        return 1
     if only:
         missing = only - set(ours)
         if missing:
@@ -154,7 +190,20 @@ def main() -> int:
     checked = 0
 
     for spec in args.against:
-        ref = read_reference(spec)
+        try:
+            ref = read_reference(spec)
+        except Exception as exc:  # noqa: BLE001 -- every unreadable reference is the same failure
+            if os.environ.get("ALLOW_UNREACHABLE_INDEX") == "1":
+                print(f"WARNING: cannot read {spec}: {exc}\n"
+                      "    SKIPPED because ALLOW_UNREACHABLE_INDEX=1: nothing was checked "
+                      "against it", file=sys.stderr)
+                continue
+            errors.append(
+                f"cannot read {spec}: {exc}\n"
+                f"    the drift check cannot pass without seeing the published index; "
+                f"retry, or set ALLOW_UNREACHABLE_INDEX=1 to skip it deliberately"
+            )
+            continue
         if ref is None:
             print(f"==> skipping {spec} (no index there yet)")
             continue
