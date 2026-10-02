@@ -234,13 +234,15 @@ static inline size_t c32rtomb(char *s, char32_t c32, mbstate_t *ps) {
 EOF
 fi
 
-# wayland-protocols was previously built at 1.38; foot 1.27 needs >=1.41. Our recipe now pins
-# 1.44 — force a rebuild if the installed .pc is still older (EXTRACT_TAR won't re-extract while
-# the old work dir exists, so nuke it + the stage + marker).
+# wayland-protocols was previously built at 1.38; foot 1.27 needs >=1.41. Force a rebuild if the
+# installed .pc is not the version the recipe pins (EXTRACT_TAR won't re-extract while the old
+# work dir exists, so nuke it + the stage + marker). Read the pin from the recipe: a literal here
+# went stale at the 1.49 bump and wiped the package on every run.
 WP_PC="$BB/usr/share/pkgconfig/wayland-protocols.pc"
 WP_VER=$(sed -n 's/^Version: //p' "$WP_PC" 2>/dev/null || true)
-if [ "$WP_VER" != "1.44" ]; then
-  echo "==> forcing wayland-protocols rebuild (installed='$WP_VER', want 1.44)"
+WP_WANT=$(sed -n 's/^WAYLANDPROTOCOLS_VERSION *:= *//p' /work/recipes/wayland-protocols.mk)
+if [ -n "$WP_WANT" ] && [ "$WP_VER" != "$WP_WANT" ]; then
+  echo "==> forcing wayland-protocols rebuild (installed='$WP_VER', want $WP_WANT)"
   rm -rf build_work/$XIOS_TRIPLE/wayland-protocols \
          build_stage/$XIOS_TRIPLE/wayland-protocols 2>/dev/null || true
 fi
