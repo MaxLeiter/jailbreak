@@ -1,9 +1,10 @@
 /*
  * iosc_wm_socket.c — the wm control socket (/var/jb/tmp/iosc-wm.sock).
  *
- * Split out of iosc.c. A tiny line-oriented AF_UNIX protocol that lets the Xios
- * app (and shell tooling) raise, focus and minimise windows by app_id without
- * speaking Wayland — the same raise+focus the xdg-activation path performs.
+ * Split out of iosc.c. A tiny line-oriented AF_UNIX protocol that lets ioscd
+ * (and shell tooling) raise and focus a window by app_id without speaking
+ * Wayland, using the same raise+focus the xdg-activation path performs.
+ * `raise` is the only command; anything else gets "err".
  */
 #include <wayland-server.h>
 #include <wayland-server-protocol.h>
