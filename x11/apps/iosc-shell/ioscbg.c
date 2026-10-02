@@ -122,6 +122,8 @@ static struct {
     struct widget widgets[WIDGET_MAX];
     struct desktop_pin pins[PIN_MAX];
     int   npins, pins_loaded, pin_drag_idx, pin_drag_dx, pin_drag_dy;
+    char  *pins_extra;                 /* pin lines not loaded, kept for pins_save */
+    size_t pins_extra_len;
     time_t pins_mtime;
     off_t  pins_size;
     uint64_t last_pins_check_ms;
@@ -246,6 +248,20 @@ static void pin_destroy(struct desktop_pin *p)
     memset(p, 0, sizeof *p);
 }
 
+/* pins_load keeps lines it does not load (past PIN_MAX, or not a pin it can
+ * parse) so pins_save writes them back instead of deleting them. */
+static void pins_keep_extra(const char *line)
+{
+    size_t n = strlen(line);
+    char *p = realloc(B.pins_extra, B.pins_extra_len + n + 2);
+    if (!p) return;
+    B.pins_extra = p;
+    memcpy(p + B.pins_extra_len, line, n);
+    B.pins_extra_len += n;
+    p[B.pins_extra_len++] = '\n';
+    p[B.pins_extra_len] = 0;
+}
+
 static void pins_save(void)
 {
     char path[256]; sd_desktop_pins_path(path, sizeof path);
@@ -257,6 +273,7 @@ static void pins_save(void)
         fprintf(f, "%s\t%s\t%s\t%s\t%d\t%d\n",
                 p->type[0] ? p->type : "app", p->name, p->icon, p->target, p->x, p->y);
     }
+    if (B.pins_extra) fputs(B.pins_extra, f);
     fclose(f);
 }
 
@@ -298,6 +315,9 @@ static void pins_load(void)
 {
     for (int i = 0; i < B.npins; i++) pin_destroy(&B.pins[i]);
     B.npins = 0;
+    free(B.pins_extra);
+    B.pins_extra = NULL;
+    B.pins_extra_len = 0;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
     struct stat st;
     if (stat(path, &st) == 0) {
@@ -309,11 +329,14 @@ static void pins_load(void)
     }
     FILE *f = fopen(path, "r");
     if (!f) { B.pins_loaded = 1; return; }
-    char line[768];
-    while (fgets(line, sizeof line, f) && B.npins < PIN_MAX) {
+    char line[768], raw[768];
+    while (fgets(line, sizeof line, f)) {
         /* positional tab fields with Icon allowed empty (see
          * sd_desktop_pin_exists): strsep keeps empty fields in place */
         line[strcspn(line, "\r\n")] = 0;
+        if (!line[0]) continue;
+        if (B.npins >= PIN_MAX) { pins_keep_extra(line); continue; }
+        memcpy(raw, line, sizeof raw);
         char *rest = line;
         char *type = strsep(&rest, "\t");
         char *name = strsep(&rest, "\t");
@@ -321,7 +344,10 @@ static void pins_load(void)
         char *target = strsep(&rest, "\t");
         char *xs = strsep(&rest, "\t");
         char *ys = strsep(&rest, "\t");
-        if (!type || !name || !target || !*target || !xs || !ys) continue;
+        if (!type || !name || !target || !*target || !xs || !ys) {
+            pins_keep_extra(raw);
+            continue;
+        }
         struct desktop_pin *p = &B.pins[B.npins++];
         snprintf(p->type, sizeof p->type, "%s", type);
         snprintf(p->name, sizeof p->name, "%s", name);
