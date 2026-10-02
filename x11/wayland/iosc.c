@@ -6478,9 +6478,20 @@ static int make_keymap_fd(void)
     char tmpl[256]; snprintf(tmpl, sizeof(tmpl), "%s/iosc-keymap-XXXXXX", dir);
     int fd = mkstemp(tmpl);
     if (fd < 0) return -1;
+    if (write(fd, str, size) != (ssize_t)size) { unlink(tmpl); close(fd); return -1; }
+    /* Every wl_keyboard and input-method grab is handed this same open file, and
+     * mkstemp() opens it O_RDWR: any client could ftruncate() or rewrite the
+     * keymap every other client mmaps (SIGBUS, or someone else's layout). Give
+     * them a read-only open of the file instead. */
+    int ro = open(tmpl, O_RDONLY | O_CLOEXEC);
     unlink(tmpl);
-    if (write(fd, str, size) != (ssize_t)size) { close(fd); return -1; }
-    return fd;
+    if (ro < 0) {
+        fprintf(stderr, "iosc: read-only keymap reopen failed (%s); sharing the "
+                        "writable fd\n", strerror(errno));
+        return fd;
+    }
+    close(fd);
+    return ro;
 }
 
 /* ---- zwlr_layer_shell_v1 / zwlr_layer_surface_v1 ------------------------- */
