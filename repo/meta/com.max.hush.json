@@ -1,0 +1,10 @@
+{
+  "tagline": "Fixes two iOS 17 bugs that waste battery",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "iconGlyph": "moon",
+  "description": "I found two iOS 17 bugs on my iPad that burn battery for nothing. Hush patches both. Neither fix changes anything you'd notice except the drain.\n\n**Before first unlock.** After a reboot, until you unlock once, a stale calendar alarm wakes the whole device about once a minute. The calendar daemon can't run yet, so nothing ever moves the alarm forward, and UserEventAgent keeps re-arming it. I saw anywhere from 137 to 1,418 of these wakes a day. Hush skips that one wake request, and only while the device hasn't been unlocked since boot. Every other wake goes through, and calendar alarms work normally once you unlock.\n\n**Wi-Fi settings.** While *Settings -> Wi-Fi* is open, wifid keeps feeding its whole scan cache back through its own scan observer: thousands of records for a few hundred actual access points. That costs seconds of CPU every ten seconds or so. Hush collapses those big batches to one record per access point, keeping the freshest one. Normal scans aren't touched, and anything that doesn't look exactly as expected goes through unchanged.\n\nYou can turn either fix off by setting `BFUWake` or `WiFiScan` to NO in `/var/jb/var/mobile/Library/Preferences/com.max.hush.plist`. The change applies the next time UserEventAgent or wifid starts.\n\nInstalling doesn't restart anything, so both fixes kick in after the next reboot or userspace reboot.\n\nTested against iPadOS 17.6.1. The Wi-Fi fix only switches on for iOS 17.",
+  "changelog": [
+    { "version": "0.1.0", "date": "2026-10-01", "notes": "- Initial release\n- Skip the calaccessd calendar alarm's once-a-minute system wake before first unlock\n- De-duplicate wifid's oversized scan batches by BSSID before its scan observer ingests them" }
+  ]
+}

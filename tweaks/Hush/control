@@ -1,0 +1,9 @@
+Package: com.max.hush
+Name: Hush
+Version: 0.1.0
+Architecture: iphoneos-arm64
+Description: Fixes two iOS 17 battery drains: the once-a-minute calendar alarm wake before first unlock, and wifid re-ingesting thousands of duplicate scan records while Wi-Fi settings are open.
+Maintainer: Max
+Author: Max
+Section: Tweaks
+Depends: mobilesubstrate
