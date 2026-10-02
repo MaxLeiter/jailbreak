@@ -27,3 +27,4 @@
 0035-wtf-no-readline-for-gtk-darwin.patch
 0036-restore-apple-for-macho-dylib-naming.patch
 0037-glib-ipc-dgram-socketpair-on-darwin.patch
+0038-wtf-current-executable-path-darwin.patch
