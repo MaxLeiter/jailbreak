@@ -19,9 +19,15 @@ final class HostA11yClient {
     private let logPath = "/var/jb/tmp/iosc-a11y-host.log"
 
     private var appID = ""
+    // One reader per start(). stop() bumps the generation, so a reader from an
+    // older start exits instead of looping beside the new one, and its late
+    // messages and unpublish are dropped. `fd` is the live connection, kept for
+    // send(); only the reader that opened it closes it. Both are shared by
+    // main, the reader thread and the write queue, so they sit under `lock`.
+    private let lock = NSLock()
+    private var generation = 0
     private var fd: Int32 = -1
     private var reader: Thread?
-    private var running = false
     private let writeQueue = DispatchQueue(label: "iosc-a11y-write")
 
     /// helper window id -> store (main actor only).
@@ -52,9 +58,9 @@ final class HostA11yClient {
 
     private func start() {
         guard reader == nil else { return }
-        running = true
+        let gen = currentGeneration()
         log("reader start")
-        let t = Thread { [weak self] in self?.readerLoop() }
+        let t = Thread { [weak self] in self?.readerLoop(gen) }
         t.name = "iosc-a11y-reader"
         t.stackSize = 256 * 1024
         reader = t
@@ -62,8 +68,13 @@ final class HostA11yClient {
     }
 
     private func stop() {
-        running = false
-        if fd >= 0 { close(fd); fd = -1 }
+        // Wake the reader out of read() with shutdown and let it close its own
+        // socket. Closing it here raced the reader: it could close a number
+        // the reader no longer owned, or a newer connection that reused it.
+        lock.lock()
+        generation += 1
+        if fd >= 0 { Darwin.shutdown(fd, SHUT_RDWR); fd = -1 }
+        lock.unlock()
         reader = nil
         stores.values.forEach { $0.unpublish() }
         stores.removeAll()
@@ -72,9 +83,16 @@ final class HostA11yClient {
 
     // MARK: socket
 
-    private func readerLoop() {
+    private func currentGeneration() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return generation
+    }
+
+    private func isCurrent(_ gen: Int) -> Bool { currentGeneration() == gen }
+
+    private func readerLoop(_ gen: Int) {
         var failures = 0
-        while running {
+        while isCurrent(gen) {
             let s = connectUnixSocket(sockPath)
             if s < 0 {
                 failures += 1
@@ -85,25 +103,33 @@ final class HostA11yClient {
                 continue
             }
             failures = 0
-            fd = s
+            lock.lock()
+            let current = gen == generation
+            if current { fd = s }
+            lock.unlock()
+            guard current else { close(s); return }
             log("connected path=\(sockPath); bind appid=\(appID)")
             send(["t": "bind", "appid": appID])
             send(["t": "enable", "on": true])
-            pump(s)
+            pump(s, gen)
             log("socket closed")
-            if fd >= 0 { close(fd); fd = -1 }
+            lock.lock()
+            if fd == s { fd = -1 }
+            lock.unlock()
+            close(s)
             DispatchQueue.main.async { [weak self] in
-                self?.stores.values.forEach { $0.unpublish() }
-                self?.stores.removeAll()
+                guard let self, self.isCurrent(gen) else { return }
+                self.stores.values.forEach { $0.unpublish() }
+                self.stores.removeAll()
             }
         }
     }
 
     /// Read NDJSON lines until EOF/error; hop each decoded message to main.
-    private func pump(_ s: Int32) {
+    private func pump(_ s: Int32, _ gen: Int) {
         var buf = Data()
         var chunk = [UInt8](repeating: 0, count: 16 * 1024)
-        while running {
+        while isCurrent(gen) {
             let n = read(s, &chunk, chunk.count)
             if n <= 0 { return }
             buf.append(contentsOf: chunk[0..<n])
@@ -115,7 +141,10 @@ final class HostA11yClient {
                     log("decode skip bytes=\(line.count)")
                     continue
                 }
-                DispatchQueue.main.async { [weak self] in self?.apply(m) }
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.isCurrent(gen) else { return }
+                    self.apply(m)
+                }
             }
         }
     }
@@ -135,10 +164,17 @@ final class HostA11yClient {
 
     fileprivate func send(_ obj: [String: Any]) {
         writeQueue.async { [weak self] in
-            guard let self, self.fd >= 0,
+            guard let self,
                   var data = try? JSONSerialization.data(withJSONObject: obj) else { return }
+            // A dup taken under the lock stays a valid descriptor even if the
+            // reader closes its socket while this write is in flight.
+            self.lock.lock()
+            let w = self.fd >= 0 ? dup(self.fd) : -1
+            self.lock.unlock()
+            guard w >= 0 else { return }
+            defer { close(w) }
             data.append(0x0a)
-            _ = data.withUnsafeBytes { writeAll(self.fd, bytes: $0) }
+            _ = data.withUnsafeBytes { writeAll(w, bytes: $0) }
         }
     }
 
