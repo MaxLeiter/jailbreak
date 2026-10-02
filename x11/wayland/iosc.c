@@ -2734,6 +2734,10 @@ static void popup_grab_dismiss_all(void)
     }
     g_popup_grab_count = 0;
     g_popup_grab_prev_focus = NULL;
+    /* The pre-grab window may have been unmapped meanwhile; focusing it would
+     * leave g_kbd_focus on a surface nothing clears until it is destroyed. */
+    if (prev_focus && !prev_focus->mapped)
+        prev_focus = topmost_focusable();
     if (g_kbd_focus != prev_focus)
         keyboard_set_focus(prev_focus);
     if (g_output_damage_valid) recomposite_all();
@@ -2767,6 +2771,7 @@ static void popup_grab_on_surface_gone(struct iosc_surface *s)
     if (g_popup_grab_count == 0) {
         struct iosc_surface *prev = g_popup_grab_prev_focus;
         g_popup_grab_prev_focus = NULL;
+        if (prev && !prev->mapped) prev = topmost_focusable();   /* see dismiss_all */
         if (g_kbd_focus != prev) keyboard_set_focus(prev);
     } else {
         struct iosc_surface *new_top = g_popup_grab_stack[g_popup_grab_count - 1];
@@ -3315,6 +3320,16 @@ static void surface_resource_destroy(struct wl_resource *r)
      * Neither may outlive s. */
     popup_grab_on_surface_gone(s);
     if (g_popup_grab_prev_focus == s) g_popup_grab_prev_focus = NULL;
+    /* surface_unmap() drops input focus only for a MAPPED surface, but an
+     * unmapped one can hold it too: surface_at() hands the never-mapped
+     * session-lock surface to the pointer, touch and pencil paths, so a locker
+     * that died mid-lock left them pointing at freed memory. None of them may
+     * outlive s. */
+    if (g_ptr_focus == s) g_ptr_focus = NULL;
+    touch_surface_gone(s);
+    pen_surface_gone(s);
+    constraints_surface_gone(s);
+    if (g_kbd_focus == s) keyboard_set_focus(topmost_focusable());
     s->current_buffer = NULL;
     presentation_discard_surface(s);
     struct iosc_frame *f, *tmp;
