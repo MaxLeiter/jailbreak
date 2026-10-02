@@ -458,3 +458,109 @@ Nothing here has been published. `bin/package-app.sh x11/apps/Xios` produced
 which lives in ioscd — shipped by `xios-launcher-tools`, deployed here by scp and
 NOT yet packaged. Publishing `com.max.xios` alone gives users a share sheet whose
 backend verb their ioscd does not implement. Package and publish both, or neither.
+
+## 2026-08-03 Files.app FileProvider extension — HOST-BUILT, WHOLLY UNVERIFIED ON DEVICE
+
+Publishes a shared folder into the iPad Files app so the desktop's storage stops
+being reachable only over scp. `com.max.xios 0.1.12`.
+
+### What it is
+- `XiosFileProvider.appex` inside `Xios.app/PlugIns/`, bundle id
+  `com.max.xios.fileprovider`, extension point `com.apple.fileprovider-nonui`,
+  principal class `XiosFileProvider.FileProviderExtension`.
+- An `NSFileProviderReplicatedExtension` (iOS 16+) over a real POSIX directory.
+  Not a syncing service: every call stats or writes the live filesystem.
+- Shared root is `/var/mobile/Xios`. Chosen because ioscd launches desktop GUI
+  apps as `mobile` with `HOME` from `getpwnam("mobile")->pw_dir`
+  (`x11/apps/iosc-desktop/src/ioscd.c:272`), so both sides touch the folder as the
+  same uid with no bridging daemon. Deliberately NOT `/var/mobile` itself —
+  exposing the whole iOS home to every app's document picker puts `Library/`,
+  `Media/`, and `Containers/` one swipe from deletion.
+
+### Files
+- `x11/apps/Xios/XiosFileProvider/` — `XiosSharedRoot.swift` (path/identifier
+  mapping, also compiled into the app target), `XiosItem.swift`,
+  `XiosEnumerator.swift`, `FileProviderExtension.swift`, `entitlements.plist`.
+- `x11/apps/Xios/Sources/XiosFileProviderDomain.swift` — domain registration,
+  called from `AppDelegate` after the window is up.
+
+### Design decisions worth not re-litigating
+- **Item identifiers are paths relative to the root.** Stable across reboots with
+  no sidecar database, which matters because the extension is launched on demand
+  and torn down aggressively. Cost: a rename changes identity, so the system sees
+  delete+create rather than a move. Accepted over keeping a database consistent
+  with a filesystem that four other processes also write.
+- **`enumerateChanges` always returns `.syncAnchorExpired`.** There is no change
+  journal because the writers are Linux processes that know nothing about
+  FileProvider. The system therefore re-runs `enumerateItems` against the live
+  directory. Not incremental, but it cannot serve a stale answer. Navigating into
+  the folder is always live; `XiosFileProviderDomain.signalChange()` exists for
+  passive refresh and is best-effort.
+- **Dotfiles are not hidden.** This is a Linux-facing folder; withholding files
+  from a file manager is worse than clutter.
+- **Root cannot be renamed or deleted** — refused in `deleteItem` outright, not
+  just via capability flags.
+
+### Packaging fixes: these come from the share-extension work (ef979d04)
+The extension needs the same two fixes as `XiosShare`, and it gets them from
+ef979d04 ("Xios: App Intents + share sheet, and sign nested appex bundles") on
+`claude/strange-driscoll-4d583b`, which this branch is stacked on. Nothing in
+either script is FileProvider-specific.
+- `bin/lib/build-app.sh` signs every `PlugIns/*.appex` before the outer app, each
+  with its own entitlements looked up as `<app_dir>/<Ext>/entitlements.plist`, then
+  `<app_dir>/<Ext>.entitlements`, and fails if an appex has no binary. This
+  extension resolves to `XiosFileProvider/entitlements.plist`.
+- `bin/package-app.sh` chmods each staged appex binary 0755, so the blanket 0644
+  on the payload does not leave it non-executable.
+- The WIP commit this extension was recovered from (60309b16) carried its own,
+  less complete versions of both edits. They were not brought over.
+
+### Host verification done (2026-08-03, against the WIP's own scripts)
+- `xcodegen generate` + Release `iphoneos` `xcodebuild`: **BUILD SUCCEEDED**.
+- `.appex` embeds at `Xios.app/PlugIns/XiosFileProvider.appex`, arm64 Mach-O,
+  `minos 16.0 platform IOS` matching the host app.
+- `build_app` signs the extension with its own entitlements; `ldid -e` on the
+  built appex returns exactly the path exception + amfi keys.
+- Host app entitlements unchanged by the addition.
+- Staging chmod loop verified against the real built tree: host app and extension
+  both land 0755.
+
+### Host re-check (2026-10-01, on `claude/xios-fileprovider` with ef979d04's scripts)
+- `build_app x11/apps/Xios` (xcodegen + Release `iphoneos` xcodebuild + ldid):
+  succeeds. `Xios.app/PlugIns/` holds both `XiosFileProvider.appex` and
+  `XiosShare.appex`, each an arm64 Mach-O at `minos 16.0`.
+- `ldid -e` on each binary matches its own source: `XiosFileProvider` matches
+  `XiosFileProvider/entitlements.plist`, `XiosShare` matches
+  `XiosShare/entitlements.plist`, and `Xios` matches `entitlements.plist`.
+- `bin/package-app.sh` was not run (it writes into the shared `repo/debs`), so
+  ef979d04's chmod loop has not been exercised against this extension yet.
+
+### NOT verified — every runtime claim below is open
+The iPad was in use by two other sessions, so nothing here has run on device.
+1. **Can an appex reach `/var/jb` or `/var/mobile` at all under this rootless
+   jailbreak?** This is the gating unknown. The extension runs in its own sandbox
+   and inherits none of the host app's exceptions, which is why it declares its
+   own `com.apple.security.exception.files.absolute-path.read-write`. Whether AMFI
+   honors a fakesigned exception on an appex is untested. If it does not, the
+   fallback is routing operations through a helper over a socket in
+   `/var/jb/tmp` — and whether the appex can open *that* is the same question.
+2. **Does `uicache -p` register app extensions?** Extensions are normally
+   registered by installd at install time. If uicache does not pick up PlugIns,
+   the domain will never bind and `NSFileProviderManager.add` will fail.
+3. **Does the FileProvider daemon accept a fakesigned extension identity?**
+   Registration failures are logged verbatim as `[xios-fileprovider] domain
+   registration failed: ...` — read that first during the smoke.
+4. Replicated extensions keep a system-side replica, so content is copied rather
+   than referenced. Space behavior on a full shared folder is unmeasured.
+5. No App Group is used. If any of the above forces one, note that app groups
+   normally require real provisioning.
+
+### Device smoke, in order
+1. Install the deb, then check `/var/mobile/Xios` exists after first app launch.
+2. Watch the syslog for `[xios-fileprovider]` on launch. Registration failure ends
+   the smoke — go to unknown 2 and 3 above.
+3. Files.app → Browse → confirm an "Xios" location appears.
+4. Write a file from the desktop into `/var/mobile/Xios`, confirm it appears.
+5. Save into it from Safari's download sheet, confirm the desktop sees it with
+   `mobile` ownership.
+6. Rename, move, and delete from both sides.
