@@ -1,0 +1,95 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] bmalloc: C++-only ProcessCheck + TZoneLog for the GTK port on Darwin (no Foundation)
+
+--- /dev/null	2026-10-01 20:59:52
++++ b/Source/bmalloc/bmalloc/ProcessCheckGTK.cpp	2026-10-01 20:59:52
+@@ -0,0 +1,70 @@
++/*
++ * Xios: plain C++ replacement for bmalloc/ProcessCheck.mm for the GTK port cross-built for Darwin.
++ * The Apple version asks Foundation for the bundle identifier / process name; GTK WebKit processes
++ * are bare executables, so this uses getprogname() and keeps the same decisions the .mm takes for
++ * a process without a bundle identifier. No Foundation, no ObjC runtime.
++ */
++
++#include "ProcessCheck.h"
++
++#include <cstdlib>
++#include <cstring>
++#include <mutex>
++#include <stdlib.h>
++
++namespace bmalloc {
++
++const char* processNameString()
++{
++    static constexpr size_t maxLength = 64;
++    static char name[maxLength + 1];
++    static std::once_flag onceFlag;
++    std::call_once(onceFlag, [] {
++        const char* progname = getprogname();
++        if (progname) {
++            strncpy(name, progname, maxLength);
++            name[maxLength] = '\0';
++        }
++    });
++    return name;
++}
++
++static bool nameIsOptInBinary(const char* name, bool includeDumpRenderTree)
++{
++    return !strcmp(name, "jsc")
++        || !strcmp(name, "wasm")
++        || (includeDumpRenderTree && !strcmp(name, "DumpRenderTree"))
++        || !strncmp(name, "test", 4)
++        || (includeDumpRenderTree && !strncmp(name, "Test", 4));
++}
++
++bool gigacageEnabledForProcess()
++{
++    return nameIsOptInBinary(processNameString(), true);
++}
++
++bool shouldAllowMiniMode()
++{
++    bool isApplication = false;
++    bool isWebKitProcess = false;
++    if (const char* serviceName = getenv("XPC_SERVICE_NAME")) {
++        static constexpr char appPrefix[] = "application.";
++        static constexpr char webKitPrefix[] = "com.apple.WebKit.";
++        isApplication = !strncmp(serviceName, appPrefix, sizeof(appPrefix) - 1);
++        isWebKitProcess = !strncmp(serviceName, webKitPrefix, sizeof(webKitPrefix) - 1);
++    }
++    return !isApplication && !isWebKitProcess;
++}
++
++bool shouldProcessUnconditionallyUseBmalloc()
++{
++    static bool result;
++    static std::once_flag onceFlag;
++    std::call_once(onceFlag, [] {
++        const char* name = processNameString();
++        result = !strcmp(name, "jsc") || !strcmp(name, "wasm") || !strncmp(name, "test", 4);
++    });
++    return result;
++}
++
++} // namespace bmalloc
+--- a/Source/bmalloc/CMakeLists.txt	2026-10-01 20:59:52
++++ b/Source/bmalloc/CMakeLists.txt	2026-10-01 20:59:52
+@@ -633,8 +633,16 @@
+ endif ()
+ 
+ if (APPLE)
++    list(APPEND bmalloc_SOURCES
++        bmalloc/TZoneLog.cpp
++    )
++endif ()
++
++if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT APPLE)
++    # GTK port on Darwin (APPLE is shadowed): TZoneLog is plain C++; ProcessCheck has no Foundation.
+     list(APPEND bmalloc_SOURCES
+         bmalloc/TZoneLog.cpp
++        bmalloc/ProcessCheckGTK.cpp
+     )
+ endif ()
+ 

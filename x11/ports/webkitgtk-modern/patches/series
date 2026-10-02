@@ -7,3 +7,10 @@
 0015-gtk-darwin-skip-webkitlegacy.patch
 0016-libpas-no-ulock-flags-api-for-gtk-darwin.patch
 0017-wtf-memory-footprint-darwin-for-gtk.patch
+0018-gtk-on-darwin-is-not-apple-port.patch
+0019-wtf-export-reason-spi-header-on-darwin.patch
+0020-wtf-process-entitlement-stub-for-gtk-darwin.patch
+0021-wtf-export-darwin-spi-headers-for-gtk.patch
+0022-wtf-oslog-printstream-for-gtk-darwin.patch
+0023-no-gnu-ld-undefined-flag-on-darwin.patch
+0024-bmalloc-process-check-cxx-for-gtk-darwin.patch

@@ -1,0 +1,21 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] GTK port on Darwin: do not take the Apple-port CMake branches (frameworks, Cocoa sources)
+
+--- a/Source/cmake/WebKitCommon.cmake	2026-10-01 20:17:40
++++ b/Source/cmake/WebKitCommon.cmake	2026-10-01 20:17:40
+@@ -94,6 +94,15 @@
+ 
+     string(TOLOWER ${PORT} WEBKIT_PORT_DIR)
+ 
++    # Xios: the GTK port is cross-built for Darwin (iOS). CMake sets APPLE for that system name,
++    # which selects the Apple-port branches throughout the tree (framework bundles in WebKitFS,
++    # Cocoa/CF source lists, WebKitLegacy). None of that applies to the GTK port, so shadow it for
++    # the rest of the project. CMAKE_SYSTEM_NAME-keyed Darwin branches (PlatformGTK.cmake) are
++    # unaffected.
++    if (APPLE AND PORT STREQUAL "GTK")
++        set(APPLE OFF)
++    endif ()
++
+     # -----------------------------------------------------------------------------
+     # Check the CMake generator.
+     # -----------------------------------------------------------------------------
