@@ -20,7 +20,7 @@ WEBKITGTK_MODERN_VERSION := 2.54.0
 # Immutable commit of tag webkitgtk-2.54.0 (peeled), used to hydrate the files the release
 # tarball prunes for Apple ports.
 WEBKITGTK_MODERN_COMMIT  := 5220e80b97a253c60ed899361654142ab5021998
-DEB_WEBKITGTK_MODERN_V   ?= $(WEBKITGTK_MODERN_VERSION)+ios2
+DEB_WEBKITGTK_MODERN_V   ?= $(WEBKITGTK_MODERN_VERSION)+ios3
 WEBKIT_NINJA_JOBS        ?= 6
 
 # Hydration must happen BEFORE the patch stack: patches 0006 etc. edit files the tarball prunes
