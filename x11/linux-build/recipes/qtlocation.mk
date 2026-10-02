@@ -15,6 +15,10 @@ qtlocation-setup: setup
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 	$(call QT6_APPLY_CVE,qtlocation)
+	# qtlocation's top-level CMake lists Test/QuickTest among the targets it hard-asserts (tests only); our Qt has
+	# FEATURE_testlib=OFF, so the module would otherwise be skipped silently ("TARGET Qt::Test is not met").
+	sed -i 's/ Test QuickTest / /' $(BUILD_WORK)/qtlocation/CMakeLists.txt
+	grep -q "Qml Quick Network Positioning" $(BUILD_WORK)/qtlocation/CMakeLists.txt
 
 ifneq ($(wildcard $(BUILD_WORK)/qtlocation/.build_complete),)
 qtlocation:
@@ -25,8 +29,8 @@ qtlocation: qtlocation-setup
 	cd $(BUILD_WORK)/qtlocation/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS)
-	+ninja -C $(BUILD_WORK)/qtlocation/build
-	+DESTDIR="$(BUILD_STAGE)/qtlocation" ninja -C $(BUILD_WORK)/qtlocation/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtlocation/build
+	+DESTDIR="$(BUILD_STAGE)/qtlocation" ninja -j12 -C $(BUILD_WORK)/qtlocation/build install
 	$(call AFTER_BUILD,copy)
 endif
 

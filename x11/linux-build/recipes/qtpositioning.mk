@@ -25,8 +25,8 @@ qtpositioning: qtpositioning-setup
 	cd $(BUILD_WORK)/qtpositioning/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS)
-	+ninja -C $(BUILD_WORK)/qtpositioning/build
-	+DESTDIR="$(BUILD_STAGE)/qtpositioning" ninja -C $(BUILD_WORK)/qtpositioning/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtpositioning/build
+	+DESTDIR="$(BUILD_STAGE)/qtpositioning" ninja -j12 -C $(BUILD_WORK)/qtpositioning/build install
 	$(call AFTER_BUILD,copy)
 endif
 

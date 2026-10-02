@@ -29,8 +29,8 @@ qt5compat: qt5compat-setup
 	cd $(BUILD_WORK)/qt5compat/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS)
-	+ninja -C $(BUILD_WORK)/qt5compat/build
-	+DESTDIR="$(BUILD_STAGE)/qt5compat" ninja -C $(BUILD_WORK)/qt5compat/build install
+	+ninja -j12 -C $(BUILD_WORK)/qt5compat/build
+	+DESTDIR="$(BUILD_STAGE)/qt5compat" ninja -j12 -C $(BUILD_WORK)/qt5compat/build install
 	$(call AFTER_BUILD,copy)
 endif
 

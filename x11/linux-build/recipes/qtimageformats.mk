@@ -32,8 +32,8 @@ qtimageformats: qtimageformats-setup
 		-DFEATURE_system_webp=OFF \
 		-DFEATURE_mng=OFF \
 		-DFEATURE_jasper=OFF
-	+ninja -C $(BUILD_WORK)/qtimageformats/build
-	+DESTDIR="$(BUILD_STAGE)/qtimageformats" ninja -C $(BUILD_WORK)/qtimageformats/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtimageformats/build
+	+DESTDIR="$(BUILD_STAGE)/qtimageformats" ninja -j12 -C $(BUILD_WORK)/qtimageformats/build install
 	$(call AFTER_BUILD,copy)
 endif
 

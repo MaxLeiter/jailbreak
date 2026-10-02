@@ -49,6 +49,12 @@ download() { # <tarball>
 }
 mkdir -p build_source
 
+# Host qtbase 6.10 was configured with xkbcommon + wayland + dbus ON, so ITS cmake packages find_dependency() them:
+# every host module configure needs the same host -dev packages in THIS (fresh) container, or Qt6Gui silently fails to
+# load (OPTIONAL_COMPONENTS Gui + QUIET) and Qt6::GuiPrivate is "non-existent".
+apt-get update >/dev/null 2>&1 || true
+apt-get install -y --no-install-recommends libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+
 # --- stage 1: host module tools into the existing host Qt (one-time each, marker-gated) ---
 # Native builds against the host qtbase; bundled 3rdparty where possible. Build dirs live in
 # build_tools/ so a failed run can resume; wiped after install.
@@ -85,7 +91,7 @@ host_module qtshadertools bin/qsb
 # FEATURE_qml_profiler=ON, so a host tree built before that flag existed is correctly detected
 # as stale and rebuilt, rather than matching the qmlcachegen marker and silently skipping a
 # host Qt6QmlTools that the cross build needs (see recipes/qtdeclarative.mk).
-host_module qtdeclarative bin/qmlprofiler -DFEATURE_qml_jit=OFF -DFEATURE_qml_profiler=ON -DFEATURE_qml_preview=ON
+host_module qtdeclarative libexec/qmlcachegen -DFEATURE_qml_jit=OFF -DFEATURE_qml_profiler=OFF -DFEATURE_qml_preview=OFF
 # qtwaylandscanner now comes from host qtbase (Qt 6.10 moved the Wayland client into qtbase; build-qt.sh stage 1
 # builds it with FEATURE_wayland=ON). The cross builds also find_program() the plain wayland-scanner on the host.
 apt-get update >/dev/null 2>&1 || true
@@ -110,6 +116,17 @@ cat > build_tools/cxx-nounused <<'EOF'
 exec aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-line-argument
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
+# Qt 6.10 builds bundled glslang/SPIRV-Cross as STATIC archives. The image's `ar` writes GNU-format archives that
+# ld64 rejects ("unknown-unsupported file format 0x21 0x3C 0x61 0x72 0x63 0x68"); use llvm-ar in Darwin format.
+cat > build_tools/ar-darwin <<'EOF'
+#!/usr/bin/env bash
+exec /usr/lib/llvm-19/bin/llvm-ar --format=darwin "$@"
+EOF
+cat > build_tools/ranlib-darwin <<'EOF'
+#!/usr/bin/env bash
+exec /usr/lib/llvm-19/bin/llvm-ranlib "$@"
+EOF
+chmod +x build_tools/ar-darwin build_tools/ranlib-darwin
 
 # --- stage 2: Procursus cross builds (recipes + control files, then make <target>-package) ---
 echo "==> installing qt module recipes into makefiles/"

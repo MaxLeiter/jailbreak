@@ -37,8 +37,8 @@ qttools: qttools-setup
 		-DFEATURE_qtattributionsscanner=OFF \
 		-DFEATURE_qtdiag=OFF \
 		-DFEATURE_qtplugininfo=OFF
-	+ninja -C $(BUILD_WORK)/qttools/build
-	+DESTDIR="$(BUILD_STAGE)/qttools" ninja -C $(BUILD_WORK)/qttools/build install
+	+ninja -j12 -C $(BUILD_WORK)/qttools/build
+	+DESTDIR="$(BUILD_STAGE)/qttools" ninja -j12 -C $(BUILD_WORK)/qttools/build install
 	$(call AFTER_BUILD,copy)
 endif
 

@@ -27,7 +27,8 @@ qtdeclarative:
 else
 qtdeclarative: qtdeclarative-setup
 	mkdir -p $(BUILD_WORK)/qtdeclarative/build
-# qml_profiler/qml_preview's tools/ subdirs pass the `NOT IOS` gate (we masquerade as
+# 6.10 lane: qml_profiler/qml_preview are OFF on host AND target (they require QtNetwork+qml_network, which the host
+# Qt does not build; neither tool is useful on device). Historical note for 6.6: qml_profiler/qml_preview's tools/ subdirs pass the `NOT IOS` gate (we masquerade as
 # Darwin), but a cross build hard-requires every gated tool to also exist in the HOST
 # Qt6QmlTools package — build-qt-modules.sh's host_module build passes the matching
 # -DFEATURE_qml_profiler/preview=ON so both sides agree.
@@ -37,12 +38,14 @@ qtdeclarative: qtdeclarative-setup
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS) \
 		-DFEATURE_qml_jit=OFF \
-		-DFEATURE_qml_profiler=ON \
-		-DFEATURE_qml_preview=ON
+		-DFEATURE_quickcontrols2_macos=OFF \
+		-DFEATURE_quickcontrols2_windows=OFF \
+		-DFEATURE_qml_profiler=OFF \
+		-DFEATURE_qml_preview=OFF
 # OOM guard (7.7GiB Docker VM, 16-way default ninja): qmldom TUs are the memory
 # hogs; full-speed pass keeps its survivors, -j2 retry finishes the stragglers.
-	+ninja -C $(BUILD_WORK)/qtdeclarative/build || ninja -C $(BUILD_WORK)/qtdeclarative/build -j2
-	+DESTDIR="$(BUILD_STAGE)/qtdeclarative" ninja -C $(BUILD_WORK)/qtdeclarative/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtdeclarative/build || ninja -C $(BUILD_WORK)/qtdeclarative/build -j2
+	+DESTDIR="$(BUILD_STAGE)/qtdeclarative" ninja -j12 -C $(BUILD_WORK)/qtdeclarative/build install
 	$(call AFTER_BUILD,copy)
 endif
 

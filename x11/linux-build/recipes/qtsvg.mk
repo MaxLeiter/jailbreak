@@ -26,8 +26,8 @@ qtsvg: qtsvg-setup
 	cd $(BUILD_WORK)/qtsvg/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS)
-	+ninja -C $(BUILD_WORK)/qtsvg/build
-	+DESTDIR="$(BUILD_STAGE)/qtsvg" ninja -C $(BUILD_WORK)/qtsvg/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtsvg/build
+	+DESTDIR="$(BUILD_STAGE)/qtsvg" ninja -j12 -C $(BUILD_WORK)/qtsvg/build install
 	$(call AFTER_BUILD,copy)
 endif
 
