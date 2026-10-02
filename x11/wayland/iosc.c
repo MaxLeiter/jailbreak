@@ -3485,7 +3485,7 @@ static void decoration_manager_get(struct wl_client *c, struct wl_resource *r,
                                    uint32_t id, struct wl_resource *toplevel)
 {
     struct iosc_surface *s = wl_resource_get_user_data(toplevel);
-    if (s->xdg_decoration) {
+    if (s && s->xdg_decoration) {
         wl_resource_post_error(r, ZXDG_TOPLEVEL_DECORATION_V1_ERROR_ALREADY_CONSTRUCTED,
                                "toplevel already has a decoration object");
         return;
@@ -3493,8 +3493,9 @@ static void decoration_manager_get(struct wl_client *c, struct wl_resource *r,
     struct wl_resource *dr = wl_resource_create(c, &zxdg_toplevel_decoration_v1_interface,
                                                 wl_resource_get_version(r), id);
     if (!dr) { wl_client_post_no_memory(c); return; }
-    s->xdg_decoration = dr;
     wl_resource_set_implementation(dr, &decoration_impl, s, decoration_resource_destroy);
+    if (!s) return;   /* toplevel's wl_surface already destroyed; leave the object inert */
+    s->xdg_decoration = dr;
     decoration_configure_client_side(s);
 }
 static const struct zxdg_decoration_manager_v1_interface decoration_manager_impl = {
@@ -3665,6 +3666,9 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
 
 static void popup_send_configure(struct iosc_surface *s, int token)
 {
+    /* The client may already have destroyed the xdg_surface (a defunct-role
+     * protocol violation we do not police); there is nothing to configure. */
+    if (!s->xdg_popup || !s->xdg_surface) return;
     /* xdg_popup.configure is sent before the client attaches its first buffer,
      * so its size comes from the xdg_positioner snapshot—not from the current
      * buffer (which is necessarily absent on the initial configure). Falling
@@ -3760,14 +3764,16 @@ static void popup_reposition(struct wl_client *c, struct wl_resource *r,
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
     struct iosc_positioner *p = wl_resource_get_user_data(positioner);
-    if (s && p) {
-        s->popup_positioner = *p;
-        s->popup_positioner_set = 1;
-    }
-    if (s && s->mapped) output_damage_add_surface(s);
+    if (!s || !p) return;   /* wl_surface already destroyed: the popup is inert */
+    s->popup_positioner = *p;
+    s->popup_positioner_set = 1;
+    /* A layer-shell popup has no parent until zwlr_layer_surface_v1.get_popup,
+     * which places it from the snapshot just taken; popup_place() needs one. */
+    if (!s->parent) return;
+    if (s->mapped) output_damage_add_surface(s);
     popup_place(s, p);
     popup_send_configure(s, (int)token);
-    if (s && s->mapped) {
+    if (s->mapped) {
         output_damage_add_surface(s);
         recomposite_all();
     }
