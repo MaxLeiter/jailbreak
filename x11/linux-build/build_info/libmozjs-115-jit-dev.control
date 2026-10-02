@@ -6,7 +6,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libmozjs-115-jit-0 (>= @DEB_MOZJSJIT_V@)
 Provides: libmozjs-115-dev
 Conflicts: libmozjs-115-dev
-Replaces: libmozjs-115-dev
+Replaces: libmozjs-115-dev, libicu-dev
 Section: Development
 Homepage: https://spidermonkey.dev/
 Description: JavaScript engine (SpiderMonkey 115, JIT), development files
