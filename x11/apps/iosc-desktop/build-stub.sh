@@ -20,6 +20,9 @@ mkdir -p "$OUT"
 echo "==> testing trusted desktop-entry parser"
 bash "$HERE/test-desktop-entry.sh"
 
+echo "==> testing ioscd's libiosexec exec routing"
+bash "$HERE/test-iosexec.sh"
+
 SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun -sdk iphoneos -f clang)"
 MIN="-miphoneos-version-min=16.0"
@@ -31,9 +34,16 @@ echo "==> compiling IOSCLaunch (launcher stub, UIKit)"
   -framework UIKit -framework Foundation \
   "$SRC/IOSCLaunch.m" -o "$OUT/IOSCLaunch"
 
+# ioscd execs through Procursus libiosexec so "#!/bin/sh" Exec targets work on
+# rootless (src/xios-iosexec.h). Weak-linked against the in-tree link stub;
+# the rpath is where libiosexec1 installs the dylib for the selected prefix.
+IOSEXEC_RPATH="${XIOS_PREFIX-/var/jb}/usr/lib"
 echo "==> compiling ioscd (root daemon, CLI)"
 "$CLANG" -arch arm64 -target "$TARGET" -isysroot "$SDK" $MIN -O2 -Wall \
-  "$SRC/ioscd.c" "$SRC/xios-desktop-entry.c" -o "$OUT/ioscd"
+  "$SRC/ioscd.c" "$SRC/xios-desktop-entry.c" \
+  -L"$HERE/sdk" -weak-liosexec -Wl,-rpath,"$IOSEXEC_RPATH" \
+  -o "$OUT/ioscd"
+bash "$HERE/test-iosexec.sh" --binary "$OUT/ioscd"
 
 echo "==> pseudo-signing with ldid"
 xsign "$OUT/IOSCLaunch" "$HERE/launcher-ent.xml"
