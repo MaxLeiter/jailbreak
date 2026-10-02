@@ -4,3 +4,6 @@ iosurface-mach-ipc.patch
 ios-app-real-angle-pkgconfig.patch
 ios-app-angle-compat.patch
 ios-app-webgl-ios-enable.patch
+ios-app-fixups-1.patch
+ios-app-fixups-2.patch
+ios-app-fixups-3.patch

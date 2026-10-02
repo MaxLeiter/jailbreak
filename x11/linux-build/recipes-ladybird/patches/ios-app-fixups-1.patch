@@ -1,0 +1,87 @@
+diff --git a/Libraries/LibCore/IOSurface.cpp b/Libraries/LibCore/IOSurface.cpp
+index fbd31aabe9..f7b3e3a7c9 100644
+--- a/Libraries/LibCore/IOSurface.cpp
++++ b/Libraries/LibCore/IOSurface.cpp
+@@ -203,7 +203,7 @@ void* IOSurfaceHandle::data_of_plane(size_t plane) const
+ 
+ bool IOSurfaceHandle::lock_read_only() const
+ {
+-    return IOSurfaceLock(m_ref_wrapper->ref, kIOSurfaceLockReadOnly, nullptr) == kIOReturnSuccess;
++    return IOSurfaceLock(m_ref_wrapper->ref, kIOSurfaceLockReadOnly, nullptr) == 0; // kIOReturnSuccess (IOKit/IOReturn.h is not in the iOS SDK)
+ }
+ 
+ void IOSurfaceHandle::unlock_read_only() const
+diff --git a/Libraries/LibDevTools/CMakeLists.txt b/Libraries/LibDevTools/CMakeLists.txt
+index e5e04579d9..a896b3eab1 100644
+--- a/Libraries/LibDevTools/CMakeLists.txt
++++ b/Libraries/LibDevTools/CMakeLists.txt
+@@ -44,7 +44,7 @@ set(SOURCES
+     StorageHelpers.cpp
+ )
+ 
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     list(APPEND SOURCES LaunchApplicationMacOS.mm)
+     set_source_files_properties(LaunchApplicationMacOS.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+ endif()
+diff --git a/Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp b/Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp
+index 6cb86a8f8e..a5f2836f86 100644
+--- a/Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp
++++ b/Libraries/LibWasm/AbstractMachine/BytecodeInterpreter.cpp
+@@ -176,7 +176,7 @@ static void compiled_fault_signal_handler(int signal, siginfo_t* info, void* con
+     auto* uc = static_cast<ucontext_t*>(context);
+ 
+     auto redirect_to_trampoline = [&] {
+-#        if defined(AK_OS_MACOS)
++#        if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #            if ARCH(AARCH64)
+         uc->uc_mcontext->__ss.__pc = reinterpret_cast<uintptr_t>(&wasm_compiled_fault_trampoline);
+ #            elif ARCH(X86_64)
+@@ -202,7 +202,7 @@ static void compiled_fault_signal_handler(int signal, siginfo_t* info, void* con
+     }
+ 
+     if (recovery && (signal == SIGILL || signal == SIGFPE)) {
+-#        if defined(AK_OS_MACOS)
++#        if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #            if ARCH(AARCH64)
+         auto pc = static_cast<FlatPtr>(uc->uc_mcontext->__ss.__pc);
+ #            elif ARCH(X86_64)
+diff --git a/Libraries/LibWebView/CrashReport.cpp b/Libraries/LibWebView/CrashReport.cpp
+index 55a81983f1..455da9f594 100644
+--- a/Libraries/LibWebView/CrashReport.cpp
++++ b/Libraries/LibWebView/CrashReport.cpp
+@@ -215,7 +215,7 @@ ErrorOr<void> CrashReport::save(int wait_status, ByteString const& path)
+         struct stat status {};
+         if (fstatat(directory.fd(), name.characters(), &status, AT_SYMLINK_NOFOLLOW) != 0 || !S_ISREG(status.st_mode) || status.st_uid != getuid())
+             continue;
+-#    if defined(AK_OS_MACOS)
++#    if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+         reports.append({ move(name), status.st_mtimespec });
+ #    else
+         reports.append({ move(name), status.st_mtim });
+diff --git a/Meta/CMake/ladybird_helper_processes.cmake b/Meta/CMake/ladybird_helper_processes.cmake
+index 885588ca9f..1cf3881681 100644
+--- a/Meta/CMake/ladybird_helper_processes.cmake
++++ b/Meta/CMake/ladybird_helper_processes.cmake
+@@ -13,7 +13,7 @@ if (ENABLE_CRANELIFT_JIT)
+ endif()
+ 
+ # Kills the helpers when the Browser is gone, which the kernel cannot do on macOS.
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     list(APPEND ladybird_helper_processes ProcessReaper)
+ endif()
+ 
+diff --git a/Services/CMakeLists.txt b/Services/CMakeLists.txt
+index b4a4d8b978..8eec3a7589 100644
+--- a/Services/CMakeLists.txt
++++ b/Services/CMakeLists.txt
+@@ -2,7 +2,7 @@
+ # are deferred; app builds re-enable Compositor via recipes-ladybird/patches.
+ add_subdirectory(ImageDecoder)
+ add_subdirectory(MediaServer)
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     add_subdirectory(ProcessReaper)
+ endif()
+ add_subdirectory(RequestServer)

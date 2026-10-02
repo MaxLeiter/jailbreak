@@ -14,13 +14,15 @@
 #include <LibGfx/Point.h>
 #include <LibGfx/Rect.h>
 #include <LibGfx/Size.h>
-#include <LibWeb/PixelUnits.h>
+#include <LibWebCommon/PixelUnits.h>
 #include <LibWebView/ViewImplementation.h>
 
 namespace LadybirdIOS {
 
 class WebViewBridge final : public WebView::ViewImplementation {
 public:
+    AK_ALLOC_WITH_KMALLOC;
+
     static NonnullOwnPtr<WebViewBridge> create(Gfx::IntSize viewport_size, float device_pixel_ratio);
     virtual ~WebViewBridge() override = default;
 

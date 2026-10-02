@@ -214,9 +214,9 @@ export PKG_CONFIG_LIBDIR="$PKG_CONFIG_DIRS"
 export LB_SHIM="$SHIM"
 export LB_HOST_GENERATE_INTERPRETER_LAYOUT="$HOST/generate_interpreter_layout"
 export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
-CMAKE_UNSET_ARGS=()
+CMAKE_UNSET_ARGS=(-Uskia_* -UPKG_skia*)   # re-read skia.pc (frameworks rewritten to -Wl,-framework,NAME above)
 if [ "$APP_GPU_ENABLED" -eq 1 ]; then
-  CMAKE_UNSET_ARGS=(-UEGL_* -UGLESv2_*)
+  CMAKE_UNSET_ARGS+=(-UEGL_* -UGLESv2_*)
 fi
 cd "$WORK"
 # reuse ladybird-build's CMakeCache (incremental); cmake re-run picks up the new UI/iOS + Compositor

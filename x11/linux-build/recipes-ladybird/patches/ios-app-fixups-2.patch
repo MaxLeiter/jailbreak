@@ -1,0 +1,12 @@
+diff --git a/Libraries/LibDevTools/CMakeLists.txt b/Libraries/LibDevTools/CMakeLists.txt
+index a896b3eab1..d70947bc01 100644
+--- a/Libraries/LibDevTools/CMakeLists.txt
++++ b/Libraries/LibDevTools/CMakeLists.txt
+@@ -52,6 +52,6 @@ endif()
+ ladybird_lib(LibDevTools devtools EXPLICIT_SYMBOL_EXPORT)
+ target_link_libraries(LibDevTools PRIVATE LibCore LibFileSystem LibHTTP LibTextCodec LibURL LibWebCommon)
+ 
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     target_link_libraries(LibDevTools PRIVATE "-framework AppKit")
+ endif()

@@ -37,6 +37,8 @@ Web::MouseEvent mouse_event_at(LadybirdWebView* view, CGPoint at, Web::MouseEven
         button, // buttons held
         current_modifiers(),
         0, 0,   // wheel_delta_x/y
+        Web::WheelDeltaPrecision::Discrete,
+        Web::ScrollGesturePhase::None,
         1,      // click_count
         nullptr,
     };
@@ -58,6 +60,8 @@ Web::MouseEvent wheel_event(LadybirdWebView* view, CGPoint at, double delta_x, d
         Web::UIEvents::MouseButton::None,
         current_modifiers(),
         delta_x, delta_y,
+        Web::WheelDeltaPrecision::Precise, // UIKit pan deltas are exact points
+        Web::ScrollGesturePhase::None,
         0,
         nullptr,
     };
