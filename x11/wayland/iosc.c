@@ -1410,9 +1410,13 @@ static uint32_t native_window_flags(struct iosc_surface *s)
     return flags;
 }
 
+/* Window titles and app ids reach the iPad's own UI (iosc-host makes them
+ * scene titles, shown in the app switcher), so none are sent while the session
+ * is locked: a terminal's title would show what is running under the lock.
+ * native_recomposite_now() re-announces every window on unlock. */
 static void native_update_window_metadata(struct iosc_surface *s)
 {
-    if (!g_native_mode || !native_toplevel_canvas_live(s))
+    if (!g_native_mode || g_slock.locked || !native_toplevel_canvas_live(s))
         return;
     xios_canvas_announce(s->window_id, s->app_id, s->title, native_window_flags(s));
 }
@@ -1561,6 +1565,10 @@ static void native_recomposite_now(void)
         }
         painted += native_composite_toplevel(s);
     }
+    if (lock_changed && !locked)
+        for (int i = 0; i < g_nmapped; i++)
+            if (g_mapped[i]->role == IOSC_ROLE_TOPLEVEL)
+                native_update_window_metadata(g_mapped[i]);   /* titles held back */
     if (iosc_env_truthy(getenv("IOSC_NATIVE_STATS"))) {
         static uint64_t cycles;
         static uint64_t canvases;
@@ -2912,7 +2920,9 @@ static void surface_map(struct iosc_surface *s)
     g_nmapped++;
     s->mapped = 1;
     if (s->role == IOSC_ROLE_LAYER) work_area_recompute();
-    if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL) {
+    /* Locked: no new iPad window (it would carry the app id and title); the
+     * canvas is created and announced on unlock by native_recomposite_now(). */
+    if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && !g_slock.locked) {
         int cw = 0, ch = 0;
         if (native_canvas_size_for_surface(s, &cw, &ch) == 0 &&
             native_ensure_canvas(s, cw, ch, 0) == 0) {
@@ -4260,8 +4270,8 @@ static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char 
   if (s) {
       snprintf(s->title, sizeof(s->title), "%s", t ? t : "");
       ftl_broadcast_title(s);
-      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped)
-          xios_canvas_title(s->window_id, s->title);
+      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && !g_slock.locked)
+          xios_canvas_title(s->window_id, s->title);   /* else sent on unlock */
   }
   if (iosc_debug()) fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
 static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a)
@@ -4269,8 +4279,7 @@ static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char
   if (s) {
       snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : "");
       ftl_broadcast_app_id(s);
-      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && s->native_canvas_live)
-          xios_canvas_announce(s->window_id, s->app_id, s->title, native_window_flags(s));
+      native_update_window_metadata(s);   /* native: checks mapped, canvas, lock */
   }
   if (iosc_debug()) fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
