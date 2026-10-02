@@ -74,7 +74,7 @@ CI (`.github/workflows/ci.yml`, job `APT index`) validates instead: regenerate f
 ### Guardrails that will stop you
 
 - `make-repo.py` with no `--from-index` **refuses** when `repo/debs` is missing payloads for more than 5% of the index. A worktree always looks like that, because `repo/debs` is gitignored. Use `--from-index`; it regenerates the whole site and index from the committed `Packages` with no payloads at all. (`MAKE_REPO_ALLOW_SHRINK=1` if you truly are retiring packages.)
-- A Claude Code PreToolUse hook (`bin/lib/guard-repo-ops.sh`, installed by `bin/setup-repo-guards.sh`) blocks a bare `sync-packages-to-repo.py` — it applies by default and deletes debs — and blocks hand-edits of generated output under `repo/`. Edit the generator or `repo/meta/<pkg>.json` instead.
+- A Claude Code PreToolUse hook (`bin/lib/guard-repo-ops.sh`, installed by `bin/setup-repo-guards.sh`) blocks hand-edits of generated output under `repo/`. Edit the generator or `repo/meta/<pkg>.json` instead. `x11/tools/sync-packages-to-repo.py` guards itself: it is dry-run by default, and `--apply` needs an explicit `--only`.
 
 ## Parallel Branches and Version Drift
 
