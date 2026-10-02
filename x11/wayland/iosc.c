@@ -612,9 +612,7 @@ static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
     struct iosc_frame *f, *tmp;
     wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
         wl_callback_send_done(f->resource, time);
-        wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
+        wl_resource_destroy(f->resource);   /* frame_callback_destroy frees f */
     }
 }
 
@@ -3002,6 +3000,18 @@ static void surface_damage(struct wl_client *c, struct wl_resource *r,
           output_damage_add_surface_rect(s, x, y, w, h);
   } }
 
+/* The wl_callback can die before we send `done`: wl_client_destroy() frees a
+ * disconnecting client's objects in id order, and a frame callback usually
+ * reuses a low id, so it goes before its surface. Unlinking here (not in the
+ * code that sends `done`) keeps the surface's lists from holding a freed
+ * resource that the surface destructor would then destroy a second time. */
+static void frame_callback_destroy(struct wl_resource *r)
+{
+    struct iosc_frame *f = wl_resource_get_user_data(r);
+    wl_list_remove(&f->link);
+    free(f);
+}
+
 static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t cb)
 {
     struct iosc_surface *s = wl_resource_get_user_data(r);
@@ -3009,7 +3019,8 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
     if (!f) { wl_client_post_no_memory(c); return; }
     f->resource = wl_resource_create(c, &wl_callback_interface, 1, cb);
     if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
-    /* No impl/user-data: a callback has no requests; we destroy it after done. */
+    /* No impl: a callback has no requests; we destroy it after done. */
+    wl_resource_set_implementation(f->resource, NULL, f, frame_callback_destroy);
     wl_list_insert(&s->pending_frame_callbacks, &f->link);
 }
 static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r,
@@ -3307,16 +3318,10 @@ static void surface_resource_destroy(struct wl_resource *r)
     s->current_buffer = NULL;
     presentation_discard_surface(s);
     struct iosc_frame *f, *tmp;
-    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
+    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link)
+        wl_resource_destroy(f->resource);   /* frame_callback_destroy frees f */
+    wl_list_for_each_safe(f, tmp, &s->pending_frame_callbacks, link)
         wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
-    }
-    wl_list_for_each_safe(f, tmp, &s->pending_frame_callbacks, link) {
-        wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
-    }
     free(s);
     if (was_mapped) recomposite_all();   /* repaint without the closed window */
 }
