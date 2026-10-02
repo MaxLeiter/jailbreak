@@ -418,6 +418,24 @@ static void sd_pin_app_to_desktop(const struct sd_app *app)
 }
 #endif /* SD_DESKTOP_PINNING */
 
+/* The compositor socket this client is connected to, as an absolute path, the
+ * way libwayland resolved it: WAYLAND_DISPLAY if absolute, else under
+ * XDG_RUNTIME_DIR. A launched app gets the bus dir as XDG_RUNTIME_DIR, so the
+ * bare name run-shell.sh exports ("wayland-0") would point inside that. */
+static void sd_wayland_socket_path(char *dst, size_t n, const char *root)
+{
+    const char *name = getenv("WAYLAND_DISPLAY");
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    if (!name || !*name) name = "wayland-0";
+    if (name[0] == '/') snprintf(dst, n, "%s", name);
+    else if (runtime && runtime[0] == '/') snprintf(dst, n, "%s/%s", runtime, name);
+    else {
+        char tmp[256];
+        sd_join_path(tmp, sizeof tmp, root, "/tmp");
+        snprintf(dst, n, "%s/%s", tmp, name);
+    }
+}
+
 /* fork+exec a .desktop Exec under the same Wayland/dbus env run-kgx.sh proved
  * good. The shell clients run outside the iOS app sandbox (started by ioscd or a
  * run-script), so this is the direct path. */
@@ -427,14 +445,14 @@ static void sd_launch(const char *exec)
     if (pid != 0) return;
     setsid();
     const char *root = sd_jbroot();
-    char tmp[256], wayland[256], home[256], path[512], busdir[256], bus_addr[320];
+    char tmp[256], wayland[512], home[256], path[512], busdir[256], bus_addr[320];
     char dbus_run[256], sh_bin[256], usr_sh[256], angle[256];
     char a11y_enabled[256], a11y_force[256];
     sd_join_path(tmp, sizeof tmp, root, "/tmp");
     sd_join_path(angle, sizeof angle, root, "/lib/angle/libEGL.angle.dylib");
     sd_join_path(a11y_enabled, sizeof a11y_enabled, root, "/tmp/xios-a11y-enabled");
     sd_join_path(a11y_force, sizeof a11y_force, root, "/tmp/xios-a11y-force");
-    sd_join_path(wayland, sizeof wayland, root, "/tmp/wayland-0");
+    sd_wayland_socket_path(wayland, sizeof wayland, root);
     sd_join_path(home, sizeof home, root, "/var/root");
     sd_join_path(busdir, sizeof busdir, root, "/tmp/iosc-shell-bus");
     sd_join_path(dbus_run, sizeof dbus_run, root, "/usr/bin/dbus-run-session");
@@ -446,9 +464,8 @@ static void sd_launch(const char *exec)
         snprintf(path, sizeof path,
                  "%s/usr/local/bin:%s/usr/bin:%s/usr/sbin:%s/bin:%s/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
                  root, root, root, root, root);
-    const char *env_wayland = getenv("WAYLAND_DISPLAY");
     const char *env_runtime = getenv("XDG_RUNTIME_DIR");
-    setenv("WAYLAND_DISPLAY", (env_wayland && *env_wayland) ? env_wayland : wayland, 1);
+    setenv("WAYLAND_DISPLAY", wayland, 1);
     int have_bus = sd_shared_session_bus(root, busdir, bus_addr, sizeof bus_addr);
     setenv("XDG_RUNTIME_DIR", have_bus ? busdir : ((env_runtime && *env_runtime) ? env_runtime : tmp), 1);
     if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
