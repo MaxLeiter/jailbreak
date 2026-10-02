@@ -8,9 +8,18 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 
-// One persistent AF_UNIX stream to the compositor. A failed write marks the
-// connection dead so the app's poll loop reconnects.
+// One persistent AF_UNIX stream to the compositor. The socket is non-blocking,
+// and a compositor that stalls for a moment fills its few KB of buffer: what
+// the socket will not take yet is queued, in order, and flushed by later sends
+// and by every poll_traits() call (the app's tick). Records are queued whole,
+// so a short write never leaves half a record ahead of the next one. Only a
+// real write error, or a stall that outgrows the queue, marks the connection
+// dead so the app's poll loop reconnects.
 static int s_fd = -1;
+
+#define OUTQ_MAX (64u * 1024u)   // ~2000 records; the same bound iosc uses per client
+static uint8_t s_outq[OUTQ_MAX];
+static size_t s_outq_head = 0, s_outq_len = 0;
 
 static uint8_t s_rx[sizeof(xios_msg)];
 static int s_rx_have = 0;
@@ -51,28 +60,67 @@ bool iosc_input_open(const char *sock_path) {
 
 void iosc_input_close(void) {
     if (s_fd >= 0) { close(s_fd); s_fd = -1; }
+    s_outq_head = s_outq_len = 0;
     s_rx_have = 0;
     s_hello_received = 0;
 }
 
 bool iosc_input_is_open(void) { return s_fd >= 0; }
 
-static void send_bytes(const void *buf, size_t n) {
-    if (s_fd < 0) return;
-    const char *p = (const char *)buf;
-    size_t put = 0;
-    while (put < n) {
-        ssize_t w = write(s_fd, p + put, n - put);
+// Write as much of the queue as the socket takes now. 0 = fine (some may
+// still be queued), -1 = write error, connection closed.
+static int flush_out(void) {
+    while (s_fd >= 0 && s_outq_len > 0) {
+        ssize_t w = write(s_fd, s_outq + s_outq_head, s_outq_len);
+        if (w > 0) { s_outq_head += (size_t)w; s_outq_len -= (size_t)w; continue; }
+        if (w < 0 && errno == EINTR) continue;
+        if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
+        iosc_input_close();   // EPIPE etc.: the app reconnects on its next poll
+        return -1;
+    }
+    if (s_outq_len == 0) s_outq_head = 0;
+    return s_fd >= 0 ? 0 : -1;
+}
+
+// Send one record (a header plus an optional payload) without ever splitting
+// it across a drop: write directly while nothing is queued, queue the rest.
+static void send_record(const void *hdr, size_t hdr_len,
+                        const void *payload, size_t payload_len) {
+    if (s_fd < 0 || flush_out() < 0) return;
+    const void *part[2] = { hdr, payload };
+    size_t part_len[2] = { hdr_len, payload_len };
+    size_t i = 0, put = 0;
+    while (s_outq_len == 0 && i < 2) {
+        if (put == part_len[i]) { i++; put = 0; continue; }
+        ssize_t w = write(s_fd, (const char *)part[i] + put, part_len[i] - put);
         if (w > 0) { put += (size_t)w; continue; }
         if (w < 0 && errno == EINTR) continue;
-        // EPIPE/EAGAIN/etc: drop the connection; the app reconnects on its next poll.
+        if (w < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
         iosc_input_close();
         return;
+    }
+    size_t rest = 0;
+    for (size_t j = i; j < 2; j++) rest += part_len[j] - (j == i ? put : 0);
+    if (rest == 0) return;
+    if (s_outq_len + rest > OUTQ_MAX) {
+        // Stalled past the bound: same recovery as a dead peer.
+        iosc_input_close();
+        return;
+    }
+    if (s_outq_head + s_outq_len + rest > OUTQ_MAX) {
+        memmove(s_outq, s_outq + s_outq_head, s_outq_len);
+        s_outq_head = 0;
+    }
+    for (size_t j = i; j < 2; j++) {
+        size_t from = j == i ? put : 0, n = part_len[j] - from;
+        if (n == 0) continue;
+        memcpy(s_outq + s_outq_head + s_outq_len, (const char *)part[j] + from, n);
+        s_outq_len += n;
     }
 }
 
 static void send_msg(const xios_msg *m) {
-    send_bytes(m, sizeof(*m));
+    send_record(m, sizeof(*m), NULL, 0);
 }
 
 void iosc_input_motion(int x, int y) {
@@ -106,8 +154,7 @@ void iosc_input_text(const char *utf8) {
     }
     xios_msg m = xios_input_message(XIOS_IN_TEXT, 0, 0, (uint32_t)len, 0, 0);
     m.length = (uint32_t)len;
-    send_msg(&m);
-    send_bytes(utf8, len);
+    send_record(&m, sizeof(m), utf8, len);
 }
 
 void iosc_input_touch(int slot, int phase, int x, int y) {
@@ -143,7 +190,7 @@ void iosc_input_gesture(unsigned kind, unsigned phase, unsigned fingers,
 }
 
 int iosc_input_poll_traits(unsigned *hint, unsigned *purpose, unsigned *enabled) {
-    if (s_fd < 0) return -1;
+    if (s_fd < 0 || flush_out() < 0) return -1;
     for (;;) {
         ssize_t r = read(s_fd, s_rx + s_rx_have, sizeof(s_rx) - (size_t)s_rx_have);
         if (r > 0) {
