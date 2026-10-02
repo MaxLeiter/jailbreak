@@ -8,12 +8,17 @@ endif
 # links CoreFoundation inside the CoreAudio backend block, so link it here.
 
 SUBPROJECTS          += openal-soft
-OPENAL_SOFT_VERSION  := 1.25.2
+OPENAL_SOFT_VERSION  := 1.23.1
 DEB_OPENAL_SOFT_V    ?= $(OPENAL_SOFT_VERSION)+ios1
 
 openal-soft-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/kcat/openal-soft/archive/refs/tags/$(OPENAL_SOFT_VERSION).tar.gz)
-	$(call EXTRACT_TAR,$(OPENAL_SOFT_VERSION).tar.gz,openal-soft-$(OPENAL_SOFT_VERSION),openal-soft)
+	if [ ! -f "$(BUILD_WORK)/openal-soft/.xios_setup_$(DEB_OPENAL_SOFT_V)" ]; then \
+		rm -rf "$(BUILD_WORK)/openal-soft"; \
+		cd "$(BUILD_WORK)" && tar -xf "$(BUILD_SOURCE)/$(OPENAL_SOFT_VERSION).tar.gz"; \
+		mv "$(BUILD_WORK)/openal-soft-$(OPENAL_SOFT_VERSION)" "$(BUILD_WORK)/openal-soft"; \
+		touch "$(BUILD_WORK)/openal-soft/.xios_setup_$(DEB_OPENAL_SOFT_V)"; \
+	fi
 	rm -rf $(BUILD_WORK)/openal-soft/build
 	mkdir -p $(BUILD_WORK)/openal-soft/build
 
