@@ -35,17 +35,12 @@
 #   * stage xios-glue-include/ (xios_egl.h, xios_input_socket.h, xios_surface.h)
 #             -> $M/src/backends/ios/xios-glue-include/
 #
-# ONE REQUIRED SOURCE FIX (not a meson change — flag for the .c owner):
-#   meta-wayland-iosurface.c currently does
-#       #include "backends/ios/iosc-iosurface-server-protocol.h"
-#   but wayland-scanner (like EVERY other mutter wayland file — see meta-wayland-gtk-shell.c
-#   `#include "gtk-shell-server-protocol.h"`) emits the header BARE into <builddir>/src/.
-#   Change that line to:
+# PROTOCOL HEADER INCLUDE (already done in the .c, no action needed):
+#   wayland-scanner (like EVERY other mutter wayland file, see meta-wayland-gtk-shell.c
+#   `#include "gtk-shell-server-protocol.h"`) emits the server header BARE into
+#   <builddir>/src/, so meta-wayland-iosurface.c includes it as
 #       #include "iosc-iosurface-server-protocol.h"
-#   (Alternative, if you refuse to touch the .c: pre-run wayland-scanner server-header at
-#   stage time into $M/src/backends/ios/iosc-iosurface-server-protocol.h so the prefixed
-#   include resolves against the source tree; you would then also drop item 3 from the list
-#   and instead add a standalone custom_target for just the private-code .c.)
+#   Do not prefix it with backends/ios/.
 # ---------------------------------------------------------------------------------------
 
 diff --git a/src/meson.build b/src/meson.build
