@@ -629,7 +629,10 @@ int main(void)
         for (size_t i = 0; i < sizeof steps / sizeof steps[0] && O.running; i++) {
             O.anim_t = steps[i];
             render();
-            wl_display_flush(O.dpy);
+            /* not just a flush: the release of the frame this one replaced
+             * must be dispatched, or the 3-slot pool runs dry by step 3 and
+             * the settled frame is never drawn */
+            wl_display_roundtrip(O.dpy);
             usleep(33000);
         }
     }
