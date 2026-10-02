@@ -361,15 +361,31 @@ static int socket_exists(const char *p)
     struct stat st; return stat(p, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
+/* Hand a root-made socket to mobile. These names sit in the world-writable
+ * tmp dir, where the name of a socket that is gone can be taken by a planted
+ * symlink or hard link: act only on a socket root owns under this one name
+ * (the sticky dir keeps mobile from swapping it out), never through a link. */
 static void mobile_socket_perms(const char *path, const char *label)
 {
     struct passwd *pw = getpwnam("mobile");
     uid_t uid = pw ? pw->pw_uid : 501;
     gid_t gid = pw ? pw->pw_gid : 501;
-    if (chown(path, uid, gid) == 0) {
-        chmod(path, 0660);
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        fprintf(stderr, "ioscd: cannot hand %s %s to mobile: %s\n",
+                label, path, strerror(errno));
+        return;
+    }
+    if (!S_ISSOCK(st.st_mode) || st.st_uid != 0 || st.st_nlink != 1) {
+        if (!S_ISSOCK(st.st_mode) || st.st_uid != uid)   /* else: handed over already */
+            fprintf(stderr, "ioscd: leaving %s %s alone: not a singly linked socket root owns\n",
+                    label, path);
+        return;
+    }
+    if (lchown(path, uid, gid) == 0) {
+        (void)fchmodat(AT_FDCWD, path, 0660, AT_SYMLINK_NOFOLLOW);
     } else {
-        chmod(path, 0600);
+        (void)fchmodat(AT_FDCWD, path, 0600, AT_SYMLINK_NOFOLLOW);
         fprintf(stderr, "ioscd: keeping %s %s owner-only; chown mobile failed: %s\n",
                 label, path, strerror(errno));
     }
@@ -1073,22 +1089,43 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     if (!addr || addr_len == 0) return 0;
     snprintf(sock, sizeof(sock), "%s/session-bus", busdir);
     snprintf(addr, addr_len, "unix:path=%s", sock);
-    mkdir(busdir, 0700);
     struct passwd *mobile = getpwnam("mobile");
     uid_t uid = mobile ? mobile->pw_uid : 501;
     gid_t gid = mobile ? mobile->pw_gid : 501;
-    if (chown(busdir, uid, gid) != 0) return 0;
-    chmod(busdir, 0700);
-    if (socket_exists(sock)) {
-        mobile_socket_perms(sock, "session bus socket");
-        return 1;
+
+    /* The dir sits in the world-writable tmp dir, so it is adopted through an
+     * fd that refused a planted symlink, and only if it is one ioscd made
+     * (root's before the first chown, mobile's after); chown by path would
+     * hand a symlink's target to mobile. Inside it, the socket is reused only
+     * if it is the mobile daemon's own, and nothing is chowned or chmodded by
+     * name: the dir is mobile's, so a name there can be swapped at any time. */
+    struct stat st;
+    mkdir(busdir, 0700);
+    int dfd = open(busdir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dfd < 0 || fstat(dfd, &st) != 0 || !S_ISDIR(st.st_mode) ||
+        (st.st_uid != 0 && st.st_uid != uid) ||
+        fchown(dfd, uid, gid) != 0 || fchmod(dfd, 0700) != 0) {
+        fprintf(stderr, "ioscd: not using %s for the session bus: not a directory ioscd made\n",
+                busdir);
+        if (dfd >= 0) close(dfd);
+        return 0;
+    }
+    if (fstatat(dfd, "session-bus", &st, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (S_ISSOCK(st.st_mode) && st.st_uid == uid) {
+            close(dfd);
+            return 1;
+        }
+        fprintf(stderr, "ioscd: replacing %s: not the mobile bus daemon's socket\n", sock);
+        (void)unlinkat(dfd, "session-bus", 0);
     }
 
-    unlink(sock);
     snprintf(address_arg, sizeof(address_arg), "--address=%s", addr);
 
     pid_t pid = fork();
-    if (pid < 0) return 0;
+    if (pid < 0) {
+        close(dfd);
+        return 0;
+    }
     if (pid == 0) {
         child_stdio(NULL, 0);
         if (drop_to_mobile() != 0) _exit(126);
@@ -1099,8 +1136,10 @@ static int ensure_session_bus(char *addr, size_t addr_len)
 
     int status = 0;
     waitpid(pid, &status, 0);
-    if (socket_exists(sock)) mobile_socket_perms(sock, "session bus socket");
-    return socket_exists(sock);
+    int ok = fstatat(dfd, "session-bus", &st, AT_SYMLINK_NOFOLLOW) == 0 &&
+             S_ISSOCK(st.st_mode) && st.st_uid == uid;
+    close(dfd);
+    return ok;
 }
 
 static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_addr, int have_bus)
