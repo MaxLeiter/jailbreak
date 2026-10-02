@@ -60,6 +60,25 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   command shell, and launches the application as `mobile`. Native uses
   `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`; classic
   uses `wayland-0` + `iosc-input.sock`, so both can coexist.
+- **ioscd execs through libiosexec (2026-10-01, `xios-launcher-tools 0.1.11`,
+  host-built, not yet device-tested).** Rootless has no `/bin/sh`, so a plain
+  `execvp` of an `Exec` target that is a `#!/bin/sh` wrapper (crispy-doom,
+  openttd, imv, systemsettings) failed with ENOENT and the child exited 127
+  silently; `xios-start-a11y` had the same problem. Every exec in `ioscd.c`
+  now goes through Procursus libiosexec's `ie_execl`/`ie_execv`/`ie_execvp`
+  (`src/xios-iosexec.h`), which run a script's own `/bin` or `/usr/bin`
+  interpreter from the jailbreak prefix; Mach-O targets still go straight to
+  `execve`. The argv, the trusted desktop-entry check, and the drop to
+  `mobile` are unchanged, and no shell is inserted for the command line.
+  Only the exec entry points are used, not libiosexec's passwd/group
+  replacements, so the drop to `mobile` still resolves through the system
+  libinfo. ioscd weak-links the dylib (link stub `sdk/libiosexec.tbd`, rpath
+  `<prefix>/usr/lib`) and the package depends on `libiosexec1 (>= 1.3.1)`.
+  Check the ioscd log at startup: `ioscd: exec via libiosexec ...` means it is
+  live; `ioscd: WARNING libiosexec not loaded ...` means plain exec and the
+  old failure. A failed client exec now logs `ioscd: exec <target> failed for
+  <app_id>: <error>` to the client log. `test-iosexec.sh` (run by
+  `build-stub.sh`) guards it host-side.
 - **Raw touch opt-in (2026-10-01, host-built, not yet device-tested).** A
   desktop entry with `X-Xios-RawTouch=true` in `[Desktop Entry]` makes
   `xios-launcher-sync` (and `gen-launchers.sh --native`) write
@@ -93,7 +112,8 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   `/var/jb/usr/local/bin/xios-icon-render`, `/var/jb/usr/local/bin/xios-launcher-sync`,
   and shared payloads/entitlements under `/var/jb/usr/libexec/xios-launchers`.
 - Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` builds
-  `xios-launcher-tools 0.1.5`. The package ships `ioscd`,
+  `xios-launcher-tools` at the script's `VER` (0.1.11 as of 2026-10-01). The
+  package ships `ioscd`,
   `xios-icon-render`, `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`,
   `default.metallib`, the entitlements, and
   `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst re-signs the
