@@ -187,12 +187,17 @@ static void screencopy_capture_output_region(struct wl_client *c, struct wl_reso
                                              struct wl_resource *output,
                                              int32_t x, int32_t y, int32_t w, int32_t h)
 { (void)output;
-    if (x < 0) { w += x; x = 0; }
-    if (y < 0) { h += y; y = 0; }
-    if (x + w > g_width)  w = g_width  - x;
-    if (y + h > g_height) h = g_height - y;
-    if (w <= 0 || h <= 0) { x = 0; y = 0; w = 1; h = 1; }   /* degenerate -> 1px */
-    screencopy_new_frame(c, mgr, id, overlay_cursor, x, y, w, h);
+    /* Clamp the edges in 64-bit: x + w on two client int32s can overflow, and a
+     * wrapped sum slipped a rect like x=0x7fffff00,w=512 past the output-width
+     * check, so copy() read the output IOSurface ~8 GiB past its base. */
+    int64_t x0 = x, y0 = y, x1 = (int64_t)x + w, y1 = (int64_t)y + h;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > g_width)  x1 = g_width;
+    if (y1 > g_height) y1 = g_height;
+    if (x1 <= x0 || y1 <= y0) { x0 = 0; y0 = 0; x1 = 1; y1 = 1; }   /* degenerate -> 1px */
+    screencopy_new_frame(c, mgr, id, overlay_cursor,
+                         (int)x0, (int)y0, (int)(x1 - x0), (int)(y1 - y0));
 }
 
 static void screencopy_mgr_destroy(struct wl_client *c, struct wl_resource *r)
