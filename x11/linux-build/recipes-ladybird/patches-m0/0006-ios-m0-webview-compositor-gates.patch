@@ -1,15 +1,24 @@
-Subject: [PATCH] ios-m0: gate WebView compositor launch/connect
-
-The default M0 build does not launch the Compositor helper. Gate the WebView
-launch and WebContent connection calls for iOS; app mode can still reverse
-these exact gates before configuring the interactive UIKit build.
+diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
+index 65a8b9329f..d26d42fd8a 100644
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
-@@ -550,0 +551 @@
+@@ -1040,7 +1040,9 @@ ErrorOr<NonnullRefPtr<WebContentClient>> Application::create_web_content_client(
+         initial_document_state_id = cross_process_id_allocator.allocate();
+ 
+     auto client = TRY(WebView::launch_web_content_process(is_private, initial_page_id, root_navigable_id));
 +#if !defined(AK_OS_IOS)  // iOS M0: no compositor process to connect to
-@@ -551,0 +553 @@
+     TRY(Application::the().connect_web_content_to_compositor(*client));
 +#endif
-@@ -866,0 +869 @@
+     if (view.has_value())
+         system_visibility_state = view->system_visibility_state();
+ 
+@@ -1639,7 +1641,9 @@ ErrorOr<void> Application::launch_services()
+ #if defined(HAVE_WASM_COMPILER_SERVICE)
+     TRY(launch_wasm_compiler_server());
+ #endif
 +#if !defined(AK_OS_IOS)  // iOS M0: Compositor deferred (GPU/ANGLE); headless raster needs no present helper
-@@ -867,0 +871 @@
+     TRY(launch_compositor_process());
 +#endif
+ 
+     if (m_browser_options.devtools_port.has_value()) {
+         // Defer launching devtools until the entire application is initialized.

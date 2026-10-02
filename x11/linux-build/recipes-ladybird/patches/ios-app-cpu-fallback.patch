@@ -1,13 +1,10 @@
-Subject: [PATCH] ios-app: keep explicit diagnostic CPU hooks in tree
-
-Explicit diagnostic CPU builds force software painting and include the generated
-ANGLE trap-stub source. Normal/release builds set the GPU compile definition and
-never compile the trap-stub source.
+diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
+index a3b29907b7..2be6b42b8b 100644
 --- a/Libraries/LibWebView/Application.cpp
 +++ b/Libraries/LibWebView/Application.cpp
-@@ -465,6 +465,11 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+@@ -673,6 +673,11 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
  
-     create_platform_options(m_browser_options, m_request_server_options, m_web_content_options);
+     m_font_service = FontService::create(m_browser_options.additional_font_directories);
  
 +#if defined(AK_OS_IOS) && defined(LADYBIRD_IOS_CPU_DIAGNOSTIC)
 +    // Explicit iOS diagnostic CPU build: no GPU/ANGLE backend.
@@ -17,18 +14,23 @@ never compile the trap-stub source.
      // Test mode implies experimental interfaces and internals object are exposed and the Skia CPU backend is used.
      if (m_web_content_options.is_test_mode == IsTestMode::Yes) {
          m_web_content_options.expose_experimental_interfaces = ExposeExperimentalInterfaces::Yes;
+diff --git a/Libraries/LibWebView/CMakeLists.txt b/Libraries/LibWebView/CMakeLists.txt
+index 0febc950d9..47946451cc 100644
 --- a/Libraries/LibWebView/CMakeLists.txt
 +++ b/Libraries/LibWebView/CMakeLists.txt
-@@ -91,6 +91,9 @@ compile_ipc(${LADYBIRD_SOURCE_DIR}/Services/WebContent/WebUIClient.ipc ${CMAKE_B
- compile_ipc(${LADYBIRD_SOURCE_DIR}/Services/WebContent/WebUIServer.ipc ${CMAKE_BINARY_DIR}/Services/WebContent/WebUIServerEndpoint.h)
+@@ -121,6 +121,9 @@ add_custom_command(
+ add_custom_target(generate_build_information DEPENDS ${build_information_stamp})
  
  ladybird_lib(LibWebView webview EXPLICIT_SYMBOL_EXPORT)
 +if (APPLE AND IOS AND DEFINED ENV{LB_APP_CPU_DIAGNOSTIC} AND "$ENV{LB_APP_CPU_DIAGNOSTIC}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$")
 +    target_compile_definitions(LibWebView PRIVATE LADYBIRD_IOS_CPU_DIAGNOSTIC)
 +endif()
- target_link_libraries(LibWebView PRIVATE LibCore LibDatabase LibDevTools LibFileSystem LibGfx LibHTTP LibImageDecoderClient LibIPC LibRequests LibJS LibWeb LibUnicode LibURL LibSync LibSyntax LibTextCodec)
- 
- # Third-party
+ add_dependencies(LibWebView generate_build_information)
+ target_link_libraries(LibWebView PUBLIC LibCompositing LibSandbox LibWebCommon)
+ target_link_libraries(LibWebView PRIVATE LibCore LibCrypto LibDatabase LibDevTools LibFileSystem LibGfx LibHTTP LibImageDecoderClient LibIPC LibRequests LibMedia LibMediaClient LibUnicode LibURL LibTextCodec LibThreading)
+diff --git a/Services/Compositor/AngleStubIOS.cpp b/Services/Compositor/AngleStubIOS.cpp
+new file mode 100644
+index 0000000000..769d1c8414
 --- /dev/null
 +++ b/Services/Compositor/AngleStubIOS.cpp
 @@ -0,0 +1,7 @@
@@ -39,9 +41,11 @@ never compile the trap-stub source.
 +// __LB_ANGLE_STUBS_BEGIN__
 +// __LB_ANGLE_STUBS_END__
 +}
+diff --git a/Services/Compositor/CMakeLists.txt b/Services/Compositor/CMakeLists.txt
+index e84cb9a669..127568e864 100644
 --- a/Services/Compositor/CMakeLists.txt
 +++ b/Services/Compositor/CMakeLists.txt
-@@ -12,6 +12,10 @@ set(SOURCES
+@@ -16,6 +16,10 @@ set(SOURCES
      WebGLObjectMap.cpp
  )
  

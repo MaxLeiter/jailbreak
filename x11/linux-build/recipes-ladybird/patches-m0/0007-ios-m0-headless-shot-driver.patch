@@ -1,14 +1,15 @@
-Subject: [PATCH] ios-m0: add headless-shot driver
-
-Add the minimal M0 executable that wires WebView::Application's existing
-headless screenshot flow into a packageable iOS binary.
+diff --git a/Services/CMakeLists.txt b/Services/CMakeLists.txt
+index b4fc2dd2ec..c2b6605a61 100644
 --- a/Services/CMakeLists.txt
 +++ b/Services/CMakeLists.txt
-@@ -8,3 +8,4 @@ if (NOT IOS)
+@@ -15,3 +15,4 @@ if (NOT IOS)
      add_subdirectory(Compositor)
      add_subdirectory(WebDriver)
  endif()
 +add_subdirectory(HeadlessShot)
+diff --git a/Services/HeadlessShot/CMakeLists.txt b/Services/HeadlessShot/CMakeLists.txt
+new file mode 100644
+index 0000000000..8460120d38
 --- /dev/null
 +++ b/Services/HeadlessShot/CMakeLists.txt
 @@ -0,0 +1,12 @@
@@ -24,6 +25,9 @@ headless screenshot flow into a packageable iOS binary.
 +target_link_libraries(headless-shot PRIVATE
 +    AK LibCore LibFileSystem LibGfx LibImageDecoders LibImageDecoderClient
 +    LibIPC LibJS LibMain LibRequests LibURL LibWeb LibWebView)
+diff --git a/Services/HeadlessShot/main.cpp b/Services/HeadlessShot/main.cpp
+new file mode 100644
+index 0000000000..0ee8db45e3
 --- /dev/null
 +++ b/Services/HeadlessShot/main.cpp
 @@ -0,0 +1,26 @@

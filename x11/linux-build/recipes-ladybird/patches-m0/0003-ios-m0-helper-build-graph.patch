@@ -1,31 +1,46 @@
-Subject: [PATCH] ios-m0: trim helper build graph
-
-The M0 build uses the multiprocess engine helpers but does not build the
-desktop UI, the GPU Compositor, or WebDriver by default. Keep Services enabled
-for iOS, skip the AppKit/Qt UI, and leave the app-mode script path to re-enable
-the Compositor later when `LB_APP_BUILD=1`.
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 76636afe95..acb61d1f32 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -144 +144,3 @@
+@@ -139,7 +139,9 @@ endif()
+ 
+ if (ENABLE_GUI_TARGETS)
+     add_subdirectory(Services)
 -    add_subdirectory(UI)
 +    if (NOT IOS)  # iOS: skip UI (no AppKit/UIKit frontend at M0)
 +        add_subdirectory(UI)
 +    endif()
+ endif()
+ 
+ add_custom_target(lint-shell-scripts
+diff --git a/Meta/CMake/ladybird_helper_processes.cmake b/Meta/CMake/ladybird_helper_processes.cmake
+index 378bce2b04..47d8ca0b74 100644
 --- a/Meta/CMake/ladybird_helper_processes.cmake
 +++ b/Meta/CMake/ladybird_helper_processes.cmake
-@@ -0,0 +1 @@
+@@ -1,5 +1,5 @@
 +# iOS M0: Compositor deferred (GPU/ANGLE)
-@@ -2 +2,0 @@
+ set(ladybird_helper_processes
 -    Compositor
+     ImageDecoder
+     MediaServer
+     RequestServer
+diff --git a/Services/CMakeLists.txt b/Services/CMakeLists.txt
+index 74f9b22c17..b4fc2dd2ec 100644
 --- a/Services/CMakeLists.txt
 +++ b/Services/CMakeLists.txt
-@@ -1 +1,2 @@
+@@ -1,4 +1,5 @@
 -add_subdirectory(Compositor)
 +# iOS M0 helper set: the multiprocess engine helpers only. Compositor (ANGLE GLES) + WebDriver
 +# are deferred; app builds re-enable Compositor via recipes-ladybird/patches.
-@@ -5 +5,0 @@
+ add_subdirectory(ImageDecoder)
+ add_subdirectory(MediaServer)
+ if (APPLE)
+@@ -9,5 +10,8 @@ if (ENABLE_CRANELIFT_JIT)
+     add_subdirectory(WasmCompiler)
+ endif()
+ add_subdirectory(WebContent)
 -add_subdirectory(WebDriver)
-@@ -6,0 +7,4 @@
+ add_subdirectory(WebWorker)
 +if (NOT IOS)
 +    add_subdirectory(Compositor)
 +    add_subdirectory(WebDriver)

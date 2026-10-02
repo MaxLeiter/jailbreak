@@ -1,17 +1,6 @@
---- a/Services/Compositor/CMakeLists.txt
-+++ b/Services/Compositor/CMakeLists.txt
-@@ -51,6 +51,11 @@
- target_link_libraries(Compositor PRIVATE compositorservice LibCore LibMain LibSandbox LibWebView)
- target_link_libraries(compositorservice PRIVATE LibCore LibGfx LibIPC LibMedia LibSync LibWeb ${ANGLE_TARGETS})
- 
-+if (APPLE AND IOS AND NOT (DEFINED ENV{LB_APP_CPU_DIAGNOSTIC} AND "$ENV{LB_APP_CPU_DIAGNOSTIC}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$"))
-+    # iOS release GPU build: provide narrow ES3 compatibility aliases Ladybird calls.
-+    target_sources(compositorservice PRIVATE AngleCompatIOS.cpp)
-+endif()
-+
- if (APPLE AND IOS)
-     # iOS app build: IOSurface-backed SharedImageBuffer allocation happens in the Compositor.
-     target_link_libraries(Compositor PRIVATE "-framework IOSurface")
+diff --git a/Services/Compositor/AngleCompatIOS.cpp b/Services/Compositor/AngleCompatIOS.cpp
+new file mode 100644
+index 0000000000..c28b0ac84f
 --- /dev/null
 +++ b/Services/Compositor/AngleCompatIOS.cpp
 @@ -0,0 +1,211 @@
@@ -226,3 +215,19 @@
 +}
 +
 +}
+diff --git a/Services/Compositor/CMakeLists.txt b/Services/Compositor/CMakeLists.txt
+index bf546c46c9..3754fa4762 100644
+--- a/Services/Compositor/CMakeLists.txt
++++ b/Services/Compositor/CMakeLists.txt
+@@ -62,6 +62,11 @@ target_link_libraries(Compositor PRIVATE compositorservice LibCore LibMain LibSa
+ # OpenGL framework pulled in by Skia.
+ target_link_libraries(compositorservice PRIVATE LibCore LibGfx LibIPC LibMedia LibCompositing ${ANGLE_TARGETS} skia)
+ 
++if (APPLE AND IOS AND NOT (DEFINED ENV{LB_APP_CPU_DIAGNOSTIC} AND "$ENV{LB_APP_CPU_DIAGNOSTIC}" MATCHES "^(1|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|[Oo][Nn])$"))
++    # iOS release GPU build: provide narrow ES3 compatibility aliases Ladybird calls.
++    target_sources(compositorservice PRIVATE AngleCompatIOS.cpp)
++endif()
++
+ if (APPLE AND IOS)
+     # iOS app build: IOSurface-backed SharedImageBuffer allocation happens in the Compositor.
+     target_link_libraries(Compositor PRIVATE "-framework IOSurface")

@@ -1,12 +1,6 @@
 ios-app-build-graph.patch
 ios-app-cpu-fallback.patch
 iosurface-mach-ipc.patch
-ios-app-input-caret-after-events.patch
-ios-app-input-caret-pageclient-access.patch
 ios-app-real-angle-pkgconfig.patch
 ios-app-angle-compat.patch
 ios-app-webgl-ios-enable.patch
-ios-app-webgl-release-cleanup.patch
-ios-wayland-gtk-frontend.patch
-ios-gtk-4-14-memory-texture.patch
-ios-desktop-mach-bootstrap.patch
