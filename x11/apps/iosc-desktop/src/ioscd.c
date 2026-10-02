@@ -422,6 +422,16 @@ static void child_stdio(const char *logpath, int append)
     }
 }
 
+/* For a child about to drop to mobile: nothing ioscd holds past stdio may
+ * cross into it. The daemon's own long-lived fds are close-on-exec as well;
+ * this also covers anything opened without it. */
+static void close_inherited_fds(void)
+{
+    int max = getdtablesize();
+    if (max <= 0 || max > 65536) max = 65536;
+    for (int fd = 3; fd < max; fd++) close(fd);
+}
+
 static void set_rootless_path(int include_local)
 {
     setenv("PATH", include_local ? g_local_path : g_path, 1);
@@ -1128,6 +1138,7 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     }
     if (pid == 0) {
         child_stdio(NULL, 0);
+        close_inherited_fds();
         if (drop_to_mobile() != 0) _exit(126);
         xios_execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
               address_arg, "--print-address", (char *)NULL);
@@ -1320,6 +1331,7 @@ static pid_t launch_client(const char *app_id, char *const app_argv[], int nativ
     if (pid == 0) {
         setsid();
         child_stdio(g_ioscd_client_log, 1);
+        close_inherited_fds();
 
         set_wayland_client_env(mode, busdir, have_bus, bus_addr, enable_a11y);
         if (drop_to_mobile() != 0) _exit(126);
@@ -1962,6 +1974,9 @@ static int make_ctl_socket(void)
     unlink(g_ctl_sock);
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { perror("socket"); return -1; }
+    /* Every child would otherwise hold the listening socket, and a launched
+     * mobile app could accept() requests meant for ioscd. */
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
     struct sockaddr_un a; memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, g_ctl_sock, sizeof(a.sun_path) - 1);
@@ -1991,6 +2006,8 @@ int main(void)
     if (pipe(g_chld_pipe) == 0) {
         fcntl(g_chld_pipe[0], F_SETFL, O_NONBLOCK);
         fcntl(g_chld_pipe[1], F_SETFL, O_NONBLOCK);
+        fcntl(g_chld_pipe[0], F_SETFD, FD_CLOEXEC);
+        fcntl(g_chld_pipe[1], F_SETFD, FD_CLOEXEC);
     }
     struct sigaction sa; memset(&sa, 0, sizeof(sa));
     sa.sa_handler = on_sigchld;
