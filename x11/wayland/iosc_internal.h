@@ -214,6 +214,8 @@ struct iosc_surface {
     struct wl_list      surface_link;    /* all live wl_surface resources */
     struct wl_resource *resource;        /* wl_surface */
     struct wl_resource *pending_buffer;  /* last wl_surface.attach (may be NULL) */
+    struct wl_listener  pending_buffer_destroy; /* NULLs pending_buffer if it dies first */
+    int                 pending_listener_active;
     int                 buffer_attached; /* attach was called this cycle */
     struct wl_resource *current_buffer;  /* committed buffer, retained for recompositing */
     struct wl_listener  buffer_destroy;  /* fires if the client destroys current_buffer */

@@ -3013,13 +3013,37 @@ static void surface_handle_destroy(struct wl_client *c, struct wl_resource *r)
 {
     (void)c; wl_resource_destroy(r);
 }
+/* attach -> wl_buffer.destroy -> commit is legal, and a synchronized
+ * subsurface can hold its attach until the parent commits. Without this the
+ * commit read a freed wl_resource (and hung a destroy listener on it). A
+ * pending buffer that dies is a NULL attach, as in other compositors. */
+static void on_pending_buffer_destroyed(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct iosc_surface *s = wl_container_of(l, s, pending_buffer_destroy);
+    s->pending_buffer = NULL;          /* listener auto-removed by libwayland */
+    s->pending_listener_active = 0;
+}
+static void pending_buffer_forget(struct iosc_surface *s)
+{
+    if (s->pending_listener_active) {
+        wl_list_remove(&s->pending_buffer_destroy.link);
+        s->pending_listener_active = 0;
+    }
+}
 static void surface_attach(struct wl_client *c, struct wl_resource *r,
                            struct wl_resource *buffer, int32_t x, int32_t y)
 {
     (void)c; (void)x; (void)y;
     struct iosc_surface *s = wl_resource_get_user_data(r);
+    pending_buffer_forget(s);
     s->pending_buffer  = buffer;
     s->buffer_attached = 1;
+    if (buffer) {
+        s->pending_buffer_destroy.notify = on_pending_buffer_destroyed;
+        wl_resource_add_destroy_listener(buffer, &s->pending_buffer_destroy);
+        s->pending_listener_active = 1;
+    }
 }
 static void surface_damage(struct wl_client *c, struct wl_resource *r,
                            int32_t x, int32_t y, int32_t w, int32_t h)
@@ -3148,6 +3172,7 @@ static void surface_commit_apply(struct iosc_surface *s)
     if (s->buffer_attached) {
         struct wl_resource *buf = s->pending_buffer;
         int was_mapped = s->mapped;
+        pending_buffer_forget(s);
         s->pending_buffer  = NULL;
         s->buffer_attached = 0;
 
@@ -3298,6 +3323,7 @@ static void surface_resource_destroy(struct wl_resource *r)
         wl_list_remove(&s->buffer_destroy.link);
         s->buffer_listener_active = 0;
     }
+    pending_buffer_forget(s);
     if (s->viewport) {
         s->viewport->surface = NULL;
         s->viewport = NULL;
