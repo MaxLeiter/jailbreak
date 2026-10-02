@@ -1,1 +1,15 @@
 /linux-build/stage/
+
+# Device captures written with an explicit output dir from x11/
+# (bin/xios-device shot <dir>). Keep them in artifacts/, which the root
+# .gitignore already covers; these stop a stray one from being swept in.
+/.artifacts/
+/game-*/
+/orientation-check/
+
+# Output of an OpenJDK configure run started from x11/ by mistake.
+/config.log
+/configure.log
+/configure-support/
+
+/.vscode/
