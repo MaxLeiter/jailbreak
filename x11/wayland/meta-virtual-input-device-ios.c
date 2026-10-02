@@ -241,8 +241,25 @@ meta_virtual_input_device_ios_notify_key (ClutterVirtualInputDevice *virtual_dev
   push_synthetic_event (event);
 }
 
+/* The backend's current keymap (NULL if none compiled) and locked layout group. */
+static struct xkb_keymap *
+get_backend_keymap (xkb_layout_index_t *layout)
+{
+  ClutterBackend *clutter_backend = clutter_get_default_backend ();
+  MetaBackend *backend;
+
+  *layout = 0;
+  if (!META_IS_CLUTTER_BACKEND_IOS (clutter_backend))
+    return NULL;
+
+  backend = meta_clutter_backend_ios_get_backend (META_CLUTTER_BACKEND_IOS (clutter_backend));
+  *layout = meta_backend_get_keymap_layout_group (backend);
+  return meta_backend_get_keymap (backend);
+}
+
 /* Push one key event. `keycode` is an xkb keycode (evdev + 8), or 0 when the keysym has no
- * key in the current layout. */
+ * key in the current layout. The seat builds it from its xkb_state, so it carries the
+ * shifted keysym and the held modifiers the way a native key event does. */
 static void
 push_key_event (ClutterVirtualInputDevice *virtual_device,
                 uint64_t                   time_us,
@@ -250,26 +267,16 @@ push_key_event (ClutterVirtualInputDevice *virtual_device,
                 xkb_keycode_t              keycode,
                 ClutterKeyState            key_state)
 {
+  ClutterSeat *seat = clutter_virtual_input_device_get_seat (virtual_device);
   ClutterInputDevice *keyboard = get_core_device (virtual_device,
                                                   CLUTTER_KEYBOARD_DEVICE);
-  ClutterModifierSet raw_modifiers = { 0 };
-  gunichar unicode;
-  ClutterEventType type;
-  ClutterEvent *event;
+  xkb_layout_index_t layout;
+  struct xkb_keymap *xkb_keymap = get_backend_keymap (&layout);
 
-  /* ASCII keysyms equal their codepoint; others carry no unicode here (the keysym is
-   * still authoritative for keybindings). */
-  unicode = (keyval < 0x80) ? (gunichar) keyval : 0;
-
-  type = (key_state == CLUTTER_KEY_STATE_PRESSED)
-    ? CLUTTER_KEY_PRESS : CLUTTER_KEY_RELEASE;
-
-  event = clutter_event_key_new (type, CLUTTER_EVENT_NONE,
-                                 resolve_time (time_us),
-                                 keyboard, raw_modifiers, 0,
-                                 keyval, keycode ? keycode - 8 : 0 /* evcode */,
-                                 keycode, unicode);
-  push_synthetic_event (event);
+  push_synthetic_event (meta_seat_ios_key_event_new (META_SEAT_IOS (seat), keyboard,
+                                                     resolve_time (time_us),
+                                                     xkb_keymap, layout, keycode, keyval,
+                                                     key_state == CLUTTER_KEY_STATE_PRESSED));
 }
 
 /* Find the xkb keycode and shift level that type `keyval` in the backend keymap's current
@@ -284,22 +291,15 @@ pick_keycode_for_keyval (uint32_t       keyval,
                          xkb_keycode_t *keycode_out,
                          uint32_t      *level_out)
 {
-  ClutterBackend *clutter_backend = clutter_get_default_backend ();
-  MetaBackend *backend;
   struct xkb_keymap *xkb_keymap;
   xkb_layout_index_t layout;
   xkb_keycode_t min_keycode, max_keycode, keycode;
   xkb_level_index_t level;
 
-  if (!META_IS_CLUTTER_BACKEND_IOS (clutter_backend))
-    return FALSE;
-
-  backend = meta_clutter_backend_ios_get_backend (META_CLUTTER_BACKEND_IOS (clutter_backend));
-  xkb_keymap = meta_backend_get_keymap (backend);
+  xkb_keymap = get_backend_keymap (&layout);
   if (!xkb_keymap)
     return FALSE;
 
-  layout = meta_backend_get_keymap_layout_group (backend);
   min_keycode = xkb_keymap_min_keycode (xkb_keymap);
   max_keycode = xkb_keymap_max_keycode (xkb_keymap);
   for (level = 0; level <= 2; level++)

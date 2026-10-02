@@ -11,6 +11,8 @@
  */
 #pragma once
 
+#include <xkbcommon/xkbcommon.h>
+
 #include "clutter/clutter.h"
 
 #define META_TYPE_SEAT_IOS (meta_seat_ios_get_type ())
@@ -25,3 +27,17 @@ ClutterSeat *meta_seat_ios_new (void);
  * is a MetaSeatIOS-specific accessor for meta-virtual-input-device-ios.c's touch events to use
  * as their source device. */
 ClutterInputDevice *meta_seat_ios_get_touch (MetaSeatIOS *seat);
+
+/* Build the key event for one transition of xkb `keycode` (0 = a keysym no key types, which
+ * keeps `keyval`) the way the native seat's meta_key_event_new_from_evdev does: keysym,
+ * unicode and modifiers come from the seat's xkb_state as it stood before this key, and the
+ * key then updates that state. The state follows `keymap` and `layout` (the backend's
+ * current map and locked group), and query_state reports its modifiers to pointer events. */
+ClutterEvent *meta_seat_ios_key_event_new (MetaSeatIOS        *seat,
+                                           ClutterInputDevice *device,
+                                           int64_t             time_us,
+                                           struct xkb_keymap  *keymap,
+                                           xkb_layout_index_t  layout,
+                                           xkb_keycode_t       keycode,
+                                           uint32_t            keyval,
+                                           gboolean            pressed);
