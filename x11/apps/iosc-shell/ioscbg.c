@@ -311,14 +311,17 @@ static void pins_load(void)
     if (!f) { B.pins_loaded = 1; return; }
     char line[768];
     while (fgets(line, sizeof line, f) && B.npins < PIN_MAX) {
-        char *save = NULL;
-        char *type = strtok_r(line, "\t\r\n", &save);
-        char *name = strtok_r(NULL, "\t\r\n", &save);
-        char *icon = strtok_r(NULL, "\t\r\n", &save);
-        char *target = strtok_r(NULL, "\t\r\n", &save);
-        char *xs = strtok_r(NULL, "\t\r\n", &save);
-        char *ys = strtok_r(NULL, "\t\r\n", &save);
-        if (!type || !name || !target || !xs || !ys) continue;
+        /* positional tab fields with Icon allowed empty (see
+         * sd_desktop_pin_exists): strsep keeps empty fields in place */
+        line[strcspn(line, "\r\n")] = 0;
+        char *rest = line;
+        char *type = strsep(&rest, "\t");
+        char *name = strsep(&rest, "\t");
+        char *icon = strsep(&rest, "\t");
+        char *target = strsep(&rest, "\t");
+        char *xs = strsep(&rest, "\t");
+        char *ys = strsep(&rest, "\t");
+        if (!type || !name || !target || !*target || !xs || !ys) continue;
         struct desktop_pin *p = &B.pins[B.npins++];
         snprintf(p->type, sizeof p->type, "%s", type);
         snprintf(p->name, sizeof p->name, "%s", name);

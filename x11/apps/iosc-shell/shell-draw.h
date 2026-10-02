@@ -352,11 +352,14 @@ static int sd_desktop_pin_exists(const char *exec)
     char line[768];
     int found = 0;
     while (fgets(line, sizeof line, f)) {
-        char *save = NULL;
-        char *type = strtok_r(line, "\t\r\n", &save);
-        char *name = strtok_r(NULL, "\t\r\n", &save);
-        char *icon = strtok_r(NULL, "\t\r\n", &save);
-        char *target = strtok_r(NULL, "\t\r\n", &save);
+        /* positional tab fields; Icon may be empty, so no strtok (it would
+         * merge the empty field and shift Exec into the icon slot) */
+        line[strcspn(line, "\r\n")] = 0;
+        char *rest = line;
+        char *type = strsep(&rest, "\t");
+        char *name = strsep(&rest, "\t");
+        char *icon = strsep(&rest, "\t");
+        char *target = strsep(&rest, "\t");
         (void)type; (void)name; (void)icon;
         if (target && !strcmp(target, exec)) { found = 1; break; }
     }
