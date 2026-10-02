@@ -46,8 +46,12 @@ int xios_input_socket_fd(xios_input_socket *s);
 int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *user);
 
 /* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
- * DISPLAY-HOST client; a client whose write fails is shut down here and freed by
- * the next _dispatch() when it reports the EOF. Returns the number written to.
+ * DISPLAY-HOST client. What a full socket buffer will not take yet is queued and
+ * flushed from _dispatch() as the peer drains (a suspended app is not a dead
+ * one); a client whose write fails, or whose queue passes 64 KiB, is shut down
+ * here and freed by the next _dispatch() when it reports the EOF. Returns the
+ * number written or queued to. The caller must keep polling the fd and calling
+ * _dispatch(), which is what moves the queue.
  * The reader owns the client fds, so this is the server->client path.
  * Clients that registered XIOS_IN_IMPROXY are skipped: they are not hosts and
  * would only hear their own traits echoed back. */
