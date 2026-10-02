@@ -16,7 +16,7 @@ endif
 # is exactly what bin/lib/check-procursus-shadow.py does at publish time.
 
 SUBPROJECTS      += harfbuzz
-HARFBUZZ_VERSION := 10.2.0
+HARFBUZZ_VERSION := 14.5.1
 DEB_HARFBUZZ_V   ?= $(HARFBUZZ_VERSION)+ios2
 
 harfbuzz-setup: setup
@@ -50,6 +50,8 @@ harfbuzz:
 else
 # ICU, glib and graphite2 are pre-staged in BUILD_BASE already; only depend on freetype
 # here (icu-uc/icu-i18n/glib-2.0/gobject-2.0/graphite2 resolve via cross-pkg-config).
+# raster/vector/gpu are new libraries since harfbuzz 13/14 (gpu pulls an objc++ toolchain);
+# off so the family keeps the same six runtime dylibs as 10.2.0.
 # utilities=enabled keeps hb-subset/hb-shape in the same family as the libs they link;
 # the old 2.8.1 hb-subset imported _hb_subset, deleted upstream at 3.0.
 harfbuzz: harfbuzz-setup freetype
@@ -66,6 +68,9 @@ harfbuzz: harfbuzz-setup freetype
 		-Dcoretext=enabled \
 		-Dintrospection=disabled \
 		-Dutilities=enabled \
+		-Draster=disabled \
+		-Dvector=disabled \
+		-Dgpu=disabled \
 		-Dtests=disabled \
 		-Ddocs=disabled \
 		..
