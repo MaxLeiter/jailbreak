@@ -127,7 +127,6 @@ final class TimersModel: ObservableObject {
     /// subsystem ever needs the app awake, switch AlarmPlayer to a lease/refcount.
     private func refreshAlarm() {
         AlarmPlayer.shared.setKeepAlive(runningCount > 0)
-        if items.contains(where: { $0.finished }) { AlarmPlayer.shared.start() }
-        else { AlarmPlayer.shared.stop() }
+        AlarmPlayer.shared.setFinished(Set(items.filter { $0.finished }.map(\.id)))
     }
 }
