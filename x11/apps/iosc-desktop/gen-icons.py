@@ -6,7 +6,7 @@ Pipeline:
   1. resolve the Icon name (or absolute path) against the freedesktop icon dirs
      mirrored under one or more --icons-root trees (largest raster wins; SVG is
      rasterised with rsvg-convert);
-  2. centre it on a consistent dark, brand-blue-framed square so transparent or
+  2. centre it on a consistent dark gradient square so transparent or
      oddly-shaped Linux icons still look at home on the iPad Home Screen;
   3. write the named PNGs the bundle's Info.plist CFBundleIcons points at.
 
