@@ -1143,7 +1143,12 @@ int main(int argc, char **argv)
     int wfd = wl_display_get_fd(P.dpy);
     int last_min = -1;
     while (P.running) {
-        while (wl_display_prepare_read(P.dpy) != 0) wl_display_dispatch_pending(P.dpy);
+        /* A dead display (compositor gone, protocol error) fails these calls
+         * on every pass while poll() reports HUP at once: exit, don't spin. */
+        int dead = 0;
+        while (!dead && wl_display_prepare_read(P.dpy) != 0)
+            dead = wl_display_dispatch_pending(P.dpy) < 0;
+        if (dead) break;
         wl_display_flush(P.dpy);
         time_t now = time(NULL);
         int to_ms = (int)(60 - (now % 60)) * 1000;   /* wake at the next minute */
@@ -1152,9 +1157,10 @@ int main(int argc, char **argv)
         struct pollfd pfd = { .fd = wfd, .events = POLLIN };
         int n = poll(&pfd, 1, to_ms);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(P.dpy); break; }
-        if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(P.dpy);
-        else wl_display_cancel_read(P.dpy);
-        wl_display_dispatch_pending(P.dpy);
+        if (n > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (wl_display_read_events(P.dpy) < 0) break;
+        } else wl_display_cancel_read(P.dpy);
+        if (wl_display_dispatch_pending(P.dpy) < 0) break;
         dock_maybe_begin_reorder();
 
         /* deferred actions (safe here: outside any listener) */
@@ -1182,6 +1188,8 @@ int main(int argc, char **argv)
             render();
         }
     }
+    if (wl_display_get_error(P.dpy))
+        fprintf(stderr, "%s: compositor connection lost, exiting\n", mode_name());
     sd_cairo_pool_destroy(&P.surface_pool);
     sd_cairo_pool_destroy(&P.qs_pool);
     sd_cairo_pool_destroy(&P.wm_pool);

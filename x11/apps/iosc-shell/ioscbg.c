@@ -1402,7 +1402,12 @@ int main(void)
 
     int fd = wl_display_get_fd(B.dpy);
     while (B.running) {
-        while (wl_display_prepare_read(B.dpy) != 0) wl_display_dispatch_pending(B.dpy);
+        /* A dead display (compositor gone, protocol error) fails these calls
+         * on every pass while poll() reports HUP at once: exit, don't spin. */
+        int dead = 0;
+        while (!dead && wl_display_prepare_read(B.dpy) != 0)
+            dead = wl_display_dispatch_pending(B.dpy) < 0;
+        if (dead) break;
         wl_display_flush(B.dpy);
         struct pollfd pfd = { .fd = fd, .events = POLLIN };
         int timeout = 1000;
@@ -1410,9 +1415,10 @@ int main(void)
             timeout = 50;
         int n = poll(&pfd, 1, timeout);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(B.dpy); break; }
-        if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(B.dpy);
-        else wl_display_cancel_read(B.dpy);
-        wl_display_dispatch_pending(B.dpy);
+        if (n > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (wl_display_read_events(B.dpy) < 0) break;
+        } else wl_display_cancel_read(B.dpy);
+        if (wl_display_dispatch_pending(B.dpy) < 0) break;
         uint64_t ms = now_ms();
         maybe_begin_drag(ms);
         if (menu_dismiss_if_idle(ms)) {
@@ -1424,6 +1430,8 @@ int main(void)
             if (changed) render_desktop_widgets(changed);
         }
     }
+    if (wl_display_get_error(B.dpy))
+        fprintf(stderr, "ioscbg: compositor connection lost, exiting\n");
     sd_cairo_pool_destroy(&B.wall_pool);
     sd_cairo_pool_destroy(&B.desk_pool);
     wl_display_disconnect(B.dpy);

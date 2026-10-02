@@ -637,17 +637,25 @@ int main(void)
 
     int fd = wl_display_get_fd(O.dpy);
     while (O.running) {
-        while (wl_display_prepare_read(O.dpy) != 0) wl_display_dispatch_pending(O.dpy);
+        /* A dead display (compositor gone, protocol error) fails these calls
+         * on every pass while poll() reports HUP at once: exit, don't spin. */
+        int dead = 0;
+        while (!dead && wl_display_prepare_read(O.dpy) != 0)
+            dead = wl_display_dispatch_pending(O.dpy) < 0;
+        if (dead) break;
         wl_display_flush(O.dpy);
         struct pollfd pfd = { .fd = fd, .events = POLLIN };
         int timeout = (O.touch_active && O.press_kind == OV_HIT_APP && !O.long_press_done) ? 50 : -1;
         int n = poll(&pfd, 1, timeout);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(O.dpy); break; }
-        if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(O.dpy);
-        else wl_display_cancel_read(O.dpy);
-        wl_display_dispatch_pending(O.dpy);
+        if (n > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (wl_display_read_events(O.dpy) < 0) break;
+        } else wl_display_cancel_read(O.dpy);
+        if (wl_display_dispatch_pending(O.dpy) < 0) break;
         maybe_pin_pressed_app();
     }
+    if (wl_display_get_error(O.dpy))
+        fprintf(stderr, "ioscoverview: compositor connection lost, exiting\n");
     if (O.backdrop) cairo_surface_destroy(O.backdrop);
     sd_cairo_pool_destroy(&O.surface_pool);
     wl_display_disconnect(O.dpy);
