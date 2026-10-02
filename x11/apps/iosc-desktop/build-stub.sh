@@ -23,6 +23,12 @@ bash "$HERE/test-desktop-entry.sh"
 echo "==> testing ioscd's libiosexec exec routing"
 bash "$HERE/test-iosexec.sh"
 
+echo "==> testing ioscd's session-bus adoption against planted links"
+bash "$HERE/test-session-bus.sh"
+
+echo "==> testing that ioscd's children inherit none of its fds"
+bash "$HERE/test-ioscd-fds.sh"
+
 SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun -sdk iphoneos -f clang)"
 MIN="-miphoneos-version-min=16.0"
