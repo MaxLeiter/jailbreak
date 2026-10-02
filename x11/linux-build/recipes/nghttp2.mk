@@ -7,7 +7,7 @@ endif
 # needs C++17). libsoup only links libnghttp2, so this builds `--enable-lib-only` instead.
 
 SUBPROJECTS     += nghttp2
-NGHTTP2_VERSION := 1.61.0
+NGHTTP2_VERSION := 1.70.0
 DEB_NGHTTP2_V   ?= $(NGHTTP2_VERSION)+ios1
 
 nghttp2-setup: setup
