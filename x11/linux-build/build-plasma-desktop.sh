@@ -44,6 +44,9 @@ SUPPORT_RECIPE_TARGETS=(
   breeze
   plasma-integration
   powerdevil
+  polkit-kde-agent-1
+  xdg-desktop-portal-kde
+  kde-cli-tools
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
@@ -57,6 +60,9 @@ SUPPORT_RECIPE_HELPERS=(
   systemsettings-prune-actions.py
   plasma-integration-ios-fixes.sh
   powerdevil-ios-fixes.sh
+  polkit-kde-agent-1-ios-fixes.sh
+  xdg-desktop-portal-kde-ios-fixes.sh
+  kde-cli-tools-ios-fixes.sh
 )
 COLLECT_DEBS=(
   qcoro6
@@ -92,6 +98,9 @@ COLLECT_DEBS=(
   breeze
   plasma-integration
   powerdevil
+  polkit-kde-agent-1
+  xdg-desktop-portal-kde
+  kde-cli-tools
 )
 LOCAL_STAGE_DEBS=(
   libpulse0

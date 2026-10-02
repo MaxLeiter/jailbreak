@@ -338,3 +338,20 @@ if MARKER not in text:
     text = text.replace(old_if, new_if, 1)
     path.write_text(text)
 PY
+
+# 6.7 SuspendController::lastWakeupType() classifies wakeup sources through UdevQt (Linux sysfs paths). UdevQt is
+# not built here (see the header of this script), and an iPad has no wakeup-source list: report UnknownSource.
+python3 - "$src/daemon/controllers/suspendcontroller.cpp" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios: no UdevQt" not in text:
+    new = re.sub(r"(SuspendController::WakeupSources SuspendController::lastWakeupType\(\)\n\{\n)(.*?    return sources;\n)(\}\n)",
+                 r"\1#ifndef Q_OS_LINUX // xios: no UdevQt\n    return WakeupSource::UnknownSource;\n#else\n\2#endif\n\3", text, count=1, flags=re.S)
+    if new == text:
+        raise SystemExit("powerdevil lastWakeupType block not found")
+    path.write_text(new)
+PY

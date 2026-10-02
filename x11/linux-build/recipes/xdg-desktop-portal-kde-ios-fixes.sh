@@ -88,3 +88,54 @@ text = text.replace("\nki18n_install(po)", "\n# ios-no-target-linguist: ki18n_in
 
 path.write_text(text)
 PY
+
+# 6.7: (a) Darwin has no pipe2(): shim it in the two files that use it; (b) the Print portal needs QPrintDialog, and
+# our qtbase ships no QtPrintSupport dialogs (QT_FEATURE_printdialog is off), so the Print portal is left out.
+python3 - "$src" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+src = Path(sys.argv[1])
+SHIM = """#if defined(__APPLE__) // xios: Darwin has no pipe2()
+#include <fcntl.h>
+#include <unistd.h>
+static inline int pipe2(int fds[2], int flags)
+{
+    if (pipe(fds) != 0) {
+        return -1;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (flags & O_CLOEXEC) {
+            fcntl(fds[i], F_SETFD, FD_CLOEXEC);
+        }
+        if (flags & O_NONBLOCK) {
+            fcntl(fds[i], F_SETFL, fcntl(fds[i], F_GETFL) | O_NONBLOCK);
+        }
+    }
+    return 0;
+}
+#endif
+"""
+for name in ("src/clipboard.cpp", "src/screenshotdialog.cpp"):
+    p = src / name
+    t = p.read_text()
+    if "xios: Darwin has no pipe2()" not in t:
+        # after the first #include line block start: put it before the first #include of a Qt/KDE header
+        m = re.search(r"^#include ", t, flags=re.M)
+        t = t[:m.start()] + SHIM + t[m.start():]
+        p.write_text(t)
+
+p = src / "src/CMakeLists.txt"
+t = p.read_text()
+t = re.sub(r"^    print\.(cpp|h)\n", "", t, flags=re.M)
+p.write_text(t)
+p = src / "src/desktopportal.cpp"
+t = p.read_text()
+t = t.replace('#include "print.h"\n', "").replace("    , m_print(new PrintPortal(this))\n", "")
+p.write_text(t)
+p = src / "src/desktopportal.h"
+t = p.read_text()
+t = t.replace("    PrintPortal *const m_print;\n", "")
+p.write_text(t)
+PY

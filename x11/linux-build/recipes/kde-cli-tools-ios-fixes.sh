@@ -74,3 +74,18 @@ for rel, target, anchor in targets:
     text = text.replace(found, f"{found}\n{fix}", 1)
     path.write_text(text)
 PY
+
+# 6.7 relies on Qt6::DBus arriving transitively (Linux-only deps); give every target its headers.
+python3 - "$src/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios: Qt6::DBus for every target" not in text:
+    new = re.sub(r"^(project\([^)]*\)\n)", r"\1link_libraries(Qt6::DBus) # xios: Qt6::DBus for every target\n", text, count=1, flags=re.M)
+    if new == text:
+        raise SystemExit("kde-cli-tools project() line not found")
+    path.write_text(new)
+PY
