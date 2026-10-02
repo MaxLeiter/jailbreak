@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ipadctld entitlements. Starts from the probe's minimal, ablation-proven set
+  (see ipadctl/probe/NOTES.md). Any addition here is justified in a comment and
+  flagged in the phase-1 report.
+-->
+<plist version="1.0">
+<dict>
+	<!-- CARenderServerRenderDisplay returns an all-black frame without it. -->
+	<key>com.apple.QuartzCore.global-capture</key>
+	<true/>
+	<!-- IOHIDEventSystemClientDispatchEvent silently drops events without it. -->
+	<key>com.apple.private.hid.client.event-dispatch</key>
+	<true/>
+	<key>com.apple.security.iokit-user-client-class</key>
+	<array>
+		<!-- IOSurfaceCreate returns NULL without it. -->
+		<string>IOSurfaceRootUserClient</string>
+		<!-- Hardware scaler; without it capture falls back to vImage (~7 ms slower). -->
+		<string>IOSurfaceAcceleratorClient</string>
+	</array>
+</dict>
+</plist>

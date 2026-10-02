@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ipadctld launchd job. Deliberately NOT installed into
+  /var/jb/Library/LaunchDaemons: it is loaded explicitly with `launchctl load`
+  (deploy.sh start) and stays off across reboots until the phase-2 safety layer
+  exists. KeepAlive only matters while the job is loaded.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.max.ipadctld</string>
+	<key>Program</key>
+	<string>/var/jb/var/root/ipadctl/ipadctld</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/var/jb/var/root/ipadctl/ipadctld</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/var/jb/var/root/ipadctl/ipadctld.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/jb/var/root/ipadctl/ipadctld.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>OS_ACTIVITY_MODE</key>
+		<string>disable</string>
+	</dict>
+</dict>
+</plist>

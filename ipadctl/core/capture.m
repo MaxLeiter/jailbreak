@@ -16,6 +16,9 @@ struct ipc_capturer {
     uint8_t *rot;        // rotated view-space buffer (when rot_q != 0)
     size_t rot_bpr;
     int sw, sh;          // small surface size (points)
+    uint8_t *rotpx;      // full view-space buffer at native px (region path, lazy)
+    size_t rotpx_bpr;
+    int rotpx_w, rotpx_h;
 };
 
 static double now_ms(void) {
@@ -71,6 +74,7 @@ void ipc_capturer_destroy(ipc_capturer *c) {
     if (c->small) CFRelease(c->small);
     if (c->accel) CFRelease(c->accel);
     free(c->rot);
+    free(c->rotpx);
     free(c);
 }
 
@@ -183,5 +187,88 @@ NSData *ipc_capture_jpeg(ipc_capturer *c, double quality, ipc_shot_stats *st, NS
     st->bytes = jpeg.length;
     st->out_w = (int)view.width;
     st->out_h = (int)view.height;
+    return jpeg;
+}
+
+// Encode a tight BGRA buffer (rowBytes == width*4) as JPEG.
+static NSData *encode_jpeg_tight(const uint8_t *data, int w, int h, double quality) {
+    vImage_Buffer b = {.data = (void *)data, .width = (vImagePixelCount)w, .height = (vImagePixelCount)h, .rowBytes = (size_t)w * 4};
+    return encode_jpeg(&b, quality);
+}
+
+static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+NSData *ipc_capture_region_jpeg(ipc_capturer *c, CGRect roi, double quality, ipc_shot_stats *st, NSString **err) {
+    memset(st, 0, sizeof(*st));
+    double t0 = now_ms();
+
+    SPI.CARenderServerRenderDisplay(0, CFSTR("LCD"), c->full, 0, 0);
+    double t1 = now_ms();
+
+    int scale = (int)lround(c->g.scale);
+    if (scale < 1) scale = 1;
+    int vpw = (int)lround(c->g.view_pt_w) * scale;  // view width in px
+    int vph = (int)lround(c->g.view_pt_h) * scale;  // view height in px
+
+    // Lazily (re)allocate the native-resolution rotation buffer.
+    if (!c->rotpx || c->rotpx_w != vpw || c->rotpx_h != vph) {
+        free(c->rotpx);
+        c->rotpx_bpr = (size_t)vpw * 4;
+        c->rotpx = malloc(c->rotpx_bpr * (size_t)vph);
+        c->rotpx_w = vpw;
+        c->rotpx_h = vph;
+        if (!c->rotpx) {
+            if (err) *err = @"region: allocation failed";
+            return nil;
+        }
+    }
+
+    IOSurfaceLock(c->full, kIOSurfaceLockReadOnly, NULL);
+    vImage_Buffer full = surface_buffer(c->full);
+    vImage_Buffer view = {.data = c->rotpx, .width = (vImagePixelCount)vpw, .height = (vImagePixelCount)vph, .rowBytes = c->rotpx_bpr};
+    static const uint8_t kRot[4] = {kRotate0DegreesClockwise, kRotate90DegreesClockwise,
+                                    kRotate180DegreesClockwise, kRotate270DegreesClockwise};
+    const uint8_t black[4] = {0, 0, 0, 0xFF};
+    vImage_Error ve = vImageRotate90_ARGB8888(&full, &view, kRot[c->g.rot_q & 3], black, kvImageNoFlags);
+    IOSurfaceUnlock(c->full, kIOSurfaceLockReadOnly, NULL);
+    double t2 = now_ms();
+    if (ve != kvImageNoError) {
+        if (err) *err = [NSString stringWithFormat:@"vImageRotate90 (region) failed: %ld", (long)ve];
+        return nil;
+    }
+    st->blank = looks_blank(&view);
+
+    // Crop in px, clamped inside the view.
+    int cx = clampi((int)lround(roi.origin.x) * scale, 0, vpw - 1);
+    int cy = clampi((int)lround(roi.origin.y) * scale, 0, vph - 1);
+    int cw = clampi((int)lround(roi.size.width) * scale, 1, vpw - cx);
+    int ch = clampi((int)lround(roi.size.height) * scale, 1, vph - cy);
+
+    // Copy the crop into a compact buffer (avoids stride/length pitfalls in the encoder).
+    uint8_t *compact = malloc((size_t)cw * ch * 4);
+    if (!compact) {
+        if (err) *err = @"region: crop allocation failed";
+        return nil;
+    }
+    for (int row = 0; row < ch; row++)
+        memcpy(compact + (size_t)row * cw * 4, c->rotpx + (size_t)(cy + row) * c->rotpx_bpr + (size_t)cx * 4, (size_t)cw * 4);
+    double t3 = now_ms();
+
+    NSData *jpeg = encode_jpeg_tight(compact, cw, ch, quality);
+    free(compact);
+    double t4 = now_ms();
+    if (!jpeg) {
+        if (err) *err = @"JPEG encode failed";
+        return nil;
+    }
+
+    st->render_ms = t1 - t0;
+    st->scale_ms = 0;
+    st->rotate_ms = t2 - t1;
+    st->encode_ms = t4 - t3;
+    st->total_ms = t4 - t0;
+    st->bytes = jpeg.length;
+    st->out_w = cw;
+    st->out_h = ch;
     return jpeg;
 }

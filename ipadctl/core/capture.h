@@ -27,3 +27,10 @@ void ipc_capturer_destroy(ipc_capturer *c);
 
 // Returns JPEG bytes or nil (with a message in *err).
 NSData *ipc_capture_jpeg(ipc_capturer *c, double quality, ipc_shot_stats *st, NSString **err);
+
+// Crop `roi` (view-space points) and return it at NATIVE device resolution
+// (points x scale), so small text stays sharp. Unlike ipc_capture_jpeg this
+// skips the point downscale: it rotates the full panel-pixel frame to view
+// orientation and copies out the crop. `roi` is clamped into the screen.
+// Returns JPEG bytes or nil (with a message in *err).
+NSData *ipc_capture_region_jpeg(ipc_capturer *c, CGRect roi, double quality, ipc_shot_stats *st, NSString **err);
