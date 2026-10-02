@@ -4725,8 +4725,10 @@ final class XScreenView: UIView {
         stack.addArrangedSubview(panelButton("Send Keysym") { [weak self, weak keysymField] in
             let raw = (keysymField?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             let cleaned = raw.lowercased().hasPrefix("0x") ? String(raw.dropFirst(2)) : raw
-            if let value = UInt(cleaned, radix: 16) {
-                self?.sendKeysym(value, ctrl: customCtrl, alt: customAlt, shift: customShift)
+            // Keysyms are 32-bit on the wire; sendKeysym's UInt32 conversion traps
+            // on anything wider, so out-of-range input is rejected here instead.
+            if let value = UInt32(cleaned, radix: 16) {
+                self?.sendKeysym(UInt(value), ctrl: customCtrl, alt: customAlt, shift: customShift)
             }
         })
 
