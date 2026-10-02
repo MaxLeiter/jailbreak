@@ -43,8 +43,18 @@ targets:
     dependencies:
       - target: XiosShare
         embed: true
+      # embed puts the built .appex in Xios.app/PlugIns/. codeSign stays off to match
+      # the rest of the app: bin/lib/build-app.sh ldid-signs the extension separately,
+      # with XiosFileProvider/entitlements.plist.
+      - target: XiosFileProvider
+        embed: true
+        codeSign: false
     sources:
       - path: Sources
+      # Shared with the XiosFileProvider target: the app creates the shared root and
+      # names the domain, the extension serves it, and both must agree on the path and
+      # the identifier scheme or the domain points somewhere the desktop is not using.
+      - path: XiosFileProvider/XiosSharedRoot.swift
       - path: ../shared/XiosHardwareKeyboard.swift
       - path: ../shared/XiosHardwareKeymap.swift
       - path: ../shared/XiosMetalEventBroker.m
@@ -138,3 +148,40 @@ targets:
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
               NSExtensionActivationSupportsFileWithMaxCount: 1
               NSExtensionActivationSupportsText: true
+
+  # Publishes the desktop's shared folder into the iPad Files app. Runs in its own
+  # process with its own sandbox, so it inherits none of the app's exceptions and
+  # declares only the one path it needs.
+  XiosFileProvider:
+    type: app-extension
+    platform: iOS
+    settings:
+      base:
+        TARGETED_DEVICE_FAMILY: "2"
+        # Extensions must be namespaced under the host app's bundle id.
+        PRODUCT_BUNDLE_IDENTIFIER: com.max.xios.fileprovider
+        CODE_SIGN_ENTITLEMENTS: XiosFileProvider/entitlements.plist
+        # The project-level `settings.base` is inherited by every target, so the
+        # app-specific bits are cleared here: the bridging header pulls in the
+        # compositor/IOSurface C headers, the link flags pull in Metal and MetalFX,
+        # and the asset catalog does not exist in this target. None of it belongs in
+        # a file provider, and each would fail the build rather than bloat it.
+        SWIFT_OBJC_BRIDGING_HEADER: ""
+        OTHER_LDFLAGS: ""
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+    sources:
+      # Same as XiosShare: these are build inputs, not payload, so they stay out of
+      # Copy Bundle Resources.
+      - path: XiosFileProvider
+        excludes:
+          - entitlements.plist
+          - Info.generated.plist
+    info:
+      path: XiosFileProvider/Info.generated.plist
+      properties:
+        CFBundleDisplayName: Xios
+        CFBundleShortVersionString: "0.1.12"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.fileprovider-nonui
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FileProviderExtension
+          NSExtensionFileProviderSupportsEnumeration: true

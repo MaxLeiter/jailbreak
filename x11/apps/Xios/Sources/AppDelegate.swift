@@ -16,6 +16,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         if let url = launchOptions?[.url] as? URL {
             handleXiosURL(url)
         }
+
+        // Publishes the desktop's shared folder into Files.app. Deliberately after the
+        // window is up: it touches the filesystem and talks to the FileProvider daemon,
+        // and neither is allowed to delay first paint.
+        XiosFileProviderDomain.registerIfPossible()
         return true
     }
 
