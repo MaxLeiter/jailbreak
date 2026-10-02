@@ -57,8 +57,9 @@ void       xios_egl_destroy_pbuffer(EGLSurface pb);
  *   IOSurface -> ANGLE pbuffer -> GL_TEXTURE_2D -> eglCreateImageKHR(EGL_GL_TEXTURE_2D).
  * It saves/restores the caller's current context (making xios_egl_context current
  * on the pbuffer only long enough to bind the texture), so it is safe to call from
- * a Cogl context. The backing pbuffer+texture are retained until
- * xios_egl_destroy_image(). REQUIRES xios_egl_context() to have been created.
+ * a Cogl context. The backing pbuffer is retained until xios_egl_destroy_image(); the
+ * texture name stays allocated in xios_egl_context (freeing it from the caller's context
+ * would hit the wrong texture). REQUIRES xios_egl_context() to have been created.
  * EGL_NO_IMAGE_KHR on failure. Signatures match xios-glue-stub.h. */
 EGLImageKHR xios_egl_image_from_iosurface(void *iosurface, int width, int height);
 void        xios_egl_destroy_image(EGLImageKHR image);
