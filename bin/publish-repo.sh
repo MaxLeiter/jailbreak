@@ -97,6 +97,7 @@ set -euo pipefail
 
 TARGET=prod
 ONLY=""
+ONLY_SET=0
 SOURCE=""   # empty until the per-target default is applied below
 REPUBLISH_METADATA=0
 while [ "$#" -gt 0 ]; do
@@ -104,8 +105,8 @@ while [ "$#" -gt 0 ]; do
     --staging|staging) TARGET=staging ;;
     --prod|prod)       TARGET=prod ;;
     --preview|preview) TARGET=preview ;;
-    --only)            ONLY="${2:-}"; shift ;;
-    --only=*)          ONLY="${1#--only=}" ;;
+    --only)            ONLY="${2:-}"; ONLY_SET=1; [ "$#" -gt 1 ] && shift ;;
+    --only=*)          ONLY="${1#--only=}"; ONLY_SET=1 ;;
     --from-index)      SOURCE=index ;;
     --from-debs)       SOURCE=debs ;;
     --republish-metadata) REPUBLISH_METADATA=1 ;;
@@ -114,6 +115,13 @@ while [ "$#" -gt 0 ]; do
   esac
   shift
 done
+
+# `--only "$PKGS"` with an empty $PKGS must not quietly become an unscoped
+# publish of the whole tree.
+if [ "$ONLY_SET" = 1 ] && [ -z "$(printf '%s' "$ONLY" | tr -d ', \t')" ]; then
+  echo "ERROR: --only named no packages; refusing to fall back to an unscoped publish." >&2
+  exit 2
+fi
 
 if [ -z "$SOURCE" ]; then
   case "$TARGET" in
