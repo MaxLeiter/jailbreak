@@ -73,9 +73,9 @@ IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
 # the 2160x1620 panel = ~1.5 effective scale. Override to retune.
 export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
-# Input tracing to $XDG_RUNTIME_DIR/{ioscbar,ioscdock}.log — default ON while
-# hunting the shell-tap bug (panel dead to taps). Flip to 0 once fixed.
-export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
+# Input tracing to $TMP/{ioscbar,ioscdock}.log. Off by default now that the
+# panel tap path is proven on device; set IOSC_SHELL_DEBUG=1 to trace again.
+export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-0}"
 
 SOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 log() { echo "run-shell: $*" >&2; }
