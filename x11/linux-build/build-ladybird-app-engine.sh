@@ -24,6 +24,7 @@ BUILD=$PROC/ladybird-build$LB_SUFFIX            # reuse the headless build dir; 
 HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
+export RUSTUP_TOOLCHAIN=1.98.0   # upstream rust-toolchain.toml (installed by wave4 prep)
 export PATH=$CARGO_HOME/bin:$PATH
 export LB_APP_BUILD=1
 case "${LB_APP_CPU_DIAGNOSTIC:-0}" in
@@ -241,7 +242,7 @@ if [ "$APP_GPU_ENABLED" -eq 1 ]; then
 else
   step "Compositor: DIAGNOSTIC CPU build + generated egl/gl trap stubs"
 fi
-ninja -k 0 -j"$(nproc)" compositorservice 2>&1 | tail -8
+ninja -k 0 -j"${JOBS:-8}" compositorservice 2>&1 | tail -8
 CS=$(find "$BUILD" -name libcompositorservice.a | head -1)
 STUBSRC="$WORK/Services/Compositor/AngleStubIOS.cpp"
 if [ "$APP_GPU_ENABLED" -eq 0 ] && [ -n "$CS" ] && [ -f "$STUBSRC" ]; then
@@ -259,14 +260,14 @@ s=s[:s.index(b)+len(b)]+"\n"+gen+"\n"+s[s.index(e):]
 open(p,"w").write(s)
 print("  filled", gen.count(";"), "stub symbols")
 PY
-    ninja -k 0 -j"$(nproc)" compositorservice 2>&1 | tail -4
+    ninja -k 0 -j"${JOBS:-8}" compositorservice 2>&1 | tail -4
   fi
 fi
 
 # ---- build everything -----------------------------------------------------------------------
 step "build: helpers + Compositor + Ladybird UI"
 TARGETS="WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer Ladybird"
-ninja -k 0 -j"$(nproc)" $TARGETS 2>&1 | tee /out/app-engine-build.log | tail -40
+ninja -k 0 -j"${JOBS:-8}" $TARGETS 2>&1 | tee /out/app-engine-build.log | tail -40
 p1=${PIPESTATUS[0]}
 if [ "$p1" -ne 0 ]; then
   echo "== pass1 exit $p1; -j2 retry (OOM giants / late undefined stubs) =="
@@ -287,7 +288,7 @@ e="// __LB_ANGLE_STUBS_END__"
 s=s[:s.index(e)]+'''$GEN'''+"\n"+s[s.index(e):]
 open(p,"w").write(s); print("  added late stubs")
 PY
-      ninja -k 0 -j"$(nproc)" compositorservice 2>&1 | tail -3
+      ninja -k 0 -j"${JOBS:-8}" compositorservice 2>&1 | tail -3
     fi
   fi
   ninja -k 0 -j2 $TARGETS 2>&1 | tee -a /out/app-engine-build.log | tail -30

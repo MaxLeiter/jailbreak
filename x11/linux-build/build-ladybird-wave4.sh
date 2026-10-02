@@ -32,6 +32,7 @@ BUILD=$PROC/ladybird-build$LB_SUFFIX
 HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
+export RUSTUP_TOOLCHAIN=1.98.0   # upstream rust-toolchain.toml (installed by wave4 prep)
 # NOTE: $SHIM is deliberately NOT on PATH. Its cctools mach-o tools (unprefixed ld/ar/libtool)
 # would shadow the host GNU toolchain that cargo needs to build+link HOST build.rs/proc-macros
 # (aarch64-unknown-linux-gnu) -> cctools ld64 chokes on GNU ld's -plugin. All shim tools are
@@ -167,13 +168,13 @@ if run_stage deps; then
       echo "  !! ANGLE include/ fetch failed"
     fi
   fi
-  cat > $BB/usr/lib/pkgconfig/angle.pc <<'EOF'
+  cat > $BB/usr/lib/pkgconfig/angle.pc <<EOF
 prefix=$XIOS_PREFIX
-includedir=${prefix}/usr/include
+includedir=\${prefix}/usr/include
 Name: angle
 Description: ANGLE GLES/EGL headers (M0 headers-only; GL entry points live in Compositor)
 Version: 7258
-Cflags: -I${includedir}
+Cflags: -I\${includedir}
 Libs:
 EOF
 
@@ -316,7 +317,7 @@ if run_stage build; then
   cd "$BUILD"
   # Build codegen first (all-Python), then the helper services. -k 0 keeps going so a single run
   # enumerates the whole macOS-vs-iOS porting tail instead of one error per pass.
-  ninja -k 0 -j"$(nproc)" WebContent RequestServer ImageDecoder WebWorker \
+  ninja -k 0 -j"${JOBS:-8}" WebContent RequestServer ImageDecoder WebWorker \
     2>&1 | tee /out/wave4-build.log
   echo "build exit: ${PIPESTATUS[0]}"
   echo "== emitted binaries =="

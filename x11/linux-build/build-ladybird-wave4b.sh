@@ -39,6 +39,7 @@ HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"   # flapc + generate-libjs-bytecode, built by wave4 stage hostrust
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
+export RUSTUP_TOOLCHAIN=1.98.0   # upstream rust-toolchain.toml (installed by wave4 prep)
 export PATH=$CARGO_HOME/bin:$PATH
 mkdir -p /out
 
@@ -202,7 +203,7 @@ ensure_generated_headers() {
       -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
       -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -5
   fi
-  ( cd "$BUILD" && ninja -k 0 -j"$(nproc)" WebContent 2>&1 | tail -3 || true )
+  ( cd "$BUILD" && ninja -k 0 -j"${JOBS:-8}" WebContent > /out/wave4b-codegen.log 2>&1; grep -A12 "^FAILED" /out/wave4b-codegen.log | head -60; tail -2 /out/wave4b-codegen.log )
 }
 
 if run_stage hosttools && [ -x "$HOST/generate_interpreter_layout" ] && [ -x "$HOST/rust-bin/flapc" ] && [ -x "$HOST/rust-bin/generate-libjs-bytecode" ]; then
@@ -226,7 +227,7 @@ elif run_stage hosttools; then
   n=0
   for f in "$WORK"/AK/*.cpp; do
     bn=$(basename "$f" .cpp)
-    case $bn in DemangleWindows|LexicalPathWindows) continue;; esac
+    case $bn in *Windows*) continue;; esac
     clang++-19 $CXXFLAGS -c "$f" -o "$HOST/ak/$bn.o" 2>"$HOST/ak/$bn.err" \
       || { echo "  !! host AK FAIL $bn"; tail -20 "$HOST/ak/$bn.err"; exit 1; }
     n=$((n+1))
@@ -283,7 +284,7 @@ if run_stage build; then
   cd "$BUILD"
   TARGETS="WebContent RequestServer ImageDecoder WebWorker headless-shot"
   # Pass 1: full parallelism, keep-going to enumerate any remaining source walls in one shot.
-  ninja -k 0 -j"$(nproc)" $TARGETS 2>&1 | tee /out/wave4b-build.log
+  ninja -k 0 -j"${JOBS:-8}" $TARGETS 2>&1 | tee /out/wave4b-build.log
   p1=${PIPESTATUS[0]}
   # Pass 2: some LibWebView/LibWeb TUs (e.g. ViewImplementation.cpp) are ~3GB at -O3 and get
   # OOM-killed ("Killed") under -j16 on this 7.7GiB VM. Retry the few remaining actions at low

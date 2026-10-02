@@ -16,6 +16,8 @@ cd "$SRC"
 
 say() { echo "  [m0-patch] $*"; }
 
+APPLIED_LIST="$SRC/.git/lb-applied-patches"
+touch "$APPLIED_LIST"
 apply_series() {
   local patch_dir="$1" patch_name patch_file
   [ -f "$patch_dir/series" ] || return 0
@@ -25,13 +27,16 @@ apply_series() {
     patch_name="${patch_name%% }"
     [ -n "$patch_name" ] || continue
     patch_file="$patch_dir/$patch_name"
-    if patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
+    # A later patch can touch the same lines as an earlier one, so "already applied" cannot be
+    # detected by a reverse dry-run. Applied patches are recorded by name in the tree's .git dir.
+    if grep -qxF "$patch_name" "$APPLIED_LIST"; then
+      say "$patch_name already applied (recorded)"
+    elif patch -p1 --dry-run -f < "$patch_file" >/dev/null 2>&1; then
       patch -p1 --no-backup-if-mismatch < "$patch_file" >/dev/null
+      echo "$patch_name" >> "$APPLIED_LIST"
       say "applied $patch_name"
-    elif patch -p1 -R --dry-run -f < "$patch_file" >/dev/null 2>&1; then
-      say "$patch_name already applied"
     else
-      echo "failed to apply $patch_file" >&2
+      echo "failed to apply $patch_file (not recorded as applied)" >&2
       return 1
     fi
   done < "$patch_dir/series"

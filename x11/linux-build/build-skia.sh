@@ -303,25 +303,25 @@ echo "==> rewriting #include \"include/...\" -> #include \"...\" across staged h
 grep -rlZ '#include "include/' "$OUT/include/skia" 2>/dev/null \
   | xargs -0 -r sed -i 's|#include "include/|#include "|g'
 
-# skia.pc (§5) — Version 144, empty Requires (bundled deps archived in).
+# skia.pc (§5) — Version 148, empty Requires (bundled deps archived in).
 # Apple-framework closure (§5 risk / §8.5): a global-undefined survey of libskia.a
 # (nm: U-in-some-member, defined-in-none) shows it references CoreFoundation (~45),
 # CoreGraphics (~40), CoreText (~41, from the compiled-in SkFontMgr_mac_ct alongside
 # freetype), ImageIO (~3, CGImageSource/Destination), and libobjc (1). No Foundation/
 # UIKit/Metal symbols (confirms zero GPU/Metal closure). All are REQUIRED — none trims
 # — so bake them into Libs so PkgConfig::skia hands Ladybird a complete link closure.
-cat > "$OUT/lib/pkgconfig-skia.pc" <<'PC'
+cat > "$OUT/lib/pkgconfig-skia.pc" <<PC
 prefix=$XIOS_PREFIX
-exec_prefix=${prefix}
-libdir=${prefix}/lib
-includedir=${prefix}/include/skia
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include/skia
 
 Name: skia
 Description: 2D graphic library for drawing text, geometries and images.
 URL: https://skia.org/
-Version: 144
-Libs: -L${libdir} -lskia -lskcms -lobjc -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
-Cflags: -I${includedir}
+Version: 148
+Libs: -L\${libdir} -lskia -lskcms -lobjc -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
+Cflags: -I\${includedir}
 PC
 mkdir -p "$OUT/lib/pkgconfig"
 cp "$OUT/lib/pkgconfig-skia.pc" "$OUT/lib/pkgconfig/skia.pc"
