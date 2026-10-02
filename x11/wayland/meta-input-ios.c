@@ -45,7 +45,17 @@ struct _MetaInputIOS
   int                        cursor_x;
   int                        cursor_y;
   uint32_t                   wire_mods;         /* Xios modifier snapshot, bits 0..5 */
+  uint32_t                   mods_client;       /* input client that sent wire_mods */
+  GArray                    *held_keys;         /* HeldKey: KEY presses not yet released */
 };
+
+/* A hardware key an input client pressed and has not released, so on_client_dropped() can
+ * release it for a client that goes away holding it. */
+typedef struct
+{
+  uint32_t keysym;
+  uint32_t client;
+} HeldKey;
 
 static int
 input_log_budget_from_env (void)
@@ -185,6 +195,62 @@ sync_wire_modifiers (MetaInputIOS *input,
 }
 
 static void
+track_held_key (MetaInputIOS *input,
+                uint32_t      keysym,
+                gboolean      pressed,
+                uint32_t      client)
+{
+  for (guint i = 0; i < input->held_keys->len; i++)
+    {
+      HeldKey *key = &g_array_index (input->held_keys, HeldKey, i);
+
+      if (key->keysym != keysym)
+        continue;
+      if (pressed)
+        key->client = client;
+      else
+        g_array_remove_index_fast (input->held_keys, i);
+      return;
+    }
+
+  if (pressed)
+    {
+      HeldKey key = { keysym, client };
+
+      g_array_append_val (input->held_keys, key);
+    }
+}
+
+/* An input client went away (the Xios app was killed, its connection dropped) without
+ * releasing what it held. Release its keys, then the depressed modifiers of its last
+ * snapshot, as iosc does: otherwise the focused client keeps a key autorepeating or Ctrl
+ * held until the user happens to press it again. Caps and Num Lock are latched state, not
+ * held keys, and stay; the last client leaving still clears them in on_poll_tick(). */
+static void
+on_client_dropped (uint32_t  client,
+                   void     *user)
+{
+  MetaInputIOS *input = user;
+
+  for (guint i = input->held_keys->len; i-- > 0;)
+    {
+      HeldKey key = g_array_index (input->held_keys, HeldKey, i);
+
+      if (key.client != client)
+        continue;
+      g_array_remove_index_fast (input->held_keys, i);
+      clutter_virtual_input_device_notify_keyval (input->keyboard, CLUTTER_CURRENT_TIME,
+                                                  key.keysym, CLUTTER_KEY_STATE_RELEASED);
+    }
+
+  if (input->mods_client == client)
+    {
+      sync_wire_modifiers (input, input->wire_mods & ((1u << 4) | (1u << 5)));
+      input->mods_client = 0;
+    }
+}
+
+static void
 on_input_msg (const xios_msg           *m,
               const char               *text,
               size_t                    text_len,
@@ -247,6 +313,7 @@ on_input_msg (const xios_msg           *m,
        * snapshot. Modifier key records are represented by sync_wire_modifiers()
        * itself; ordinary releases happen before the snapshot changes so a
        * Ctrl-key chord remains active for the released key. */
+      input->mods_client = xios_input_socket_current_client (input->socket);
       if (modifier_bit_for_keyval (XIOS_INPUT_CODE(m)))
         {
           sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
@@ -259,6 +326,7 @@ on_input_msg (const xios_msg           *m,
                                                    XIOS_INPUT_CODE(m),
                                                    XIOS_INPUT_STATE(m) ? CLUTTER_KEY_STATE_PRESSED
                                                             : CLUTTER_KEY_STATE_RELEASED);
+      track_held_key (input, XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m) != 0, input->mods_client);
       if (!XIOS_INPUT_STATE(m))
         sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
       break;
@@ -486,6 +554,8 @@ meta_input_ios_new (MetaBackend *backend,
   input->pointer = clutter_seat_create_virtual_device (seat, CLUTTER_POINTER_DEVICE);
   input->keyboard = clutter_seat_create_virtual_device (seat, CLUTTER_KEYBOARD_DEVICE);
   input->last_client_count = 0;
+  input->held_keys = g_array_new (FALSE, FALSE, sizeof (HeldKey));
+  xios_input_socket_set_drop_cb (socket, on_client_dropped, input);
   input->msg_log_budget = input_log_budget_from_env ();
   if (input->msg_log_budget > 0)
     g_message ("MetaInputIOS: logging first %d input records", input->msg_log_budget);
@@ -509,6 +579,7 @@ meta_input_ios_free (MetaInputIOS *input)
   g_clear_object (&input->pointer);
   g_clear_object (&input->keyboard);
   xios_input_socket_free (input->socket);
+  g_array_unref (input->held_keys);
   g_free (input);
 }
 
