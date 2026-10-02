@@ -102,6 +102,7 @@ run_cmd docker run --rm --platform linux/arm64 \
   -v "$HERE/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$HERE/build.sh:/work/build.sh:ro" \
   -v "$HERE/patches:/work/patches:ro" \
+  -v "$HERE/../ports:/work/ports:ro" \
   -v "$TARGET_OUT:/out" \
   "$IMAGE" /work/build.sh
 
