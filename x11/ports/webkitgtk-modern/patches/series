@@ -28,3 +28,4 @@
 0036-restore-apple-for-macho-dylib-naming.patch
 0037-glib-ipc-dgram-socketpair-on-darwin.patch
 0038-wtf-current-executable-path-darwin.patch
+0039-sqlite-init-no-main-thread-wait-on-gtk-darwin.patch

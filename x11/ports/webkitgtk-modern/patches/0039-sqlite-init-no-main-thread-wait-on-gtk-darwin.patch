@@ -1,0 +1,14 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] SQLiteDatabase: do not callOnMainThreadAndWait for sqlite3_initialize on the GTK port (deadlocks UI process with the IconDatabase queue)
+
+--- a/Source/WebCore/platform/sql/SQLiteDatabase.cpp	2026-10-02 02:18:15
++++ b/Source/WebCore/platform/sql/SQLiteDatabase.cpp	2026-10-02 02:18:15
+@@ -67,7 +67,7 @@
+         // aren't confident that it really is, and we still support ancient versions of SQLite. So
+         // std::call_once is used to stay on the safe side. See bug #143245.
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && PLATFORM(COCOA)
+         int ret;
+         callOnMainThreadAndWait([&] {
+             // In the Network process, this function can be called on a background thread when
