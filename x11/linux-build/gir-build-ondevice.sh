@@ -31,8 +31,6 @@
 # After build it copies every produced *.gir -> /var/jb/usr/share/gir-1.0 and
 # *.typelib -> /var/jb/usr/lib/girepository-1.0, then lists the new namespaces.
 set -euo pipefail
-[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
-. "$XIOS_TARGET_ENV"
 
 DEVICE="${DEVICE:-root@MaxsiPad.local}"
 SSHKEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
