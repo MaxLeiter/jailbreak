@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# xios_fixlib.Path: hunks on files Plasma 6.7 removed become logged no-ops instead of aborting.
+export PYTHONPATH="$(cd "$(dirname "$0")" && pwd)${PYTHONPATH:+:$PYTHONPATH}"
 
 src=${1:?usage: plasma-workspace-ios-fixes.sh <plasma-workspace-source-dir>}
 
@@ -28,7 +30,7 @@ EOF
 python3 - "$src/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -60,6 +62,8 @@ keep = {
     "logout-greeter",
     "libnotificationmanager",
     "libkworkspace",
+    "libklookandfeel",
+    "libclock",
     "libdbusmenuqt",
     "libkmpris",
     "libtaskmanager",
@@ -93,7 +97,7 @@ PY
 python3 - "$src/runners/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -110,9 +114,11 @@ PY
 python3 - "$src/dataengines/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
+if not path.exists():
+    sys.exit(0)  # Plasma 6.7 dropped plasma-workspace/dataengines
 text = path.read_text()
 text = re.sub(
     r"^add_subdirectory\(([^)]+)\)",
@@ -138,7 +144,7 @@ PY
 python3 - "$src/applets/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -198,7 +204,7 @@ PY
 python3 - "$src/components/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -227,7 +233,7 @@ python3 - "$src/klipper/CMakeLists.txt" "$src/klipper/klipper.cpp" \
   "$src/klipper/urlgrabber.cpp" "$src/klipper/klipperpopup.cpp" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 (
     cmake,
@@ -255,9 +261,10 @@ text = re.sub(
     count=1,
     flags=re.S,
 )
-start = text.index("\nclass BarcodeLabel : public QLabel")
-end = text.index("\nvoid Klipper::slotAskClearHistory()", start)
-text = text[:start] + "\n" + text[end:]
+if "\nclass BarcodeLabel : public QLabel" in text:  # 6.1 only: 6.7 moved the barcode UI to QML (KF6::Prison link in CMake)
+    start = text.index("\nclass BarcodeLabel : public QLabel")
+    end = text.index("\nvoid Klipper::slotAskClearHistory()", start)
+    text = text[:start] + "\n" + text[end:]
 klipper_cpp.write_text(text)
 
 text = klipper_h.read_text()
@@ -346,7 +353,7 @@ PY
 python3 - "$src/kcms/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -388,7 +395,7 @@ PY
 
 python3 - "$src/startkde/CMakeLists.txt" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 path.write_text("""add_subdirectory(plasmaautostart)
@@ -398,7 +405,7 @@ PY
 
 python3 - "$src/kcms/krdb/CMakeLists.txt" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -411,7 +418,7 @@ PY
 
 python3 - "$src/kcms/colors/CMakeLists.txt" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -423,7 +430,7 @@ PY
 
 python3 - "$src/kcms/lookandfeel/kcm.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -434,7 +441,7 @@ PY
 
 python3 - "$src/components/sessionsprivate/CMakeLists.txt" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -453,7 +460,7 @@ PY
 python3 - "$src/logout-greeter/CMakeLists.txt" "$src/logout-greeter/shutdowndlg.cpp" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 cmake = Path(sys.argv[1])
 text = cmake.read_text()
@@ -519,7 +526,7 @@ new = """#if defined(HAVE_X11) && HAVE_X11
 if old in text:
     text = text.replace(old, new)
 elif "KX11Extras::setState(winId(), NET::SkipTaskbar | NET::SkipPager | NET::SkipSwitcher);" not in text:
-    raise SystemExit("logout greeter X11 window metadata block not found")
+    todo("logout greeter X11 window metadata block not found")
 old = """    if (KX11Extras::compositingActive()) {
         // TODO: reenable window mask when we are without composite?
         //        clearMask();
@@ -539,7 +546,7 @@ new = """#if defined(HAVE_X11) && HAVE_X11
 if old in text:
     text = text.replace(old, new)
 elif "KX11Extras::compositingActive()" not in text:
-    raise SystemExit("logout greeter compositing block not found")
+    todo("logout greeter compositing block not found")
 source.write_text(text)
 PY
 
@@ -551,7 +558,7 @@ for layout in \
   python3 - "$layout" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -575,7 +582,7 @@ perl -0pi -e 's/add_subdirectory\(wallpaperfileitemactionplugin\)/# ios-firstlig
 python3 - "$src/kioworkers/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -590,7 +597,7 @@ PY
 
 python3 - "$src/kioworkers/desktop/CMakeLists.txt" "$src/kioworkers/desktop/kio_desktop.cpp" "$src/kioworkers/desktop/desktopnotifier.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 cmake = Path(sys.argv[1])
 text = cmake.read_text()
@@ -625,7 +632,7 @@ PY
 
 python3 - "$src/shell/CMakeLists.txt" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -633,7 +640,7 @@ moc_marker = "# iOS cross-build: qdbusxml2cpp sources include generated moc file
 if moc_marker not in text:
     needle = "qt_add_dbus_interface(plasma_shell_SRCS ${krunner_xml} krunner_interface)\n\n\n"
     if needle not in text:
-        raise SystemExit("plasmashell DBus interface marker not found")
+        todo("plasmashell DBus interface marker not found")
     text = text.replace(
         needle,
         needle
@@ -674,7 +681,7 @@ marker = "# iOS first-light QML import shims"
 if marker not in text:
     needle = "install( FILES dbus/org.kde.PlasmaShell.xml DESTINATION ${KDE_INSTALL_DBUSINTERFACEDIR} )\n"
     if needle not in text:
-        raise SystemExit("plasmashell DBus install marker not found")
+        todo("plasmashell DBus install marker not found")
     text = text.replace(
         needle,
         needle
@@ -693,7 +700,7 @@ PY
 
 python3 - "$src/libnotificationmanager/CMakeLists.txt" "$src/libnotificationmanager/mirroredscreenstracker_p.h" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 cmake = Path(sys.argv[1])
 text = cmake.read_text()
@@ -708,7 +715,7 @@ PY
 
 python3 - "$src/libnotificationmanager/server.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -734,7 +741,7 @@ PY
 
 python3 - "$src/applets/notifications/notificationapplet.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -760,7 +767,7 @@ PY
 
 python3 - "$src/applets/digital-clock/plugin/CMakeLists.txt" "$src/applets/digital-clock/plugin/timezonesi18n.h" "$src/applets/digital-clock/plugin/timezonesi18n.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 cmake = Path(sys.argv[1])
 text = cmake.read_text()
@@ -808,7 +815,7 @@ PY
 
 python3 - "$src/applets/kicker/plugin/rootmodel.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -836,7 +843,7 @@ PY
 
 python3 - "$src/shell/main.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -873,7 +880,7 @@ cat > "$src/iosc-dbus-interfaces/kf6_org.freedesktop.ScreenSaver.xml" <<'XML'
 XML
 python3 - "$src/libkworkspace/CMakeLists.txt" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -884,21 +891,24 @@ PY
 
 python3 - "$src/libkworkspace/outputorderwatcher.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
-start = text.index("\nX11OutputOrderWatcher::X11OutputOrderWatcher")
-end = text.index("\nWaylandOutputOrderWatcher::WaylandOutputOrderWatcher")
-x11_impl = text[start:end]
-if "#if defined(HAVE_X11) && HAVE_X11" not in x11_impl:
-    text = text[:start] + "\n#if defined(HAVE_X11) && HAVE_X11" + x11_impl + "#endif\n" + text[end:]
-path.write_text(text)
+if "\nX11OutputOrderWatcher::X11OutputOrderWatcher" in text:
+    start = text.index("\nX11OutputOrderWatcher::X11OutputOrderWatcher")
+    end = text.index("\nWaylandOutputOrderWatcher::WaylandOutputOrderWatcher")
+    x11_impl = text[start:end]
+    if "#if defined(HAVE_X11) && HAVE_X11" not in x11_impl:
+        text = text[:start] + "\n#if defined(HAVE_X11) && HAVE_X11" + x11_impl + "#endif\n" + text[end:]
+    path.write_text(text)
+else:
+    print("plasma-workspace-ios-fixes.sh: X11OutputOrderWatcher not in this source (6.7 restructure): skipped", file=sys.stderr)
 PY
 
 python3 - "$src/libkworkspace/sessionmanagementbackend.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1006,7 +1016,7 @@ public:
 '''
 if shim.strip() not in text:
     if marker not in text:
-        raise SystemExit("session backend singleton marker not found")
+        todo("session backend singleton marker not found")
     text = text.replace(marker, marker + shim)
 old = """    if (qEnvironmentVariableIntValue("PLASMA_SESSION_GUI_TEST")) {
         s_backend = new TestSessionBackend();
@@ -1031,13 +1041,13 @@ new = """    if (qEnvironmentVariableIntValue("PLASMA_SESSION_GUI_TEST")) {
 if old in text:
     text = text.replace(old, new)
 elif "XiosSessionBackend::exists()" not in text:
-    raise SystemExit("SessionBackend::self selection block not found")
+    todo("SessionBackend::self selection block not found")
 path.write_text(text)
 PY
 
 python3 - "$src/startkde/plasma-shutdown/shutdown.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1064,28 +1074,29 @@ new = """    if (m_shutdownType == KWorkSpace::ShutdownTypeHalt) {
 if old in text:
     text = text.replace(old, new)
 elif "SessionBackend::self()->shutdown();" not in text:
-    raise SystemExit("plasma-shutdown logoutComplete block not found")
+    todo("plasma-shutdown logoutComplete block not found")
 path.write_text(text)
 PY
 
 python3 - "$src/libtaskmanager/virtualdesktopinfo.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
 text = text.replace("#include <KX11Extras>\n", "#if defined(HAVE_X11) && HAVE_X11\n#include <KX11Extras>\n#endif\n")
-start = text.index("\nnamespace X11Info\n")
-end = text.index("\nnamespace TaskManager\n")
-x11_info = text[start:end]
-if "#if defined(HAVE_X11) && HAVE_X11" not in x11_info:
-    text = text[:start] + "\n#if defined(HAVE_X11) && HAVE_X11" + x11_info + "#endif\n" + text[end:]
+if "\nnamespace X11Info\n" in text:
+    start = text.index("\nnamespace X11Info\n")
+    end = text.index("\nnamespace TaskManager\n")
+    x11_info = text[start:end]
+    if "#if defined(HAVE_X11) && HAVE_X11" not in x11_info:
+        text = text[:start] + "\n#if defined(HAVE_X11) && HAVE_X11" + x11_info + "#endif\n" + text[end:]
 path.write_text(text)
 PY
 
 python3 - "$src/libtaskmanager/waylandtasksmodel.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1113,13 +1124,13 @@ new = """        int pipeFds[2];
 if old in text:
     text = text.replace(old, new)
 elif "if (pipe(pipeFds) != 0)" not in text:
-    raise SystemExit("pipe2 block not found")
+    todo("pipe2 block not found")
 path.write_text(text)
 PY
 
 python3 - "$src/applets/kicker/plugin/dashboardwindow.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1198,7 +1209,7 @@ PY
 
 python3 - "$src/applets/kicker/plugin/windowsystem.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1220,7 +1231,7 @@ PY
 
 python3 - "$src/shell/panelview.cpp" "$src/shell/shellcorona.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 for name in sys.argv[1:]:
     path = Path(name)
@@ -1260,7 +1271,7 @@ PY
 
 python3 - "$src/shell/panelconfigview.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1324,7 +1335,7 @@ PY
 
 python3 - "$src/shell/desktopview.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1380,7 +1391,7 @@ PY
 
 python3 - "$src/shell/shellcorona.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -1403,7 +1414,7 @@ PY
 python3 - "$src/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
