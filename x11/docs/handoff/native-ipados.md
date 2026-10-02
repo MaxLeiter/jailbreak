@@ -69,8 +69,11 @@ The flavor where each Linux app is its own native iPad window (per-window presen
   (keyboard-reveal pan, two-finger pan, pinch, rotation) and sends no emulated
   single-finger `wl_pointer`, so every finger reaches the client as `wl_touch`
   only. Indirect input (trackpad/wheel scroll pans, hover, pointer buttons),
-  the hardware keyboard, and the TRAITS auto-keyboard are unchanged; the iOS
-  system gestures are the way out. It is a presentation hint only: ioscd never
+  the hardware keyboard, and the TRAITS auto-keyboard are unchanged. The
+  scene's view controller also defers every screen-edge system gesture and
+  auto-hides the home indicator, so edge touches arrive without the iOS edge
+  delay and the home/app-switcher gesture takes a second swipe; that second
+  swipe is the way out. It is a presentation hint only: ioscd never
   sees it and the launch request stays `LAUNCH_NATIVE\t<app_id>`. Absent key
   means the old behavior. Classic bundles never carry it. Opted-in apps must
   handle `wl_touch` themselves (games with on-screen controls; Crispy Doom is

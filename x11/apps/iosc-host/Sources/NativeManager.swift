@@ -341,6 +341,7 @@ final class NativeManager: NSObject {
         let view = HostScreenView(window_id: id, manager: self, rawTouch: rawTouch)
         let vc = HostSceneViewController()
         vc.view = view
+        vc.rawTouch = rawTouch
         let win = UIWindow(windowScene: scene)
         win.rootViewController = vc
         win.makeKeyAndVisible()
