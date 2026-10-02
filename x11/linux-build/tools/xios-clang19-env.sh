@@ -37,6 +37,15 @@
 # `-miphoneos-version-min=*` (re-added canonically) and every `-isystem*/c++/v1` (the SDK's old
 # libc++ headers, which would otherwise win include order over the modern ones).
 
+# Write stdin to $1 only if the content changed. Rewriting a wrapper bumps its mtime, and ninja then
+# treats every object compiled through it as dirty (measured: every re-run was a full rebuild).
+_xios_write_if_changed() {
+  local dest="$1" tmp
+  tmp="$(mktemp)"; cat > "$tmp"
+  if [ -f "$dest" ] && cmp -s "$tmp" "$dest"; then rm -f "$tmp"; else mv -f "$tmp" "$dest"; fi
+  chmod +x "$dest" 2>/dev/null || true
+}
+
 xios_clang19_setup() {
   local dir="${XIOS_CLANG19_DIR:-/work/Procursus/build_tools/clang19}"
   local sdk="${XIOS_SDK:-/root/cctools/SDK/iPhoneOS16.5.sdk}"
@@ -58,7 +67,7 @@ xios_clang19_setup() {
   done
   # The image's aarch64-apple-darwin-ar can be clobbered into a self-exec loop: use llvm-ar in
   # Darwin archive format (cctools ld64/ranlib accept it), expanding @response files first.
-  cat > "$dir/ld/ar" <<'EOF'
+  _xios_write_if_changed "$dir/ld/ar" <<'EOF'
 #!/bin/sh
 n=$#; i=0
 while [ "$i" -lt "$n" ]; do
@@ -71,7 +80,6 @@ while [ "$i" -lt "$n" ]; do
 done
 exec llvm-ar-19 --format=darwin "$@"
 EOF
-  chmod +x "$dir/ld/ar"
 
   local cxxinc=""
   if [ "$mode" = B ]; then
@@ -87,7 +95,7 @@ EOF
       cp -a /usr/lib/llvm-19/include/c++/v1 "$dir/libcxx/v1"
       # Debian's __config_site is Linux-flavoured. Ours: ABI v1 / __1 (same namespace as the system
       # dylib), pthread threads, vendor availability annotations ON (undefine nothing), hardening off.
-      cat > "$cxxinc/__config_site" <<'EOF'
+      _xios_write_if_changed "$cxxinc/__config_site" <<'EOF'
 #ifndef _LIBCPP___CONFIG_SITE
 #define _LIBCPP___CONFIG_SITE
 #define _LIBCPP_ABI_VERSION 1
@@ -112,25 +120,24 @@ for a in "$@"; do
     *) args+=("$a") ;;
   esac
 done'
-  cat > "$dir/bin/cc19" <<EOF
+  _xios_write_if_changed "$dir/bin/cc19" <<EOF
 #!/usr/bin/env bash
 $filter
 exec clang-19 $common "\${args[@]}"
 EOF
   if [ "$mode" = B ]; then
-    cat > "$dir/bin/cxx19" <<EOF
+    _xios_write_if_changed "$dir/bin/cxx19" <<EOF
 #!/usr/bin/env bash
 $filter
 exec clang++-19 $common -stdlib=libc++ -nostdinc++ -isystem $cxxinc "\${args[@]}"
 EOF
   else
-    cat > "$dir/bin/cxx19" <<EOF
+    _xios_write_if_changed "$dir/bin/cxx19" <<EOF
 #!/usr/bin/env bash
 $filter
 exec clang++-19 $common -stdlib=libc++ "\${args[@]}"
 EOF
   fi
-  chmod +x "$dir/bin/cc19" "$dir/bin/cxx19"
 
   export XIOS_CC19="$dir/bin/cc19" XIOS_CXX19="$dir/bin/cxx19"
   export XIOS_AR19="$dir/ld/ar" XIOS_RANLIB19="$dir/ld/ranlib"
