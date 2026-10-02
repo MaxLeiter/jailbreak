@@ -309,41 +309,46 @@ device_for_path (const char *path)
 
 static void device_emit_changed (XiosBTDeviceObj *o, const char *prop, GVariant *value);
 
+/* The D-Bus vtable handlers below run from the GLib loop inside main()'s outer
+ * @autoreleasepool, which never drains, and they call into BluetoothManager and NSString,
+ * which autorelease. Each call drains its own pool, like periodic_sync. */
 static void
 device_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
                     const gchar *iface, const gchar *method, GVariant *params,
                     GDBusMethodInvocation *inv, gpointer user_data)
 {
-  (void) c; (void) sender; (void) iface; (void) params; (void) user_data;
-  XiosBTDeviceObj *o = device_for_path (path);
-  if (!o) {
-    g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_FAILED,
-                                           "unknown device %s", path);
-    return;
-  }
-  id<XiosBTDevice> d = o->dev;
-  if (g_str_equal (method, "Connect")) {
-    if ([g_bt respondsToSelector:@selector(connectDevice:)]) [g_bt connectDevice:d];
-    else [d connect];
-    g_dbus_method_invocation_return_value (inv, NULL);
-  } else if (g_str_equal (method, "Disconnect")) {
-    if ([g_bt respondsToSelector:@selector(disconnectDevice:)]) [g_bt disconnectDevice:d];
-    else [d disconnect];
-    g_dbus_method_invocation_return_value (inv, NULL);
-  } else if (g_str_equal (method, "Pair")) {
-    if ([d respondsToSelector:@selector(pair)]) {
-      [d pair];
-      g_dbus_method_invocation_return_value (inv, NULL);
-    } else if ([g_bt respondsToSelector:@selector(connectDevice:)]) {
-      [g_bt connectDevice:d];
-      g_dbus_method_invocation_return_value (inv, NULL);
-    } else {
-      g_dbus_method_invocation_return_dbus_error (
-        inv, "org.bluez.Error.NotSupported", "The iOS Bluetooth backend cannot pair this device");
+  @autoreleasepool {
+    (void) c; (void) sender; (void) iface; (void) params; (void) user_data;
+    XiosBTDeviceObj *o = device_for_path (path);
+    if (!o) {
+      g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_FAILED,
+                                             "unknown device %s", path);
+      return;
     }
-  } else {
-    g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
-                                           "Device1.%s unhandled", method);
+    id<XiosBTDevice> d = o->dev;
+    if (g_str_equal (method, "Connect")) {
+      if ([g_bt respondsToSelector:@selector(connectDevice:)]) [g_bt connectDevice:d];
+      else [d connect];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else if (g_str_equal (method, "Disconnect")) {
+      if ([g_bt respondsToSelector:@selector(disconnectDevice:)]) [g_bt disconnectDevice:d];
+      else [d disconnect];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else if (g_str_equal (method, "Pair")) {
+      if ([d respondsToSelector:@selector(pair)]) {
+        [d pair];
+        g_dbus_method_invocation_return_value (inv, NULL);
+      } else if ([g_bt respondsToSelector:@selector(connectDevice:)]) {
+        [g_bt connectDevice:d];
+        g_dbus_method_invocation_return_value (inv, NULL);
+      } else {
+        g_dbus_method_invocation_return_dbus_error (
+          inv, "org.bluez.Error.NotSupported", "The iOS Bluetooth backend cannot pair this device");
+      }
+    } else {
+      g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+                                             "Device1.%s unhandled", method);
+    }
   }
 }
 
@@ -351,31 +356,33 @@ static GVariant *
 device_get_property (GDBusConnection *c, const gchar *sender, const gchar *path,
                      const gchar *iface, const gchar *prop, GError **error, gpointer user_data)
 {
-  (void) c; (void) sender; (void) iface; (void) user_data;
-  XiosBTDeviceObj *o = device_for_path (path);
-  if (!o) { g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "no dev"); return NULL; }
-  id<XiosBTDevice> d = o->dev;
-  if (g_str_equal (prop, "Address")) return g_variant_new_string (o->address);
-  if (g_str_equal (prop, "Name")) {
-    NSString *n = [d name];
-    return g_variant_new_string (n ? [n UTF8String] : "Unknown");
+  @autoreleasepool {
+    (void) c; (void) sender; (void) iface; (void) user_data;
+    XiosBTDeviceObj *o = device_for_path (path);
+    if (!o) { g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "no dev"); return NULL; }
+    id<XiosBTDevice> d = o->dev;
+    if (g_str_equal (prop, "Address")) return g_variant_new_string (o->address);
+    if (g_str_equal (prop, "Name")) {
+      NSString *n = [d name];
+      return g_variant_new_string (n ? [n UTF8String] : "Unknown");
+    }
+    if (g_str_equal (prop, "Alias"))
+      return g_variant_new_string (o->alias ?: "Unknown");
+    if (g_str_equal (prop, "Class")) {
+      unsigned int cod = [d respondsToSelector:@selector(classOfDevice)] ? [d classOfDevice] : 0;
+      return g_variant_new_uint32 (cod);
+    }
+    if (g_str_equal (prop, "Icon")) {
+      unsigned int cod = [d respondsToSelector:@selector(classOfDevice)] ? [d classOfDevice] : 0;
+      return g_variant_new_string (icon_for_class (cod));
+    }
+    if (g_str_equal (prop, "Paired"))    return g_variant_new_boolean ([d paired]);
+    if (g_str_equal (prop, "Trusted"))   return g_variant_new_boolean (o->trusted);
+    if (g_str_equal (prop, "Connected")) return g_variant_new_boolean ([d connected]);
+    if (g_str_equal (prop, "Adapter"))   return g_variant_new_object_path (ADAPTER_PATH);
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Device1.%s", prop);
+    return NULL;
   }
-  if (g_str_equal (prop, "Alias"))
-    return g_variant_new_string (o->alias ?: "Unknown");
-  if (g_str_equal (prop, "Class")) {
-    unsigned int cod = [d respondsToSelector:@selector(classOfDevice)] ? [d classOfDevice] : 0;
-    return g_variant_new_uint32 (cod);
-  }
-  if (g_str_equal (prop, "Icon")) {
-    unsigned int cod = [d respondsToSelector:@selector(classOfDevice)] ? [d classOfDevice] : 0;
-    return g_variant_new_string (icon_for_class (cod));
-  }
-  if (g_str_equal (prop, "Paired"))    return g_variant_new_boolean ([d paired]);
-  if (g_str_equal (prop, "Trusted"))   return g_variant_new_boolean (o->trusted);
-  if (g_str_equal (prop, "Connected")) return g_variant_new_boolean ([d connected]);
-  if (g_str_equal (prop, "Adapter"))   return g_variant_new_object_path (ADAPTER_PATH);
-  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Device1.%s", prop);
-  return NULL;
 }
 
 static gboolean
@@ -383,26 +390,28 @@ device_set_property (GDBusConnection *c, const gchar *sender, const gchar *path,
                      const gchar *iface, const gchar *prop, GVariant *value,
                      GError **error, gpointer user_data)
 {
-  (void) c; (void) sender; (void) iface; (void) user_data;
-  XiosBTDeviceObj *o = device_for_path (path);
-  if (!o) {
-    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "No such Bluetooth device");
+  @autoreleasepool {
+    (void) c; (void) sender; (void) iface; (void) user_data;
+    XiosBTDeviceObj *o = device_for_path (path);
+    if (!o) {
+      g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "No such Bluetooth device");
+      return FALSE;
+    }
+    if (g_str_equal (prop, "Alias")) {
+      g_free (o->alias);
+      o->alias = g_variant_dup_string (value, NULL);
+      device_emit_changed (o, "Alias", g_variant_new_string (o->alias));
+      return TRUE;
+    }
+    if (g_str_equal (prop, "Trusted")) {
+      o->trusted = g_variant_get_boolean (value);
+      device_emit_changed (o, "Trusted", g_variant_new_boolean (o->trusted));
+      return TRUE;
+    }
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY,
+                 "Device1.%s is read-only", prop);
     return FALSE;
   }
-  if (g_str_equal (prop, "Alias")) {
-    g_free (o->alias);
-    o->alias = g_variant_dup_string (value, NULL);
-    device_emit_changed (o, "Alias", g_variant_new_string (o->alias));
-    return TRUE;
-  }
-  if (g_str_equal (prop, "Trusted")) {
-    o->trusted = g_variant_get_boolean (value);
-    device_emit_changed (o, "Trusted", g_variant_new_boolean (o->trusted));
-    return TRUE;
-  }
-  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY,
-               "Device1.%s is read-only", prop);
-  return FALSE;
 }
 
 static const GDBusInterfaceVTable device_vtable = {
@@ -498,24 +507,26 @@ adapter_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
                      const gchar *iface, const gchar *method, GVariant *params,
                      GDBusMethodInvocation *inv, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
-  if (g_str_equal (method, "StartDiscovery")) {
-    [g_bt setDeviceScanningEnabled:YES];
-    g_dbus_method_invocation_return_value (inv, NULL);
-  } else if (g_str_equal (method, "StopDiscovery")) {
-    [g_bt setDeviceScanningEnabled:NO];
-    g_dbus_method_invocation_return_value (inv, NULL);
-  } else if (g_str_equal (method, "RemoveDevice")) {
-    /* Best-effort: unpair the referenced device. */
-    const char *dpath = NULL;
-    g_variant_get (params, "(&o)", &dpath);
-    XiosBTDeviceObj *o = dpath ? device_for_path (dpath) : NULL;
-    if (o && [(id<XiosBTDevice>) o->dev respondsToSelector:@selector(unpair)])
-      [(id<XiosBTDevice>) o->dev unpair];
-    g_dbus_method_invocation_return_value (inv, NULL);
-  } else {
-    g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
-                                           "Adapter1.%s unhandled", method);
+  @autoreleasepool {
+    (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
+    if (g_str_equal (method, "StartDiscovery")) {
+      [g_bt setDeviceScanningEnabled:YES];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else if (g_str_equal (method, "StopDiscovery")) {
+      [g_bt setDeviceScanningEnabled:NO];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else if (g_str_equal (method, "RemoveDevice")) {
+      /* Best-effort: unpair the referenced device. */
+      const char *dpath = NULL;
+      g_variant_get (params, "(&o)", &dpath);
+      XiosBTDeviceObj *o = dpath ? device_for_path (dpath) : NULL;
+      if (o && [(id<XiosBTDevice>) o->dev respondsToSelector:@selector(unpair)])
+        [(id<XiosBTDevice>) o->dev unpair];
+      g_dbus_method_invocation_return_value (inv, NULL);
+    } else {
+      g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+                                             "Adapter1.%s unhandled", method);
+    }
   }
 }
 
@@ -523,22 +534,24 @@ static GVariant *
 adapter_get_property (GDBusConnection *c, const gchar *sender, const gchar *path,
                       const gchar *iface, const gchar *prop, GError **error, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
-  if (g_str_equal (prop, "Address")) {
-    NSString *hw = [g_bt respondsToSelector:@selector(hardwareAddress)] ? [g_bt hardwareAddress] : nil;
-    char addr[18] = "00:00:00:00:00:00";
-    if (hw) addr_canon ([hw UTF8String], addr);
-    return g_variant_new_string (addr);
+  @autoreleasepool {
+    (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
+    if (g_str_equal (prop, "Address")) {
+      NSString *hw = [g_bt respondsToSelector:@selector(hardwareAddress)] ? [g_bt hardwareAddress] : nil;
+      char addr[18] = "00:00:00:00:00:00";
+      if (hw) addr_canon ([hw UTF8String], addr);
+      return g_variant_new_string (addr);
+    }
+    if (g_str_equal (prop, "Name"))         return g_variant_new_string ("iPad");
+    if (g_str_equal (prop, "Alias"))        return g_variant_new_string (g_adapter_alias);
+    if (g_str_equal (prop, "Class"))        return g_variant_new_uint32 (0x0000010c); /* computer */
+    if (g_str_equal (prop, "Powered"))      return g_variant_new_boolean ([g_bt powered]);
+    if (g_str_equal (prop, "Discoverable")) return g_variant_new_boolean (g_adapter_discoverable);
+    if (g_str_equal (prop, "Pairable"))     return g_variant_new_boolean (g_adapter_pairable);
+    if (g_str_equal (prop, "Discovering"))  return g_variant_new_boolean ([g_bt deviceScanningEnabled]);
+    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Adapter1.%s", prop);
+    return NULL;
   }
-  if (g_str_equal (prop, "Name"))         return g_variant_new_string ("iPad");
-  if (g_str_equal (prop, "Alias"))        return g_variant_new_string (g_adapter_alias);
-  if (g_str_equal (prop, "Class"))        return g_variant_new_uint32 (0x0000010c); /* computer */
-  if (g_str_equal (prop, "Powered"))      return g_variant_new_boolean ([g_bt powered]);
-  if (g_str_equal (prop, "Discoverable")) return g_variant_new_boolean (g_adapter_discoverable);
-  if (g_str_equal (prop, "Pairable"))     return g_variant_new_boolean (g_adapter_pairable);
-  if (g_str_equal (prop, "Discovering"))  return g_variant_new_boolean ([g_bt deviceScanningEnabled]);
-  g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "Adapter1.%s", prop);
-  return NULL;
 }
 
 static void adapter_emit_changed (const char *prop, GVariant *value);
@@ -548,28 +561,30 @@ adapter_set_property (GDBusConnection *c, const gchar *sender, const gchar *path
                       const gchar *iface, const gchar *prop, GVariant *value,
                       GError **error, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
-  if (g_str_equal (prop, "Powered")) {
-    gboolean on = g_variant_get_boolean (value);
-    if ([g_bt respondsToSelector:@selector(setPowered:)]) [g_bt setPowered:on];
-    else [g_bt setEnabled:on];
-    adapter_emit_changed ("Powered", g_variant_new_boolean (on));
-  } else if (g_str_equal (prop, "Discoverable")) {
-    g_adapter_discoverable = g_variant_get_boolean (value);
-    adapter_emit_changed ("Discoverable", g_variant_new_boolean (g_adapter_discoverable));
-  } else if (g_str_equal (prop, "Pairable")) {
-    g_adapter_pairable = g_variant_get_boolean (value);
-    adapter_emit_changed ("Pairable", g_variant_new_boolean (g_adapter_pairable));
-  } else if (g_str_equal (prop, "Alias")) {
-    g_free (g_adapter_alias);
-    g_adapter_alias = g_variant_dup_string (value, NULL);
-    adapter_emit_changed ("Alias", g_variant_new_string (g_adapter_alias));
-  } else {
-    g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY,
-                 "Adapter1.%s is read-only", prop);
-    return FALSE;
+  @autoreleasepool {
+    (void) c; (void) sender; (void) path; (void) iface; (void) user_data;
+    if (g_str_equal (prop, "Powered")) {
+      gboolean on = g_variant_get_boolean (value);
+      if ([g_bt respondsToSelector:@selector(setPowered:)]) [g_bt setPowered:on];
+      else [g_bt setEnabled:on];
+      adapter_emit_changed ("Powered", g_variant_new_boolean (on));
+    } else if (g_str_equal (prop, "Discoverable")) {
+      g_adapter_discoverable = g_variant_get_boolean (value);
+      adapter_emit_changed ("Discoverable", g_variant_new_boolean (g_adapter_discoverable));
+    } else if (g_str_equal (prop, "Pairable")) {
+      g_adapter_pairable = g_variant_get_boolean (value);
+      adapter_emit_changed ("Pairable", g_variant_new_boolean (g_adapter_pairable));
+    } else if (g_str_equal (prop, "Alias")) {
+      g_free (g_adapter_alias);
+      g_adapter_alias = g_variant_dup_string (value, NULL);
+      adapter_emit_changed ("Alias", g_variant_new_string (g_adapter_alias));
+    } else {
+      g_set_error (error, G_DBUS_ERROR, G_DBUS_ERROR_PROPERTY_READ_ONLY,
+                   "Adapter1.%s is read-only", prop);
+      return FALSE;
+    }
+    return TRUE;
   }
-  return TRUE;
 }
 
 static const GDBusInterfaceVTable adapter_vtable = {
@@ -696,23 +711,25 @@ om_method_call (GDBusConnection *c, const gchar *sender, const gchar *path,
                 const gchar *iface, const gchar *method, GVariant *params,
                 GDBusMethodInvocation *inv, gpointer user_data)
 {
-  (void) c; (void) sender; (void) path; (void) iface; (void) params; (void) user_data;
-  if (!g_str_equal (method, "GetManagedObjects")) {
-    g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
-                                           "ObjectManager.%s", method);
-    return;
+  @autoreleasepool {
+    (void) c; (void) sender; (void) path; (void) iface; (void) params; (void) user_data;
+    if (!g_str_equal (method, "GetManagedObjects")) {
+      g_dbus_method_invocation_return_error (inv, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD,
+                                             "ObjectManager.%s", method);
+      return;
+    }
+    GVariantBuilder objs;
+    g_variant_builder_init (&objs, G_VARIANT_TYPE ("a{oa{sa{sv}}}"));
+    add_object_to_managed (&objs, ADAPTER_PATH, "org.bluez.Adapter1", adapter_props_dict ());
+    GHashTableIter it; gpointer k, v;
+    g_hash_table_iter_init (&it, g_devices);
+    while (g_hash_table_iter_next (&it, &k, &v)) {
+      XiosBTDeviceObj *o = v;
+      add_object_to_managed (&objs, o->path, "org.bluez.Device1", device_props_dict (o));
+    }
+    g_dbus_method_invocation_return_value (inv,
+      g_variant_new ("(a{oa{sa{sv}}})", &objs));
   }
-  GVariantBuilder objs;
-  g_variant_builder_init (&objs, G_VARIANT_TYPE ("a{oa{sa{sv}}}"));
-  add_object_to_managed (&objs, ADAPTER_PATH, "org.bluez.Adapter1", adapter_props_dict ());
-  GHashTableIter it; gpointer k, v;
-  g_hash_table_iter_init (&it, g_devices);
-  while (g_hash_table_iter_next (&it, &k, &v)) {
-    XiosBTDeviceObj *o = v;
-    add_object_to_managed (&objs, o->path, "org.bluez.Device1", device_props_dict (o));
-  }
-  g_dbus_method_invocation_return_value (inv,
-    g_variant_new ("(a{oa{sa{sv}}})", &objs));
 }
 
 static const GDBusInterfaceVTable om_vtable = { .method_call = om_method_call };
