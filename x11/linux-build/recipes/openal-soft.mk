@@ -4,6 +4,8 @@ endif
 
 # OpenAL Soft for Warzone 2100. PulseAudio is the sole device backend on Xios;
 # CoreAudio would bind the daemon-side game process to an iOS app lifecycle.
+# alc/alconfig.cpp still calls CFBundle under __APPLE__, but upstream only
+# links CoreFoundation inside the CoreAudio backend block, so link it here.
 
 SUBPROJECTS          += openal-soft
 OPENAL_SOFT_VERSION  := 1.25.2
@@ -25,6 +27,7 @@ openal-soft: openal-soft-setup
 		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=$(MEMO_PREFIX)$(MEMO_SUB_PREFIX) \
 		-DCMAKE_PREFIX_PATH="$(BUILD_BASE)/var/jb/usr;$(BUILD_BASE)/var/jb" \
+		-DCMAKE_SHARED_LINKER_FLAGS="$(LDFLAGS) -framework CoreFoundation" \
 		-DLIBTYPE=SHARED \
 		-DALSOFT_DLOPEN=OFF \
 		-DALSOFT_ENABLE_MODULES=OFF \
