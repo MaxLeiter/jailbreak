@@ -129,10 +129,15 @@ export function startFakeDaemon(opts: { port?: number; token?: string; frontmost
       if (url.pathname === "/v1/info" && req.method === "GET") {
         return json(200, {
           screen: { width: W, height: H, scale: 2, orientation: "landscape_left" },
-          frontmost: { bundle_id: state.frontmost, name: nameOf(state.frontmost) },
+          frontmost: state.locked ? null : { bundle_id: state.frontmost, name: nameOf(state.frontmost) },
           locked: state.locked,
           asleep: false,
           daemon_version: "fake-0.1",
+          selftest: {
+            capture_ok: state.locked ? null : true,
+            screen_on: !state.locked,
+            detail: state.locked ? "screen is off; capture not verified" : "captured a non-black frame while the screen is on",
+          },
         });
       }
       if (url.pathname === "/v1/apps" && req.method === "GET") return json(200, { apps: FAKE_APPS });

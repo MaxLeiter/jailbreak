@@ -16,6 +16,15 @@ export interface DaemonError {
   details?: Record<string, unknown>;
 }
 
+/** Startup/`/v1/info` capture self-test. Capture failures (missing entitlement) are silent all-black frames, so this is how a dead capture is noticed. */
+export interface SelfTest {
+  /** true = non-black frame while the screen was on; false = black while on (capture likely denied); null = could not judge (screen off). */
+  capture_ok: boolean | null;
+  /** Screen-power state, or null if unknown. */
+  screen_on: boolean | null;
+  detail: string;
+}
+
 export interface Info {
   screen: {
     width: number;
@@ -27,6 +36,7 @@ export interface Info {
   locked: boolean;
   asleep: boolean;
   daemon_version: string;
+  selftest: SelfTest;
 }
 
 export interface AppInfo {

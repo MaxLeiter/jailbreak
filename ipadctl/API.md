@@ -13,10 +13,13 @@ Contract between `ipad-mcp` (Mac) and `ipadctld` (iPad root daemon). The fake da
 {
   "screen": {"width": 1080, "height": 810, "scale": 2, "orientation": "landscape_left"},
   "frontmost": {"bundle_id": "com.apple.MobileSMS", "name": "Messages"},
-  "locked": false, "asleep": false, "daemon_version": "0.1"
+  "locked": false, "asleep": false, "daemon_version": "0.1",
+  "selftest": {"capture_ok": true, "screen_on": true, "detail": "captured a non-black frame while the screen is on"}
 }
 ```
 `orientation`: `portrait`, `portrait_upside_down`, `landscape_left`, `landscape_right`. `frontmost` is null on the lock screen.
+
+`selftest` reports whether capture actually works, because a missing capture entitlement fails silently with an all-black frame rather than an error. The daemon runs it at startup and on every `/v1/info`. `capture_ok` is `true` if a non-black frame was captured while the screen was on, `false` if the frame was black while the screen was on (capture is probably denied), and `null` when it could not be judged (screen off, so a black frame is expected). `screen_on` is the screen-power state (or `null` if unknown), and `detail` is a human-readable note.
 
 ## GET /v1/apps
 
@@ -83,8 +86,8 @@ A malformed request (bad JSON, empty `actions`) is HTTP 400 `invalid`.
 | --- | --- |
 | `locked` | Device is locked or asleep. Never retried or bypassed. |
 | `app_mismatch` | `app` does not match the real frontmost app. |
-| `target_mismatch` | OCR at (x, y) does not match `target` (not enforced yet). |
-| `app_blocked` | Policy tier forbids driving this app (checked against the real frontmost app, and the destination of `open_app`). |
+| `target_mismatch` | OCR at (x, y) does not match `target`. Reserved; not enforced until phase 2. |
+| `app_blocked` | Policy tier forbids driving this app (checked against the real frontmost app, and the destination of `open_app`). Reserved; phase 1 blocks nothing. |
 | `invalid` | Malformed request, missing fields, out-of-range coordinates, unknown action or app. |
 | `unauthorized` | Bad bearer token (HTTP 401). |
 | `internal` | Daemon fault. |
