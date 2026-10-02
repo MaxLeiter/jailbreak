@@ -1,130 +1,123 @@
-/* KWin nested Wayland EGL backend for Xios: ANGLE Metal -> IOSurface. */
+/*
+    KWin - the KDE window manager
+    This file is part of the KDE project.
+
+    SPDX-FileCopyrightText: 2013 Martin Gräßlin <mgraesslin@kde.org>
+    SPDX-FileCopyrightText: 2019 Roman Gilg <subdiff@gmail.com>
+
+    SPDX-License-Identifier: GPL-2.0-or-later
+*/
 #pragma once
 
-#include "core/outputlayer.h"
-#include "opengl/glframebuffer.h"
-#include "platformsupport/scenes/opengl/abstract_egl_backend.h"
+#include "opengl/eglbackend.h"
+#include "opengl/eglnativefence.h"
+#include "utils/damagejournal.h"
+#include "wayland_layer.h"
 
-#include <CoreFoundation/CoreFoundation.h>
-#include <IOSurface/IOSurfaceRef.h>
-#include <QRegion>
-#include <epoxy/egl.h>
 #include <memory>
-#include <vector>
 
 struct wl_buffer;
 
-namespace KWin::Wayland
+namespace KWin
 {
+
+class EglSwapchainSlot;
+class EglSwapchain;
+class GLFramebuffer;
+class GraphicsBufferAllocator;
+class GLRenderTimeQuery;
+
+namespace Wayland
+{
+
 class WaylandBackend;
 class WaylandOutput;
 class WaylandEglBackend;
 
-struct IoscEglBuffer
-{
-    IoscEglBuffer(WaylandEglBackend *backend, const QSize &size);
-    ~IoscEglBuffer();
-
-    static void released(void *data, wl_buffer *buffer);
-
-    QSize size;
-    IOSurfaceRef surface = nullptr;
-    // No mach_port_t member on purpose: the IOSurface send right is owned by a
-    // wl_display sync from the moment create_buffer is sent, because iosc must be
-    // able to extract it after this buffer is gone. See freePortAfterSync().
-    EGLDisplay display = EGL_NO_DISPLAY;
-    EGLSurface pbuffer = EGL_NO_SURFACE;
-    wl_buffer *buffer = nullptr;
-    std::unique_ptr<GLFramebuffer> framebuffer;
-    // EGL_ANGLE_iosurface_client_buffer reaches the IOSurface ONLY through
-    // eglBindTexImage; the pbuffer's default framebuffer is not backed by it.
-    // Built lazily on first use, when a context is guaranteed current.
-    GLuint texture = 0;
-    GLuint fbo = 0;
-    bool ensureRenderTarget();
-    QRegion repaint;
-    bool busy = false;
-};
-
-class IoscEglSwapchain
+// Xios: nested Wayland EGL backend for ANGLE Metal. Swapchain buffers are IOSurfaces (IoscClientBuffer), the host
+// compositor is iosc, and every presented buffer carries a brokered Metal acquire fence. Derived from upstream
+// wayland_egl_backend.{h,cpp}; what differs is marked "xios".
+class WaylandEglLayer : public WaylandLayer
 {
 public:
-    IoscEglSwapchain(WaylandEglBackend *backend, const QSize &size);
-    IoscEglBuffer *acquire();
-    void rendered(IoscEglBuffer *buffer, const QRegion &damage);
-    QSize size() const;
+    WaylandEglLayer(WaylandOutput *output, WaylandEglBackend *backend, OutputLayerType type, int zpos);
+    ~WaylandEglLayer() override;
 
-private:
-    QSize m_size;
-    std::vector<std::unique_ptr<IoscEglBuffer>> m_buffers;
-};
-
-class WaylandEglPrimaryLayer : public OutputLayer
-{
-public:
-    WaylandEglPrimaryLayer(WaylandOutput *output, WaylandEglBackend *backend);
-    void present();
+    GLFramebuffer *fbo() const;
     std::optional<OutputLayerBeginFrameInfo> doBeginFrame() override;
-    bool doEndFrame(const QRegion &, const QRegion &damagedRegion, OutputFrame *frame) override;
-    bool doAttemptScanout(GraphicsBuffer *, const ColorDescription &, const std::shared_ptr<OutputFrame> &) override;
+    bool doEndFrame(const Region &renderedDeviceRegion, const Region &damagedDeviceRegion, OutputFrame *frame) override;
+    bool earlyScanoutChecks() override;
+    bool importScanoutBuffer(GraphicsBuffer *buffer, const std::shared_ptr<OutputFrame> &frame) override;
     DrmDevice *scanoutDevice() const override;
-    QHash<uint32_t, QList<uint64_t>> supportedDrmFormats() const override;
+    FormatModifierMap supportedDrmFormats() const override;
+    void releaseBuffers() override;
 
 private:
-    std::unique_ptr<IoscEglSwapchain> m_swapchain;
-    IoscEglBuffer *m_buffer = nullptr;
-    WaylandEglBackend *m_backend;
-    QRegion m_damage;
-    // Size the opaque region was last declared for; re-declared only on change so
-    // present() does not create/destroy a wl_region every frame.
-    QSize m_opaqueSize;
+    DamageJournal m_damageJournal;
+    QSize m_opaqueSize; // xios: size the opaque region was last declared for
+    std::shared_ptr<EglSwapchain> m_swapchain;
+    std::shared_ptr<EglSwapchainSlot> m_buffer;
+    std::unique_ptr<GLRenderTimeQuery> m_query;
+    WaylandEglBackend *const m_backend;
+
+    friend class WaylandEglBackend;
 };
 
 class WaylandEglCursorLayer : public OutputLayer
 {
+    Q_OBJECT
+
 public:
     WaylandEglCursorLayer(WaylandOutput *output, WaylandEglBackend *backend);
+    ~WaylandEglCursorLayer() override;
+
     std::optional<OutputLayerBeginFrameInfo> doBeginFrame() override;
-    bool doEndFrame(const QRegion &, const QRegion &, OutputFrame *frame) override;
+    bool doEndFrame(const Region &renderedDeviceRegion, const Region &damagedDeviceRegion, OutputFrame *frame) override;
     DrmDevice *scanoutDevice() const override;
-    QHash<uint32_t, QList<uint64_t>> supportedDrmFormats() const override;
+    FormatModifierMap supportedDrmFormats() const override;
+    void releaseBuffers() override;
 
 private:
-    std::unique_ptr<IoscEglSwapchain> m_swapchain;
-    IoscEglBuffer *m_buffer = nullptr;
     WaylandEglBackend *m_backend;
+    std::shared_ptr<EglSwapchain> m_swapchain;
+    std::shared_ptr<EglSwapchainSlot> m_buffer;
+    std::unique_ptr<GLRenderTimeQuery> m_query;
 };
 
-class WaylandEglBackend : public AbstractEglBackend
+/**
+ * @brief OpenGL Backend using Egl on a Wayland surface.
+ *
+ * This Backend is the basis for a session compositor running on top of a Wayland system compositor.
+ * It creates a Surface as large as the screen and maps it as a fullscreen shell surface on the
+ * system compositor. The OpenGL context is created on the Wayland surface, so for rendering X11 is
+ * not involved.
+ *
+ * Also in repainting the backend is currently still rather limited. Only supported mode is fullscreen
+ * repaints, which is obviously not optimal. Best solution is probably to go for buffer_age extension
+ * and make it the only available solution next to fullscreen repaints.
+ */
+class WaylandEglBackend : public EglBackend
 {
     Q_OBJECT
+
 public:
-    explicit WaylandEglBackend(WaylandBackend *backend);
+    WaylandEglBackend(WaylandBackend *b);
     ~WaylandEglBackend() override;
 
-    void init() override;
-    void present(Output *output, const std::shared_ptr<OutputFrame> &frame) override;
-    OutputLayer *primaryLayer(Output *output) override;
-    OutputLayer *cursorLayer(Output *output) override;
-    DrmDevice *drmDevice() const override;
-    std::unique_ptr<SurfaceTexture> createSurfaceTextureWayland(SurfacePixmap *pixmap) override;
-    std::pair<std::shared_ptr<GLTexture>, ColorDescription> textureForOutput(Output *output) const override;
-
     WaylandBackend *backend() const;
-    EGLConfig config() const;
+    DrmDevice *drmDevice() const override;
+
+    bool init() override;
+    QList<OutputLayer *> compatibleOutputLayers(BackendOutput *output) override;
+    FormatModifierMap supportedFormats() const override;
 
 private:
     bool initializeEgl();
-    bool initializeContext();
-    bool createOutput(Output *output);
-    void cleanupSurfaces() override;
+    bool initRenderingContext();
+    void createOutputLayers(BackendOutput *output);
 
-    struct Layers {
-        std::unique_ptr<WaylandEglPrimaryLayer> primary;
-        std::unique_ptr<WaylandEglCursorLayer> cursor;
-    };
     WaylandBackend *m_backend;
-    EGLConfig m_config = EGL_NO_CONFIG_KHR;
-    std::map<Output *, Layers> m_outputs;
 };
-}
+
+} // namespace Wayland
+} // namespace KWin

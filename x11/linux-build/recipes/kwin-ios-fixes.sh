@@ -180,6 +180,11 @@ if ! grep -q 'ios-bringup-iosurface-display' "$src/src/wayland/display.cpp"; the
     pperl 's/    new ShmClientBufferIntegration\(this\);/    new ShmClientBufferIntegration(this);\n    new IoscClientBufferIntegration(this); \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
     pperl 's/    \} else if \(auto buffer = ShmClientBuffer::get\(resource\)\) \{\n        return buffer;/    } else if (auto buffer = ShmClientBuffer::get(resource)) {\n        return buffer;\n    } else if (auto buffer = IoscClientBuffer::get(resource)) {\n        return buffer;/g' "$src/src/wayland/display.cpp"
 fi
+# GraphicsBuffer::iosurface(): the native handle of an IOSurface-backed buffer (nullptr for every other type).
+if ! grep -q 'ios-gpu-native-iosurface' "$src/src/core/graphicsbuffer.h"; then
+    pperl 's/    virtual const ShmAttributes \*shmAttributes\(\) const;\n/    virtual const ShmAttributes *shmAttributes() const;\n    virtual void *iosurface() const; \/\/ ios-gpu-native-iosurface\n/' "$src/src/core/graphicsbuffer.h"
+    pperl 's/const ShmAttributes \*GraphicsBuffer::shmAttributes\(\) const\n\{\n    return nullptr;\n\}\n/const ShmAttributes *GraphicsBuffer::shmAttributes() const\n{\n    return nullptr;\n}\n\nvoid *GraphicsBuffer::iosurface() const \/\/ ios-gpu-native-iosurface-impl\n{\n    return nullptr;\n}\n/' "$src/src/core/graphicsbuffer.cpp"
+fi
 cat > "$src/src/wayland/ioscclientbuffer.h" <<'EOF'
 /*
     iOS first-light support: iosc_iosurface client buffers for KWin.
@@ -188,6 +193,7 @@ cat > "$src/src/wayland/ioscclientbuffer.h" <<'EOF'
 #pragma once
 
 #include "core/graphicsbuffer.h"
+#include "core/graphicsbufferallocator.h"
 
 #include <QByteArray>
 #include <QObject>
@@ -217,7 +223,9 @@ private:
 class IoscClientBuffer : public GraphicsBuffer
 {
 public:
-    IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client);
+    IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client, bool topLeft = false);
+    // Compositor-owned buffer (swapchains): no wl_resource behind it.
+    IoscClientBuffer(void *iosurface, const QSize &size, bool topLeft);
     ~IoscClientBuffer() override;
 
     Map map(MapFlags flags) override;
@@ -226,6 +234,12 @@ public:
     QSize size() const override;
     bool hasAlphaChannel() const override;
     const ShmAttributes *shmAttributes() const override;
+
+    void *iosurface() const override;
+    bool isTopLeft() const;
+    // Compositor-owned buffers: the Metal acquire fence of the most recent render into this surface.
+    void setPendingAcquireFence(const void *token, size_t tokenSize, uint64_t value);
+    bool pendingAcquireFence(QByteArray *token, uint64_t *value) const;
 
     static IoscClientBuffer *get(wl_resource *resource);
     static const struct wl_buffer_interface implementation;
@@ -242,10 +256,19 @@ private:
     ShmAttributes m_attributes;
     QByteArray m_flippedData;
     bool m_external = false;
+    bool m_topLeft = false;
+    QByteArray m_pendingToken;
+    uint64_t m_pendingValue = 0;
     void *m_acquireEvent = nullptr;
     QByteArray m_acquireToken;
     uint64_t m_acquireValue = 0;
     std::mutex m_acquireMutex;
+};
+
+class IoscGraphicsBufferAllocator : public GraphicsBufferAllocator
+{
+public:
+    GraphicsBuffer *allocate(const GraphicsBufferOptions &options) override;
 };
 
 } // namespace KWin
@@ -337,7 +360,6 @@ protected:
     {
         Q_UNUSED(width)
         Q_UNUSED(height)
-        Q_UNUSED(format)
 
         pid_t pid = 0;
         wl_client_get_credentials(resource->client(), &pid, nullptr, nullptr);
@@ -356,7 +378,8 @@ protected:
             return;
         }
 
-        new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client());
+        new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client(),
+                             (format & format_flag_top_left) != 0);
     }
 
     void iosc_iosurface_set_acquire_fence(Resource *resource, wl_resource *buffer,
@@ -377,9 +400,10 @@ const struct wl_buffer_interface IoscClientBuffer::implementation = {
     .destroy = bufferDestroy,
 };
 
-IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client)
+IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client, bool topLeft)
     : m_iosurface(iosurface)
     , m_external(true)
+    , m_topLeft(topLeft)
 {
     const IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
     m_attributes.stride = static_cast<int>(IOSurfaceGetBytesPerRow(surface));
@@ -400,6 +424,71 @@ IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t 
         return;
     }
     wl_resource_set_implementation(m_resource, &implementation, this, bufferDestroyResource);
+}
+
+IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, bool topLeft)
+    : m_iosurface(iosurface)
+    , m_topLeft(topLeft)
+{
+    const IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
+    m_attributes.stride = static_cast<int>(IOSurfaceGetBytesPerRow(surface));
+    m_attributes.offset = 0;
+    m_attributes.size = size;
+    m_attributes.format = DRM_FORMAT_ARGB8888;
+}
+
+static void setIOSurfaceNumber(CFMutableDictionaryRef dict, CFStringRef key, int32_t value)
+{
+    CFNumberRef number = CFNumberCreate(nullptr, kCFNumberSInt32Type, &value);
+    CFDictionarySetValue(dict, key, number);
+    CFRelease(number);
+}
+
+GraphicsBuffer *IoscGraphicsBufferAllocator::allocate(const GraphicsBufferOptions &options)
+{
+    if (options.software || options.format != DRM_FORMAT_ARGB8888 || options.size.isEmpty()) {
+        return nullptr;
+    }
+    const size_t stride = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, size_t(options.size.width()) * 4);
+    const size_t allocation = IOSurfaceAlignProperty(kIOSurfaceAllocSize, stride * size_t(options.size.height()));
+    CFMutableDictionaryRef dict = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    setIOSurfaceNumber(dict, kIOSurfaceWidth, options.size.width());
+    setIOSurfaceNumber(dict, kIOSurfaceHeight, options.size.height());
+    setIOSurfaceNumber(dict, kIOSurfaceBytesPerElement, 4);
+    setIOSurfaceNumber(dict, kIOSurfaceBytesPerRow, int32_t(stride));
+    setIOSurfaceNumber(dict, kIOSurfaceAllocSize, int32_t(allocation));
+    setIOSurfaceNumber(dict, kIOSurfacePixelFormat, 0x42475241); // 'BGRA'
+    IOSurfaceRef surface = IOSurfaceCreate(dict);
+    CFRelease(dict);
+    // GL-style bottom-left origin: this is what ANGLE renders into a bound IOSurface texture.
+    return surface ? new IoscClientBuffer(surface, options.size, false) : nullptr;
+}
+
+void *IoscClientBuffer::iosurface() const
+{
+    return m_iosurface;
+}
+
+bool IoscClientBuffer::isTopLeft() const
+{
+    return m_topLeft;
+}
+
+void IoscClientBuffer::setPendingAcquireFence(const void *token, size_t tokenSize, uint64_t value)
+{
+    std::lock_guard<std::mutex> lock(m_acquireMutex);
+    m_pendingToken = QByteArray(static_cast<const char *>(token), static_cast<qsizetype>(tokenSize));
+    m_pendingValue = value;
+}
+
+bool IoscClientBuffer::pendingAcquireFence(QByteArray *token, uint64_t *value) const
+{
+    if (m_pendingToken.isEmpty() || m_pendingValue == 0) {
+        return false;
+    }
+    *token = m_pendingToken;
+    *value = m_pendingValue;
+    return true;
 }
 
 IoscClientBuffer::~IoscClientBuffer()
@@ -430,8 +519,9 @@ GraphicsBuffer::Map IoscClientBuffer::map(MapFlags flags)
     const auto *src = static_cast<const unsigned char *>(IOSurfaceGetBaseAddress(surface));
     auto *dst = reinterpret_cast<unsigned char *>(m_flippedData.data());
     for (int y = 0; y < height; ++y) {
+        const int srcRow = m_topLeft ? y : height - 1 - y; // GL-origin buffers are stored bottom row first
         std::memcpy(dst + static_cast<size_t>(y) * stride,
-                    src + static_cast<size_t>(height - 1 - y) * stride,
+                    src + static_cast<size_t>(srcRow) * stride,
                     stride);
     }
 
@@ -1175,13 +1265,13 @@ PY
 # Keep the accelerated ANGLE/IOSurface phase separate from the first-light
 # compatibility edits above. This makes the stable QPainter bring-up easy to
 # audit while the GPU path can evolve as one recipe-owned patch stage.
-# The GPU (ANGLE/IOSurface) backend was written against KWin 6.1's scene/EGL layout (src/platformsupport/scenes/opengl/...),
-# which 6.7 replaced (src/scene/opengl, src/opengl/eglbackend, nested-backend layers). Until it is re-ported, the 6.7 lane
-# builds the nested QPainter (software) compositor: set KWIN_IOS_GPU=1 to run the old script and see which anchors broke.
-if [ "${KWIN_IOS_GPU:-0}" = 1 ]; then
+# The GPU (ANGLE/IOSurface) backend is the default. It was re-ported to KWin 6.7's RenderDevice/EglBackend/layer
+# architecture (see kwin-ios-gpu-backend.sh); KWIN_IOS_GPU=0 builds the nested QPainter (software) compositor instead.
+# The mode is part of the source tree state: switch it only on a fresh build_work/kwin (rm -rf the unit first).
+if [ "${KWIN_IOS_GPU:-1}" = 1 ]; then
     bash "$(dirname "$0")/kwin-ios-gpu-backend.sh" "$src"
 else
-    echo "kwin-ios-fixes.sh: KWIN_IOS_GPU!=1, skipping the GPU backend (software compositor build)" >&2
+    echo "kwin-ios-fixes.sh: KWIN_IOS_GPU=0, skipping the GPU backend (software compositor build)" >&2
 fi
 
 # KWIN_BUILD_KCMS=ON builds kwin-applywindowdecoration, a CLI helper with no

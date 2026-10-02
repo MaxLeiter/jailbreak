@@ -151,7 +151,7 @@ Mode B (clang 19 with LLVM 19 libc++ headers against the system libc++ dylib) is
 `std::pmr` landed in Apple's libc++ with iOS 17; our SDK floor is 16.5. `tools/xios-pmr-shim/` builds a static `libxios-pmr.a` from LLVM 19 `memory_resource.cpp`, linked hidden (`-Wl,-hidden-lxios-pmr`) only through the `cxx19-kde` wrapper (`kde_lane_pmr_setup` in `kde-lane-env.sh`). Verified `libKF6TextEditor` exports zero pmr symbols. The per-site non-pmr patches in kconfigwidgets and ktexteditor are now redundant and can be reverted.
 
 ### Known gaps (not ported or deliberately compiled out)
-- kwin: software compositor only. The GPU/IOSurface backend (`KWIN_IOS_GPU=1`) needs a fresh port against the 6.7 scene/EGL layout. The QPA plugin has GL contexts disabled; link-only stubs for drmSyncobj and vkGet* live in `ios_link_stubs.cpp`.
+- kwin GPU path (default, `KWIN_IOS_GPU=0` builds the software compositor): re-ported to 6.7's RenderDevice/EglBackend/layer architecture. See "KWin GPU port" below. Builds and links; NOT yet run on a device. The QPA plugin keeps GL contexts disabled (KWin-as-a-client stays on raster QtQuick, as in the 6.1 lane). Link-only stubs for drmSyncobj and vkGet* live in `ios_link_stubs.cpp`.
 - plasma-mobile: only 25 of the 41 6.1.5 fix-script files apply (min set to 25 in fix-min-files.txt). The record tile (KPipeWire) and the flashlight KAuth helper are dropped.
 - plasma-workspace: desktop:/ kio worker skipped (kio is built without USE_DBUS, so no KDirNotify). Notification sounds compiled out (no libcanberra, `XIOS_NO_CANBERRA`). KScreenLocker/KSysGuard not ported (ScreenSaver DBus XML shipped locally).
 - xdg-desktop-portal-kde: Print portal removed (no QPrintDialog).
@@ -162,3 +162,13 @@ Mode B (clang 19 with LLVM 19 libc++ headers against the system libc++ dylib) is
 
 ### Still to do before any device test
 Control files for debs changed after build (kf6-prison Depends libqrencode4; qcoro6 description now includes QML), `Breaks` on old qt6/kf6/plasma packages, the xios-kde meta, host DER re-sign, minos audit, `upstream-version-policy.json` tracks, and a rebuild of qtwayland consumers.
+
+### KWin GPU port (ANGLE Metal into IOSurface), 6.7 shape
+6.7 builds the nested Wayland backend from `RenderDevice` (DRM + Vulkan), `EglBackend`, `WaylandLayer` subsurface layers and `EglSwapchain`, all of which assume DRM and dmabuf. The port keeps upstream's structure and substitutes the buffer plumbing:
+- `kwin-ios-gpu/iosc_gpu_support.{h,cpp}`: ANGLE Metal `EglDisplay` wrapped in a `RenderDevice` with no `DrmDevice` and (patched out on Apple) no Vulkan; IOSurface to `GLTexture` through a pbuffer plus `eglBindTexImage`; the IOSurface swapchain allocator; `wl_buffer` creation for compositor-owned IOSurfaces (mach port freed after a `wl_display_sync`); Metal acquire fence export and apply.
+- `kwin-ios-gpu/wayland_egl_backend.{h,cpp}`: upstream's file with format negotiation, gbm allocator and native fences replaced; one primary layer plus the cursor layer; the primary layer declares an opaque region.
+- Patches (each marked `ios-gpu-*`): display binds `iosc_iosurface`; `WaylandBackend` creates the render device, advertises OpenGL, and imports IOSurface buffers; `WaylandLayer::commit` sends the fence; `EglSwapchainSlot`/`EglSwapchain` accept IOSurface buffers; `BufferTextureOpenGL` samples client IOSurfaces without a CPU copy; DRM-null guards in wayland_server.cpp and compositor.cpp; Vulkan members of `RenderDevice` compiled out on Apple.
+- Verified host-side only: it compiles and links; `libkwin` resolves `xios_metal_sync_*` against the ANGLE libEGL. Needs the first on-device run (expect to iterate on layer/subsurface behaviour with iosc).
+
+### Follow-ups after the GPU port
+Plasma Mobile QML hunks (about 15 files), polkit-kde-agent-1 (needs polkit-qt-1), gwenview (Qt Multimedia), kscreenlocker/KSysGuard, the desktop:/ kio worker (needs kio with USE_DBUS), the Print portal, notification sounds (libcanberra), reverting the per-site pmr patches.
