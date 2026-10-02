@@ -7,11 +7,14 @@ endif
 
 SUBPROJECTS       += libxslt
 LIBXSLT_VERSION   := 1.1.43
-DEB_LIBXSLT_V     ?= $(LIBXSLT_VERSION)+ios1
+# +ios2: 1.1.43 plus the CVE-2025-7424 / func:result fixes backported from 1.1.44 (ports/libxslt);
+# 1.1.45 itself needs libxml2 >= 2.15.1.
+DEB_LIBXSLT_V     ?= $(LIBXSLT_VERSION)+ios2
 
 libxslt-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libxslt/1.1/libxslt-$(LIBXSLT_VERSION).tar.xz)
 	$(call EXTRACT_TAR,libxslt-$(LIBXSLT_VERSION).tar.xz,libxslt-$(LIBXSLT_VERSION),libxslt)
+	$(call DO_PATCH,libxslt,libxslt,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/libxslt/.build_complete),)
 libxslt:
