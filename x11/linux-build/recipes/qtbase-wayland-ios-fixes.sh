@@ -69,11 +69,14 @@ PY
 # so its private header is not staged: drop only the theme hookup (Plasma gets real theming from
 # plasma-integration's own platformtheme plugin).
 f="$wl/qwaylandintegration.cpp"
-for needle in '#include <QtGui/private/qgenericunixtheme_p.h>' \
-              'return QGenericUnixTheme::themeNames();' \
-              'return QGenericUnixTheme::createUnixTheme(name);'; do
-  grep -qF "$needle" "$f" || { echo "qwaylandintegration.cpp: anchor not found: $needle" >&2; exit 1; }
-done
-sed -i '/#include <QtGui\/private\/qgenericunixtheme_p.h>/d' "$f"
-sed -i 's/return QGenericUnixTheme::themeNames();/return QStringList();/' "$f"
-sed -i 's/return QGenericUnixTheme::createUnixTheme(name);/return nullptr;/' "$f"
+# Idempotent: a re-run on an already patched tree (no QGenericUnixTheme references left) is a no-op.
+if grep -q 'QGenericUnixTheme' "$f"; then
+  for needle in '#include <QtGui/private/qgenericunixtheme_p.h>' \
+                'return QGenericUnixTheme::themeNames();' \
+                'return QGenericUnixTheme::createUnixTheme(name);'; do
+    grep -qF "$needle" "$f" || { echo "qwaylandintegration.cpp: anchor not found: $needle" >&2; exit 1; }
+  done
+  sed -i '/#include <QtGui\/private\/qgenericunixtheme_p.h>/d' "$f"
+  sed -i 's/return QGenericUnixTheme::themeNames();/return QStringList();/' "$f"
+  sed -i 's/return QGenericUnixTheme::createUnixTheme(name);/return nullptr;/' "$f"
+fi

@@ -63,8 +63,8 @@ if [ ! -x "${HOSTQT}/libexec/moc" ]; then
     -DFEATURE_fontconfig=OFF -DFEATURE_glib=OFF -DFEATURE_icu=OFF \
     -DFEATURE_openssl=OFF -DINPUT_openssl=no \
     -DQT_QPA_DEFAULT_PLATFORM=offscreen
-  ninja -C "${HOSTQT_BUILD}"
-  ninja -C "${HOSTQT_BUILD}" install
+  ninja -j"${KDE_NINJA_JOBS:-12}" -C "${HOSTQT_BUILD}"
+  ninja -j"${KDE_NINJA_JOBS:-12}" -C "${HOSTQT_BUILD}" install
   rm -rf /work/host-qt-src "${HOSTQT_BUILD}"
   echo "==> host Qt done: $(${HOSTQT}/libexec/moc --version)"
 else
@@ -74,6 +74,12 @@ fi
 # The SDK-shadowing xpc/ headers in build_base are removed by qtbase.mk's setup step, not here:
 # Procursus `setup` re-stages them on every make run, so a driver-level parking gets undone by
 # the next build.
+
+# Qt 6.10's cross qtbase builds the Wayland client, which runs the HOST wayland-scanner (the staged one is arm64-iOS).
+# Installed here (not only in stage 1) because stage 1 is skipped once the host Qt exists in the volume.
+apt-get update >/dev/null 2>&1 || true
+apt-get install -y --no-install-recommends libwayland-bin >/dev/null 2>&1 || true
+[ -x /usr/bin/wayland-scanner ] || { echo "ERROR: host wayland-scanner missing" >&2; exit 1; }
 
 # --- cc-nounused wrappers (same as build-mutter.sh: neutralise meson/cmake probe -Werror) ---
 cat > build_tools/cc-nounused <<'EOF'
@@ -88,7 +94,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 # --- stage 2: Procursus cross build (recipes + control files, then make <target>-package) ---
 echo "==> installing qt recipes into makefiles/"
-for r in qtbase.mk; do
+for r in qt6-common.mk qtbase.mk; do
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/qt6-*.control build_info/ 2>/dev/null || true

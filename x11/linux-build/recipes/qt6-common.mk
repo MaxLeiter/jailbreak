@@ -84,9 +84,12 @@ QT6_DISABLE_MACOS_CONDITIONS = \
 # already in the tree; any leftover .rej under src/ is a hard failure (a silent partial fix is worse than none).
 # Usage in a -setup recipe: $(call QT6_APPLY_CVE,<module>)   (module = build_work dir name = qtbase, qtsvg, ...)
 QT6_APPLY_CVE = \
-	for p in $$(ls /work/ports/qt610-cve/$(1)-CVE-*.diff 2>/dev/null | sort -V); do \
-		patch -p1 -N -s --no-backup-if-mismatch -d $(BUILD_WORK)/$(1) < $$p || true; \
-	done; \
-	if find $(BUILD_WORK)/$(1)/src -name '*.rej' | grep -q .; then \
-		echo "ERROR: Qt CVE diff left rejects in $(1):"; find $(BUILD_WORK)/$(1)/src -name '*.rej'; exit 1; \
+	if [ ! -e $(BUILD_WORK)/$(1)/.xios-cve-applied ]; then \
+		for p in $$(ls /work/ports/qt610-cve/$(1)-CVE-*.diff 2>/dev/null | sort -V); do \
+			patch -p1 -N -s --no-backup-if-mismatch -d $(BUILD_WORK)/$(1) < $$p || true; \
+		done; \
+		if find $(BUILD_WORK)/$(1)/src -name '*.rej' | grep -q .; then \
+			echo "ERROR: Qt CVE diff left rejects in $(1):"; find $(BUILD_WORK)/$(1)/src -name '*.rej'; exit 1; \
+		fi; \
+		touch $(BUILD_WORK)/$(1)/.xios-cve-applied; \
 	fi
