@@ -46,6 +46,10 @@ DEPENDS_ADD = {
     "libgjs0":                  ["libcairo-gobject2"],
     "libgnome-autoar-0-0":      ["libgtk-3-0"],
     "libtracker-sparql-3.0-0":  ["libsoup-3.0-0"],   # dlopen'd libtracker-http-soup3.so
+    # libsoup 3.8.0 / gmime 3.2.15 rebuilds link our @rpath/libz.1.dylib (the sysroot zlib), no longer
+    # the system /usr/lib one; gmime also keeps an unused-but-present libgtkintl load command.
+    "libsoup-3.0-0":            ["libz1"],
+    "libgmime-3.0-0":           ["libgtkintl", "libz1"],
     "xwayland":                 ["libxau6"],
     "libxkbcommon-dev":         ["libxcb1"],          # libxkbcommon-x11
     "libmutter-14-0":           ["angle", "libei1", "libatk1.0-0"],

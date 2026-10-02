@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/jstedfast/gmime
-Depends: libglib2.0-0
+Depends: libglib2.0-0, libgtkintl, libz1
 Description: MIME parser and utility library - runtime
  GMime is a MIME message parser and utility library used by mail clients.
  This iOS build disables GpgME-backed crypto and IDN for the first Geary lane.
