@@ -29,6 +29,9 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     private var canvasW = 1
     private var canvasH = 1
+    // A canvas bound before Metal was reachable (background launch). Adopted
+    // once start() succeeds; until then there is no device to texture it with.
+    private var deferredCanvas: (surface: IOSurfaceRef, width: Int, height: Int)?
 
     // Metal
     private var device: MTLDevice!
@@ -58,7 +61,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private weak var keyboardRevealPan: UIPanGestureRecognizer?
     private var keyboardSwipeTriggered = false
 
-    // Two-finger / trackpad scroll -> AXIS (wire type 9). Mirrors XScreen.swift's
+    // Two-finger / trackpad scroll -> XIOS_IN_AXIS. Mirrors XScreen.swift's
     // handleTwoFingerPan/sendScroll; single-finger pointer emulation above is
     // untouched, this is additive.
     private enum TwoFingerMode { case undecided, scroll }
@@ -106,6 +109,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func start() {
+        // At most one pending retry: a start() that fails again from
+        // retryStart must not stack a second registration on the first.
+        NotificationCenter.default.removeObserver(
+            self, name: UIApplication.didBecomeActiveNotification, object: nil)
         guard setupMetal() else {
             // GPU unreachable (background launch); retry when active.
             NotificationCenter.default.addObserver(
@@ -137,6 +144,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         dl.add(to: .main, forMode: .common)
         displayLink = dl
         needsPresent = true
+        if let canvas = deferredCanvas {
+            deferredCanvas = nil
+            adoptCanvas(canvas.surface, width: canvas.width, height: canvas.height)
+        }
     }
 
     @objc private func retryStart() {
@@ -146,7 +157,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     /// Adopt a canvas IOSurface (WINDOW_NEW / WINDOW_GEOM). Zero-copy Metal texture.
     func adoptCanvas(_ surface: IOSurfaceRef, width: Int, height: Int) {
-        guard metalReady else { return }
+        guard metalReady else {
+            deferredCanvas = (surface, width, height)
+            return
+        }
         canvasW = max(1, width); canvasH = max(1, height)
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: canvasW, height: canvasH, mipmapped: false)
@@ -989,6 +1003,12 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     }
 
     func teardown() {
+        // A view whose start() failed (background launch) is still waiting on
+        // didBecomeActive; without this a torn-down window would revive itself
+        // with a display link, an input connection and the keyboard handler.
+        NotificationCenter.default.removeObserver(
+            self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        deferredCanvas = nil
         hardwareKeyboard.stop()
         releaseHardwarePointerButtons()
         displayLink?.invalidate(); displayLink = nil
