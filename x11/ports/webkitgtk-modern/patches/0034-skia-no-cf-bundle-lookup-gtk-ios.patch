@@ -1,0 +1,17 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Skia: no CoreFoundation bundle lookup for the GTK port on iOS (bare executables have no bundle)
+
+--- a/Source/ThirdParty/skia/src/ports/SkOSFile_ios.h	2026-10-01 23:45:07
++++ b/Source/ThirdParty/skia/src/ports/SkOSFile_ios.h	2026-10-01 23:45:07
+@@ -10,7 +10,10 @@
+ 
+ #include "include/core/SkString.h"
+ 
+-#ifdef SK_BUILD_FOR_IOS
++#if defined(SK_BUILD_FOR_IOS) && defined(BUILDING_GTK__)
++// Xios GTK port: processes are bare executables without an app bundle; avoid linking CoreFoundation.
++[[maybe_unused]] static bool ios_get_path_in_bundle(const char[], SkString*) { return false; }
++#elif defined(SK_BUILD_FOR_IOS)
+ #import <CoreFoundation/CoreFoundation.h>
+ 
+ #include "include/ports/SkCFObject.h"

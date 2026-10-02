@@ -16,3 +16,11 @@
 0024-bmalloc-process-check-cxx-for-gtk-darwin.patch
 0025-gtk-darwin-disable-tzone.patch
 0026-gtk-darwin-no-libdispatch-threading.patch
+0027-angle-accept-ios16-sdk.patch
+0028-angle-cmake-gtk-darwin-ios-platform.patch
+0029-angle-display-egl-backend-on-ios.patch
+0030-ipc-unix-sockets-on-darwin-gtk.patch
+0031-webcore-videoless-htmlmediaelement-custom.patch
+0032-webkit-gtk-config-fixes-no-libdrm-2022api-off.patch
+0033-link-gaps-skia-angle-dmabuf-gtk-darwin.patch
+0034-skia-no-cf-bundle-lookup-gtk-ios.patch

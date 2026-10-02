@@ -1,0 +1,35 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WebKitGTK 2.54 config fixes: WKPage key-event typedef off Cocoa, CStringView include, buffer description needs LIBDRM
+
+--- a/Source/WebKit/UIProcess/API/C/WKPagePrivate.h	2026-10-01 22:56:56
++++ b/Source/WebKit/UIProcess/API/C/WKPagePrivate.h	2026-10-01 22:56:56
+@@ -244,7 +244,7 @@
+ typedef void (*WKPageDoAfterProcessingAllPendingMouseEventsFunction)(void* functionContext);
+ WK_EXPORT void WKPageDoAfterProcessingAllPendingMouseEvents(WKPageRef page, void* context, WKPageDoAfterProcessingAllPendingMouseEventsFunction function);
+ 
+-#if !defined(__APPLE__)
++#if !defined(__APPLE__) || defined(BUILDING_GTK__)
+ typedef void (*WKPageDoAfterProcessingAllPendingKeyEventsFunction)(void* functionContext);
+ WK_EXPORT void WKPageDoAfterProcessingAllPendingKeyEvents(WKPageRef page, void* context, WKPageDoAfterProcessingAllPendingKeyEventsFunction function);
+ 
+--- a/Source/WebKit/UIProcess/API/glib/WebKitDownload.cpp	2026-10-01 22:56:56
++++ b/Source/WebKit/UIProcess/API/glib/WebKitDownload.cpp	2026-10-01 22:56:56
+@@ -35,6 +35,7 @@
+ #include <wtf/glib/GWeakPtr.h>
+ #include <wtf/glib/WTFGType.h>
+ #include <wtf/text/CString.h>
++#include <wtf/text/CStringView.h>
+ 
+ using namespace WebKit;
+ using namespace WebCore;
+--- a/Source/WebKit/UIProcess/API/glib/WebKitProtocolHandler.cpp	2026-10-01 22:56:56
++++ b/Source/WebKit/UIProcess/API/glib/WebKitProtocolHandler.cpp	2026-10-01 22:56:56
+@@ -757,7 +757,7 @@
+         if (hasEGLContext)
+             addEGLInfo(hardwareAccelerationObject);
+     } else {
+-#if PLATFORM(GTK)
++#if PLATFORM(GTK) && USE(LIBDRM)
+         addTableRow(hardwareAccelerationObject, "Buffer format"_s, renderBufferDescription(request));
+ #endif
+     }

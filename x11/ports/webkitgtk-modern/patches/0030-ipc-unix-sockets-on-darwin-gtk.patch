@@ -1,0 +1,138 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] IPC/WebKit: GTK on Darwin uses Unix-domain-socket IPC, not Mach/XPC
+
+--- a/Source/WebKit/Platform/IPC/Connection.h	2026-10-01 22:35:30
++++ b/Source/WebKit/Platform/IPC/Connection.h	2026-10-01 22:35:30
+@@ -76,7 +76,7 @@
+ #include <wtf/android/RefPtrAndroid.h>
+ #endif
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+ #include <mach/mach_port.h>
+ #include <wtf/darwin/DispatchOSObject.h>
+ #include <wtf/darwin/XPCObjectPtr.h>
+@@ -84,7 +84,7 @@
+ #if HAVE(XPC_API)
+ #include <xpc/xpc.h>
+ #endif
+-#endif // OS(DARWIN)
++#endif // OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+ 
+ #if USE(GLIB)
+ #include <wtf/glib/GSocketMonitor.h>
+@@ -343,7 +343,7 @@
+ #endif
+     };
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     xpc_connection_t xpcConnection() const { return m_xpcConnection.get(); }
+     std::optional<audit_token_t> getAuditToken();
+     pid_t remoteProcessID() const;
+--- a/Source/WebKit/Platform/IPC/Connection.cpp	2026-10-01 22:35:30
++++ b/Source/WebKit/Platform/IPC/Connection.cpp	2026-10-01 22:35:30
+@@ -669,7 +669,7 @@
+     }
+ 
+     if (shouldNotifyOfQueueGrowingLarge) {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+         RELEASE_LOG_ERROR(IPC, "Connection::sendMessage(): Too many messages (%zu) in the queue to remote PID: %d (most common: %u %" PUBLIC_LOG_STRING " messages), notifying client", outgoingMessagesCount, remoteProcessID(), maxOutgoingMessageNameCount, maxOutgoingMessageName.characters());
+ #else
+         RELEASE_LOG_ERROR(IPC, "Connection::sendMessage(): Too many messages (%zu) in the queue, notifying client (most common: %u %" PUBLIC_LOG_STRING " messages)", outgoingMessagesCount, maxOutgoingMessageNameCount, maxOutgoingMessageName.characters());
+@@ -999,7 +999,7 @@
+         timedOut = !protect(m_syncState)->wait(timeout);
+     }
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     RELEASE_LOG_ERROR(IPC, "Connection::waitForSyncReply: Timed-out while waiting for reply for %" PUBLIC_LOG_STRING " from process %d, id=%" PRIu64, description(messageName).characters(), remoteProcessID(), syncRequestID.toUInt64());
+ #else
+     RELEASE_LOG_ERROR(IPC, "Connection::waitForSyncReply: Timed-out while waiting for reply for %s, id=%" PRIu64, description(messageName).characters(), syncRequestID.toUInt64());
+--- a/Source/WebKit/Platform/IPC/ConnectionHandle.serialization.in	2026-10-01 22:35:30
++++ b/Source/WebKit/Platform/IPC/ConnectionHandle.serialization.in	2026-10-01 22:35:30
+@@ -28,7 +28,7 @@
+ #if OS(WINDOWS)
+     Win32Handle m_handle;
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     MachSendRight m_handle;
+ #endif
+ }
+--- a/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in	2026-10-01 22:35:30
++++ b/Source/WebKit/Shared/WebCoreArgumentCoders.serialization.in	2026-10-01 22:35:30
+@@ -1653,7 +1653,7 @@
+ #if USE(UNIX_DOMAIN_SOCKETS)
+ headers: <wtf/unix/UnixFileDescriptor.h> "ArgumentCodersUnix.h"
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+ header: <wtf/MachSendRight.h>
+ #endif
+ 
+@@ -1661,7 +1661,7 @@
+ #if USE(UNIX_DOMAIN_SOCKETS)
+     [Validator='!!m_handle && *m_handle'] UnixFileDescriptor m_handle;
+ #endif
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     [Validator='!!m_handle && *m_handle'] MachSendRight m_handle;
+ #endif
+ #if OS(WINDOWS)
+--- a/Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp	2026-10-01 22:35:30
++++ b/Source/WebKit/NetworkProcess/NetworkConnectionToWebProcess.cpp	2026-10-01 22:35:30
+@@ -492,7 +492,7 @@
+     // Protect ourself as we might be otherwise be deleted during this function.
+     Ref<NetworkConnectionToWebProcess> protector(*this);
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     CONNECTION_RELEASE_LOG(Loading, "didClose: WebProcess (%d) closed its connection. Aborting related loaders.", connection.remoteProcessID());
+ #else
+     CONNECTION_RELEASE_LOG(Loading, "didClose: WebProcess closed its connection. Aborting related loaders.");
+--- a/Source/WebKit/NetworkProcess/NetworkProcess.cpp	2026-10-01 22:35:30
++++ b/Source/WebKit/NetworkProcess/NetworkProcess.cpp	2026-10-01 22:35:30
+@@ -1895,7 +1895,7 @@
+         if (connection->sessionID() != sessionID || activeWebProcesses.contains(identifier))
+             continue;
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+         Ref ipcConnection = connection->connection();
+         auto remoteProcessID = ipcConnection->remoteProcessID();
+         // Connection is not available.
+--- a/Source/WebKit/UIProcess/WebProcessProxy.cpp	2026-10-01 22:35:30
++++ b/Source/WebKit/UIProcess/WebProcessProxy.cpp	2026-10-01 22:35:30
+@@ -1445,7 +1445,7 @@
+ 
+ void WebProcessProxy::didClose(IPC::Connection& connection)
+ {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     WEBPROCESSPROXY_RELEASE_LOG_ERROR(Process, "didClose: (web process %d crash)", connection.remoteProcessID());
+ #else
+     WEBPROCESSPROXY_RELEASE_LOG_ERROR(Process, "didClose (web process crash)");
+--- a/Source/WebKit/UIProcess/Network/NetworkProcessProxy.cpp	2026-10-01 22:35:30
++++ b/Source/WebKit/UIProcess/Network/NetworkProcessProxy.cpp	2026-10-01 22:35:30
+@@ -509,7 +509,7 @@
+ 
+ void NetworkProcessProxy::didClose(IPC::Connection& connection)
+ {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     RELEASE_LOG_ERROR(Process, "%p - NetworkProcessProxy::didClose (Network Process %d crash)", this, connection.remoteProcessID());
+ #else
+     RELEASE_LOG_ERROR(Process, "%p - NetworkProcessProxy::didClose (Network Process crash)", this);
+--- a/Source/WebKit/WebProcess/WebProcess.cpp	2026-10-01 22:35:30
++++ b/Source/WebKit/WebProcess/WebProcess.cpp	2026-10-01 22:35:30
+@@ -1451,7 +1451,7 @@
+ 
+ void WebProcess::networkProcessConnectionClosed(NetworkProcessConnection* connection)
+ {
+-#if OS(DARWIN)
++#if OS(DARWIN) && !USE(UNIX_DOMAIN_SOCKETS)
+     WEBPROCESS_RELEASE_LOG(Loading, "networkProcessConnectionClosed: NetworkProcess (%d) closed its connection (Crashed)", connection ? connection->connection().remoteProcessID() : 0);
+ #else
+     WEBPROCESS_RELEASE_LOG(Loading, "networkProcessConnectionClosed: NetworkProcess closed its connection (Crashed)");
