@@ -18,6 +18,11 @@ struct xios_desktop_entry {
     char exec[2048];
     char icon[512];
     char app_id[256];
+    /* X-Xios-RawTouch=true: the native host installs no direct-touch gesture
+     * recognizers and sends no emulated pointer for this app, so every touch
+     * reaches the client as wl_touch (games with on-screen controls). A
+     * presentation hint for the generated bundle only; ioscd ignores it. */
+    int raw_touch;
 };
 
 /*

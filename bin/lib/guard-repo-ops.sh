@@ -18,7 +18,7 @@ HOOK_PAYLOAD="$(cat)"
 export HOOK_PAYLOAD
 
 exec python3 <<'PYEOF'
-import json, os, re, sys
+import json, os, re, shlex, sys
 
 try:
     payload = json.loads(os.environ.get("HOOK_PAYLOAD") or "")
@@ -50,6 +50,55 @@ def strip_heredocs(cmd):
             break
         i += 1
     return "\n".join(out)
+
+
+def forced_deb_adds(cmd):
+    """Pathspecs a `git add -f` would force past the .deb / repo/debs ignore rules.
+
+    Tokenized with shlex, so a commit message that quotes the command stays one
+    token and is not mistaken for an invocation. A forced sweep (`.`, `-A`, `repo`)
+    counts too: from the repo root it sweeps up all of repo/debs.
+    """
+    try:
+        lex = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:
+        hit = re.search(r"\bgit\b[^;&|\n]*\b(add|stage)\b[^;&|\n]*"
+                        r"\s(-[A-Za-z]*f[A-Za-z]*|--force)\b[^;&|\n]*(\.deb\b|repo/debs)", cmd)
+        return [hit.group(0)] if hit else []
+    hits = []
+    for i, tok in enumerate(tokens):
+        if tok.rsplit("/", 1)[-1] != "git":
+            continue
+        j = i + 1
+        while j < len(tokens) and tokens[j].startswith("-"):
+            j += 2 if tokens[j] in ("-C", "-c", "--git-dir", "--work-tree", "--namespace") else 1
+        if j >= len(tokens) or tokens[j] not in ("add", "stage"):
+            continue
+        force = sweep = after_dashdash = False
+        specs = []
+        for a in tokens[j + 1:]:
+            if set(a) <= set("();<>|&"):
+                break
+            if after_dashdash or not a.startswith("-") or a == "-":
+                specs.append(a)
+            elif a == "--":
+                after_dashdash = True
+            elif a.startswith("--"):
+                force |= a == "--force"
+                sweep |= a == "--all"
+            else:
+                force |= "f" in a[1:]
+                sweep |= "A" in a[1:]
+        if not force:
+            continue
+        hits += [s for s in specs
+                 if re.search(r"\.deb\b|repo/debs", s)
+                 or s.rstrip("/") in ("", ".", ":", "*", "repo", "./repo")]
+        if sweep and not specs:
+            hits.append("-A")
+    return hits
 
 
 if tool == "Bash":
@@ -84,6 +133,23 @@ elif tool in ("Edit", "Write", "NotebookEdit"):
             "\n"
             "Genuinely patching an emergency artifact? Say so explicitly and use a shell\n"
             "redirect instead of the edit tools, so it is visible in the transcript.\n"
+        )
+        sys.exit(2)
+
+# repo/debs/ and *.deb are gitignored: payloads go to Vercel Blob, and only
+# repo/Packages is tracked. `git add -f` is the one way past that, and it is
+# how 19 staged debs sat in git from 2026-07-29 until 2026-10-01.
+if tool == "Bash":
+    forced = forced_deb_adds(strip_heredocs(tool_input.get("command") or ""))
+    if forced:
+        sys.stderr.write(
+            f"BLOCKED: `git add -f` would force .deb payloads into git: {' '.join(forced)}\n"
+            "repo/debs/ and *.deb are gitignored on purpose. Payloads reach users through\n"
+            "the publish procedure (Vercel Blob); git tracks only the index. CI fails on any\n"
+            "tracked .deb.\n"
+            "\n"
+            "To record a publish, commit the index:  git add repo/Packages\n"
+            "To force-add some other ignored file, name that file explicitly.\n"
         )
         sys.exit(2)
 

@@ -31,6 +31,15 @@ Xios app, iosc, SDL, and audio layers.
   Proven by removing `libsdl2-2.0-0` from the iPad entirely and watching
   OpenTTD still reach its menu: `game-openttd-vendored-sdl2/compositor.png`.
   Do not re-add a `libsdl2-2.0-0` waiver; see `bin/lib/shadow-waivers.json`.
+- **SDL audio is PulseAudio only.** `xios-sdl2` carries just the `pulseaudio`
+  and `dummy` audio drivers, and SDL3 has the same two; neither has
+  `coreaudio`. The wrappers default `SDL_AUDIODRIVER` to `pulseaudio`. Through
+  `xios-audio-server` 0.1.0, profile.d/xios-audio.sh exported
+  `SDL_AUDIODRIVER=coreaudio` to every login shell, and the session launches
+  apps through `bash -lc`, so OpenTTD, Wesnoth and Crispy Doom started from the
+  session ran silent ("SDL audio driver is none"). 0.1.1 drops the export
+  (2026-10-01). Warzone 2100 and 0 A.D. play sound through OpenAL
+  (`ALSOFT_DRIVERS=pulse`), so their SDL audio setting never mattered.
 - `libsdl3-0 3.2.30+ios2` needs no such treatment -- Procursus ships no SDL3.
 - `libsdl3-0 3.2.30+ios2` and `xios-sdl2 2.32.10+ios3` are installed on the
   physical iPad.

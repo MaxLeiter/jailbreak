@@ -1,0 +1,44 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] cmake: build Crispy as a Unix SDL client on the Darwin/iOS target
+
+The Procursus cross toolchain identifies the target as Darwin/iOS so CMake
+emits Mach-O, but Xios runs Crispy Doom as an ordinary Wayland client through
+the vendored xios-sdl2 (Unix Wayland backend, no UIKit). Crispy's sources
+already take the generic Unix paths there (__MACOSX__ is not defined on iOS),
+so the only target-specific piece is SDL's entry point: SDL_main.h on iOS
+renames main() and expects SDL2main to supply a UIKit trampoline. Add an
+explicit CRISPY_XIOS option that keeps Crispy's own main() (SDL_MAIN_HANDLED),
+stops linking SDL2main, and exposes CRISPY_XIOS=1 to the sources.
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -36,6 +36,14 @@
+ option(ENABLE_SDL2_NET "Enable SDL2_net" On)
+ option(ENABLE_SDL2_MIXER "Enable SDL2_mixer" On)
+ 
++# Xios: the Procursus toolchain targets iOS, where SDL_main.h expects SDL's
++# UIKit main trampoline. Xios runs Crispy as a plain Unix Wayland client, so
++# keep Crispy's own main() and let it mark SDL ready itself (i_main.c).
++option(CRISPY_XIOS "Build as an Xios Wayland client on the Darwin/iOS target" OFF)
++if(CRISPY_XIOS)
++    add_compile_definitions(CRISPY_XIOS=1 SDL_MAIN_HANDLED)
++endif()
++
+ if (NOT DEFINED EMSCRIPTEN)
+     find_package(SDL2 2.0.14)
+ endif()
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -45,7 +45,11 @@
+         set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -s USE_SDL_NET=2")
+     endif()
+ else()
+-    set(SDL_LINK_LIBS SDL2::SDL2main SDL2::SDL2)
++    if(CRISPY_XIOS)
++        set(SDL_LINK_LIBS SDL2::SDL2)
++    else()
++        set(SDL_LINK_LIBS SDL2::SDL2main SDL2::SDL2)
++    endif()
+     if(ENABLE_SDL2_MIXER)
+         list(APPEND SDL_LINK_LIBS SDL2_mixer::SDL2_mixer)
+     endif()

@@ -1,0 +1,472 @@
+#!/usr/bin/env python3
+"""xios-ios-apps — surface installed iOS apps as desktop entries in the session.
+
+Writes one .desktop per visible iOS app whose Exec foregrounds that app with
+`uiopen -b <bundle id>`. Launching one LEAVES the Wayland session and opens the
+app fullscreen, exactly as if its Home Screen icon had been tapped; the session
+keeps running in the background and the app switcher brings it back.
+
+This is deliberately the cheap rung: no scene hosting, no frame capture, no
+SpringBoard tweak. Running iOS apps as real windows INSIDE the session is a
+much larger job (hosted scene -> CARenderServer capture -> IOSurface -> a
+Wayland client, plus event injection back); see docs/iosc-desktop-env.md.
+
+  xios-ios-apps refresh [--force] [--dry-run] [--out DIR] [--quiet]
+  xios-ios-apps list
+  xios-ios-apps clean [--out DIR]
+
+Runs ON DEVICE. Only ever touches files it generated itself (every generated
+name starts with ENTRY_PREFIX), so `clean` cannot eat a packaged .desktop.
+"""
+
+import argparse
+import glob
+import os
+import plistlib
+import re
+import shutil
+import struct
+import sys
+import zlib
+
+# --- layout -----------------------------------------------------------------
+# Mirror xios-status: derive the rootless prefix from our own path so the same
+# script works from the dev tree and from /var/jb/usr/local/bin.
+def _detect_jb():
+    """Rootless prefix, or "" when running against a rootful/host layout.
+
+    Probe the well-known logical path rather than deriving it from __file__:
+    Dopamine's /var/jb is a symlink into /private/preboot/<hash>/dopamine-XXXX/
+    procursus, so abspath() of our own location resolves to the preboot path and
+    no /var/jb prefix test can ever match.
+    """
+    env = os.environ.get("XIOS_JB_PREFIX")
+    if env is not None:
+        return env
+    return "/var/jb" if os.path.isdir("/var/jb/usr") else ""
+
+
+JB = _detect_jb()
+PREFIX = os.environ.get("XS_PREFIX") or (JB + "/usr")
+
+APPLICATIONS_DIR = os.environ.get("XIOS_IOS_APPS_DIR") or os.path.join(PREFIX, "share", "applications")
+ICON_DIR = os.environ.get("XIOS_IOS_ICON_DIR") or os.path.join(PREFIX, "share", "xios-ios-apps", "icons")
+OPENER = os.environ.get("XIOS_IOS_OPENER") or os.path.join(JB, "libexec", "xios-session", "xios-open-ios-app")
+
+ENTRY_PREFIX = "xios-iosapp-"
+
+BUNDLE_GLOBS = (
+    "/Applications/*.app",
+    "/var/containers/Bundle/Application/*/*.app",
+)
+
+# Survive the SBAppTags filter but are not things anyone launches from a menu:
+# PreviewShell is Xcode's on-device preview host, webapp is the web-clip host,
+# sidecar/siri are system UI surfaces. com.max.xios is the session itself.
+DENY = {
+    "com.apple.PreviewShell",
+    "com.apple.sidecar",
+    "com.apple.siri",
+    "com.apple.webapp",
+    "com.max.xios",
+}
+
+
+# --- CgBI PNG -> normal PNG --------------------------------------------------
+# iOS app icons are run through Apple's pngcrush, which produces a "CgBI" PNG:
+# a raw (headerless) deflate stream, BGRA channel order, and premultiplied
+# alpha. GdkPixbuf and Qt both reject those, so decode and re-emit a standard
+# RGBA PNG. Pure stdlib on purpose — the device has no PIL.
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+class IconError(Exception):
+    pass
+
+
+def _chunks(data):
+    if data[:8] != PNG_MAGIC:
+        raise IconError("not a PNG")
+    off = 8
+    while off + 8 <= len(data):
+        (length,) = struct.unpack(">I", data[off : off + 4])
+        ctype = data[off + 4 : off + 8]
+        yield ctype, data[off + 8 : off + 8 + length]
+        off += 12 + length
+
+
+def icon_profile(path):
+    """(width, usable) for a candidate icon; (0, False) if unreadable.
+
+    Deciding usability from the header, before any decoding, keeps --dry-run
+    honest and lets pick_icon fall through to another candidate instead of
+    failing mid-convert.
+    """
+    try:
+        with open(path, "rb") as fh:
+            parts = list(_chunks(fh.read()))
+    except (OSError, IconError, struct.error):
+        return 0, False
+    ihdr = next((body for ctype, body in parts if ctype == b"IHDR"), None)
+    if ihdr is None or len(ihdr) < 13:
+        return 0, False
+    width, _height, depth, color, _comp, _filt, interlace = struct.unpack(">IIBBBBB", ihdr[:13])
+    if not any(ctype == b"CgBI" for ctype, _ in parts):
+        return width, True  # ordinary PNG — copied through untouched
+    return width, (depth == 8 and color == 6 and interlace == 0)
+
+
+def _unfilter(raw, width, height, bpp):
+    stride = width * bpp
+    if len(raw) < height * (stride + 1):
+        raise IconError("truncated scanline data")
+    out = bytearray(height * stride)
+    prev = bytearray(stride)
+    pos = 0
+    for y in range(height):
+        ftype = raw[pos]
+        pos += 1
+        line = bytearray(raw[pos : pos + stride])
+        pos += stride
+        if ftype == 0:
+            pass
+        elif ftype == 1:  # Sub
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 0xFF
+        elif ftype == 2:  # Up — the common case for icons, so keep it in C
+            line = bytearray(map(lambda a, b: (a + b) & 0xFF, line, prev))
+        elif ftype == 3:  # Average
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 0xFF
+        elif ftype == 4:  # Paeth
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                p = a + b - c
+                pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+                pred = a if (pa <= pb and pa <= pc) else (b if pb <= pc else c)
+                line[i] = (line[i] + pred) & 0xFF
+        else:
+            raise IconError("bad PNG filter %d" % ftype)
+        out[y * stride : (y + 1) * stride] = line
+        prev = line
+    return out
+
+
+def _encode_png(width, height, pixels):
+    raw = bytearray()
+    stride = width * 4
+    for y in range(height):
+        raw.append(0)  # filter: None. These are small; compression is fine.
+        raw += pixels[y * stride : (y + 1) * stride]
+
+    def chunk(ctype, body):
+        return (
+            struct.pack(">I", len(body))
+            + ctype
+            + body
+            + struct.pack(">I", zlib.crc32(ctype + body) & 0xFFFFFFFF)
+        )
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (
+        PNG_MAGIC
+        + chunk(b"IHDR", ihdr)
+        + chunk(b"IDAT", zlib.compress(bytes(raw), 9))
+        + chunk(b"IEND", b"")
+    )
+
+
+def normalize_icon(src, dst):
+    """Copy src to dst, converting CgBI to a standard RGBA PNG if needed."""
+    with open(src, "rb") as fh:
+        data = fh.read()
+
+    parts = list(_chunks(data))
+    if not any(ctype == b"CgBI" for ctype, _ in parts):
+        shutil.copyfile(src, dst)  # already a normal PNG
+        return
+
+    ihdr = next((body for ctype, body in parts if ctype == b"IHDR"), None)
+    if ihdr is None:
+        raise IconError("no IHDR")
+    width, height, depth, color, _comp, _filt, interlace = struct.unpack(">IIBBBBB", ihdr[:13])
+    if depth != 8 or color != 6 or interlace != 0:
+        raise IconError("unsupported CgBI variant (depth=%d color=%d interlace=%d)" % (depth, color, interlace))
+
+    idat = b"".join(body for ctype, body in parts if ctype == b"IDAT")
+    # CgBI drops the zlib wrapper, so inflate raw.
+    raw = zlib.decompressobj(-zlib.MAX_WBITS).decompress(idat)
+    px = _unfilter(raw, width, height, 4)
+
+    # BGRA -> RGBA. Slice assignment is C-speed, unlike a per-pixel loop.
+    px[0::4], px[2::4] = px[2::4], px[0::4]
+
+    # Un-premultiply. Icons are usually fully opaque, so check before paying
+    # for the Python loop.
+    alpha = px[3::4]
+    if alpha and min(alpha) != 255:
+        for i in range(0, len(px), 4):
+            a = px[i + 3]
+            if a == 0:
+                px[i] = px[i + 1] = px[i + 2] = 0
+            elif a != 255:
+                px[i] = min(255, px[i] * 255 // a)
+                px[i + 1] = min(255, px[i + 1] * 255 // a)
+                px[i + 2] = min(255, px[i + 2] * 255 // a)
+
+    with open(dst, "wb") as fh:
+        fh.write(_encode_png(width, height, px))
+
+
+def pick_icon(bundle):
+    """Largest usable loose AppIcon/Icon PNG at the bundle root, or None.
+
+    Apps that ship their icon only inside Assets.car (about 1 in 5 here) get no
+    icon; decoding an asset catalog needs CoreUI, which is a native-helper job.
+    Adam7-interlaced CgBI is likewise skipped rather than half-decoded.
+    """
+    best, best_w = None, -1
+    try:
+        names = os.listdir(bundle)
+    except OSError:
+        return None
+    for name in names:
+        if not name.lower().endswith(".png"):
+            continue
+        if not re.match(r"^(AppIcon|Icon)", name):
+            continue
+        path = os.path.join(bundle, name)
+        width, usable = icon_profile(path)
+        if usable and width > best_w:
+            best, best_w = path, width
+    return best
+
+
+# --- scanning ----------------------------------------------------------------
+
+
+class App:
+    def __init__(self, bundle_id, name, path, icon_src):
+        self.bundle_id = bundle_id
+        self.name = name
+        self.path = path
+        self.icon_src = icon_src
+
+    @property
+    def entry_name(self):
+        return ENTRY_PREFIX + self.bundle_id + ".desktop"
+
+
+def scan():
+    seen = {}
+    for pattern in BUNDLE_GLOBS:
+        for bundle in sorted(glob.glob(pattern)):
+            info = os.path.join(bundle, "Info.plist")
+            if not os.path.exists(info):
+                continue
+            try:
+                with open(info, "rb") as fh:
+                    plist = plistlib.load(fh)
+            except Exception:
+                continue
+
+            bundle_id = plist.get("CFBundleIdentifier")
+            if not bundle_id or bundle_id in DENY:
+                continue
+            # SpringBoard's own visibility rule: this is what keeps the 166
+            # system bundles from becoming 166 menu entries.
+            if "hidden" in (plist.get("SBAppTags") or []):
+                continue
+            if plist.get("LSApplicationLaunchProhibited"):
+                continue
+            if bundle_id in seen:
+                continue
+
+            name = (
+                plist.get("CFBundleDisplayName")
+                or plist.get("CFBundleName")
+                or os.path.splitext(os.path.basename(bundle))[0]
+            )
+            seen[bundle_id] = App(bundle_id, str(name), bundle, pick_icon(bundle))
+    return [seen[k] for k in sorted(seen, key=lambda b: seen[b].name.lower())]
+
+
+# --- desktop entries ---------------------------------------------------------
+
+
+def desktop_text(app, icon_path):
+    # StartupNotify=false matters: the app opens outside the session, so KWin
+    # would otherwise spin a busy cursor waiting for a window that never maps.
+    lines = [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Version=1.0",
+        "Name=%s" % escape(app.name),
+        "Comment=iOS app — opens fullscreen outside the desktop session",
+        "Exec=%s %s" % (OPENER, app.bundle_id),
+        "Terminal=false",
+        "StartupNotify=false",
+        "Categories=Utility;X-iOS;",
+        "Keywords=iOS;iPad;native;",
+        "X-XIOS-Bundle-Id=%s" % app.bundle_id,
+        "X-XIOS-Generated=xios-ios-apps",
+    ]
+    if icon_path:
+        lines.insert(5, "Icon=%s" % icon_path)
+    return "\n".join(lines) + "\n"
+
+
+def escape(value):
+    # Desktop-entry string escaping. App names are the one field we do not
+    # control, and a stray newline would forge extra keys.
+    return (
+        value.replace("\\", "\\\\")
+        .replace("\n", "\\n")
+        .replace("\r", "")
+        .replace("\t", "\\t")
+    )
+
+
+def cmd_refresh(args):
+    apps = scan()
+    out_dir = args.out or APPLICATIONS_DIR
+    icon_dir = ICON_DIR if not args.out else os.path.join(args.out, "icons")
+
+    if not args.dry_run:
+        os.makedirs(out_dir, exist_ok=True)
+        os.makedirs(icon_dir, exist_ok=True)
+
+    written = skipped = 0
+    icons_ok = icons_missing = icons_failed = 0
+    keep = set()
+
+    for app in apps:
+        entry_path = os.path.join(out_dir, app.entry_name)
+        icon_path = os.path.join(icon_dir, app.bundle_id + ".png") if app.icon_src else None
+        keep.add(app.entry_name)
+
+        if not app.icon_src:
+            icons_missing += 1
+        elif args.dry_run or (os.path.exists(icon_path) and not args.force):
+            icons_ok += 1
+        else:
+            try:
+                normalize_icon(app.icon_src, icon_path)
+                icons_ok += 1
+            except (IconError, OSError, zlib.error) as exc:
+                icons_failed += 1
+                if not args.quiet:
+                    print("  icon failed for %s: %s" % (app.bundle_id, exc), file=sys.stderr)
+                try:
+                    os.unlink(icon_path)
+                except OSError:
+                    pass
+                icon_path = None
+
+        text = desktop_text(app, icon_path)
+        if not args.force and os.path.exists(entry_path):
+            try:
+                with open(entry_path) as fh:
+                    if fh.read() == text:
+                        skipped += 1
+                        continue
+            except OSError:
+                pass
+
+        if args.dry_run:
+            written += 1
+            continue
+        tmp = entry_path + ".tmp"
+        with open(tmp, "w") as fh:
+            fh.write(text)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, entry_path)
+        written += 1
+
+    # Drop entries for apps that have since been uninstalled.
+    removed = 0
+    if os.path.isdir(out_dir):
+        for name in os.listdir(out_dir):
+            if name.startswith(ENTRY_PREFIX) and name not in keep:
+                removed += 1
+                if not args.dry_run:
+                    os.unlink(os.path.join(out_dir, name))
+
+    if not args.quiet:
+        print(
+            "%s %d iOS apps: %d written, %d unchanged, %d stale removed"
+            % ("would generate" if args.dry_run else "generated", len(apps), written, skipped, removed)
+        )
+        print(
+            "icons: %d ok, %d with no usable loose icon (Assets.car only, or an"
+            " unsupported CgBI variant), %d failed"
+            % (icons_ok, icons_missing, icons_failed)
+        )
+    return 0
+
+
+def cmd_list(args):
+    out_dir = args.out or APPLICATIONS_DIR
+    if not os.path.isdir(out_dir):
+        return 0
+    for name in sorted(os.listdir(out_dir)):
+        if not name.startswith(ENTRY_PREFIX):
+            continue
+        bundle_id = app_name = ""
+        with open(os.path.join(out_dir, name)) as fh:
+            for line in fh:
+                if line.startswith("Name="):
+                    app_name = line[5:].strip()
+                elif line.startswith("X-XIOS-Bundle-Id="):
+                    bundle_id = line[17:].strip()
+        print("%-45s %s" % (bundle_id, app_name))
+    return 0
+
+
+def cmd_clean(args):
+    out_dir = args.out or APPLICATIONS_DIR
+    removed = 0
+    if os.path.isdir(out_dir):
+        for name in os.listdir(out_dir):
+            if name.startswith(ENTRY_PREFIX):
+                os.unlink(os.path.join(out_dir, name))
+                removed += 1
+    icon_dir = ICON_DIR if not args.out else os.path.join(args.out, "icons")
+    if os.path.isdir(icon_dir):
+        shutil.rmtree(icon_dir)
+    print("removed %d generated entries" % removed)
+    return 0
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="xios-ios-apps", description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="cmd")
+
+    p = sub.add_parser("refresh", help="regenerate desktop entries for installed iOS apps")
+    p.add_argument("--force", action="store_true", help="rewrite entries and icons even if current")
+    p.add_argument("--dry-run", action="store_true", help="report what would change, write nothing")
+    p.add_argument("--out", help="write entries here instead of the session applications dir")
+    p.add_argument("--quiet", action="store_true")
+    p.set_defaults(func=cmd_refresh)
+
+    p = sub.add_parser("list", help="list the entries we generated")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("clean", help="remove every entry and icon we generated")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_clean)
+
+    args = parser.parse_args(argv)
+    if not getattr(args, "func", None):
+        parser.print_help()
+        return 2
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

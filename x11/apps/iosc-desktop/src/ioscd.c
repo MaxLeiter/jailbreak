@@ -1204,7 +1204,7 @@ static void set_wayland_client_env(const struct mode_cfg *mode, const char *busd
     snprintf(compose, sizeof(compose), "%s/share/X11/locale/en_US.UTF-8/Compose", prefix);
     snprintf(dyld, sizeof(dyld), "%s/lib:%s", prefix, angle);
     snprintf(pulse, sizeof(pulse), "unix:%s/pulse/native", g_tmp);
-    snprintf(pulse_runtime, sizeof(pulse_runtime), "%s/pulse", g_tmp);
+    snprintf(pulse_runtime, sizeof(pulse_runtime), "%s/pulse-daemon", g_tmp);
     snprintf(qt_plugins, sizeof(qt_plugins), "%s/lib/qt6/plugins", prefix);
     snprintf(qt_qml, sizeof(qt_qml), "%s/lib/qt6/qml", prefix);
 

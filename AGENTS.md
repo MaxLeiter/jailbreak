@@ -40,6 +40,7 @@ Prefer stable instructions here. For fast-moving status, read the relevant READM
 - `bin/publish-staging.sh` (= `bin/publish-repo.sh --staging`) regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys the low-cache staging repo (served at dev.repo.maxleiter.com) for iteration.
 - `bin/publish-repo.sh` regenerates, audits, signs, uploads package payloads to Vercel Blob, and deploys production metadata/site assets.
 - `repo/debs/` is a shared staging tree, so a bare production publish ships every pending delta anyone has built. Use `bin/publish-repo.sh --only <pkg>[,<pkg>]` to swap just your packages into the index the target already serves; it scopes the index in the throwaway deploy copy and re-checks solvability against that scoped index.
+- Nothing under `repo/debs/` is tracked, so a fresh clone or worktree has no such directory (`mkdir -p repo/debs` before staging into one). Never `git add -f` a `.deb`: the guard hook blocks it, and CI's "Guard local-only files" step fails on any tracked `.deb`.
 - Treat production `.deb` URLs as immutable. Never replace the bytes of a public `.deb` at the same filename; bump the package version or revision so the filename changes.
 - Keep APT metadata (`Packages`, `Packages.gz`, `Release`, `InRelease`, `Release.gpg`) revalidated instead of long-lived immutable.
 - Keep staging package directories out of Vercel deployments. Do not remove `repo/.vercelignore` entries for staging output unless the publish flow changes deliberately.

@@ -1,0 +1,1759 @@
+From: Xios project <xios@localhost>
+Subject: [PATCH] Add on-screen touch controls
+
+Makes Crispy Doom playable on a touchscreen with no keyboard. Doom only:
+heretic, hexen and strife link the new file but never enable it.
+
+In a level: a floating move stick on the left half of the screen (analog,
+runs past 80% of its radius), drag on the right half to turn, and FIRE,
+USE and NEXT WEAPON buttons on the right. MENU sits top left, MAP top
+right. On menus, the title screen and demos only MENU is shown: tap is
+Enter, swipes are the arrow keys, and on a yes/no prompt tap is "y".
+On the intermission and finale a tap holds use for a tic, which is what
+skips them.
+
+Everything becomes ordinary input for the existing bindings: movement is
+an ev_joystick on the analog path (use_analog, on by default), run is
+key_speed, turning is ev_mouse x motion scaled by the mouse sensitivity,
+and the buttons press key_fire, key_use, key_nextweapon (or the next
+weapon mouse button while that key is unbound), key_map_toggle and
+key_menu_activate. Nothing touches ticcmds directly, so demos and
+netgames see normal input.
+
+The overlay is drawn with the SDL renderer after the frame is copied and
+before it is presented, in window pixels. Held keys are released on
+finger up, on an unknown or cancelled touch, on focus loss, on any
+screen change and when the overlay hides. A physical key or mouse event
+hides the overlay until the next touch.
+
+SDL is told not to turn touches into mouse clicks, and pointer events
+the compositor emulates from a touch (while a finger is down, or within
+300 ms of one) are dropped along with their relative motion. SDL also
+starts with text input on, which raises the on-screen keyboard; with the
+touch controls enabled it stays off except between I_StartTextInput()
+and I_StopTextInput() (savegame names, chat, numeric entry).
+
+XIOS_TOUCH_CONTROLS=0 in the environment turns all of it off.
+
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -86,6 +86,7 @@
+     i_sdlsound.c
+     i_sound.c           i_sound.h
+     i_timer.c           i_timer.h
++    i_touch.c           i_touch.h
+     i_truecolor.c       i_truecolor.h
+     i_video.c           i_video.h
+     i_videohr.c         i_videohr.h
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -83,6 +83,7 @@
+ i_sdlsound.c                               \
+ i_sound.c            i_sound.h             \
+ i_timer.c            i_timer.h             \
++i_touch.c            i_touch.h             \
+ i_truecolor.c        i_truecolor.h         \
+ i_video.c            i_video.h             \
+ i_videohr.c          i_videohr.h           \
+--- /dev/null
++++ b/src/i_touch.h
+@@ -0,0 +1,82 @@
++//
++// Copyright(C) 2026 Max Leiter
++//
++// This program is free software; you can redistribute it and/or
++// modify it under the terms of the GNU General Public License
++// as published by the Free Software Foundation; either version 2
++// of the License, or (at your option) any later version.
++//
++// This program is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// DESCRIPTION:
++//      On-screen touch controls for keyboardless touchscreen devices.
++//
++
++
++#ifndef __I_TOUCH__
++#define __I_TOUCH__
++
++#include "SDL.h"
++
++#include "doomtype.h"
++
++// What the game is currently showing, as far as touch input cares.
++
++typedef enum
++{
++    // Playing a level: move stick, drag to turn, action buttons.
++    TOUCH_SCREEN_LEVEL,
++
++    // Menus, title screen, demos: tap = menu forward, swipe = arrows.
++    TOUCH_SCREEN_MENU,
++
++    // A yes/no message prompt: tap = confirm.
++    TOUCH_SCREEN_PROMPT,
++
++    // Intermission and finale: tap = use, which skips ahead.
++    TOUCH_SCREEN_ADVANCE
++} touch_screen_t;
++
++typedef touch_screen_t (*touch_screen_callback_t)(void);
++
++// Called by the game before I_InitGraphics(). Enables the touch controls
++// unless the XIOS_TOUCH_CONTROLS environment variable is "0". Without this
++// call (or with the variable set to "0") every other function here is a
++// no-op.
++
++void I_Touch_Init(touch_screen_callback_t callback);
++
++// True if the touch controls are enabled.
++
++boolean I_Touch_Enabled(void);
++
++// Called right after SDL video init. SDL starts with text input on, and
++// on a touch device that raises the on-screen keyboard: turn it off until
++// the game asks for typed text with I_StartTextInput().
++
++void I_Touch_InitVideo(void);
++
++// Called for every SDL event before it is dispatched. Returns true if the
++// event was consumed by the touch controls and must not be processed
++// further.
++
++boolean I_Touch_FilterEvent(const SDL_Event *sdlevent);
++
++// Called once per tic, after the event queue has been read.
++
++void I_Touch_UpdateTic(void);
++
++// Drop relative mouse motion that the compositor emulated from a touch.
++// Called before reading the mouse.
++
++void I_Touch_DiscardMouseMotion(void);
++
++// Draw the overlay. Called after the frame has been rendered and before
++// it is presented.
++
++void I_Touch_Draw(SDL_Renderer *renderer);
++
++#endif
+--- /dev/null
++++ b/src/i_touch.c
+@@ -0,0 +1,1467 @@
++//
++// Copyright(C) 2026 Max Leiter
++//
++// This program is free software; you can redistribute it and/or
++// modify it under the terms of the GNU General Public License
++// as published by the Free Software Foundation; either version 2
++// of the License, or (at your option) any later version.
++//
++// This program is distributed in the hope that it will be useful,
++// but WITHOUT ANY WARRANTY; without even the implied warranty of
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++// GNU General Public License for more details.
++//
++// DESCRIPTION:
++//      On-screen touch controls for keyboardless touchscreen devices.
++//
++//      All input is turned into ordinary events for the existing
++//      bindings: movement goes through the analog joystick path
++//      (ev_joystick), turning through mouse motion (ev_mouse), and
++//      buttons through key presses of the current key_* bindings.
++//      The overlay is drawn with the SDL renderer, on top of the
++//      finished frame, at the window's real resolution.
++//
++
++#include <math.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "SDL.h"
++
++#include "d_event.h"
++#include "doomtype.h"
++#include "i_input.h"
++#include "i_timer.h"
++#include "i_touch.h"
++#include "m_controls.h"
++#include "m_fixed.h"
++
++// Layout units: fractions of the window height, so the controls keep
++// their size and shape at any resolution or aspect ratio. x runs from 0
++// to the aspect ratio (width / height), y from 0 to 1.
++
++// Floating move stick (left half of the screen).
++
++#define STICK_RADIUS        0.12f   // of the window height
++#define STICK_DEAD_ZONE     0.15f   // of the stick radius
++#define STICK_RUN_ZONE      0.80f   // of the stick radius; also holds run
++#define STICK_KNOB_RADIUS   0.045f
++
++// Turning (right half of the screen): mouse units per full window width
++// of horizontal drag. The game scales mouse units by the mouse
++// sensitivity; at the default sensitivity (5) a drag across the whole
++// window turns the player 360 degrees.
++
++#define TURN_UNITS_PER_WIDTH 8192.0f
++
++// Menu gestures.
++
++#define SWIPE_STEP          0.08f   // drag distance per arrow key press
++#define TAP_SLOP            0.04f   // a finger that moved more is no tap
++
++// Pointer events this soon after a touch are the compositor's emulation
++// of that touch, not a real mouse.
++
++#define EMULATED_MOUSE_GRACE_MS 300
++
++// Buttons are easier to hit than they look.
++
++#define HIT_SCALE           1.2f
++
++// Drawing.
++
++#define EDGE_WIDTH          0.005f
++#define CIRCLE_SEGMENTS     48
++#define MAX_VERTICES        4096
++#define MAX_INDICES         12288
++
++#define MAX_FINGERS         10
++
++typedef enum
++{
++    BUTTON_MENU,
++    BUTTON_MAP,
++    BUTTON_FIRE,
++    BUTTON_USE,
++    BUTTON_NEXTWEAPON,
++    NUM_BUTTONS,
++    BUTTON_NONE = -1
++} button_t;
++
++typedef struct
++{
++    float x, y;            // centre
++    boolean from_right;    // x is measured from the right edge
++    float radius;
++    boolean level_only;    // hidden outside of levels
++} buttondef_t;
++
++static const buttondef_t buttondefs[NUM_BUTTONS] =
++{
++    { 0.075f, 0.075f, false, 0.050f, false },  // MENU: top left
++    { 0.075f, 0.075f, true,  0.050f, true  },  // MAP: top right
++    { 0.170f, 0.810f, true,  0.115f, true  },  // FIRE: bottom right
++    { 0.410f, 0.730f, true,  0.075f, true  },  // USE: left of, above FIRE
++    { 0.200f, 0.550f, true,  0.060f, true  },  // NEXT WEAPON: above FIRE
++};
++
++// Keys that stay down while a finger holds them.
++
++typedef enum
++{
++    VKEY_FIRE,
++    VKEY_USE,
++    VKEY_RUN,
++    NUM_VKEYS
++} vkey_t;
++
++typedef struct
++{
++    int key;               // key code of the posted keydown
++    int holders;           // fingers holding the key
++    boolean down;          // keydown posted, keyup not yet
++    boolean release_pending;
++    int press_time;        // I_GetTime() of the keydown
++} vkeystate_t;
++
++typedef enum
++{
++    ROLE_IGNORE,           // tracked until it lifts, does nothing
++    ROLE_STICK,
++    ROLE_TURN,
++    ROLE_BUTTON,
++    ROLE_GESTURE,          // tap or swipe on a menu screen
++    ROLE_ADVANCE           // holds use on intermission/finale screens
++} role_t;
++
++typedef struct
++{
++    boolean active;
++    SDL_FingerID id;
++    role_t role;
++    button_t button;
++    float x, y;            // current position
++    float startx, starty;  // where it touched down
++    float anchorx, anchory; // stick centre, swipe anchor or last turn x
++    boolean swiped;
++    boolean solo;          // no other live finger was down meanwhile
++} finger_t;
++
++static boolean touch_enabled = false;
++static touch_screen_callback_t screen_callback = NULL;
++static touch_screen_t current_screen = TOUCH_SCREEN_MENU;
++static boolean overlay_visible = true;
++
++// Width / height of the renderer output, refreshed every frame.
++
++static float aspect = 4.0f / 3.0f;
++
++static finger_t fingers[MAX_FINGERS];
++static vkeystate_t vkeys[NUM_VKEYS];
++
++// Analog stick state, in FRACUNIT units; posted once per tic.
++
++static int stick_side, stick_forward;
++static boolean stick_posted_nonzero;
++static boolean stick_run;
++
++// Accumulated turning, in mouse units; posted once per tic.
++
++static float turn_accum;
++
++// Pointer emulation detection.
++
++static boolean have_touched = false;
++static Uint32 last_touch_ticks;
++
++// The last finger-up that was part of a simultaneous release.
++
++static boolean mass_release_valid = false;
++static Uint32 mass_release_timestamp;
++
++// Drawing state.
++
++static SDL_Vertex vertices[MAX_VERTICES];
++static int indices[MAX_INDICES];
++static int num_vertices, num_indices;
++static float circle_cos[CIRCLE_SEGMENTS + 1];
++static float circle_sin[CIRCLE_SEGMENTS + 1];
++static SDL_Renderer *draw_renderer;
++static float draw_scale;
++
++static const SDL_Color color_fill       = { 255, 255, 255,  40 };
++static const SDL_Color color_fill_down  = { 255, 255, 255, 110 };
++static const SDL_Color color_fire       = { 255,  64,  48,  70 };
++static const SDL_Color color_fire_down  = { 255,  64,  48, 150 };
++static const SDL_Color color_edge       = { 255, 255, 255, 120 };
++static const SDL_Color color_glyph      = { 255, 255, 255, 180 };
++static const SDL_Color color_stick      = { 255, 255, 255,  30 };
++static const SDL_Color color_run_zone   = { 255, 255, 255,  50 };
++static const SDL_Color color_knob       = { 255, 255, 255, 120 };
++static const SDL_Color color_knob_run   = { 255, 200,  64, 170 };
++
++//
++// Event posting
++//
++
++static void PostKey(evtype_t type, int key)
++{
++    event_t event;
++
++    if (key <= 0)
++    {
++        return;
++    }
++
++    // Same as I_HandleKeyboardEvent() with vanilla_keyboard_mapping:
++    // data2 is the key, data3 (typed text) is never set.
++
++    event.type = type;
++    event.data1 = key;
++    event.data2 = type == ev_keydown ? key : 0;
++    event.data3 = 0;
++    event.data4 = 0;
++    event.data5 = 0;
++    event.data6 = 0;
++    D_PostEvent(&event);
++}
++
++// A complete key press. Fine for everything that acts on the keydown
++// event itself (menus, automap toggle, weapon cycling); keys that the
++// game only samples when it builds a ticcmd go through the vkeys below.
++
++static void TapKey(int key)
++{
++    PostKey(ev_keydown, key);
++    PostKey(ev_keyup, key);
++}
++
++static void PostMouse(int buttons, int dx)
++{
++    event_t event;
++
++    event.type = ev_mouse;
++    event.data1 = buttons;
++    event.data2 = dx;
++    event.data3 = 0;        // never move the player from vertical drags
++    event.data4 = 0;
++    event.data5 = 0;
++    event.data6 = 0;
++    D_PostEvent(&event);
++}
++
++static void PostStick(void)
++{
++    event_t event;
++
++    // Joystick axes: data3 is forward/back (negative is forward),
++    // data4 is strafe. No buttons, no turn, no look, no directions.
++
++    event.type = ev_joystick;
++    event.data1 = 0;
++    event.data2 = 0;
++    event.data3 = -stick_forward;
++    event.data4 = stick_side;
++    event.data5 = 0;
++    event.data6 = 0;
++    D_PostEvent(&event);
++
++    stick_posted_nonzero = stick_forward != 0 || stick_side != 0;
++}
++
++static void NextWeapon(void)
++{
++    if (key_nextweapon > 0)
++    {
++        TapKey(key_nextweapon);
++    }
++    else if (mousebnextweapon >= 0 && mousebnextweapon < MAX_MOUSE_BUTTONS)
++    {
++        // The next weapon key is unbound by default; the mouse button
++        // binding for it is not.
++
++        PostMouse(1 << mousebnextweapon, 0);
++        PostMouse(0, 0);
++    }
++}
++
++//
++// Held keys
++//
++
++static void PressVKey(vkey_t v, int key)
++{
++    vkeystate_t *vk = &vkeys[v];
++
++    ++vk->holders;
++
++    if (vk->down)
++    {
++        vk->release_pending = false;
++        return;
++    }
++
++    if (key <= 0)
++    {
++        return;
++    }
++
++    vk->key = key;
++    vk->down = true;
++    vk->release_pending = false;
++    vk->press_time = I_GetTime();
++    PostKey(ev_keydown, key);
++}
++
++static void KeyUpVKey(vkeystate_t *vk)
++{
++    PostKey(ev_keyup, vk->key);
++    vk->down = false;
++    vk->release_pending = false;
++}
++
++static void ReleaseVKey(vkey_t v)
++{
++    vkeystate_t *vk = &vkeys[v];
++
++    if (vk->holders > 0)
++    {
++        --vk->holders;
++    }
++
++    if (vk->holders > 0 || !vk->down)
++    {
++        return;
++    }
++
++    // The game samples held keys once per tic. Keep a quick tap down
++    // until at least one ticcmd has been built with it.
++
++    if (I_GetTime() != vk->press_time)
++    {
++        KeyUpVKey(vk);
++    }
++    else
++    {
++        vk->release_pending = true;
++    }
++}
++
++static void UpdateVKeys(void)
++{
++    int i;
++
++    for (i = 0; i < NUM_VKEYS; ++i)
++    {
++        if (vkeys[i].down && vkeys[i].release_pending
++         && I_GetTime() != vkeys[i].press_time)
++        {
++            KeyUpVKey(&vkeys[i]);
++        }
++    }
++}
++
++//
++// Releasing everything
++//
++
++static void StopStick(void)
++{
++    stick_side = stick_forward = 0;
++
++    if (stick_run)
++    {
++        stick_run = false;
++        ReleaseVKey(VKEY_RUN);
++    }
++}
++
++// Lift every held key and stop moving. Fingers that are still down stay
++// tracked but do nothing until they lift.
++
++static void ReleaseEverything(void)
++{
++    int i;
++
++    for (i = 0; i < MAX_FINGERS; ++i)
++    {
++        fingers[i].role = ROLE_IGNORE;
++    }
++
++    stick_side = stick_forward = 0;
++    stick_run = false;
++    turn_accum = 0.0f;
++
++    for (i = 0; i < NUM_VKEYS; ++i)
++    {
++        vkeys[i].holders = 0;
++
++        if (vkeys[i].down)
++        {
++            KeyUpVKey(&vkeys[i]);
++        }
++    }
++}
++
++static void SyncScreen(void)
++{
++    touch_screen_t screen = screen_callback();
++
++    if (screen != current_screen)
++    {
++        ReleaseEverything();
++        current_screen = screen;
++    }
++}
++
++static void HideOverlay(void)
++{
++    if (overlay_visible)
++    {
++        overlay_visible = false;
++        ReleaseEverything();
++    }
++}
++
++//
++// Layout
++//
++
++static void ButtonCentre(button_t b, float *x, float *y)
++{
++    const buttondef_t *def = &buttondefs[b];
++
++    *x = def->from_right ? aspect - def->x : def->x;
++    *y = def->y;
++}
++
++static boolean ButtonVisible(button_t b)
++{
++    return !buttondefs[b].level_only || current_screen == TOUCH_SCREEN_LEVEL;
++}
++
++static button_t HitButton(float x, float y)
++{
++    button_t result = BUTTON_NONE;
++    float best = 0.0f;
++    int b;
++
++    for (b = 0; b < NUM_BUTTONS; ++b)
++    {
++        float cx, cy, r, d2;
++
++        if (!ButtonVisible(b))
++        {
++            continue;
++        }
++
++        ButtonCentre(b, &cx, &cy);
++        r = buttondefs[b].radius * HIT_SCALE;
++        d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
++
++        if (d2 <= r * r && (result == BUTTON_NONE || d2 < best))
++        {
++            result = b;
++            best = d2;
++        }
++    }
++
++    return result;
++}
++
++static boolean ButtonHeld(button_t b)
++{
++    int i;
++
++    for (i = 0; i < MAX_FINGERS; ++i)
++    {
++        if (fingers[i].active && fingers[i].role == ROLE_BUTTON
++         && fingers[i].button == b)
++        {
++            return true;
++        }
++    }
++
++    return false;
++}
++
++static finger_t *StickFinger(void)
++{
++    int i;
++
++    for (i = 0; i < MAX_FINGERS; ++i)
++    {
++        if (fingers[i].active && fingers[i].role == ROLE_STICK)
++        {
++            return &fingers[i];
++        }
++    }
++
++    return NULL;
++}
++
++static int ActiveFingers(void)
++{
++    int i, n = 0;
++
++    for (i = 0; i < MAX_FINGERS; ++i)
++    {
++        if (fingers[i].active)
++        {
++            ++n;
++        }
++    }
++
++    return n;
++}
++
++//
++// Stick, turning and gestures
++//
++
++// Map a stick displacement, in stick radii, to analog side and forward
++// amounts (-1 to 1, forward positive) and whether to run.
++
++static void StickToMove(float dx, float dy,
++                        float *side, float *forward, boolean *run)
++{
++    float mag = sqrtf(dx * dx + dy * dy);
++    float amount;
++
++    if (mag < STICK_DEAD_ZONE)
++    {
++        *side = *forward = 0.0f;
++        *run = false;
++        return;
++    }
++
++    if (mag >= STICK_RUN_ZONE)
++    {
++        amount = 1.0f;
++        *run = true;
++    }
++    else
++    {
++        amount = (mag - STICK_DEAD_ZONE) / (STICK_RUN_ZONE - STICK_DEAD_ZONE);
++        *run = false;
++    }
++
++    *side = dx / mag * amount;
++    *forward = -dy / mag * amount;
++}
++
++static void UpdateStick(finger_t *f)
++{
++    float side, forward;
++    boolean run;
++
++    StickToMove((f->x - f->anchorx) / STICK_RADIUS,
++                (f->y - f->anchory) / STICK_RADIUS,
++                &side, &forward, &run);
++
++    stick_side = (int) (side * FRACUNIT);
++    stick_forward = (int) (forward * FRACUNIT);
++
++    if (run && !stick_run)
++    {
++        PressVKey(VKEY_RUN, key_speed);
++    }
++    else if (!run && stick_run)
++    {
++        ReleaseVKey(VKEY_RUN);
++    }
++
++    stick_run = run;
++}
++
++static void Turn(finger_t *f)
++{
++    turn_accum += (f->x - f->anchorx) / aspect * TURN_UNITS_PER_WIDTH;
++    f->anchorx = f->x;
++}
++
++static void Swipe(finger_t *f)
++{
++    float dx = f->x - f->anchorx;
++    float dy = f->y - f->anchory;
++    int key = 0;
++
++    if (fabsf(dy) >= SWIPE_STEP && fabsf(dy) > fabsf(dx))
++    {
++        key = dy > 0 ? key_menu_down : key_menu_up;
++    }
++    else if (fabsf(dx) >= SWIPE_STEP && fabsf(dx) >= fabsf(dy))
++    {
++        key = dx > 0 ? key_menu_right : key_menu_left;
++    }
++
++    if (key != 0)
++    {
++        // Arrow keys mean nothing to a yes/no prompt.
++
++        if (current_screen != TOUCH_SCREEN_PROMPT)
++        {
++            TapKey(key);
++        }
++
++        f->swiped = true;
++        f->anchorx = f->x;
++        f->anchory = f->y;
++    }
++}
++
++static void Tap(void)
++{
++    if (current_screen == TOUCH_SCREEN_PROMPT)
++    {
++        TapKey(key_menu_confirm);
++    }
++    else
++    {
++        TapKey(key_menu_forward);
++    }
++}
++
++//
++// Buttons
++//
++
++static void PressButton(button_t b)
++{
++    switch (b)
++    {
++        case BUTTON_MENU:
++            TapKey(key_menu_activate);
++            break;
++
++        case BUTTON_MAP:
++            TapKey(key_map_toggle);
++            break;
++
++        case BUTTON_FIRE:
++            PressVKey(VKEY_FIRE, key_fire);
++            break;
++
++        case BUTTON_USE:
++            PressVKey(VKEY_USE, key_use);
++            break;
++
++        case BUTTON_NEXTWEAPON:
++            NextWeapon();
++            break;
++
++        default:
++            break;
++    }
++}
++
++static void ReleaseButton(button_t b)
++{
++    if (b == BUTTON_FIRE)
++    {
++        ReleaseVKey(VKEY_FIRE);
++    }
++    else if (b == BUTTON_USE)
++    {
++        ReleaseVKey(VKEY_USE);
++    }
++}
++
++//
++// Fingers
++//
++
++static finger_t *FindFinger(SDL_FingerID id)
++{
++    int i;
++
++    for (i = 0; i < MAX_FINGERS; ++i)
++    {
++        if (fingers[i].active && fingers[i].id == id)
++        {
++            return &fingers[i];
++        }
++    }
++
++    return NULL;
++}
++
++// Undo whatever the finger is holding.
++
++static void ReleaseFinger(finger_t *f)
++{
++    switch (f->role)
++    {
++        case ROLE_STICK:
++            StopStick();
++            break;
++
++        case ROLE_BUTTON:
++            ReleaseButton(f->button);
++            break;
++
++        case ROLE_ADVANCE:
++            ReleaseVKey(VKEY_USE);
++            break;
++
++        default:
++            break;
++    }
++
++    f->role = ROLE_IGNORE;
++}
++
++static void AssignRole(finger_t *f)
++{
++    button_t b = HitButton(f->x, f->y);
++
++    f->anchorx = f->x;
++    f->anchory = f->y;
++
++    if (b != BUTTON_NONE)
++    {
++        // The finger owns the button until it lifts.
++
++        f->role = ROLE_BUTTON;
++        f->button = b;
++        PressButton(b);
++        return;
++    }
++
++    switch (current_screen)
++    {
++        case TOUCH_SCREEN_LEVEL:
++            if (f->x >= aspect * 0.5f)
++            {
++                f->role = ROLE_TURN;
++            }
++            else if (StickFinger() == NULL)
++            {
++                f->role = ROLE_STICK;
++                UpdateStick(f);
++            }
++            else
++            {
++                f->role = ROLE_IGNORE;
++            }
++            break;
++
++        case TOUCH_SCREEN_ADVANCE:
++            f->role = ROLE_ADVANCE;
++            PressVKey(VKEY_USE, key_use);
++            break;
++
++        default:
++            f->role = ROLE_GESTURE;
++            break;
++    }
++}
++
++// SDL reports a cancelled touch sequence (wl_touch.cancel) as a burst of
++// finger-ups with the same timestamp. Real fingers practically never
++// lift in the same millisecond, so treat such a burst as a cancel.
++
++static boolean IsMassRelease(const SDL_TouchFingerEvent *tf)
++{
++    SDL_Event next;
++
++    if (mass_release_valid && tf->timestamp == mass_release_timestamp)
++    {
++        return true;
++    }
++
++    if (SDL_PeepEvents(&next, 1, SDL_PEEKEVENT,
++                       SDL_FINGERUP, SDL_FINGERUP) == 1
++     && next.tfinger.timestamp == tf->timestamp)
++    {
++        mass_release_valid = true;
++        mass_release_timestamp = tf->timestamp;
++        return true;
++    }
++
++    return false;
++}
++
++static void FingerDown(const SDL_TouchFingerEvent *tf, float x, float y)
++{
++    finger_t *f = FindFinger(tf->fingerId);
++    int i;
++
++    // A touch shows the overlay again, and ends any burst of releases.
++
++    overlay_visible = true;
++    mass_release_valid = false;
++
++    if (f != NULL)
++    {
++        // Down again without an up in between: start over.
++
++        ReleaseFinger(f);
++    }
++    else
++    {
++        for (i = 0; i < MAX_FINGERS; ++i)
++        {
++            if (!fingers[i].active)
++            {
++                f = &fingers[i];
++                break;
++            }
++        }
++
++        if (f == NULL)
++        {
++            return;
++        }
++    }
++
++    f->active = true;
++    f->id = tf->fingerId;
++    f->x = f->startx = x;
++    f->y = f->starty = y;
++    f->swiped = false;
++    f->solo = true;
++
++    // Several fingers at once are no tap. Fingers left over from a
++    // previous screen don't count.
++
++    for (i = 0; i < MAX_FINGERS; ++i)
++    {
++        if (fingers[i].active && fingers[i].role != ROLE_IGNORE
++         && &fingers[i] != f)
++        {
++            fingers[i].solo = false;
++            f->solo = false;
++        }
++    }
++
++    AssignRole(f);
++}
++
++static void FingerMotion(const SDL_TouchFingerEvent *tf, float x, float y)
++{
++    finger_t *f = FindFinger(tf->fingerId);
++
++    if (f == NULL)
++    {
++        return;
++    }
++
++    f->x = x;
++    f->y = y;
++
++    switch (f->role)
++    {
++        case ROLE_STICK:
++            UpdateStick(f);
++            break;
++
++        case ROLE_TURN:
++            Turn(f);
++            break;
++
++        case ROLE_GESTURE:
++            Swipe(f);
++            break;
++
++        default:
++            break;
++    }
++}
++
++static void FingerUp(const SDL_TouchFingerEvent *tf, float x, float y)
++{
++    finger_t *f = FindFinger(tf->fingerId);
++    float dx, dy;
++
++    if (f == NULL)
++    {
++        // We lost track of something; make sure nothing sticks.
++
++        ReleaseEverything();
++        return;
++    }
++
++    if (IsMassRelease(tf))
++    {
++        ReleaseEverything();
++        f->active = false;
++        return;
++    }
++
++    f->x = x;
++    f->y = y;
++
++    if (f->role == ROLE_TURN)
++    {
++        Turn(f);
++    }
++    else if (f->role == ROLE_GESTURE && !f->swiped && f->solo)
++    {
++        dx = f->x - f->startx;
++        dy = f->y - f->starty;
++
++        if (dx * dx + dy * dy <= TAP_SLOP * TAP_SLOP)
++        {
++            Tap();
++        }
++    }
++
++    ReleaseFinger(f);
++    f->active = false;
++}
++
++static void HandleFinger(const SDL_TouchFingerEvent *tf)
++{
++    float x = tf->x * aspect;
++    float y = tf->y;
++
++    SyncScreen();
++
++    switch (tf->type)
++    {
++        case SDL_FINGERDOWN:
++            FingerDown(tf, x, y);
++            break;
++
++        case SDL_FINGERMOTION:
++            FingerMotion(tf, x, y);
++            break;
++
++        case SDL_FINGERUP:
++            FingerUp(tf, x, y);
++            break;
++
++        default:
++            break;
++    }
++}
++
++//
++// Mouse events emulated from touches
++//
++
++static boolean MouseIsEmulated(void)
++{
++    if (ActiveFingers() > 0)
++    {
++        return true;
++    }
++
++    // Touches that SDL has queued but we have not seen yet.
++
++    if (SDL_HasEvents(SDL_FINGERDOWN, SDL_FINGERMOTION))
++    {
++        return true;
++    }
++
++    return have_touched
++        && !SDL_TICKS_PASSED(SDL_GetTicks(),
++                             last_touch_ticks + EMULATED_MOUSE_GRACE_MS);
++}
++
++static Uint32 MouseEventDevice(const SDL_Event *sdlevent)
++{
++    switch (sdlevent->type)
++    {
++        case SDL_MOUSEMOTION:
++            return sdlevent->motion.which;
++
++        case SDL_MOUSEBUTTONDOWN:
++        case SDL_MOUSEBUTTONUP:
++            return sdlevent->button.which;
++
++        case SDL_MOUSEWHEEL:
++            return sdlevent->wheel.which;
++
++        default:
++            return 0;
++    }
++}
++
++void I_Touch_DiscardMouseMotion(void)
++{
++    if (touch_enabled && MouseIsEmulated())
++    {
++        SDL_GetRelativeMouseState(NULL, NULL);
++    }
++}
++
++//
++// Public interface
++//
++
++void I_Touch_Init(touch_screen_callback_t callback)
++{
++    const char *env;
++    int i;
++
++    env = getenv("XIOS_TOUCH_CONTROLS");
++
++    if (callback == NULL || (env != NULL && !strcmp(env, "0")))
++    {
++        return;
++    }
++
++    // Touches must not double as mouse clicks, and the mouse must not
++    // double as touches.
++
++    SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
++    SDL_SetHint(SDL_HINT_MOUSE_TOUCH_EVENTS, "0");
++
++    for (i = 0; i <= CIRCLE_SEGMENTS; ++i)
++    {
++        double angle = 6.28318530717958647692 * i / CIRCLE_SEGMENTS;
++
++        circle_cos[i] = (float) cos(angle);
++        circle_sin[i] = (float) sin(angle);
++    }
++
++    screen_callback = callback;
++    touch_enabled = true;
++}
++
++boolean I_Touch_Enabled(void)
++{
++    return touch_enabled;
++}
++
++void I_Touch_InitVideo(void)
++{
++    if (touch_enabled)
++    {
++        SDL_StopTextInput();
++    }
++}
++
++boolean I_Touch_FilterEvent(const SDL_Event *sdlevent)
++{
++    if (!touch_enabled)
++    {
++        return false;
++    }
++
++    switch (sdlevent->type)
++    {
++        case SDL_FINGERDOWN:
++        case SDL_FINGERMOTION:
++        case SDL_FINGERUP:
++            // Leave trackpads and other indirect touch devices alone.
++
++            if (SDL_GetTouchDeviceType(sdlevent->tfinger.touchId)
++             != SDL_TOUCH_DEVICE_DIRECT)
++            {
++                return false;
++            }
++
++            have_touched = true;
++            last_touch_ticks = SDL_GetTicks();
++            HandleFinger(&sdlevent->tfinger);
++            return true;
++
++        case SDL_MOUSEMOTION:
++        case SDL_MOUSEBUTTONDOWN:
++        case SDL_MOUSEBUTTONUP:
++        case SDL_MOUSEWHEEL:
++            if (MouseEventDevice(sdlevent) == SDL_TOUCH_MOUSEID
++             || MouseIsEmulated())
++            {
++                // Let button releases through, so that a real mouse
++                // button can never get stuck down.
++
++                return sdlevent->type != SDL_MOUSEBUTTONUP;
++            }
++
++            HideOverlay();
++            return false;
++
++        case SDL_KEYDOWN:
++            // While text input is on, keys may come from the on-screen
++            // keyboard rather than a physical one.
++
++            if (!SDL_IsTextInputActive())
++            {
++                HideOverlay();
++            }
++            return false;
++
++        case SDL_WINDOWEVENT:
++            if (sdlevent->window.event == SDL_WINDOWEVENT_FOCUS_LOST)
++            {
++                ReleaseEverything();
++            }
++            return false;
++
++        default:
++            return false;
++    }
++}
++
++void I_Touch_UpdateTic(void)
++{
++    int units;
++
++    if (!touch_enabled)
++    {
++        return;
++    }
++
++    I_Touch_DiscardMouseMotion();
++    SyncScreen();
++    UpdateVKeys();
++
++    // The game rescales joystick values in place every tic, so keep
++    // reposting them while the stick is held, and once more at rest.
++
++    if (stick_side != 0 || stick_forward != 0 || stick_posted_nonzero)
++    {
++        PostStick();
++    }
++
++    units = (int) turn_accum;
++
++    if (units != 0)
++    {
++        turn_accum -= (float) units;
++        PostMouse(0, units);
++    }
++}
++
++//
++// Drawing
++//
++
++static void FlushBatch(void)
++{
++    if (num_indices > 0)
++    {
++        SDL_RenderGeometry(draw_renderer, NULL, vertices, num_vertices,
++                           indices, num_indices);
++    }
++
++    num_vertices = 0;
++    num_indices = 0;
++}
++
++static boolean Reserve(int nverts, int nindices)
++{
++    if (nverts > MAX_VERTICES || nindices > MAX_INDICES)
++    {
++        return false;
++    }
++
++    if (num_vertices + nverts > MAX_VERTICES
++     || num_indices + nindices > MAX_INDICES)
++    {
++        FlushBatch();
++    }
++
++    return true;
++}
++
++static void AddVertex(float x, float y, SDL_Color color)
++{
++    SDL_Vertex *v = &vertices[num_vertices++];
++
++    v->position.x = x * draw_scale;
++    v->position.y = y * draw_scale;
++    v->color = color;
++    v->tex_coord.x = 0.0f;
++    v->tex_coord.y = 0.0f;
++}
++
++static void AddIndex(int i)
++{
++    indices[num_indices++] = i;
++}
++
++static void FillCircle(float cx, float cy, float r, SDL_Color color)
++{
++    int base, i;
++
++    if (!Reserve(CIRCLE_SEGMENTS + 1, CIRCLE_SEGMENTS * 3))
++    {
++        return;
++    }
++
++    base = num_vertices;
++    AddVertex(cx, cy, color);
++
++    for (i = 0; i < CIRCLE_SEGMENTS; ++i)
++    {
++        AddVertex(cx + r * circle_cos[i], cy + r * circle_sin[i], color);
++    }
++
++    for (i = 0; i < CIRCLE_SEGMENTS; ++i)
++    {
++        AddIndex(base);
++        AddIndex(base + 1 + i);
++        AddIndex(base + 1 + (i + 1) % CIRCLE_SEGMENTS);
++    }
++}
++
++static void Ring(float cx, float cy, float r, float width, SDL_Color color)
++{
++    float r_in = r - width * 0.5f;
++    float r_out = r + width * 0.5f;
++    int base, i, a, b;
++
++    if (!Reserve(CIRCLE_SEGMENTS * 2, CIRCLE_SEGMENTS * 6))
++    {
++        return;
++    }
++
++    base = num_vertices;
++
++    for (i = 0; i < CIRCLE_SEGMENTS; ++i)
++    {
++        AddVertex(cx + r_in * circle_cos[i], cy + r_in * circle_sin[i], color);
++        AddVertex(cx + r_out * circle_cos[i], cy + r_out * circle_sin[i],
++                  color);
++    }
++
++    for (i = 0; i < CIRCLE_SEGMENTS; ++i)
++    {
++        a = base + i * 2;
++        b = base + ((i + 1) % CIRCLE_SEGMENTS) * 2;
++
++        AddIndex(a);
++        AddIndex(a + 1);
++        AddIndex(b);
++        AddIndex(b);
++        AddIndex(a + 1);
++        AddIndex(b + 1);
++    }
++}
++
++// A filled quadrilateral, corners in order around it.
++
++static void Quad(float x0, float y0, float x1, float y1,
++                 float x2, float y2, float x3, float y3, SDL_Color color)
++{
++    int base;
++
++    if (!Reserve(4, 6))
++    {
++        return;
++    }
++
++    base = num_vertices;
++    AddVertex(x0, y0, color);
++    AddVertex(x1, y1, color);
++    AddVertex(x2, y2, color);
++    AddVertex(x3, y3, color);
++    AddIndex(base);
++    AddIndex(base + 1);
++    AddIndex(base + 2);
++    AddIndex(base);
++    AddIndex(base + 2);
++    AddIndex(base + 3);
++}
++
++static void Rect(float x, float y, float w, float h, SDL_Color color)
++{
++    Quad(x, y, x + w, y, x + w, y + h, x, y + h, color);
++}
++
++static void Triangle(float x0, float y0, float x1, float y1,
++                     float x2, float y2, SDL_Color color)
++{
++    int base;
++
++    if (!Reserve(3, 3))
++    {
++        return;
++    }
++
++    base = num_vertices;
++    AddVertex(x0, y0, color);
++    AddVertex(x1, y1, color);
++    AddVertex(x2, y2, color);
++    AddIndex(base);
++    AddIndex(base + 1);
++    AddIndex(base + 2);
++}
++
++static void DrawGlyph(button_t b, float x, float y, float r)
++{
++    float s, t;
++
++    switch (b)
++    {
++        case BUTTON_MENU:
++            // Three bars.
++            s = r * 0.5f;
++            t = r * 0.14f;
++            Rect(x - s, y - r * 0.33f - t * 0.5f, s * 2, t, color_glyph);
++            Rect(x - s, y - t * 0.5f, s * 2, t, color_glyph);
++            Rect(x - s, y + r * 0.33f - t * 0.5f, s * 2, t, color_glyph);
++            break;
++
++        case BUTTON_MAP:
++            // A 2x2 grid of tiles.
++            s = r * 0.38f;
++            t = r * 0.06f;
++            Rect(x - s - t, y - s - t, s, s, color_glyph);
++            Rect(x + t, y - s - t, s, s, color_glyph);
++            Rect(x - s - t, y + t, s, s, color_glyph);
++            Rect(x + t, y + t, s, s, color_glyph);
++            break;
++
++        case BUTTON_FIRE:
++            // Crosshair.
++            Ring(x, y, r * 0.42f, r * 0.09f, color_glyph);
++            FillCircle(x, y, r * 0.1f, color_glyph);
++            break;
++
++        case BUTTON_USE:
++            // A switch: a square outline around a square.
++            s = r * 0.45f;
++            t = r * 0.09f;
++            Rect(x - s, y - s, s * 2, t, color_glyph);
++            Rect(x - s, y + s - t, s * 2, t, color_glyph);
++            Rect(x - s, y - s + t, t, s * 2 - t * 2, color_glyph);
++            Rect(x + s - t, y - s + t, t, s * 2 - t * 2, color_glyph);
++            s = r * 0.18f;
++            Rect(x - s, y - s, s * 2, s * 2, color_glyph);
++            break;
++
++        case BUTTON_NEXTWEAPON:
++            // Two arrowheads pointing right.
++            s = r * 0.42f;
++            Triangle(x - s, y - s, x, y, x - s, y + s, color_glyph);
++            Triangle(x, y - s, x + s, y, x, y + s, color_glyph);
++            break;
++
++        default:
++            break;
++    }
++}
++
++static void DrawButton(button_t b)
++{
++    float x, y, r = buttondefs[b].radius;
++    boolean held = ButtonHeld(b);
++    SDL_Color fill;
++
++    ButtonCentre(b, &x, &y);
++
++    if (b == BUTTON_FIRE)
++    {
++        fill = held ? color_fire_down : color_fire;
++    }
++    else
++    {
++        fill = held ? color_fill_down : color_fill;
++    }
++
++    FillCircle(x, y, r, fill);
++    Ring(x, y, r, EDGE_WIDTH, color_edge);
++    DrawGlyph(b, x, y, r);
++}
++
++static void DrawStick(const finger_t *f)
++{
++    float dx = f->x - f->anchorx;
++    float dy = f->y - f->anchory;
++    float d = sqrtf(dx * dx + dy * dy);
++
++    FillCircle(f->anchorx, f->anchory, STICK_RADIUS, color_stick);
++    Ring(f->anchorx, f->anchory, STICK_RADIUS * STICK_RUN_ZONE,
++         EDGE_WIDTH * 0.5f, color_run_zone);
++    Ring(f->anchorx, f->anchory, STICK_RADIUS, EDGE_WIDTH, color_edge);
++
++    if (d > STICK_RADIUS)
++    {
++        dx = dx * STICK_RADIUS / d;
++        dy = dy * STICK_RADIUS / d;
++    }
++
++    FillCircle(f->anchorx + dx, f->anchory + dy, STICK_KNOB_RADIUS,
++               stick_run ? color_knob_run : color_knob);
++}
++
++void I_Touch_Draw(SDL_Renderer *renderer)
++{
++    SDL_Rect viewport;
++    float scale_x, scale_y;
++    int logical_w, logical_h;
++    Uint8 r, g, b, a;
++    SDL_BlendMode blend;
++    const finger_t *stick;
++    int w, h, i;
++
++    if (!touch_enabled)
++    {
++        return;
++    }
++
++    if (SDL_GetRendererOutputSize(renderer, &w, &h) != 0 || w <= 0 || h <= 0)
++    {
++        return;
++    }
++
++    aspect = (float) w / (float) h;
++
++    if (!overlay_visible)
++    {
++        return;
++    }
++
++    SyncScreen();
++
++    // Draw in window pixels: drop the game's logical size, viewport and
++    // scale for the overlay and put them back afterwards.
++
++    SDL_RenderGetLogicalSize(renderer, &logical_w, &logical_h);
++    SDL_RenderGetViewport(renderer, &viewport);
++    SDL_RenderGetScale(renderer, &scale_x, &scale_y);
++    SDL_GetRenderDrawColor(renderer, &r, &g, &b, &a);
++    SDL_GetRenderDrawBlendMode(renderer, &blend);
++
++    if (logical_w != 0 && logical_h != 0)
++    {
++        SDL_RenderSetLogicalSize(renderer, 0, 0);
++    }
++    else
++    {
++        SDL_RenderSetViewport(renderer, NULL);
++        SDL_RenderSetScale(renderer, 1.0f, 1.0f);
++    }
++
++    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
++
++    draw_renderer = renderer;
++    draw_scale = (float) h;
++    num_vertices = num_indices = 0;
++
++    for (i = 0; i < NUM_BUTTONS; ++i)
++    {
++        if (ButtonVisible(i))
++        {
++            DrawButton(i);
++        }
++    }
++
++    stick = StickFinger();
++
++    if (stick != NULL)
++    {
++        DrawStick(stick);
++    }
++
++    FlushBatch();
++
++    if (logical_w != 0 && logical_h != 0)
++    {
++        SDL_RenderSetLogicalSize(renderer, logical_w, logical_h);
++    }
++    else
++    {
++        SDL_RenderSetScale(renderer, scale_x, scale_y);
++        SDL_RenderSetViewport(renderer, &viewport);
++    }
++
++    SDL_SetRenderDrawBlendMode(renderer, blend);
++    SDL_SetRenderDrawColor(renderer, r, g, b, a);
++}
+--- a/src/i_input.c
++++ b/src/i_input.c
+@@ -26,6 +26,7 @@
+ #include "d_event.h"
+ #include "i_input.h"
+ #include "i_timer.h" // [crispy]
++#include "i_touch.h" // [xios]
+ #include "m_argv.h"
+ #include "m_config.h"
+ #include "m_fixed.h" // [crispy]
+@@ -299,7 +300,9 @@
+ {
+     text_input_enabled = true;
+ 
+-    if (!vanilla_keyboard_mapping)
++    // [xios] with touch controls, SDL text input (and so the on-screen
++    // keyboard) is only on while the game wants typed text
++    if (!vanilla_keyboard_mapping || I_Touch_Enabled())
+     {
+         // SDL2-TODO: SDL_SetTextInputRect(...);
+         SDL_StartTextInput();
+@@ -310,7 +313,7 @@
+ {
+     text_input_enabled = false;
+ 
+-    if (!vanilla_keyboard_mapping)
++    if (!vanilla_keyboard_mapping || I_Touch_Enabled()) // [xios]
+     {
+         SDL_StopTextInput();
+     }
+--- a/src/i_video.c
++++ b/src/i_video.c
+@@ -40,6 +40,7 @@
+ #include "i_joystick.h"
+ #include "i_system.h"
+ #include "i_timer.h"
++#include "i_touch.h" // [xios]
+ #include "i_video.h"
+ #include "m_argv.h"
+ #include "m_config.h"
+@@ -473,6 +474,12 @@
+ 
+     while (SDL_PollEvent(&sdlevent))
+     {
++        // [xios] on-screen touch controls
++        if (I_Touch_FilterEvent(&sdlevent))
++        {
++            continue;
++        }
++
+         switch (sdlevent.type)
+         {
+             case SDL_KEYDOWN:
+@@ -533,6 +540,8 @@
+     }
+ 
+     I_GetEvent();
++
++    I_Touch_UpdateTic(); // [xios]
+ 
+     if (usemouse && !nomouse && window_focused)
+     {
+@@ -555,6 +564,8 @@
+ {
+     SDL_PumpEvents();
+ 
++    I_Touch_DiscardMouseMotion(); // [xios]
++
+     if (usemouse && !nomouse && window_focused)
+     {
+         I_ReadMouseUncapped();
+@@ -918,6 +929,9 @@
+     }
+ #endif
+ 
++    // [xios] on-screen touch controls, on top of the finished frame
++    I_Touch_Draw(renderer);
++
+     // Draw!
+ 
+     SDL_RenderPresent(renderer);
+@@ -1815,6 +1829,8 @@
+         I_Error("Failed to initialize video: %s", SDL_GetError());
+     }
+ 
++    I_Touch_InitVideo(); // [xios]
++
+     // When in screensaver mode, run full screen and auto detect
+     // screen dimensions (don't change video mode)
+     if (screensaver_mode)
+--- a/src/doom/d_main.c
++++ b/src/doom/d_main.c
+@@ -59,6 +59,7 @@
+ #include "i_joystick.h"
+ #include "i_system.h"
+ #include "i_timer.h"
++#include "i_touch.h" // [xios]
+ #include "i_video.h"
+ 
+ #include "g_game.h"
+@@ -515,6 +516,38 @@
+     // only grab mouse when playing levels (but not demos)
+ 
+     return (gamestate == GS_LEVEL) && !demoplayback && !advancedemo;
++}
++
++// [xios] Tell the on-screen touch controls what is on screen.
++
++extern int messageToPrint;
++extern boolean messageNeedsInput;
++
++static touch_screen_t D_TouchScreenCallback(void)
++{
++    if (menuactive)
++    {
++        return (messageToPrint && messageNeedsInput) ?
++               TOUCH_SCREEN_PROMPT : TOUCH_SCREEN_MENU;
++    }
++
++    if (demoplayback)
++    {
++        return TOUCH_SCREEN_MENU;
++    }
++
++    switch (gamestate)
++    {
++        case GS_LEVEL:
++            return TOUCH_SCREEN_LEVEL;
++
++        case GS_INTERMISSION:
++        case GS_FINALE:
++            return TOUCH_SCREEN_ADVANCE;
++
++        default:
++            return TOUCH_SCREEN_MENU;
++    }
+ }
+ 
+ //
+@@ -605,6 +638,7 @@
+     I_SetWindowTitle(gamedescription);
+     I_GraphicsCheckCommandLine();
+     I_SetGrabMouseCallback(D_GrabMouseCallback);
++    I_Touch_Init(D_TouchScreenCallback); // [xios]
+     I_RegisterWindowIcon(doom_icon_data, doom_icon_w, doom_icon_h);
+     I_InitGraphics();
+     EnableLoadingDisk();

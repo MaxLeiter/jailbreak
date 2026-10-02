@@ -1,0 +1,202 @@
+Give the JSCOnly-on-iOS build a working JIT memory model.
+
+Measured on the A10 (iPad7,12, 17.6.1, bare-fakesigned) with the probes in
+linux-build/probes-bun-jit/:
+
+  * MAP_JIT is refused outright (EINVAL).
+  * An RWX anonymous mapping is created happily and then SIGBUSes on the first
+    instruction fetch, so JSC's "write straight through the RWX pool" path is
+    dead.
+  * mach_vm_remap gives a second RW view of the pool, and writes through it are
+    executed by the RX view -- ENABLE(SEPARATED_WX_HEAP), which this WebKit
+    still carries in full.
+  * But only for a page that is already resident in the executable mapping.
+    iOS will not fault a dirty anonymous page into a fresh executable mapping;
+    it will re-protect a page that already has an entry. So each page has to be
+    faulted in through the exec mapping as RW and flipped to RX once, after
+    which alias writes are honoured for the life of the process.
+
+That last point is the whole shape of this patch: the pool is committed page by
+page anyway, so the flip rides along in OSAllocator::commit(), and the exec
+view's *maximum* protection has to stay RWX for that flip to be permitted.
+
+The commit() hook must not disturb the contents of the range it flips. The
+first version of this zeroed each committed page, which is fine single-threaded
+and deadlocks opencode within seconds once concurrent DFG is in play: the
+compiler thread writes code through the alias into a region while another
+thread commits a range covering it, and the memset erases code that is about to
+be executed. It touches each page read-modify-write instead. That failure only
+appears with DFG and concurrent JIT both on -- BUN_JSC_useDFGJIT=0 and
+BUN_JSC_useConcurrentJIT=0 each hide it, which is what identified it.
+
+USE(EXECUTE_ONLY_JIT_WRITE_FUNCTION) stays off: it protects the write thunk
+with vm_protect(VM_PROT_EXECUTE) under a RELEASE_ASSERT and the A10 has no
+execute-only memory. With it off JSC writes through genericWriteToJITRegion,
+a plain memcpy into the writable alias.
+
+Two smaller things this config trips over, both unrelated to memory:
+memset_s is C11 Annex K and the iOS SDK only declares it under
+__STDC_WANT_LIB_EXT1__, and ScriptExecutable.cpp's setupJIT() needs
+CompilationResult complete when nothing else in its unified source pulls the
+definition in (CodeBlock.h only forward-declares it).
+
+mach_vm_remap is declared by wtf/spi/cocoa/MachVMSPI.h for non-MAC platforms,
+so it needs no local declaration even though the iOS SDK's mach/mach_vm.h
+omits it.
+
+diff --git a/Source/JavaScriptCore/jit/ExecutableAllocator.cpp b/Source/JavaScriptCore/jit/ExecutableAllocator.cpp
+index c9e3589bac..ade8cd9926 100644
+--- a/Source/JavaScriptCore/jit/ExecutableAllocator.cpp
++++ b/Source/JavaScriptCore/jit/ExecutableAllocator.cpp
+@@ -333,7 +333,16 @@ static ALWAYS_INLINE void initializeSeparatedWXHeaps(void* stubBase, size_t stub
+ #endif
+ 
+     // Prevent writing into the executable JIT mapping.
++#if OS(IOS_FAMILY)
++    // Current protection only. OSAllocator::commit() has to flip each page to
++    // RW to fault it in through this mapping before anything can execute out of
++    // it, which the kernel refuses once the maximum protection drops
++    // VM_PROT_WRITE. The steady state is unchanged: the current protection is
++    // RX and every write goes through the alias.
++    result = vm_protect(mach_task_self(), reinterpret_cast<vm_address_t>(jitBase), jitSize, false, VM_PROT_READ | VM_PROT_EXECUTE);
++#else
+     result = vm_protect(mach_task_self(), reinterpret_cast<vm_address_t>(jitBase), jitSize, true, VM_PROT_READ | VM_PROT_EXECUTE);
++#endif
+     RELEASE_ASSERT(!result);
+ 
+     // Prevent execution in the writable JIT mapping.
+@@ -342,7 +351,17 @@ static ALWAYS_INLINE void initializeSeparatedWXHeaps(void* stubBase, size_t stub
+ 
+ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
+     // Zero out writableAddr to avoid leaking the address of the writable mapping.
++#if OS(IOS_FAMILY)
++    // memset_s is C11 Annex K, and the iOS SDK only declares it under
++    // __STDC_WANT_LIB_EXT1__ -- which a unified-source build cannot set late
++    // enough to matter. writableAddr is a stack local about to go out of scope,
++    // so a plain store plus a barrier the optimiser may not drop is equivalent
++    // here.
++    memset(&writableAddr, 0, sizeof(writableAddr));
++    asm volatile("" ::: "memory");
++#else
+     memset_s(&writableAddr, sizeof(writableAddr), 0, sizeof(writableAddr));
++#endif
+ WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
+ 
+ #if ENABLE(SEPARATED_WX_HEAP)
+diff --git a/Source/JavaScriptCore/runtime/ScriptExecutable.cpp b/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
+index 76a66a05be..133de47cad 100644
+--- a/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
++++ b/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
+@@ -26,6 +26,10 @@
+ #include "config.h"
+ 
+ #include "CodeBlock.h"
++// CodeBlock.h only forward-declares CompilationResult; setupJIT() compares
++// against its enumerators, and with FTL off nothing else in this unified source
++// pulls in the definition.
++#include "CompilationResult.h"
+ #include "Debugger.h"
+ #include "EvalCodeBlock.h"
+ #include "FunctionCodeBlock.h"
+diff --git a/Source/WTF/wtf/PlatformEnable.h b/Source/WTF/wtf/PlatformEnable.h
+index 19941e359c..102443da84 100644
+--- a/Source/WTF/wtf/PlatformEnable.h
++++ b/Source/WTF/wtf/PlatformEnable.h
+@@ -538,6 +538,13 @@
+ #endif
+ #endif
+ 
++/* iOS cannot execute a page that is currently writable, so the JIT region has
++   to be written through a separate RW mapping. PlatformEnableCocoa.h would
++   have set this, but it is only included for PLATFORM(COCOA). */
++#if !defined(ENABLE_SEPARATED_WX_HEAP) && OS(IOS_FAMILY) && CPU(ARM64)
++#define ENABLE_SEPARATED_WX_HEAP 1
++#endif
++
+ #if !defined(ENABLE_SEPARATED_WX_HEAP)
+ #define ENABLE_SEPARATED_WX_HEAP 0
+ #endif
+diff --git a/Source/WTF/wtf/PlatformHave.h b/Source/WTF/wtf/PlatformHave.h
+index e92480df89..fd30303c96 100644
+--- a/Source/WTF/wtf/PlatformHave.h
++++ b/Source/WTF/wtf/PlatformHave.h
+@@ -89,6 +89,12 @@
+ #define HAVE_REMAP_JIT 1
+ #endif
+ 
++/* JSCOnly deliberately defines no PLATFORM(), so PLATFORM(COCOA) misses the
++   iOS port even though mach_vm_remap is exactly what its JIT needs. */
++#if !defined(HAVE_REMAP_JIT) && OS(IOS_FAMILY)
++#define HAVE_REMAP_JIT 1
++#endif
++
+ #if PLATFORM(MAC)
+ #define HAVE_SEC_KEYCHAIN 1
+ #endif
+diff --git a/Source/WTF/wtf/PlatformUse.h b/Source/WTF/wtf/PlatformUse.h
+index be8ac0b053..de6965487f 100644
+--- a/Source/WTF/wtf/PlatformUse.h
++++ b/Source/WTF/wtf/PlatformUse.h
+@@ -151,7 +151,9 @@
+ #define USE_BUILTIN_FRAME_ADDRESS 1
+ #endif
+ 
+-#if OS(DARWIN) && CPU(ARM64) && HAVE(REMAP_JIT)
++/* The execute-only write thunk needs execute-only memory, which the A10 does
++   not have; the iOS port uses the generic write function instead. */
++#if OS(DARWIN) && CPU(ARM64) && HAVE(REMAP_JIT) && !OS(IOS_FAMILY)
+ #define USE_EXECUTE_ONLY_JIT_WRITE_FUNCTION 1
+ #endif
+ 
+diff --git a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+index a4c951ecdc..d515e4733e 100644
+--- a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
++++ b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+@@ -109,12 +109,19 @@ void* OSAllocator::tryReserveAndCommitImpl(size_t bytes, Usage usage, void* addr
+     int flags = MAP_PRIVATE | MAP_ANON;
+ #if OS(DARWIN)
+     UNUSED_PARAM(uncommitted);
++#if OS(IOS_FAMILY)
++    // MAP_JIT is refused outright without the dynamic-codesigning entitlement,
++    // and it is not what makes the pool executable here: the separated W^X
++    // alias is. Asking for it only fails the reservation.
++    UNUSED_PARAM(jitCageEnabled);
++#else
+     if (executable) {
+         if (jitCageEnabled)
+             flags |= MAP_EXECUTABLE_FOR_JIT_WITH_JIT_CAGE;
+         else
+             flags |= MAP_EXECUTABLE_FOR_JIT;
+     }
++#endif
+ #elif OS(LINUX) || OS(HAIKU)
+     UNUSED_PARAM(jitCageEnabled);
+     if (uncommitted)
+@@ -272,6 +279,27 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, void* address, bo
+ 
+ void OSAllocator::commit(void* address, size_t bytes, bool writable, bool executable)
+ {
++#if OS(IOS_FAMILY)
++    // iOS will not fault a dirty anonymous page into an executable mapping, but
++    // it will re-protect a page that already has an entry there. So every page
++    // of the JIT pool has to pass through this mapping as RW once, before
++    // anything executes out of it; after that the separated W^X alias can write
++    // to it freely. This is that pass, and it is why initializeSeparatedWXHeaps()
++    // leaves this mapping's maximum protection at RWX.
++    if (executable) {
++        if (mprotect(address, bytes, PROT_READ | PROT_WRITE))
++            CRASH();
++        // Touch every page to force it resident, but read-modify-write rather
++        // than zeroing: with concurrent DFG this range can already hold live
++        // code, and clearing it is how the first version of this hung opencode.
++        volatile uint8_t* p = static_cast<volatile uint8_t*>(address);
++        for (size_t i = 0; i < bytes; i += pageSize())
++            p[i] = p[i];
++        if (mprotect(address, bytes, PROT_READ | PROT_EXEC))
++            CRASH();
++    }
++#endif
++
+ #if OS(LINUX) || OS(HAIKU) || OS(QNX)
+     UNUSED_PARAM(writable);
+     UNUSED_PARAM(executable);

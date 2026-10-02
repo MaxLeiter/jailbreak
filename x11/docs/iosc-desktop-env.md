@@ -359,3 +359,83 @@ missing dep or env issue is the app, not the launcher).
   Screen with the whole installed app set at once.
 - **Terminal=true entries:** not handled yet (would need a terminal wrapper);
   GNOME GUI apps don't set it, so it isn't needed for the current targets.
+
+## 12. The reverse direction: iOS apps in the session launcher
+
+Everything above turns a Linux app into a Home Screen icon. `xios-ios-apps`
+does the mirror image: it turns each installed iOS app into a `.desktop` entry
+inside the session, so Safari and Gmail show up in Kickoff (or the GNOME
+overview) next to GIMP.
+
+Launching one **leaves** the session. The `Exec` target is
+`xios-open-ios-app <bundle id>`, which is a `uiopen -b` wrapper: FrontBoard
+brings the app up fullscreen and Xios.app goes to the background. `iosc` keeps
+running, so the app switcher returns to the desktop exactly where it was. This
+is the cheap rung on purpose — no tweak, no injection, no new privilege.
+
+```
+xios-ios-apps refresh [--force] [--dry-run] [--out DIR]
+xios-ios-apps list
+xios-ios-apps clean
+```
+
+`xios_session_run` fires `refresh --quiet` in the background at every session
+start (`XIOS_IOS_APP_ENTRIES=0` opts out), so apps installed since the last
+session appear on their own. It is deliberately fire-and-forget: a launcher
+nicety must never delay or fail a session start. A warm run rewrites nothing;
+a cold run over ~220 bundles takes about 1.4s.
+
+**Which apps show up.** Scanning `/Applications` and
+`/var/containers/Bundle/Application/*/*.app` and dropping anything tagged
+`hidden` in `SBAppTags` (plus `LSApplicationLaunchProhibited` and a four-entry
+deny list) collapses 166 system bundles to the 11 real ones. On the current
+device that lands at 58 entries.
+
+**Icons.** iOS icons are CgBI PNGs: raw headerless deflate, BGRA order,
+premultiplied alpha. GdkPixbuf and Qt both reject those, so `xios-ios-apps`
+decodes and re-emits standard RGBA PNGs in pure stdlib (no PIL on device) into
+`$PREFIX/share/xios-ios-apps/icons/`, referenced by absolute path. Candidates
+are vetted from the PNG header before any decoding, so an unsupported variant
+falls through to the next candidate (and keeps `--dry-run` honest) instead of
+failing mid-convert. Known gaps, both leaving the entry iconless rather than
+failing: apps that ship the icon only inside `Assets.car` (extracting those
+needs CoreUI, i.e. a native helper), and Adam7-interlaced CgBI. On the current
+device that is 46 icons across 58 entries.
+
+**Landmine.** Do not derive the rootless prefix from `__file__` or `$0`.
+Dopamine's `/var/jb` is a symlink into
+`/private/preboot/<hash>/dopamine-XXXX/procursus`, so any resolved self-path
+test against `/var/jb` fails and every generated `Exec=` comes out relative.
+Probe the well-known logical path instead. (`pwd` without `-P` happens to
+survive this; Python's `abspath` does not.)
+
+**Rough edge.** `uiopen -b` exits 0 for a bundle id that is not installed, so an
+entry for an app removed since the last refresh silently does nothing until the
+next refresh sweeps it (`refresh` deletes entries whose app is gone).
+
+### What the windowed version would take
+
+Running iOS apps as real KDE windows is a much bigger job, and the notes are
+worth keeping:
+
+- KDE is nested KWin (`kde-plasma-plan.md` §W1), which hands `iosc` one
+  composited buffer. For an iOS app to be a real KDE window (decorations,
+  alt-tab, tiling, effects) its pixels have to reach KWin as an ordinary
+  `wl_surface`. Punching an alpha hole through the nested buffer needs a KWin
+  patch, geometry forwarding, and alpha passthrough, and it breaks the moment
+  any effect or the overview thumbnail touches that window.
+- So: capture, not hole-punch. Host the scene the way `carplayhost` already
+  does (`SBDeviceApplicationSceneEntity` + `SBAppViewController`, SpringBoard
+  injection), render that scene's context into an IOSurface with
+  `CARenderServerRenderDisplayLayerWithTransformAndTimeOffset`, and hand the
+  surface to a small Wayland client that publishes it as a toplevel. Under bare
+  `iosc` that hand-off is already zero-copy via `iosc_iosurface.create_buffer`
+  (`wayland/iosc-iosurface.xml`); under KDE it costs one GPU blit.
+- Cost is two extra GPU passes and ~2 frames of latency versus a native window.
+  Nothing falls back to software. The real tax is that the capture has no damage
+  tracking, so a visible iOS window re-renders at poll rate.
+- The genuine unknown is input: forwarding `wl_pointer`/`wl_touch` back into a
+  hosted, off-screen scene, where ordinary coordinate hit-testing no longer
+  applies. Prototype that before anything else.
+- It needs SpringBoard injection, so it belongs as an optional add-on package,
+  never in the base flavor — same posture as Mosaic.

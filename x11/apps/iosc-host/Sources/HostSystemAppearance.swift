@@ -70,6 +70,25 @@ final class HostSystemAppearance {
 }
 
 final class HostSceneViewController: UIViewController {
+    /// Raw-touch mode (bundle IOSCRawTouch; see HostScreenView.rawTouch). Defer
+    /// every screen-edge system gesture and auto-hide the home indicator, so
+    /// edge touches reach the client without the iOS edge delay and the home
+    /// gesture needs a second swipe instead of firing on the first. Normal mode
+    /// keeps UIKit's defaults ([] and false).
+    var rawTouch = false {
+        didSet {
+            guard rawTouch != oldValue else { return }
+            setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+            setNeedsUpdateOfHomeIndicatorAutoHidden()
+        }
+    }
+
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge {
+        rawTouch ? .all : []
+    }
+
+    override var prefersHomeIndicatorAutoHidden: Bool { rawTouch }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         HostSystemAppearance.shared.update(from: traitCollection)

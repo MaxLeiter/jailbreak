@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Crispy Doom
+Comment=Limit-removing enhanced-resolution Doom source port
+Exec=crispy-doom
+Icon=crispy-doom
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=first;person;shooter;vanilla;
+X-Xios-RawTouch=true
