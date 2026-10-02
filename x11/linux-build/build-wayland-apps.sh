@@ -7,7 +7,9 @@
 # freetype/fontconfig/cairo/pango/...) cascade.
 #
 # Run in the container with procursus-vol-wayland mounted at /work/Procursus, recipes at
-# /work/recipes, out at /out. Select targets via TARGETS env (default: full dependency order):
+# /work/recipes, x11/ports at /work/ports (without it the mpv/foot/imv/fcft/harfbuzz/fuzzel/
+# grim/basu patch stacks are silently skipped), out at /out. Select targets via TARGETS env
+# (default: full dependency order):
 #   docker run -e TARGETS="tllist-package fcft-package" ... /work/build-wayland-apps.sh
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
