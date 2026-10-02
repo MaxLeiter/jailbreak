@@ -4169,9 +4169,22 @@ static void toplevel_resource_destroy(struct wl_resource *r)
 
 /* xdg_surface */
 static void xs_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+/* One role object per xdg_surface, and none on a surface that already has a
+ * role. The role pointers on iosc_surface hold exactly one resource each, and
+ * surface_resource_destroy() can only disarm the one it knows about: a second
+ * xdg_toplevel/xdg_popup would keep a pointer into the freed surface. */
+static int xs_role_taken(struct wl_resource *r, struct iosc_surface *s)
+{
+    if (!s || (s->role == IOSC_ROLE_NONE && !s->xdg_toplevel && !s->xdg_popup))
+        return 0;
+    wl_resource_post_error(r, XDG_SURFACE_ERROR_ALREADY_CONSTRUCTED,
+                           "xdg_surface already has a role object");
+    return 1;
+}
 static void xs_get_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t id)
 {
     struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (xs_role_taken(r, s)) return;
     struct wl_resource *tl = wl_resource_create(c, &xdg_toplevel_interface,
                                                 wl_resource_get_version(r), id);
     if (!tl) { wl_client_post_no_memory(c); return; }
@@ -4192,6 +4205,7 @@ static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id
      * must run before the client's first commit. */
     struct iosc_surface *ps = parent ? wl_resource_get_user_data(parent) : NULL;
     struct iosc_positioner *pos = wl_resource_get_user_data(positioner);
+    if (xs_role_taken(r, s)) return;
     struct wl_resource *p = wl_resource_create(c, &xdg_popup_interface,
                                                wl_resource_get_version(r), id);
     if (!p) { wl_client_post_no_memory(c); return; }
@@ -4260,6 +4274,14 @@ static void wb_get_xdg_surface(struct wl_client *c, struct wl_resource *r,
                                uint32_t id, struct wl_resource *surface)
 {
     struct iosc_surface *s = wl_resource_get_user_data(surface);
+    /* Same single-pointer rule as xs_role_taken(): only one live xdg_surface,
+     * and none on a subsurface, layer or lock surface. */
+    if (s->xdg_surface || s->role == IOSC_ROLE_SUBSURFACE ||
+        s->role == IOSC_ROLE_LAYER || s->role == IOSC_ROLE_LOCK) {
+        wl_resource_post_error(r, XDG_WM_BASE_ERROR_ROLE,
+                               "wl_surface already has an xdg_surface or another role");
+        return;
+    }
     struct wl_resource *xs = wl_resource_create(c, &xdg_surface_interface,
                                                 wl_resource_get_version(r), id);
     if (!xs) { wl_client_post_no_memory(c); return; }
@@ -5213,6 +5235,14 @@ static void subcompositor_get_subsurface(struct wl_client *c, struct wl_resource
 {
   struct iosc_surface *s = wl_resource_get_user_data(surface);
   struct iosc_surface *p = wl_resource_get_user_data(parent);
+  /* A second wl_subsurface for the same surface would leave the first one's
+   * ->surface pointing at it after surface_resource_destroy() disarms only
+   * s->subsurface (and any other role is a protocol error anyway). */
+  if (s->role != IOSC_ROLE_NONE || s->subsurface) {
+      wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
+                             "wl_surface already has a role");
+      return;
+  }
   struct iosc_subsurface *sub = calloc(1, sizeof(*sub));
   if (!sub) { wl_client_post_no_memory(c); return; }
   struct wl_resource *ss = wl_resource_create(c, &wl_subsurface_interface, wl_resource_get_version(r), id);
