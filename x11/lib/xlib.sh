@@ -11,7 +11,7 @@
 #
 # Provides:
 #   xsign   <bin> [ents] [required-marker...]   ldid-sign + verify entitlements
-#   xmkdeb  <staging_dir> <out_dir> [--no-minos]  build a .deb (+ minos stamp)
+#   xmkdeb  <staging_dir> <out_dir> [--minos]     build a .deb
 #   xstage_lagom_fonts <fonts_dir> [cache_dir]    stage Ladybird's text fonts
 #   xdeb_find    <stem> <dir>...                  newest matching iphoneos deb path
 #   xdeb_extract <sysroot> <deb-dir-list> <pkg>... extract dev debs into a sysroot
@@ -232,7 +232,7 @@ xstage_lagom_fonts() {
 }
 
 # ---- deb extraction into a cross sysroot ----------------------------------
-# xdeb_find <stem> <dir>...  -> newest matching <stem>_*_iphoneos-arm64.deb, or 1.
+# xdeb_find <stem> <dir>...  -> newest matching <stem>_*_$XIOS_DEB_ARCH.deb, or 1.
 xdeb_find() {
     local stem="$1"; shift
     local d f
