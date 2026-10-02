@@ -33,9 +33,9 @@ int iosc_clipboard_connect(const char *sock_path) {
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
     // The fd stays BLOCKING: sends must deliver whole records (a partial
-    // write desyncs the stream) and the compositor drains promptly, so a
-    // bounded send timeout beats a nonblocking retry dance. Reads poll with
-    // MSG_DONTWAIT instead, so the display-link tick never blocks.
+    // write desyncs the stream), so a bounded send timeout on a writer thread
+    // beats a nonblocking retry dance. Reads poll with MSG_DONTWAIT instead,
+    // so the display-link tick never blocks.
     struct timeval tv = { 2, 0 };
     setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
@@ -99,31 +99,35 @@ static bool write_fd(int fd, const void *buf, size_t len) {
     return true;
 }
 
-static bool send_record(uint32_t kind, const void *data, size_t len) {
-    if (s_fd < 0 || len > XIOS_CLIP_ITEM_MAX) return false;
+static int write_record(int fd, uint32_t generation, uint32_t kind,
+                        const void *data, size_t len) {
+    if (fd < 0) return -1;
+    if (len > XIOS_CLIP_ITEM_MAX) return 0;
     xios_msg h = { XIOS_MSG_MAGIC, XIOS_MSG_CLIPBOARD, 0, (uint32_t)len,
-                   (int32_t)kind, (int32_t)s_tx_gen, 0, 0 };
-    if (!write_fd(s_fd, &h, sizeof(h)) || (len > 0 && !write_fd(s_fd, data, len))) {
-        iosc_clipboard_close();
-        return false;
-    }
-    return true;
+                   (int32_t)kind, (int32_t)generation, 0, 0 };
+    if (!write_fd(fd, &h, sizeof(h)) || (len > 0 && !write_fd(fd, data, len)))
+        return -1;
+    return 1;
 }
 
-void iosc_clipboard_send_begin(void) {
+uint32_t iosc_clipboard_send_begin(void) {
     s_tx_gen++;
     if (s_tx_gen == 0) s_tx_gen = 1;
+    return s_tx_gen;
 }
 
-bool iosc_clipboard_send_item(uint32_t kind, const void *data, size_t len) {
-    if (kind == XIOS_CLIP_KIND_NONE || kind > XIOS_CLIP_KIND_HTML) return false;
-    if (s_tx_gen == 0) iosc_clipboard_send_begin();
-    return send_record(kind, data, len);
+int iosc_clipboard_writer_fd(void) {
+    return s_fd >= 0 ? dup(s_fd) : -1;
 }
 
-bool iosc_clipboard_send_clear(void) {
-    iosc_clipboard_send_begin();
-    return send_record(XIOS_CLIP_KIND_NONE, NULL, 0);
+int iosc_clipboard_write_item(int fd, uint32_t generation, uint32_t kind,
+                              const void *data, size_t len) {
+    if (kind == XIOS_CLIP_KIND_NONE || kind > XIOS_CLIP_KIND_HTML) return 0;
+    return write_record(fd, generation, kind, data, len);
+}
+
+int iosc_clipboard_write_clear(int fd, uint32_t generation) {
+    return write_record(fd, generation, XIOS_CLIP_KIND_NONE, NULL, 0);
 }
 
 int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,

@@ -24,13 +24,20 @@ bool iosc_clipboard_adopt(int fd);
 void iosc_clipboard_close(void);
 bool iosc_clipboard_is_open(void);
 
-// Sending one iOS copy event: begin (starts a new generation), then one
-// send_item per representation. send_clear announces an emptied pasteboard.
-// Sends block briefly (2s timeout) — payloads are at most ITEM_MAX and the
-// compositor drains asynchronously, so this returns in milliseconds.
-void iosc_clipboard_send_begin(void);
-bool iosc_clipboard_send_item(uint32_t kind, const void *data, size_t len);
-bool iosc_clipboard_send_clear(void);
+// Sending one iOS copy event: send_begin starts a new generation and returns
+// it, then each representation is one whole record from write_item;
+// write_clear announces an emptied pasteboard. Writes block (SO_SNDTIMEO is
+// 2 s per write() call, and an item can be ITEM_MAX bytes), so they belong on
+// a writer thread, against that thread's own dup of the connection from
+// writer_fd (the writer closes it). They touch no module state, so the main
+// thread can keep polling, or close and replace the connection, meanwhile.
+uint32_t iosc_clipboard_send_begin(void);
+int iosc_clipboard_writer_fd(void);   // dup of the open connection, or -1
+// 1 written; 0 refused (bad kind, or over ITEM_MAX), nothing sent; -1 the
+// write failed and may have cut the record short: drop that connection.
+int iosc_clipboard_write_item(int fd, uint32_t generation, uint32_t kind,
+                              const void *data, size_t len);
+int iosc_clipboard_write_clear(int fd, uint32_t generation);
 
 // Drain one received item per call (non-blocking). Returns 1 with *kind,
 // *generation, *data (malloc'd, len+1 bytes with a trailing NUL — caller

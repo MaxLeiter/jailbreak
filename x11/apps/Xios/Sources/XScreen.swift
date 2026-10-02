@@ -251,8 +251,8 @@ final class XScreenView: UIView {
     private var clipDeferredPushTicks = 0   // connect grace: desktop wins if it speaks
     private var clipSuppressText: String?   // echo guards: what we last wrote/read
     private var clipSuppressPNG: Data?
-    // Clipboard socket work that can block (connect + HELLO) runs on this
-    // serial queue so the display-link tick never waits on it.
+    // Clipboard socket work that can block (connect + HELLO, item writes) runs
+    // on this serial queue so the display-link tick never waits on it.
     private let clipboardQueue = DispatchQueue(
         label: "com.max.xios.clipboard", qos: .userInitiated)
     private var clipConnectInFlight = false
@@ -2197,30 +2197,56 @@ final class XScreenView: UIView {
         if text == nil && png == nil && urls.isEmpty {
             // Empty pasteboard: on connect that's "nothing to contribute", not
             // "clear the desktop clipboard".
-            if !onConnect { _ = iosc_clipboard_send_clear() }
+            if !onConnect { writeClipboard([], generation: iosc_clipboard_send_begin()) }
             clipSuppressText = nil; clipSuppressPNG = nil
             return
         }
         if !onConnect && text == clipSuppressText && png == clipSuppressPNG {
             return   // echo of our own commitReceivedClipboard write
         }
-        iosc_clipboard_send_begin()
-        if let t = text {
-            _ = t.withCString { iosc_clipboard_send_item(kClipText, $0, strlen($0)) }
-        }
-        if let p = png {
-            _ = p.withUnsafeBytes {
-                iosc_clipboard_send_item(kClipPNG, $0.baseAddress, p.count)
-            }
-        }
+        // Text goes out as its C string did: the UTF-8 up to any NUL.
+        func cText(_ s: String) -> Data { Data(s.utf8.prefix { $0 != 0 }) }
+        let generation = iosc_clipboard_send_begin()
+        var items: [(kind: UInt32, data: Data)] = []
+        if let t = text { items.append((kClipText, cText(t))) }
+        if let p = png { items.append((kClipPNG, p)) }
         if !urls.isEmpty {
             let list = urls.map(\.absoluteString).joined(separator: "\r\n") + "\r\n"
-            _ = list.withCString { iosc_clipboard_send_item(kClipURI, $0, strlen($0)) }
-            if text == nil {
-                _ = list.withCString { iosc_clipboard_send_item(kClipText, $0, strlen($0)) }
+            items.append((kClipURI, cText(list)))
+            if text == nil { items.append((kClipText, cText(list))) }
+        }
+        writeClipboard(items, generation: generation)
+        clipSuppressText = text; clipSuppressPNG = png
+    }
+
+    /// Write one copy event's records (no items: a clear) on the clipboard
+    /// queue. A PNG can be 16 MB, and SO_SNDTIMEO bounds each write() call,
+    /// not the record, so this never runs on the display link. The serial
+    /// queue keeps records in the order they were queued, and the writer uses
+    /// its own dup of the connection, so main keeps polling (or closes it)
+    /// meanwhile. A failed write may have cut a record short: shut that socket
+    /// down, so writes still queued for it fail instead of following a torn
+    /// record, and close it on main, which reconnects on the 30-tick poll.
+    private func writeClipboard(_ items: [(kind: UInt32, data: Data)], generation: UInt32) {
+        let fd = iosc_clipboard_writer_fd()
+        guard fd >= 0 else { return }
+        let epoch = clipEpoch
+        clipboardQueue.async { [weak self] in
+            var failed = items.isEmpty && iosc_clipboard_write_clear(fd, generation) < 0
+            for item in items where !failed {
+                failed = item.data.withUnsafeBytes {
+                    iosc_clipboard_write_item(fd, generation, item.kind,
+                                              $0.baseAddress, $0.count) < 0
+                }
+            }
+            if failed { Darwin.shutdown(fd, SHUT_RDWR) }
+            close(fd)
+            guard failed else { return }
+            DispatchQueue.main.async {
+                guard let self, self.clipEpoch == epoch else { return }
+                self.closeClipboard()
             }
         }
-        clipSuppressText = text; clipSuppressPNG = png
     }
 
     private func sendMotion(_ x: Int32, _ y: Int32) {
