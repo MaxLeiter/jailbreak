@@ -848,8 +848,11 @@ static void *reader_loop(void *arg)
             int idx = -1;
             for (int i = 0; i < s_nclients; i++)
                 if (s_clients[i].fd == pfds[p].fd) { idx = i; break; }
+            /* client_readable_locked drops s_lock around each dispatch, and the
+             * wl thread can swap-remove hosts meanwhile, so `idx` may be stale
+             * on return. Drop by fd: only this thread adds hosts. */
             if (idx >= 0) {
-                if (client_readable_locked(idx) < 0) drop_client_locked(idx);
+                if (client_readable_locked(idx) < 0) drop_client_fd_locked(pfds[p].fd);
             }
             pthread_mutex_unlock(&s_lock);
         }
