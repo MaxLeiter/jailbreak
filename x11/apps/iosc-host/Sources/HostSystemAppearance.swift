@@ -1,17 +1,7 @@
 import Darwin
 import UIKit
 
-private let xiosAppearanceMessageType: UInt32 = 13
 private let xiosSysintSocket = "/var/jb/tmp/xios-sysint.sock"
-
-private struct XiosSysintMessage {
-    var type: UInt32
-    var x: Int32
-    var y: Int32
-    var code: UInt32
-    var state: UInt32
-    var mods: UInt32
-}
 
 /// Mirrors this native host process' resolved iOS appearance into the desktop
 /// session. This is the native-host sibling of Xios' SystemIntegration path.
@@ -35,11 +25,9 @@ final class HostSystemAppearance {
         guard let dark = desiredDark, dark != sentDark else { return }
         guard ensureConnected() else { return }
 
-        let msg = XiosSysintMessage(type: xiosAppearanceMessageType,
-                                    x: 0, y: 0,
-                                    code: dark == 0 ? 0 : 1,
-                                    state: 0, mods: 0)
-        if writeMessage(msg) {
+        var msg = xios_input_message(UInt32(XIOS_IN_APPEARANCE), 0, 0,
+                                     dark == 0 ? 0 : 1, 0, 0)
+        if writeMessage(&msg) {
             sentDark = dark
         } else {
             closeConnection()
@@ -53,12 +41,19 @@ final class HostSystemAppearance {
         lastConnectAttempt = now
 
         fd = connectUnixSocket(xiosSysintSocket)
-        return fd >= 0
+        guard fd >= 0 else { return false }
+        // xios-sysintd reads the shared XiosProtocol.h framing: the stream must
+        // open with an exact-version HELLO, or the first record is fatal.
+        var hello = xios_protocol_hello()
+        guard writeMessage(&hello) else {
+            closeConnection()
+            return false
+        }
+        return true
     }
 
-    private func writeMessage(_ msg: XiosSysintMessage) -> Bool {
-        var message = msg
-        return withUnsafeBytes(of: &message) { writeAll(fd, bytes: $0) }
+    private func writeMessage(_ msg: inout xios_msg) -> Bool {
+        withUnsafeBytes(of: &msg) { writeAll(fd, bytes: $0) }
     }
 
     private func closeConnection() {
