@@ -26,6 +26,7 @@
 #define SOCK_PATH "/var/jb/tmp/xios-a11y.sock"
 #define MAX_CLIENTS 16
 #define MAX_NODES 300
+#define MAX_OUTBUF (4 * 1024 * 1024)
 #define MAX_DEPTH 8
 #define MAX_REFS MAX_NODES
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
@@ -45,6 +46,7 @@ struct client {
     char bind_exec[256];
     char *last_snapshot;
     GString *inbuf;
+    GString *outbuf;
     struct node_ref refs[MAX_REFS];
     unsigned ref_count;
 };
@@ -85,6 +87,40 @@ static char *json_escape(const char *s)
     return g_string_free(out, FALSE);
 }
 
+/* Client sockets are non-blocking, so a client that stops reading cannot park this
+ * single-threaded daemon in write() and freeze every other client and the AT-SPI pump.
+ * What the socket will not take yet waits in outbuf and goes out when select() reports
+ * the fd writable; a client still sitting on more than MAX_OUTBUF unread is dropped. */
+static void client_flush(struct client *c)
+{
+    while (c->fd >= 0 && c->outbuf && c->outbuf->len > 0) {
+        ssize_t n = write(c->fd, c->outbuf->str, c->outbuf->len);
+        if (n > 0) {
+            g_string_erase(c->outbuf, 0, n);
+        } else if (n < 0 && errno == EINTR) {
+            continue;
+        } else if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+            return;
+        } else {
+            close_client(c);
+        }
+    }
+}
+
+static void client_write(struct client *c, const char *data, size_t len)
+{
+    if (!c || c->fd < 0 || len == 0) return;
+    if (!c->outbuf) c->outbuf = g_string_new("");
+    if (c->outbuf->len > MAX_OUTBUF) {
+        fprintf(stderr, "xios-a11yd: dropping client fd %d: %zu bytes unread\n",
+                c->fd, c->outbuf->len);
+        close_client(c);
+        return;
+    }
+    g_string_append_len(c->outbuf, data, (gssize)len);
+    client_flush(c);
+}
+
 static void client_printf(struct client *c, const char *fmt, ...)
 {
     if (!c || c->fd < 0) return;
@@ -95,9 +131,7 @@ static void client_printf(struct client *c, const char *fmt, ...)
     va_end(ap);
     if (n <= 0) return;
     if ((size_t)n >= sizeof(buf)) n = (int)sizeof(buf) - 1;
-    if (write(c->fd, buf, (size_t)n) < 0 && (errno == EPIPE || errno == ECONNRESET)) {
-        close_client(c);
-    }
+    client_write(c, buf, (size_t)n);
 }
 
 static void close_client(struct client *c)
@@ -108,6 +142,7 @@ static void close_client(struct client *c)
     g_free(c->last_snapshot);
     c->last_snapshot = NULL;
     if (c->inbuf) g_string_truncate(c->inbuf, 0);
+    if (c->outbuf) g_string_truncate(c->outbuf, 0);
     client_clear_refs(c);
 }
 
@@ -480,6 +515,10 @@ static void emit_node(struct emit_ctx *ctx, AtspiAccessible *obj, unsigned paren
 static void snapshot_client(struct client *c)
 {
     if (!c || c->fd < 0 || !c->enabled) return;
+    /* Still draining the previous snapshot: queueing another would only grow outbuf, and the
+     * node refs must stay those of the snapshot the client is reading. The next periodic or
+     * event-driven pass picks this client up again. */
+    if (c->outbuf && c->outbuf->len > 0) return;
 
     client_clear_refs(c);
     GString *snapshot = g_string_new("");
@@ -546,11 +585,7 @@ static void snapshot_client(struct client *c)
     c->last_snapshot = g_strdup(snapshot->str);
     c->gen = global_gen++;
     client_printf(c, "{\"t\":\"reset\",\"gen\":%u}\n", c->gen);
-    if (snapshot->len > 0 && c->fd >= 0 &&
-        write(c->fd, snapshot->str, snapshot->len) < 0 &&
-        (errno == EPIPE || errno == ECONNRESET)) {
-        close_client(c);
-    }
+    client_write(c, snapshot->str, snapshot->len);
     g_string_free(snapshot, TRUE);
 }
 
@@ -722,6 +757,11 @@ static void accept_client(int listener)
 {
     int fd = accept(listener, NULL, NULL);
     if (fd < 0) return;
+    int flags = fcntl(fd, F_GETFL);
+    if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        close(fd);
+        return;
+    }
     for (int i = 0; i < MAX_CLIENTS; i++) {
         if (clients[i].fd < 0) {
             clients[i].fd = fd;
@@ -797,6 +837,7 @@ static void read_client(struct client *c)
 {
     char buf[1024];
     ssize_t n = read(c->fd, buf, sizeof(buf));
+    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) return;
     if (n <= 0) {
         close_client(c);
         return;
@@ -829,6 +870,10 @@ static void free_clients(void)
         if (clients[i].inbuf) {
             g_string_free(clients[i].inbuf, TRUE);
             clients[i].inbuf = NULL;
+        }
+        if (clients[i].outbuf) {
+            g_string_free(clients[i].outbuf, TRUE);
+            clients[i].outbuf = NULL;
         }
     }
 }
@@ -901,6 +946,7 @@ int main(void)
         clients[i].bind_exec[0] = 0;
         clients[i].last_snapshot = NULL;
         clients[i].inbuf = NULL;
+        clients[i].outbuf = NULL;
         clients[i].ref_count = 0;
     }
     if (atspi_init() != 0) {
@@ -917,24 +963,28 @@ int main(void)
 
     gint64 last_periodic_snapshot = g_get_monotonic_time();
     for (;;) {
-        fd_set rfds;
+        fd_set rfds, wfds;
         FD_ZERO(&rfds);
+        FD_ZERO(&wfds);
         FD_SET(listener, &rfds);
         int maxfd = listener;
         for (int i = 0; i < MAX_CLIENTS; i++) {
             if (clients[i].fd >= 0) {
                 FD_SET(clients[i].fd, &rfds);
+                if (clients[i].outbuf && clients[i].outbuf->len > 0) FD_SET(clients[i].fd, &wfds);
                 if (clients[i].fd > maxfd) maxfd = clients[i].fd;
             }
         }
         struct timeval tv = { .tv_sec = 0, .tv_usec = 250000 };
-        int rc = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+        int rc = select(maxfd + 1, &rfds, &wfds, NULL, &tv);
         if (rc < 0 && errno == EINTR) continue;
         if (rc < 0) break;
         pump_atspi_events();
         if (FD_ISSET(listener, &rfds)) accept_client(listener);
         for (int i = 0; i < MAX_CLIENTS; i++) {
-            if (clients[i].fd >= 0 && FD_ISSET(clients[i].fd, &rfds)) read_client(&clients[i]);
+            int fd = clients[i].fd;
+            if (fd >= 0 && FD_ISSET(fd, &wfds)) client_flush(&clients[i]);
+            if (clients[i].fd >= 0 && clients[i].fd == fd && FD_ISSET(fd, &rfds)) read_client(&clients[i]);
         }
         gint64 now = g_get_monotonic_time();
         if (pending_event_snapshot || now - last_periodic_snapshot >= 2 * G_USEC_PER_SEC) {
