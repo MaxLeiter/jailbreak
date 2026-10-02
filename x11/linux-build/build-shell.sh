@@ -127,16 +127,16 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 SYSROOT=$XIOS_SYSROOT/usr
 if [ ! -f "$SYSROOT/lib/pkgconfig/mozjs-115.pc" ] && [ -f "$SYSROOT/lib/libmozjs-115.dylib" ]; then
   echo "==> synthesizing missing mozjs-115.pc into the sysroot"
-  cat > "$SYSROOT/lib/pkgconfig/mozjs-115.pc" <<'PC'
+  cat > "$SYSROOT/lib/pkgconfig/mozjs-115.pc" <<PC
 prefix=$XIOS_PREFIX/usr
-includedir=${prefix}/include
-libdir=${prefix}/lib
+includedir=\${prefix}/include
+libdir=\${prefix}/lib
 
 Name: SpiderMonkey 115
 Description: The Mozilla library for JavaScript
 Version: 115.12.0
-Libs: -L${libdir} -lmozjs-115
-Cflags: -I${includedir}/mozjs-115
+Libs: -L\${libdir} -lmozjs-115
+Cflags: -I\${includedir}/mozjs-115
 PC
 fi
 
