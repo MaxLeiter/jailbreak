@@ -23,7 +23,7 @@ ksyntaxhighlighting:
 else
 ksyntaxhighlighting: ksyntaxhighlighting-setup
 	mkdir -p $(BUILD_TOOLS)/ksyntaxhighlighting-host
-	/usr/bin/c++ -std=c++17 -O2 -fPIC -DQT_CORE_LIB \
+	/usr/bin/c++ -std=c++20 -O2 -fPIC -DQT_CORE_LIB \
 		-I$(QT6_HOST_PATH)/include \
 		-I$(QT6_HOST_PATH)/include/QtCore \
 		-I$(BUILD_WORK)/ksyntaxhighlighting/src/lib \

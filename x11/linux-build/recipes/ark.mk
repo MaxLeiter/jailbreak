@@ -12,20 +12,12 @@ DEB_ARK_V ?= $(ARK_VERSION)+ios1
 ark-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/ark-$(ARK_VERSION).tar.xz)
 	$(call EXTRACT_TAR,ark-$(ARK_VERSION).tar.xz,ark-$(ARK_VERSION),ark)
-	sed -i '/DocTools/d;/FileMetaData/d' $(BUILD_WORK)/ark/CMakeLists.txt
-	perl -0777 -i -pe 's/\nif \(NOT WIN32\)\n\s*find_package\(KF6 [^\n]* COMPONENTS Pty\)\nendif\(\)\n//s' $(BUILD_WORK)/ark/CMakeLists.txt
+	sed -i '/FileMetaData/d' $(BUILD_WORK)/ark/CMakeLists.txt
 	sed -i 's/add_subdirectory(doc)/# ios-bringup-no-doc: add_subdirectory(doc)/' $(BUILD_WORK)/ark/CMakeLists.txt
 	sed -i '/kdoctools_install/d' $(BUILD_WORK)/ark/CMakeLists.txt
-	sed -i '/KF6::FileMetaData/d;/KF6::Pty/d' $(BUILD_WORK)/ark/kerfuffle/CMakeLists.txt
-	sed -i 's/add_subdirectory(cliunarchiverplugin)/# ios-bringup-no-kpty: add_subdirectory(cliunarchiverplugin)/' $(BUILD_WORK)/ark/plugins/CMakeLists.txt
-	perl -0777 -i -pe 's/\nif \(NOT WIN32\)\n    target_link_libraries\(kerfuffle\n    PUBLIC\n    \)\nendif\(\)\n//s' $(BUILD_WORK)/ark/kerfuffle/CMakeLists.txt
-	sed -i '/KPtyProcess/d' $(BUILD_WORK)/ark/kerfuffle/metadatabackup.h
+	sed -i '/KF6::FileMetaData/d' $(BUILD_WORK)/ark/kerfuffle/CMakeLists.txt
 	perl -0pi -e 's/#include <KFileMetaData\/UserMetaData>/#include <QString>\n#include <QStringList>/' $(BUILD_WORK)/ark/kerfuffle/metadatabackup.h
 	perl -0777 -i -pe 's/MetadataBackup::MetadataBackup\(const QString &filePath\)\n\{.*?\n\}\n/MetadataBackup::MetadataBackup(const QString &filePath)\n{\n    Q_UNUSED(filePath)\n    m_rating = 0;\n}\n/s; s/void MetadataBackup::restore\(const QString &filePath\)\n\{.*?\n\}\n/void MetadataBackup::restore(const QString &filePath)\n{\n    Q_UNUSED(filePath)\n}\n/s' $(BUILD_WORK)/ark/kerfuffle/metadatabackup.cpp
-	sed -i '/#include <KPtyDevice>/d;/#include <KPtyProcess>/d;s/#ifdef Q_OS_WIN/#if 1/;s/#else/#elif 0/' $(BUILD_WORK)/ark/kerfuffle/cliinterface.cpp
-	perl -0777 -i -pe 's/\n#if 1\n    m_process = new KProcess;\n#elif 0\n    m_process = new KPtyProcess;\n    m_process->setPtyChannels\(KPtyProcess::StdinChannel\);\n#endif\n/\n    m_process = new KProcess;\n/s' $(BUILD_WORK)/ark/kerfuffle/cliinterface.cpp
-	perl -0777 -i -pe 's/\n#ifdef Q_OS_WIN\n    KProcess \*m_process = nullptr;\n#else\n    KPtyProcess \*m_process = nullptr;\n#endif\n/\n    KProcess *m_process = nullptr;\n/s; s/ or KPtyDevice::write\(\), depending on\n     \* the platform/KProcess::write()/s' $(BUILD_WORK)/ark/kerfuffle/cliinterface.h
-	perl -0777 -i -pe 's/\n#ifdef Q_OS_WIN\n    m_process->write\(data\);\n#else\n    m_process->pty\(\)->write\(data\);\n#endif\n/\n    m_process->write(data);\n/s' $(BUILD_WORK)/ark/kerfuffle/cliinterface.cpp
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
@@ -38,6 +30,7 @@ ark: ark-setup
 	mkdir -p $(BUILD_WORK)/ark/build
 	cd $(BUILD_WORK)/ark/build && cmake .. \
 		-G Ninja \
+		-DBUILD_DOC=OFF \
 		$(KF6_CMAKE_FLAGS) \
 		-DCMAKE_DISABLE_FIND_PACKAGE_LibZip=TRUE
 	+ninja -C $(BUILD_WORK)/ark/build

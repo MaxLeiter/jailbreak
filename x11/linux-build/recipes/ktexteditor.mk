@@ -20,14 +20,18 @@ ktexteditor-setup: setup
 	sed -i '/#include "printing\/kateprinter.h"/d' $(BUILD_WORK)/ktexteditor/src/view/kateview.cpp $(BUILD_WORK)/ktexteditor/src/document/katedocument.cpp
 	perl -0777 -i -pe 's/QTextToSpeech \*KTextEditor::EditorPrivate::speechEngine\(KTextEditor::ViewPrivate \*view\)\n\{.*?\n\}\n\nvoid KTextEditor::EditorPrivate::speechEngineUserDestoyed\(\)\n\{.*?\n\}\n\n//s' $(BUILD_WORK)/ktexteditor/src/utils/kateglobal.cpp
 	perl -0777 -i -pe 's/void KTextEditor::ViewPrivate::setupSpeechActions\(\)\n\{.*?\n\}\n\nvoid KTextEditor::ViewPrivate::slotFoldToplevelNodes/void KTextEditor::ViewPrivate::setupSpeechActions()\n{\n}\n\nvoid KTextEditor::ViewPrivate::slotFoldToplevelNodes/s' $(BUILD_WORK)/ktexteditor/src/view/kateview.cpp
-	perl -0777 -i -pe 's/bool KTextEditor::ViewPrivate::print\(\)\n\{\n    return KatePrinter::print\(this\);\n\}/bool KTextEditor::ViewPrivate::print()\n{\n    return false;\n}/s' $(BUILD_WORK)/ktexteditor/src/view/kateview.cpp
-	perl -0777 -i -pe 's/void KTextEditor::ViewPrivate::printPreview\(\)\n\{\n    KatePrinter::printPreview\(this\);\n\}/void KTextEditor::ViewPrivate::printPreview()\n{\n}/s' $(BUILD_WORK)/ktexteditor/src/view/kateview.cpp
+	perl -0777 -i -pe 's/bool KTextEditor::ViewPrivate::print\(\)\n\{\n    return KatePrinter::print\(m_doc, this\);\n\}/bool KTextEditor::ViewPrivate::print()\n{\n    return false;\n}/s' $(BUILD_WORK)/ktexteditor/src/view/kateview.cpp
+	perl -0777 -i -pe 's/void KTextEditor::ViewPrivate::printPreview\(\)\n\{\n    KatePrinter::printPreview\(m_doc, this\);\n\}/void KTextEditor::ViewPrivate::printPreview()\n{\n}/s' $(BUILD_WORK)/ktexteditor/src/view/kateview.cpp
 	perl -0777 -i -pe 's/bool KTextEditor::DocumentPrivate::print\(\)\n\{\n    return KatePrinter::print\(this\);\n\}/bool KTextEditor::DocumentPrivate::print()\n{\n    return false;\n}/s' $(BUILD_WORK)/ktexteditor/src/document/katedocument.cpp
 	perl -0777 -i -pe 's/void KTextEditor::DocumentPrivate::printPreview\(\)\n\{\n    KatePrinter::printPreview\(this\);\n\}/void KTextEditor::DocumentPrivate::printPreview()\n{\n}/s' $(BUILD_WORK)/ktexteditor/src/document/katedocument.cpp
 	perl -0777 -i -pe 's/\n    \/\*\*\n     \* text to speech engine.*?\n     \*\/\n    QTextToSpeech \*speechEngine\(KTextEditor::ViewPrivate \*view\);\n//s' $(BUILD_WORK)/ktexteditor/src/utils/kateglobal.h
 	perl -0777 -i -pe 's/\n    \/\*\*\n     \* Was the view that started the current speak output destroyed\?\n     \*\/\n    void speechEngineUserDestoyed\(\);\n//s' $(BUILD_WORK)/ktexteditor/src/utils/kateglobal.h
 	perl -0777 -i -pe 's/\n    \/\*\*\n     \* text to speech engine.*?\n    QPointer<KTextEditor::ViewPrivate> m_speechEngineLastUser;\n//s' $(BUILD_WORK)/ktexteditor/src/utils/kateglobal.h
 	perl -0777 -i -pe 's/\n    <Menu name="speech" group="tools_speech">.*?<\/Menu>\n//s' $(BUILD_WORK)/ktexteditor/src/data/katepart5ui.rc
+	# std::pmr::unsynchronized_pool_resource is not exported by the iPhoneOS 16.5 libc++ dylib (found at link time under
+	# libc++ mode B): swap in a plain operator-new allocator with the same allocate/deallocate/release surface.
+	perl -0pi -e 's|#include <memory_resource>\n|#include <cstddef>\n#include <new>\n\nstruct KateFallbackPool {\n    void *allocate(std::size_t size, std::size_t align) { return ::operator new(size, std::align_val_t(align)); }\n    void deallocate(void *p, std::size_t size, std::size_t align) { ::operator delete(p, size, std::align_val_t(align)); }\n    void release() {}\n};\n|; s|std::pmr::unsynchronized_pool_resource|KateFallbackPool|g' $(BUILD_WORK)/ktexteditor/src/render/katelayoutcache.h
+	sed -i -e 's/std::pmr::unsynchronized_pool_resource/KateFallbackPool/g' -e 's/m_allocator(std::pmr::pool_options{.largest_required_pool_block = sizeof(KateLineLayout)})/m_allocator()/' $(BUILD_WORK)/ktexteditor/src/render/katelayoutcache.cpp
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

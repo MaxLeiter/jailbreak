@@ -8,7 +8,7 @@ set -euo pipefail
 QTVER=6.10.3
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 BB=$XIOS_SYSROOT
-TARGETS="${TARGETS:-phonon-package ksyntaxhighlighting-package ktexteditor-package poppler-package poppler-qt6-package ark-package okular-package gwenview-package kwrite-package kate-package kcalc-package kpty-package konsole-package dolphin-package}"
+TARGETS="${TARGETS:-phonon-package ksyntaxhighlighting-package ktexteditor-package poppler-package poppler-qt6-package kpty-package ark-package okular-package gwenview-package kwrite-package kate-package kcalc-package konsole-package dolphin-package}"
 COLLECT_DEBS=(libpoppler154 libpoppler-glib8 libpoppler-dev libpoppler-qt6-3 libpoppler-qt6-dev okular libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
 
 cd /work/Procursus
