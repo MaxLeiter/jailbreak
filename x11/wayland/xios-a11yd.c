@@ -28,7 +28,6 @@
 #define MAX_NODES 300
 #define MAX_OUTBUF (4 * 1024 * 1024)
 #define MAX_DEPTH 8
-#define MAX_REFS MAX_NODES
 #define ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 
 struct node_ref {
@@ -47,8 +46,11 @@ struct client {
     char *last_snapshot;
     GString *inbuf;
     GString *outbuf;
-    struct node_ref refs[MAX_REFS];
+    /* Every node of the last snapshot, so each one can be activated. MAX_NODES caps a
+     * window, not a snapshot, so the table grows to whatever the snapshot emitted. */
+    struct node_ref *refs;
     unsigned ref_count;
+    unsigned ref_alloc;
 };
 
 struct emit_ctx {
@@ -366,7 +368,11 @@ static void client_clear_refs(struct client *c)
 
 static void client_remember_node(struct client *c, unsigned id, unsigned win, AtspiRect rect, AtspiAccessible *obj)
 {
-    if (!c || !obj || c->ref_count >= MAX_REFS) return;
+    if (!c || !obj) return;
+    if (c->ref_count == c->ref_alloc) {
+        c->ref_alloc = c->ref_alloc ? c->ref_alloc * 2 : MAX_NODES;
+        c->refs = g_renew(struct node_ref, c->refs, c->ref_alloc);
+    }
     c->refs[c->ref_count].id = id;
     c->refs[c->ref_count].win = win;
     c->refs[c->ref_count].rect = rect;
@@ -875,6 +881,8 @@ static void free_clients(void)
             g_string_free(clients[i].outbuf, TRUE);
             clients[i].outbuf = NULL;
         }
+        g_clear_pointer(&clients[i].refs, g_free);
+        clients[i].ref_alloc = 0;
     }
 }
 
@@ -947,7 +955,9 @@ int main(void)
         clients[i].last_snapshot = NULL;
         clients[i].inbuf = NULL;
         clients[i].outbuf = NULL;
+        clients[i].refs = NULL;
         clients[i].ref_count = 0;
+        clients[i].ref_alloc = 0;
     }
     if (atspi_init() != 0) {
         fprintf(stderr, "xios-a11yd: atspi_init failed\n");
