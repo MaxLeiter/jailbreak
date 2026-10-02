@@ -36,6 +36,7 @@ KF6_HOST_TOOLING = $(BUILD_TOOLS)/kf6-host/lib/cmake
 # paths when cross-compiling.
 KF6_CMAKE_FLAGS = \
 	$(QT6_MODULE_CMAKE_FLAGS) \
+	$(KF6_MODEB_FLAGS) \
 	-DQUERY_EXECUTABLE=$(QT6_HOST_PATH)/bin/qtpaths \
 	-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
 	-DGETTEXT_MSGFMT_EXECUTABLE=/usr/bin/msgfmt \
@@ -44,6 +45,8 @@ KF6_CMAKE_FLAGS = \
 	-DKF_IGNORE_PLATFORM_CHECK=TRUE \
 	-DKF6_HOST_TOOLING=$(KF6_HOST_TOOLING) \
 	-DBUILD_TESTING=OFF \
+	-DBUILD_PYTHON_BINDINGS=OFF \
+	-DWITH_X11=OFF \
 	-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE \
 	-DKDE_INSTALL_USE_QT_SYS_PATHS=OFF \
 	-DKDE_INSTALL_LIBDIR=lib \
@@ -53,6 +56,12 @@ KF6_CMAKE_FLAGS = \
 	-DKDE_INSTALL_QMLDIR=lib/qt6/qml \
 	-DKDE_INSTALL_QTPLUGINDIR=lib/qt6/plugins \
 	-DKDE_INSTALL_PLUGINDIR=lib/qt6/plugins
+
+# libc++ "mode B" (clang-19 + LLVM-19 libc++ headers, system dylib; tools/xios-clang19-env.sh, owned by the
+# webkit-toolchain lane). Exported by build-kf6.sh/build-kwin.sh/...; empty (default toolchain) when unset.
+KF6_MODEB_FLAGS = $(if $(XIOS_CXX19), \
+	-DCMAKE_C_COMPILER=$(XIOS_CC19) -DCMAKE_CXX_COMPILER=$(XIOS_CXX19) \
+	-DCMAKE_AR=$(XIOS_AR19) -DCMAKE_RANLIB=$(XIOS_RANLIB19))
 
 # bin/ here holds runtime tools that actually run on device (e.g.
 # kbuildsycoca6), unlike the Qt recipes, where bin/ is host tooling and goes

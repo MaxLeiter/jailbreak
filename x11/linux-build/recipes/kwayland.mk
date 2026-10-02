@@ -16,6 +16,7 @@ DEB_KWAYLAND_V ?= $(KWAYLAND_VERSION)+ios1
 kwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kwayland))
 	$(call EXTRACT_TAR,kwayland-$(PLASMA_VERSION).tar.xz,kwayland-$(PLASMA_VERSION),kwayland)
+	sed -i 's/find_package(Wayland 1.24 COMPONENTS Client)/find_package(Wayland 1.23 COMPONENTS Client) # ios: staged libwayland is 1.23.1 (floor lowered; a missing 1.24 symbol fails at link)/' $(BUILD_WORK)/kwayland/CMakeLists.txt
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kwayland/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)

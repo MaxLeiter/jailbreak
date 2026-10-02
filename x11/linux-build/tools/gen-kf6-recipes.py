@@ -115,7 +115,7 @@ TABLE = [
                 "actual grabbing."]),
     dict(t="kguiaddons", kind="kf", deb="kf6-guiaddons", deps=[],
          qt_deps=["qt6-base", "qt6-wayland"],
-         flags=["-DWITH_WAYLAND=ON", "-DWITH_X11=OFF", "-DWITH_DBUS=ON"],
+         flags=["-DWITH_WAYLAND=ON", "-DWITH_X11=OFF", "-DWITH_DBUS=ON", "-DUSE_DBUS=ON"],
          seds=["sed -i 's/if (UNIX AND NOT ANDROID AND NOT APPLE)/if (UNIX AND NOT ANDROID)/' $(BUILD_WORK)/kguiaddons/CMakeLists.txt",
                # $$ = literal $ once Make expands the recipe line (end-of-line anchor)
                "sed -i 's/^if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL \"iOS\")$$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kguiaddons/src/CMakeLists.txt"],
@@ -158,6 +158,7 @@ TABLE = [
                 "dead weight even where it compiles."]),
     dict(t="ki18n", kind="kf", deb="kf6-i18n", deps=[],
          qt_deps=["qt6-base", "qt6-declarative", "libgtkintl", "iso-codes"], host_tool=True,
+         flags=["-DCMAKE_CXX_STANDARD_LIBRARIES=-lgtkintl"],
          desc="Advanced internationalization framework on top of gettext.",
          notes=["libintl comes from the proxy-libintl deb (libgtkintl), the same precedent",
                 "as the GTK stack. Needs python3 + gettext on the build host. iso-codes",
@@ -187,6 +188,8 @@ TABLE = [
                 "wired as a hard package Depends. KIO only needs the lib to link either way.",
                 "bison/flex on the build host (predicate parser)."]),
     dict(t="sonnet", kind="kf", deb="kf6-sonnet", deps=[],
+         flags=["-DSONNET_NO_BACKENDS=ON"],
+         seds=["sed -i 's/add_subdirectory( nsspellchecker )/# ios-no-appkit: add_subdirectory( nsspellchecker )/' $(BUILD_WORK)/sonnet/src/plugins/CMakeLists.txt"],
          qt_deps=["qt6-base", "qt6-declarative"],
          desc="Spell checking framework.",
          notes=["No backends staged (no hunspell/aspell debs), which sonnet supports: the",
@@ -472,6 +475,7 @@ TABLE = [
 
     # ---- Plasma-released libraries (version 6.1.5), same layer ----
     dict(t="kwayland", kind="plasma", deb="kwayland", deps=[],
+         seds=["sed -i 's/find_package(Wayland 1.24 COMPONENTS Client)/find_package(Wayland 1.23 COMPONENTS Client) # ios: staged libwayland is 1.23.1 (floor lowered; a missing 1.24 symbol fails at link)/' $(BUILD_WORK)/kwayland/CMakeLists.txt"],
          qt_deps=["qt6-base", "qt6-wayland", "angle"],
          desc="Qt-style client library for Plasma's Wayland protocols.",
          notes=["Links EGL directly (audited REQUIRED): headers/libs resolve from the staged",

@@ -30,7 +30,7 @@ QT_MINOR       := 6.10
 # (qprintdialog_unix.cpp needs CUPS, qprintdialog_mac.mm needs AppKit), so the feature turns
 # on but links dead — force printdialog + printpreviewdialog OFF. kxmlgui only wants the
 # module for QPrinter, not the picker UI.
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)-1+ios1
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2+ios1
 QTBASE_NINJA_JOBS ?= 12
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
@@ -269,7 +269,7 @@ qtbase: qtbase-setup
 		-DFEATURE_sql=ON \
 		-DFEATURE_sql_sqlite=ON \
 		-DFEATURE_system_sqlite=ON \
-		-DFEATURE_testlib=OFF \
+		-DFEATURE_testlib=ON \
 		-DFEATURE_printsupport=ON \
 		-DFEATURE_cups=OFF \
 		-DFEATURE_printdialog=OFF \

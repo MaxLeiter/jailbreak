@@ -16,6 +16,7 @@ DEB_SONNET_V ?= $(SONNET_VERSION)+ios1
 sonnet-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,sonnet))
 	$(call EXTRACT_TAR,sonnet-$(KF6_VERSION).tar.xz,sonnet-$(KF6_VERSION),sonnet)
+	sed -i 's/add_subdirectory( nsspellchecker )/# ios-no-appkit: add_subdirectory( nsspellchecker )/' $(BUILD_WORK)/sonnet/src/plugins/CMakeLists.txt
 	sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/sonnet/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
@@ -30,7 +31,8 @@ sonnet: sonnet-setup
 	mkdir -p $(BUILD_WORK)/sonnet/build
 	cd $(BUILD_WORK)/sonnet/build && cmake .. \
 		-G Ninja \
-		$(KF6_CMAKE_FLAGS)
+		$(KF6_CMAKE_FLAGS) \
+		-DSONNET_NO_BACKENDS=ON
 	+ninja -C $(BUILD_WORK)/sonnet/build
 	+DESTDIR="$(BUILD_STAGE)/sonnet" ninja -C $(BUILD_WORK)/sonnet/build install
 	$(call AFTER_BUILD,copy)

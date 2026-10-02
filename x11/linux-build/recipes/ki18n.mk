@@ -31,7 +31,8 @@ ki18n: ki18n-setup
 	mkdir -p $(BUILD_WORK)/ki18n/build
 	cd $(BUILD_WORK)/ki18n/build && cmake .. \
 		-G Ninja \
-		$(KF6_CMAKE_FLAGS)
+		$(KF6_CMAKE_FLAGS) \
+		-DCMAKE_CXX_STANDARD_LIBRARIES=-lgtkintl
 	+ninja -C $(BUILD_WORK)/ki18n/build
 	+DESTDIR="$(BUILD_STAGE)/ki18n" ninja -C $(BUILD_WORK)/ki18n/build install
 	$(call AFTER_BUILD,copy)

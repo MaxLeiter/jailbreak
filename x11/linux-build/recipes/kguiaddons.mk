@@ -41,7 +41,8 @@ kguiaddons: kguiaddons-setup
 		$(KF6_CMAKE_FLAGS) \
 		-DWITH_WAYLAND=ON \
 		-DWITH_X11=OFF \
-		-DWITH_DBUS=ON
+		-DWITH_DBUS=ON \
+		-DUSE_DBUS=ON
 	+ninja -C $(BUILD_WORK)/kguiaddons/build
 	+DESTDIR="$(BUILD_STAGE)/kguiaddons" ninja -C $(BUILD_WORK)/kguiaddons/build install
 	$(call AFTER_BUILD,copy)

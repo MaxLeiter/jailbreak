@@ -66,13 +66,13 @@ esac
 # --- host build deps (framework codegen + parsers + i18n) -----------------------------
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gperf bison flex gettext python3 zlib1g-dev \
-  libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  gperf bison flex gettext python3 python3-lxml zlib1g-dev \
+  libmount-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
 
 download() { # <tarball> <url>
   if [ ! -f "build_source/$1" ]; then
     echo "==> downloading $1"
-    curl -fL -o "build_source/$1.tmp" "$2"
+    curl -fL --retry 6 --retry-delay 5 --retry-all-errors -o "build_source/$1.tmp" "$2"
     mv "build_source/$1.tmp" "build_source/$1"
   fi
 }
@@ -111,6 +111,7 @@ host_kf() { # <name> <marker-relative-to-KF6HOST>
     -DCMAKE_INSTALL_LIBDIR=lib \
     -DCMAKE_PREFIX_PATH="${HOSTQT};${KF6HOST}" \
     -DBUILD_TESTING=OFF \
+    -DBUILD_PYTHON_BINDINGS=OFF \
     -DKCOREADDONS_USE_QML=OFF \
     -DKCONFIG_USE_QML=OFF \
     -DBUILD_WITH_QML=OFF \
@@ -130,6 +131,23 @@ host_kf karchive          lib/cmake/KF6Archive/KF6ArchiveConfig.cmake
 host_kf kconfig           lib/cmake/KF6Config/KF6ConfigConfig.cmake
 host_kf ki18n             lib/cmake/KF6I18n/KF6I18nConfig.cmake
 host_kf kpackage          lib/cmake/KF6Package/KF6PackageConfig.cmake
+
+# breeze-icons 6.30 generates its dark/symbolic variants at build time with two small native tools, which the cross
+# build resolves with find_program(PATHS ${KF6_HOST_TOOLING}) -- and KF6_HOST_TOOLING is <kf6-host>/lib/cmake, so the
+# tools have to live exactly there. Build only the two tool targets natively and copy them over.
+if [ ! -x "${KF6HOST}/lib/cmake/generate-symbolic-dark" ]; then
+  echo "==> building HOST breeze-icons tools (generate-symbolic-dark, qrcAlias)"
+  download "breeze-icons-${KFVER}.tar.xz" "https://download.kde.org/stable/frameworks/${KFVER%.*}/breeze-icons-${KFVER}.tar.xz"
+  rm -rf /work/host-bi-src /work/Procursus/build_tools/host-bi-build
+  mkdir -p /work/host-bi-src
+  tar xf build_source/breeze-icons-${KFVER}.tar.xz -C /work/host-bi-src --strip-components=1
+  cmake -S /work/host-bi-src -B /work/Procursus/build_tools/host-bi-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_PREFIX_PATH="${HOSTQT};${KF6HOST}" -DBUILD_TESTING=OFF -DBUILD_PYTHON_BINDINGS=OFF -DWITH_ICON_GENERATION=OFF
+  ninja -C /work/Procursus/build_tools/host-bi-build generate-symbolic-dark qrcAlias
+  mkdir -p "${KF6HOST}/lib/cmake"
+  cp /work/Procursus/build_tools/host-bi-build/bin/generate-symbolic-dark /work/Procursus/build_tools/host-bi-build/bin/qrcAlias "${KF6HOST}/lib/cmake/"
+  rm -rf /work/host-bi-src /work/Procursus/build_tools/host-bi-build
+fi
 
 # --- stage 1.5: park staged libxpc headers that shadow the SDK (same as build-qt.sh) --
 # NOTE: this driver-level parking is NOT sufficient on its own — Procursus `setup`
@@ -156,6 +174,37 @@ exec /root/cctools/bin/aarch64-apple-darwin-clang++ "$@" -Wno-unused-command-lin
 EOF
 chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
+# --- libwayland 1.24+ (wl_fixes; kwayland/kwin/libkscreen 6.7 need it). Staged from /out over the cloned 1.23.1 sysroot.
+for pkg in libwayland0 libwayland-dev; do
+  d=$(ls /out/${pkg}_1.2[4-9]*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+  if [ -n "$d" ]; then
+    echo "==> staging $(basename "$d") into build_base"
+    rm -rf /tmp/lw && mkdir -p /tmp/lw && dpkg-deb -x "$d" /tmp/lw && cp -a /tmp/lw$XIOS_PREFIX/* "$BB"/
+  fi
+done
+
+# --- libgtkintl build shim (ki18n links the glib proxy-libintl names g_libintl_*) -------------------------------
+bash /work/recipes/ensure-gtkintl-build-shim.sh
+
+# --- stage wayland-protocols >= 1.46 (kwindowsystem 6.30 floor; a cloned volume carries 1.38) ---------------
+WP_DEB=$(ls /out/wayland-protocols_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+if [ -n "$WP_DEB" ]; then
+  echo "==> staging $(basename "$WP_DEB") into build_base"
+  rm -rf /tmp/wp && mkdir -p /tmp/wp && dpkg-deb -x "$WP_DEB" /tmp/wp && cp -a /tmp/wp$XIOS_PREFIX/* "$BB"/
+else
+  echo "WARN: no wayland-protocols deb in /out; kwindowsystem needs >= 1.46" >&2
+fi
+
+# --- clang-19 + LLVM-19 libc++ headers (webkit-toolchain "mode B") for stage 2 --------------------------------
+# KF6 6.30 itself uses std::format and constexpr string_view operators the SDK's libc++ 15 lacks (kcodecs failed to
+# compile on the clang-14 wrapper), so the whole KDE lane builds on mode B; Qt stays on the default compiler.
+# Opt-in is by kf6-common.mk, which swaps the CMake compilers when XIOS_CXX19 is exported.
+. /work/x11/linux-build/tools/xios-clang19-env.sh
+# libc++-19 availability annotations make std::to_chars(float) (via std::format) a compile error below iOS 16.5, so
+# the KDE lane deploys at 16.5 (the iPad runs 17.6; stamp-minos must not lower these to 16.0).
+export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
+xios_clang19_setup
+
 # --- stage 2: Procursus cross builds ---------------------------------------------------
 echo "==> installing KF6 recipes into makefiles/"
 # qt6-common.mk is a hard prerequisite: kf6-common.mk builds on its flag block.
@@ -172,7 +221,7 @@ for c in extra-cmake-modules plasma-wayland-protocols plasma-activities kwayland
 done
 
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
-  PATH=/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  PATH=$KDE_CMAKE_DIR/bin:/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
