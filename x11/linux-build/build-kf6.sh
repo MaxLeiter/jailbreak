@@ -25,9 +25,10 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+. /work/x11/linux-build/tools/kde-lane-env.sh   # cmake >= 3.29 (KF 6.25+)
 
-QTVER=6.6.3
-KFVER=6.3.0
+QTVER=6.10.3
+KFVER=6.30.0
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 KF6HOST=/work/Procursus/build_tools/kf6-host
 BB=$XIOS_SYSROOT
@@ -66,7 +67,7 @@ esac
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
   gperf bison flex gettext python3 zlib1g-dev \
-  libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
 
 download() { # <tarball> <url>
   if [ ! -f "build_source/$1" ]; then

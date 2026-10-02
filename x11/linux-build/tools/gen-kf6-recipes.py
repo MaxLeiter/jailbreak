@@ -26,9 +26,9 @@ knotifyconfig, qqc2-desktop-style).
 import os
 import sys
 
-KF6_V = "6.3.0"          # KDE Frameworks pin (kde-plasma-plan.md version table)
-PLASMA_V = "6.1.5"       # Plasma pin (kwayland, kdecoration, kglobalacceld, ...)
-PWP_V = "1.13.0"         # plasma-wayland-protocols (kwin's minimum)
+KF6_V = "6.30.0"          # KDE Frameworks pin (kde-plasma-plan.md version table)
+PLASMA_V = "6.7.5"       # Plasma pin (kwayland, kdecoration, kglobalacceld, ...)
+PWP_V = "1.21.0"         # plasma-wayland-protocols (kwin's minimum)
 
 # kind: kf | plasma | pwp | ecm  (source tarball family)
 # deps: DIRECT required deps on other TABLE targets (audit result; drives the
@@ -118,7 +118,7 @@ TABLE = [
          flags=["-DWITH_WAYLAND=ON", "-DWITH_X11=OFF", "-DWITH_DBUS=ON"],
          seds=["sed -i 's/if (UNIX AND NOT ANDROID AND NOT APPLE)/if (UNIX AND NOT ANDROID)/' $(BUILD_WORK)/kguiaddons/CMakeLists.txt",
                # $$ = literal $ once Make expands the recipe line (end-of-line anchor)
-               "sed -i 's/^if(APPLE)$$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kguiaddons/src/CMakeLists.txt"],
+               "sed -i 's/^if(APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL \"iOS\")$$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kguiaddons/src/CMakeLists.txt"],
          desc="Utilities for graphical user interfaces (color, font, keys, cursors).",
          notes=["APPLE guards audited against the real v6.3.0 tree and pre-patched in -setup:",
                 "(1) the top-level 'UNIX AND NOT APPLE' guard hard-sets WITH_WAYLAND/X11/DBUS",
@@ -250,7 +250,7 @@ TABLE = [
     dict(t="knotifications", kind="kf", deb="kf6-notifications", deps=["kconfig"],
          qt_deps=["qt6-base", "qt6-declarative"],
          seds=["sed -i 's/find_package(Canberra REQUIRED)/find_package(Canberra)/' $(BUILD_WORK)/knotifications/CMakeLists.txt",
-               "sed -i 's/if (NOT APPLE AND NOT ANDROID AND NOT WIN32 OR (WIN32 AND NOT WITH_SNORETOAST))/if (TRUE)/' $(BUILD_WORK)/knotifications/CMakeLists.txt",
+               "sed -i 's/if (NOT APPLE AND NOT ANDROID AND NOT WIN32 AND NOT HAIKU OR (WIN32 AND NOT WITH_SNORETOAST))/if (TRUE)/' $(BUILD_WORK)/knotifications/CMakeLists.txt",
                "sed -i '/notifybymacosnotificationcenter.mm/d' $(BUILD_WORK)/knotifications/src/CMakeLists.txt",
                "sed -i '/-framework AppKit/d' $(BUILD_WORK)/knotifications/src/CMakeLists.txt"],
          desc="Desktop notifications over the freedesktop DBus interface.",
@@ -329,7 +329,6 @@ TABLE = [
          seds=["sed -i 's/if(UNIX AND NOT APPLE AND NOT ANDROID)/if(UNIX AND NOT ANDROID)/' $(BUILD_WORK)/kio/CMakeLists.txt",
                "sed -i '/kiod_agent\\.mm/d' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt",
                "sed -i '/-framework AppKit -framework CoreFoundation/d' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt",
-               "sed -i 's/defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD)/defined(Q_OS_LINUX) || defined(Q_OS_FREEBSD) || defined(Q_OS_IOS)/' $(BUILD_WORK)/kio/src/gui/openfilemanagerwindowjob_p.h",
                "sed -i 's/ Widgets Network Concurrent Xml Test)/ Widgets Network Concurrent Xml)/' $(BUILD_WORK)/kio/CMakeLists.txt",
                "sed -i 's/#ifdef Q_OS_MACOS/#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)/' $(BUILD_WORK)/kio/src/kioworkers/file/file_unix.cpp",
                "sed -i 's/Q_OS_OSX/Q_OS_MACOS/g' $(BUILD_WORK)/kio/src/kioworkers/trash/trashimpl.cpp",
@@ -491,7 +490,7 @@ TABLE = [
     dict(t="layer-shell-qt", kind="plasma", deb="layer-shell-qt", deps=[],
          qt_deps=["qt6-base", "qt6-declarative", "qt6-wayland"],
          rev="ios9",
-         seds=["bash /work/recipes/layer-shell-qt-ios-fixes.sh $(BUILD_WORK)/layer-shell-qt"],
+         seds=["bash /work/recipes/run-fixes.sh layer-shell-qt-ios-fixes.sh $(BUILD_WORK)/layer-shell-qt"],
          desc="Qt integration for the wlr-layer-shell protocol.",
          notes=["Not a kwin dep; plasma-workspace panels sit on it (and iosc already speaks",
                 "zwlr_layer_shell_v1 v4, so nested-kwin panels can bypass kwin entirely).",
@@ -575,7 +574,7 @@ def emit_recipe(e):
     hdr.append("")
     hdr.append("SUBPROJECTS += %s" % t)
     hdr.append("%s_VERSION = %s" % (uv, version_ref(e)))
-    hdr.append("DEB_%s_V ?= $(%s_VERSION)+%s" % (uv, uv, e.get("rev", "ios1")))
+    hdr.append("DEB_%s_V ?= $(%s_VERSION)+%s" % (uv, uv, "ios1"))  # 6.30 lane: fresh version restarts at ios1 (old rev= values are history)
     hdr.append("")
 
     setup = ["%s-setup: setup" % t,
@@ -698,7 +697,7 @@ def pretty_name(e):
     special = {"extra-cmake-modules": "Extra CMake Modules (ECM)",
                "plasma-wayland-protocols": "Plasma Wayland protocols",
                "breeze-icons": "Breeze icon theme",
-               "kdecoration": "KDecoration2",
+               "kdecoration": "KDecoration3",
                "kglobalacceld": "kglobalacceld",
                "kwayland": "KWayland",
                "plasma-activities": "PlasmaActivities",

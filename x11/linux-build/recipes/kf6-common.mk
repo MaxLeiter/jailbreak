@@ -14,10 +14,10 @@ endif
 # build-kf6.sh stage 1 populates the host tree with native builds of ECM and
 # the tool-providing frameworks against the existing host Qt.
 
-KF6_VERSION    = 6.3.0
-KF6_MINOR      = 6.3
-PLASMA_VERSION = 6.1.5
-PWP_VERSION    = 1.13.0
+KF6_VERSION    = 6.30.0
+KF6_MINOR      = 6.30
+PLASMA_VERSION = 6.7.5
+PWP_VERSION    = 1.21.0
 
 # On any version bump, rm -rf the build_work tree first, or you'll silently
 # rebuild the old sources (same EXTRACT_TAR staleness issue as qt6-common.mk).
