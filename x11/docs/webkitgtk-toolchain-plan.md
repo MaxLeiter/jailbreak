@@ -255,3 +255,30 @@ Resources (host: 16 CPUs, Docker VM now 27.4 GiB):
 Plan 1 day (done), toolchain wrappers + probe 0.5 day, patch port + WTF/JSC 1-2 days, WebCore/Skia
 1-3 days (the uncertain part), Epiphany/Geary tail 0.5 day, device verification a separate cleared
 session. Builds dominate wall-clock; most of it is unattended.
+
+## 12. Probe results (2026-10-01, steps 0-1; throwaway container, read-only source mount, no volume)
+
+Image `procursus-xbuild:bookworm-arm64`: `aarch64-apple-darwin-clang` = Debian clang **14.0.6**;
+`clang-19` = Debian clang **19.1.7** (present in this tag, so no image rebuild); `/usr/lib/llvm-19`
+has no libc++ headers by default (`apt install libc++-19-dev` supplies them; headers only are used).
+
+- **Mode A (SDK libc++ 15) is out.** `Source/WTF/wtf/StdLibExtras.h:36` includes `<expected>`
+  unconditionally in 2.54, and nearly every TU includes StdLibExtras.h: first error on every TU is
+  `'expected' file not found`. A would need a hand-written `<expected>` shim for all of WebKit.
+- **Mode B (LLVM-19 libc++ headers, system dylib) works for the language/library level.** With
+  `-nostdinc++ -isystem <llvm19 c++/v1>` (own `__config_site`: ABI v1, `__1`, pthread, vendor
+  availability annotations left on), `--target=arm64-apple-ios16.0 -miphoneos-version-min=16.0`,
+  `-std=c++2b -fno-exceptions -fno-rtti`:
+  - a synthetic TU using `<expected>`, `<source_location>`, `<format>`, `<charconv>`, ranges/views
+    pipelines, `std::span`, `std::to_underlying` compiles clean;
+  - real 2.54 WTF TUs `StringImpl.cpp, Vector.cpp, Seconds.cpp, WTFString.cpp, StringView.cpp,
+    AtomStringImpl.cpp` compile clean (0 errors). The other probed TUs failed only on environment
+    (glib headers not mounted in the probe, generated `cmakeconfig.h`, libpas include layout), plus
+    one real Darwin item to patch: `bmalloc/libpas/src/libpas/pas_lock.h:119` uses
+    `os_unfair_lock_flags_t`, which the 16.5 SDK lacks (same class as patches 0006/0007).
+- Link-time (undefined libc++ symbols vs the 16.5 `libc++.tbd`, e.g. `bad_expected_access`) is not
+  testable by syntax-only; it is the first thing checked when WTF/JSC link.
+
+Decision: **use mode B from the start; C stays the fallback.** Libc++ headers come from the
+`libc++-19-dev` apt package (headers only), with our own Darwin `__config_site`, installed by the
+new `xios-clang19-env.sh` at build time.
