@@ -232,10 +232,10 @@ export function registerTools(server: McpServer, daemon: DaemonClient): void {
   single("long_press", "Long press", true, "Press and hold at a point (context menus, icon jiggle mode).",
     { ...xy, duration_ms: num(300, 5000).optional().describe("Hold time, default 800") },
     (a: any) => ({ type: "long_press", x: a.x, y: a.y, duration_ms: a.duration_ms, app: a.app, target: a.target, why: a.why }));
-  single("swipe", "Swipe", true, "Drag from (x,y) to (x2,y2). Note that swiping a list row can reveal delete actions.",
+  single("swipe", "Swipe", true, "Drag from (x,y) to (x2,y2). Note that swiping a list row can reveal delete actions. On this iPad, pulling a list DOWNWARD past its top resprings the device (the PullToRespring2 tweak), so do not use a downward swipe to overscroll the top of a list; scroll to the top by tapping the status bar instead.",
     { ...xy, x2: xy.x.describe("End X"), y2: xy.y.describe("End Y"), duration_ms: num(50, 5000).optional().describe("Default 300") },
     (a: any) => ({ type: "swipe", x: a.x, y: a.y, x2: a.x2, y2: a.y2, duration_ms: a.duration_ms, app: a.app, target: a.target, why: a.why }));
-  single("scroll", "Scroll", false, "Scroll content at a point. Direction is the direction content moves toward, like a mouse wheel: 'down' reveals content further down the page.",
+  single("scroll", "Scroll", false, "Scroll content at a point. Direction is the direction content moves toward, like a mouse wheel: 'down' reveals content further down the page. On this iPad, 'up' past the top of the Settings list (and similar lists) overscrolls downward and resprings the device via the PullToRespring2 tweak, so never scroll up to reveal a search bar above a list top; reach the top by tapping the status bar and tap the search field directly.",
     { ...xy, direction, amount: num(1, 50).optional().describe("Wheel ticks, default 5 (about 120 points per tick)") },
     (a: any) => ({ type: "scroll", x: a.x, y: a.y, direction: a.direction, amount: a.amount, app: a.app, target: a.target, why: a.why }));
   single("type", "Type text", true, "Type text into the focused field. Does not press Return. State in `target` which field and, for messages, the recipient. Never type passcodes or passwords.",

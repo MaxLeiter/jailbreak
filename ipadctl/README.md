@@ -60,6 +60,10 @@ cd ipadctl/mcp
 IPADCTL_LIVE=1 IPADCTL_URL=$IPADCTL_URL IPADCTL_TOKEN=$IPADCTL_TOKEN bun test test/live.test.ts
 ```
 
+### Device gotcha: PullToRespring2
+
+This iPad runs the **PullToRespring2** tweak: pulling a list **downward past its top** (overscrolling the top by ~92pt) resprings the device. A `scroll` up / `swipe` downward used to reveal a search bar above a list top (e.g. the Settings sidebar search) will respring SpringBoard. `ipadctld` survives a respring (it is a root launchd daemon, independent of SpringBoard, and reconnects without restarting), but avoid the gesture: scroll a list to its top by tapping the status bar and tap the search field directly. The `swipe` and `scroll` tool descriptions carry this warning.
+
 ## Testing without the iPad
 
 ```sh
