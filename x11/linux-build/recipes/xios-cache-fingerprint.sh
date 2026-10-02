@@ -24,7 +24,7 @@ xios_cache_work_dir() {
   local name=$1
   printf 'build_work/%s/%s/%s\n' \
     "${MEMO_TARGET:-$XIOS_MEMO_TARGET}" \
-    "${MEMO_CFVER:-1900}" \
+    "${MEMO_CFVER:-$XIOS_MEMO_CFVER}" \
     "$name"
 }
 
@@ -32,7 +32,7 @@ xios_cache_stage_dir() {
   local name=$1
   printf 'build_stage/%s/%s/%s\n' \
     "${MEMO_TARGET:-$XIOS_MEMO_TARGET}" \
-    "${MEMO_CFVER:-1900}" \
+    "${MEMO_CFVER:-$XIOS_MEMO_CFVER}" \
     "$name"
 }
 
