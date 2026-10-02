@@ -1422,6 +1422,9 @@ int main(void)
             if (wl_display_read_events(B.dpy) < 0) break;
         } else wl_display_cancel_read(B.dpy);
         if (wl_display_dispatch_pending(B.dpy) < 0) break;
+        /* redraw a frame the buffer pool had to drop (a release since freed a slot) */
+        if (B.wall_pool.starved) render_wallpaper();
+        if (B.desk_pool.starved) render_desktop();
         uint64_t ms = now_ms();
         maybe_begin_drag(ms);
         if (menu_dismiss_if_idle(ms)) {

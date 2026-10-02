@@ -656,6 +656,8 @@ int main(void)
             if (wl_display_read_events(O.dpy) < 0) break;
         } else wl_display_cancel_read(O.dpy);
         if (wl_display_dispatch_pending(O.dpy) < 0) break;
+        /* redraw a frame the buffer pool had to drop (a release since freed a slot) */
+        if (O.surface_pool.starved) render();
         maybe_pin_pressed_app();
     }
     if (wl_display_get_error(O.dpy))

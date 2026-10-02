@@ -163,6 +163,9 @@ struct sd_cairo_slot {
 
 struct sd_cairo_pool {
     struct sd_cairo_slot slots[3];
+    /* a frame was dropped because the compositor still held every slot; the
+     * client re-renders from its main loop until one comes back */
+    int starved;
 };
 
 static void sd_cairo_slot_destroy(struct sd_cairo_slot *slot)
@@ -258,8 +261,10 @@ static struct sd_cairo_slot *sd_cairo_pool_begin(struct sd_cairo_pool *pool,
         for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++)
             if (pool->slots[i].buffer && pool->slots[i].busy)
                 pool->slots[i].retire = 1;
+        pool->starved = 1;
         return NULL;
     }
+    pool->starved = 0;
 
     cairo_surface_t *surf = cairo_image_surface_create_for_data(
         (unsigned char *)chosen->map, CAIRO_FORMAT_ARGB32,
@@ -281,6 +286,7 @@ static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
     if (!pool) return;
     for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++)
         sd_cairo_slot_destroy(&pool->slots[i]);
+    pool->starved = 0;
 }
 
 #endif /* SD_CAIRO */

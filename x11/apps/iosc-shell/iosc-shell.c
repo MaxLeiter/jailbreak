@@ -1163,6 +1163,10 @@ int main(int argc, char **argv)
             if (wl_display_read_events(P.dpy) < 0) break;
         } else wl_display_cancel_read(P.dpy);
         if (wl_display_dispatch_pending(P.dpy) < 0) break;
+        /* redraw a frame the buffer pool had to drop (a release since freed a slot) */
+        if (P.surface_pool.starved) render();
+        if (P.qs_pool.starved) render_qs();
+        if (P.wm_pool.starved) wm_render();
         dock_maybe_begin_reorder();
 
         /* deferred actions (safe here: outside any listener) */
