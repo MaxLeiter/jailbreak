@@ -84,13 +84,13 @@ void xios_input_socket_free (xios_input_socket *s);
 void *xios_import_client_iosurface (int pid, unsigned port_name, int *w, int *h);
 void  xios_release_client_iosurface (void *iosurface);
 
-/* Bridge an imported IOSurface to an EGLImage on the ANGLE-Metal EGLDisplay the Cogl
- * context was created against, so the compositor can wrap it with the idiomatic
- * cogl_egl_texture_2d_new_from_image() (the same path mutter uses for EGL_IMAGE / DMA_BUF).
- * ANGLE-Metal has no direct IOSurface->EGLImage: the glue makes it via a wrapping
- * MTLTexture + EGL_ANGLE_metal_texture_client_buffer (the pbuffer+bind client-buffer route
- * is the glue's internal fallback). This keeps ALL the ANGLE-specific mechanics in the
- * shared lib and the mutter buffer type uniform with the other GPU buffer types.
+/* Bridge an imported IOSurface to an EGLImage on the ANGLE-Metal EGLDisplay: the glue wraps
+ * it as an IOSurface pbuffer, binds that to a GL texture and calls
+ * eglCreateImageKHR(EGL_GL_TEXTURE_2D). ANGLE-Metal does not expose
+ * EGL_KHR_gl_texture_2D_image at runtime (see meta-wayland-iosurface.c), so this fails on
+ * device, and the mutter buffer
+ * type (meta-wayland-iosurface.c) does not use it: it binds an IOSurface pbuffer straight
+ * onto a Cogl texture instead. Kept as part of the checked glue contract.
  * Returns EGL_NO_IMAGE_KHR on failure. */
 EGLImageKHR xios_egl_image_from_iosurface (void *iosurface, int width, int height);
 void        xios_egl_destroy_image (EGLImageKHR image);
