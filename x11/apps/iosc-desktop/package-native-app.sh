@@ -91,10 +91,12 @@ GENERATED_APP="$(find "$NATIVE_BUNDLES" -maxdepth 1 -type d -name '*.app' | head
 
 PLIST="$GENERATED_APP/Info.plist"
 PB=/usr/libexec/PlistBuddy
-"$PB" -c "Set :CFBundleName $BUNDLE_NAME" "$PLIST"
-"$PB" -c "Set :CFBundleDisplayName $BUNDLE_NAME" "$PLIST"
-"$PB" -c "Set :IOSCName $BUNDLE_NAME" "$PLIST"
-"$PB" -c "Set :CFBundleShortVersionString ${VERSION%%+*}" "$PLIST"
+# plutil takes the value as its own argument. PlistBuddy parses it out of the
+# command string, so an apostrophe aborts it and quotes/backslashes vanish.
+plutil -replace CFBundleName -string "$BUNDLE_NAME" "$PLIST"
+plutil -replace CFBundleDisplayName -string "$BUNDLE_NAME" "$PLIST"
+plutil -replace IOSCName -string "$BUNDLE_NAME" "$PLIST"
+plutil -replace CFBundleShortVersionString -string "${VERSION%%+*}" "$PLIST"
 "$PB" -c "Set :CFBundleVersion 1" "$PLIST"
 "$PB" -c "Delete :IOSCExec" "$PLIST" >/dev/null 2>&1 || true
 
