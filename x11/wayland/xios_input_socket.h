@@ -80,6 +80,18 @@ int xios_input_socket_has_improxy(xios_input_socket *s);
  * across dispatch calls, e.g. to send initial state). */
 int xios_input_socket_client_count(xios_input_socket *s);
 
+/* Which client sent the record now in the callback: a nonzero id, unique for
+ * the socket's lifetime. 0 outside the callback. */
+uint32_t xios_input_socket_current_client(xios_input_socket *s);
+
+/* Called from _dispatch() once for every client that completed HELLO and is
+ * then gone (EOF, error, or dropped for a protocol violation), with the id
+ * _current_client() reported for its records. A client that vanishes holding a
+ * button, key, touch or pencil can never send the release; this is the hook to
+ * send it on its behalf. Not called from _free(). */
+typedef void (*xios_input_drop_cb)(uint32_t client, void *user);
+void xios_input_socket_set_drop_cb(xios_input_socket *s, xios_input_drop_cb cb, void *user);
+
 void xios_input_socket_free(xios_input_socket *s);
 
 #endif /* XIOS_INPUT_SOCKET_H */

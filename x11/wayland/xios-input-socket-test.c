@@ -148,6 +148,75 @@ static void test_improxy_needs_root(xios_input_socket *s, const char *path)
     close(fd);
 }
 
+struct seen {
+    xios_input_socket *s;
+    uint32_t last_client;      /* _current_client() inside the record callback */
+    uint32_t dropped[4];
+    int ndropped;
+};
+
+static void on_record(const xios_msg *m, const char *text, size_t text_len,
+                      uint32_t bound_window, void *user)
+{
+    (void)m; (void)text; (void)text_len; (void)bound_window;
+    struct seen *v = user;
+    v->last_client = xios_input_socket_current_client(v->s);
+}
+
+static void on_drop(uint32_t client, void *user)
+{
+    struct seen *v = user;
+    if (v->ndropped < 4) v->dropped[v->ndropped++] = client;
+}
+
+static uint32_t send_and_identify(struct seen *v, int fd)
+{
+    xios_msg b = xios_input_message(XIOS_IN_BUTTON, 1, 1, 1, 1, 0);
+    check(write(fd, &b, sizeof(b)) == (ssize_t)sizeof(b));
+    v->last_client = 0;
+    for (int i = 0; i < 500 && !v->last_client; i++) {
+        check(xios_input_socket_dispatch(v->s, on_record, v) >= 0);
+        nap();
+    }
+    check(v->last_client != 0);
+    check(xios_input_socket_current_client(v->s) == 0);   /* only inside the callback */
+    return v->last_client;
+}
+
+/* A client that goes away is reported once, by the id its records carried, so
+ * the compositor can release whatever it was holding. */
+static void test_drop_reports_the_client(xios_input_socket *s, const char *path)
+{
+    struct seen v = { .s = s };
+    xios_input_socket_set_drop_cb(s, on_drop, &v);
+    int a = connect_client(path);
+    int b = connect_client(path);
+    pump_until_clients(s, 2);
+    uint32_t ida = send_and_identify(&v, a);
+    uint32_t idb = send_and_identify(&v, b);
+    check(ida != idb);
+
+    close(a);   /* plain disconnect */
+    for (int i = 0; i < 500 && v.ndropped < 1; i++) {
+        check(xios_input_socket_dispatch(s, on_record, &v) >= 0);
+        nap();
+    }
+    check(v.ndropped == 1 && v.dropped[0] == ida);
+    check(xios_input_socket_client_count(s) == 1);
+
+    xios_msg bad = xios_input_message(0x7fff, 0, 0, 0, 0, 0);   /* unknown type */
+    check(write(b, &bad, sizeof(bad)) == (ssize_t)sizeof(bad));
+    for (int i = 0; i < 500 && v.ndropped < 2; i++) {
+        check(xios_input_socket_dispatch(s, on_record, &v) >= 0);
+        nap();
+    }
+    check(v.ndropped == 2 && v.dropped[1] == idb);
+    close(b);
+    pump_until_clients(s, 0);
+    check(v.ndropped == 2);
+    xios_input_socket_set_drop_cb(s, NULL, NULL);
+}
+
 int main(void)
 {
     const char *tmp = getenv("TMPDIR");
@@ -163,6 +232,7 @@ int main(void)
 
     test_full_peer_is_queued(s, path);
     test_improxy_needs_root(s, path);
+    test_drop_reports_the_client(s, path);
 
     xios_input_socket_free(s);
     rmdir(dir);

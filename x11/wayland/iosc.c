@@ -4962,16 +4962,22 @@ void press_focus(struct iosc_surface *hit)
 
 static void input_clients_send_haptic(uint32_t style);
 
+/* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
+ * >= BTN_LEFT pass through). */
+static uint32_t wire_button_code(int btn)
+{
+    return btn == 2 ? BTN_MIDDLE
+         : btn == 3 ? BTN_RIGHT
+         : btn >= BTN_LEFT ? (uint32_t)btn : BTN_LEFT;
+}
+
 static void handle_button(int btn, int down)
 {
-    /* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
-     * >= BTN_LEFT pass through). Previously this hardcoded BTN_LEFT, so the
-     * app's two-finger-tap right-click and long-press right-click all arrived
-     * as LEFT. Everything below the send is button-agnostic: focus/raise on any
-     * press, and the single-pointer app never chords. */
-    uint32_t code = btn == 2 ? BTN_MIDDLE
-                  : btn == 3 ? BTN_RIGHT
-                  : btn >= BTN_LEFT ? (uint32_t)btn : BTN_LEFT;
+    /* The code used to be hardcoded to BTN_LEFT, so the app's two-finger-tap
+     * right-click and long-press right-click all arrived as LEFT. Everything
+     * below the send is button-agnostic: focus/raise on any press, and the
+     * single-pointer app never chords. */
+    uint32_t code = wire_button_code(btn);
     idle_note_activity();
     if (down)
         g_button_down++;
@@ -5073,6 +5079,7 @@ struct iosc_touch_point {
     int active;
     int id;                        /* touch id from the app (UITouch slot) */
     struct iosc_surface *surface;  /* implicit grab: the surface that got down */
+    uint32_t input_client;         /* input-socket client that sent the down */
 };
 static struct iosc_touch_point g_touch_points[IOSC_MAX_TOUCH_POINTS];
 
@@ -6315,6 +6322,110 @@ static void in_dispatch_text(const char *text, size_t len)
     }
 }
 
+/* Input held per input-socket client. A button, key, touch point or pencil
+ * stroke stays down until the client that pressed it sends the release; one
+ * that disconnects (the app is killed, or its socket dropped) never will, so a
+ * held button turned every later motion into a drag and a held key repeated
+ * forever in the focused client. Remember who holds what, by the reader's
+ * client id, and release it in input_client_dropped(). */
+#define IOSC_MAX_HELD_BUTTONS 16
+#define IOSC_MAX_HELD_KEYS    32
+struct iosc_held_button { uint32_t client; uint32_t code; };
+struct iosc_held_key    { uint32_t client; uint32_t keysym; uint32_t evdev; };
+static struct iosc_held_button g_held_buttons[IOSC_MAX_HELD_BUTTONS];
+static int g_nheld_buttons;
+static struct iosc_held_key g_held_keys[IOSC_MAX_HELD_KEYS];
+static int g_nheld_keys;
+static uint32_t g_kbd_mods_client;  /* input client whose KEY last set the modifiers */
+static uint32_t g_pen_client;       /* input client that put the pencil down */
+
+static void held_button_note(uint32_t client, int btn, int down)
+{
+    uint32_t code = wire_button_code(btn);
+    for (int i = 0; i < g_nheld_buttons; i++)
+        if (g_held_buttons[i].client == client && g_held_buttons[i].code == code) {
+            if (!down) g_held_buttons[i] = g_held_buttons[--g_nheld_buttons];
+            return;
+        }
+    if (down && g_nheld_buttons < IOSC_MAX_HELD_BUTTONS)
+        g_held_buttons[g_nheld_buttons++] = (struct iosc_held_button){ client, code };
+}
+
+/* Keyed by evdev code: a release may name the other case of the same key. The
+ * keysym of the newest press is kept so a release replays its synthetic Shift. */
+static void held_key_note(uint32_t client, uint32_t keysym, int down)
+{
+    uint32_t evdev = 0; int needs_shift = 0;
+    if (iosc_input_lookup(keysym, &evdev, &needs_shift) != 0) return;
+    for (int i = 0; i < g_nheld_keys; i++)
+        if (g_held_keys[i].client == client && g_held_keys[i].evdev == evdev) {
+            if (down) g_held_keys[i].keysym = keysym;
+            else g_held_keys[i] = g_held_keys[--g_nheld_keys];
+            return;
+        }
+    if (down && g_nheld_keys < IOSC_MAX_HELD_KEYS)
+        g_held_keys[g_nheld_keys++] = (struct iosc_held_key){ client, keysym, evdev };
+}
+
+/* The reader dropped an input client: send the releases it never will, through
+ * the same handlers a real release takes, so focus, grabs and seat state end up
+ * exactly as if it had let go. Caps/Num lock are latched state, not held keys,
+ * and are kept. */
+static void input_client_dropped(uint32_t client, void *user)
+{
+    (void)user;
+    int released = 0;
+    /* A drag riding a held button is cancelled, not dropped: nobody let go. */
+    for (int i = 0; i < g_nheld_buttons && g_dnd.active; i++)
+        if (g_held_buttons[i].client == client && g_held_buttons[i].code == g_dnd.button) {
+            dnd_focus_leave();
+            dnd_cancel_active();
+        }
+    for (int i = 0; i < g_nheld_buttons; ) {
+        if (g_held_buttons[i].client != client) { i++; continue; }
+        uint32_t code = g_held_buttons[i].code;
+        g_held_buttons[i] = g_held_buttons[--g_nheld_buttons];
+        handle_button((int)code, 0);   /* evdev codes pass through unchanged */
+        released++;
+    }
+    uint32_t locked = ((g_kbd_mods_locked & iosc_input_mod_caps()) ? 16u : 0u) |
+                      ((g_kbd_mods_locked & iosc_input_mod_num())  ? 32u : 0u);
+    for (int i = 0; i < g_nheld_keys; ) {
+        if (g_held_keys[i].client != client) { i++; continue; }
+        uint32_t keysym = g_held_keys[i].keysym;
+        g_held_keys[i] = g_held_keys[--g_nheld_keys];
+        handle_key(keysym, 0, locked);
+        released++;
+    }
+    if (g_kbd_mods_client == client) {
+        keyboard_send_mods(0, g_kbd_mods_locked);
+        g_kbd_mods_client = 0;
+    }
+    /* wl_touch.cancel ends every sequence of the client that receives it, so
+     * cancel each Wayland client this input client was touching once, like
+     * touch_surface_gone() does per surface. */
+    for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++) {
+        struct iosc_touch_point *p = &g_touch_points[i];
+        if (!p->active || p->input_client != client) continue;
+        released++;
+        if (!p->surface) { p->active = 0; continue; }
+        struct wl_client *cl = wl_resource_get_client(p->surface->resource);
+        touch_cancel_client(cl);
+        for (int j = 0; j < IOSC_MAX_TOUCH_POINTS; j++)
+            if (g_touch_points[j].active && g_touch_points[j].surface &&
+                wl_resource_get_client(g_touch_points[j].surface->resource) == cl)
+                g_touch_points[j].active = 0;
+    }
+    if (g_pen_client == client) {
+        pen_leave(now_ms());           /* no-op unless a stroke is still down */
+        g_pen_client = 0;
+    }
+    g_input_wayland_dirty = 1;
+    if (released)
+        fprintf(stderr, "iosc: input client %u went away holding input; released %d\n",
+                client, released);
+}
+
 /* One complete input record from the shared reader -> the compositor's handlers.
  * Runs on the compositor thread (the reader's kqueue fd is on the wl event loop),
  * so no locking. Same routing the inline reader did; unknown types are ignored. */
@@ -6322,6 +6433,7 @@ static void iosc_input_record(const xios_msg *m, const char *text,
                               size_t text_len, uint32_t bound_window, void *user)
 {
     (void)user;
+    uint32_t client = xios_input_socket_current_client(g_input_sock);
     struct iosc_surface *bound = surface_by_window_id(bound_window);
     if (bound && (m->type == XIOS_IN_KEY || m->type == XIOS_IN_TEXT))
         keyboard_set_focus(bound);
@@ -6353,15 +6465,28 @@ static void iosc_input_record(const xios_msg *m, const char *text,
         case XIOS_IN_MOTION: handle_motion(x, y); break;
         case XIOS_IN_BUTTON: handle_motion(x, y);
                              handle_button((int)XIOS_INPUT_CODE(m),
-                                           (int)XIOS_INPUT_STATE(m)); break;
+                                           (int)XIOS_INPUT_STATE(m));
+                             held_button_note(client, (int)XIOS_INPUT_CODE(m),
+                                              XIOS_INPUT_STATE(m) != 0); break;
         case XIOS_IN_KEY:    handle_key(XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m),
-                                       XIOS_INPUT_MODS(m)); break;
+                                       XIOS_INPUT_MODS(m));
+                             held_key_note(client, XIOS_INPUT_CODE(m),
+                                           XIOS_INPUT_STATE(m) != 0);
+                             g_kbd_mods_client = client; break;
         case XIOS_IN_TOUCH:  handle_touch((int)XIOS_INPUT_CODE(m),
-                                         (int)XIOS_INPUT_STATE(m), x, y); break;
+                                         (int)XIOS_INPUT_STATE(m), x, y);
+                             if ((int)XIOS_INPUT_STATE(m) == IOSC_TOUCH_DOWN) {
+                                 struct iosc_touch_point *p =
+                                     touch_point_by_id((int)XIOS_INPUT_CODE(m));
+                                 if (p) p->input_client = client;
+                             } break;
         case XIOS_IN_TABLET: handle_pencil((int)XIOS_INPUT_STATE(m), x, y,
                                            XIOS_INPUT_CODE(m),
                                            (int)(XIOS_INPUT_MODS(m) & 0xffu) - 90,
-                                           (int)((XIOS_INPUT_MODS(m) >> 8) & 0xffu) - 90); break;
+                                           (int)((XIOS_INPUT_MODS(m) >> 8) & 0xffu) - 90);
+                             if (XIOS_INPUT_STATE(m) == 1)   /* IOSC_PEN_DOWN, iosc_tablet.c */
+                                 g_pen_client = client;
+                             break;
         /* AXIS x,y are fixed-point scroll DELTAS, not positions — pass raw
          * (handle_axis does its own /output_scale), NOT the physical_to_logical'd
          * locals. */
@@ -6464,6 +6589,7 @@ static int input_socket_start(struct wl_event_loop *loop, const char *path)
 {
     g_input_sock = xios_input_socket_new(path);
     if (!g_input_sock) return -1;
+    xios_input_socket_set_drop_cb(g_input_sock, input_client_dropped, NULL);
     g_input_src = wl_event_loop_add_fd(loop, xios_input_socket_fd(g_input_sock),
                                        WL_EVENT_READABLE, input_sock_readable, NULL);
     if (!g_input_src) { xios_input_socket_free(g_input_sock); g_input_sock = NULL; return -1; }

@@ -53,6 +53,9 @@ struct xios_input_socket {
     int listen_fd;
     int kq;
     uint32_t next_id;
+    uint32_t current;         /* id of the client whose record is in the callback */
+    xios_input_drop_cb drop_cb;
+    void *drop_user;
     char path[108];   /* sun_path max */
     struct xios_in_client *clients[XIOS_MAX_INPUT_CLIENTS];
 };
@@ -116,7 +119,9 @@ int xios_input_socket_fd(xios_input_socket *s)
     return s ? s->kq : -1;
 }
 
-static void client_drop(xios_input_socket *s, struct xios_in_client *c)
+/* Free a client. `notify` reports it to the drop callback (not at teardown):
+ * by then it is out of the table, so a callback that broadcasts cannot reach it. */
+static void client_drop(xios_input_socket *s, struct xios_in_client *c, int notify)
 {
     if (!c) return;
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
@@ -126,9 +131,13 @@ static void client_drop(xios_input_socket *s, struct xios_in_client *c)
     kevent(s->kq, &kev, 1, NULL, 0, NULL);   /* closing the fd also clears it,
                                               * and the EVFILT_WRITE one too */
     if (c->fd >= 0) close(c->fd);
+    uint32_t id = c->id;
+    int announced = c->hello_received;
     free(c->payload);
     free(c->out);
     free(c);
+    if (notify && announced && s->drop_cb)
+        s->drop_cb(id, s->drop_user);
 }
 
 static struct xios_in_client *client_by_id(xios_input_socket *s, uint32_t id)
@@ -233,7 +242,9 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
                     c->payload = calloc(1, c->msg.length + 1u);
                     if (!c->payload) goto drop;
                 } else {
+                    s->current = c->id;
                     if (cb) cb(&c->msg, NULL, 0, c->bound_window, user);
+                    s->current = 0;
                     n++;
                     client_reset(c);
                 }
@@ -254,7 +265,9 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
             goto drop;
         }
         if (c->msg.type == XIOS_IN_TEXT) {
+            s->current = c->id;
             if (cb) cb(&c->msg, c->payload, c->msg.length, c->bound_window, user);
+            s->current = 0;
             n++;
             client_reset(c);
             continue;
@@ -262,7 +275,7 @@ static int client_read(xios_input_socket *s, struct xios_in_client *c,
     }
     return n;
 drop:
-    client_drop(s, c);
+    client_drop(s, c, 1);
     if (closed) *closed = 1;
     return n;
 }
@@ -322,7 +335,7 @@ int xios_input_socket_dispatch(xios_input_socket *s, xios_input_cb cb, void *use
         int closed = 0;
         dispatched += client_read(s, c, cb, user, &closed);
         if (!closed && (evs[i].flags & EV_EOF))
-            client_drop(s, c);
+            client_drop(s, c, 1);
     }
     return dispatched;
 }
@@ -480,6 +493,18 @@ int xios_input_socket_has_improxy(xios_input_socket *s)
     return 0;
 }
 
+uint32_t xios_input_socket_current_client(xios_input_socket *s)
+{
+    return s ? s->current : 0;
+}
+
+void xios_input_socket_set_drop_cb(xios_input_socket *s, xios_input_drop_cb cb, void *user)
+{
+    if (!s) return;
+    s->drop_cb = cb;
+    s->drop_user = user;
+}
+
 int xios_input_socket_client_count(xios_input_socket *s)
 {
     if (!s) return 0;
@@ -493,7 +518,7 @@ void xios_input_socket_free(xios_input_socket *s)
 {
     if (!s) return;
     for (int i = 0; i < XIOS_MAX_INPUT_CLIENTS; i++)
-        if (s->clients[i]) client_drop(s, s->clients[i]);
+        if (s->clients[i]) client_drop(s, s->clients[i], 0);
     if (s->kq >= 0) close(s->kq);
     if (s->listen_fd >= 0) close(s->listen_fd);
     if (s->path[0]) unlink(s->path);
