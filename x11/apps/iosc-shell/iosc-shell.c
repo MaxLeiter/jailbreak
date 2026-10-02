@@ -207,8 +207,9 @@ static void dock_apply_saved_order(void)
     if (!f) return;
     struct sd_app ordered[LAUNCH_MAX];
     int used[LAUNCH_MAX] = {0}, n = 0;
-    char line[256];
-    while (fgets(line, sizeof line, f) && n < P.nlaunch) {
+    char *line = NULL;
+    size_t cap = 0;
+    while (n < P.nlaunch && getline(&line, &cap, f) > 0) {
         line[strcspn(line, "\r\n")] = 0;
         if (!line[0]) continue;
         for (int i = 0; i < P.nlaunch; i++) {
@@ -219,6 +220,7 @@ static void dock_apply_saved_order(void)
             }
         }
     }
+    free(line);
     fclose(f);
     for (int i = 0; i < P.nlaunch && n < LAUNCH_MAX; i++)
         if (!used[i]) ordered[n++] = P.launch[i];

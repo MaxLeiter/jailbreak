@@ -428,7 +428,9 @@ static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
 /* ------------------------------------------------------- .desktop scan ---- */
 
 #if defined(SD_APP_SCAN) || defined(SD_DESKTOP_PINNING)
-struct sd_app { char name[64]; char exec[256]; char icon[128]; };
+/* exec is the whole Exec line (heap, kept for the life of the process): a
+ * fixed buffer cut long ones and the cut command is what got launched */
+struct sd_app { char name[64]; char *exec; char icon[128]; };
 #endif
 
 #ifdef SD_APP_SCAN
@@ -454,22 +456,24 @@ static int sd_scan_apps_dir(const char *dir, struct sd_app *apps, int n, int max
         if (len < 9 || strcmp(e->d_name + len - 8, ".desktop")) continue;
         char path[512]; snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
         FILE *f = fopen(path, "r"); if (!f) continue;
-        char line[512], name[64] = {0}, exec[256] = {0}, icon[128] = {0};
+        char *line = NULL, name[64] = {0}, *exec = NULL, icon[128] = {0};
+        size_t cap = 0;
         int nodisplay = 0, in_entry = 0;
-        while (fgets(line, sizeof line, f)) {
+        while (getline(&line, &cap, f) > 0) {
             if (line[0] == '[') { in_entry = !strncmp(line, "[Desktop Entry]", 15); continue; }
             if (!in_entry) continue;
             if (!strncmp(line, "Name=", 5) && !name[0]) sscanf(line + 5, "%63[^\n]", name);
-            else if (!strncmp(line, "Exec=", 5) && !exec[0]) sscanf(line + 5, "%255[^\n]", exec);
+            else if (!strncmp(line, "Exec=", 5) && !exec) exec = strndup(line + 5, strcspn(line + 5, "\r\n"));
             else if (!strncmp(line, "Icon=", 5) && !icon[0]) sscanf(line + 5, "%127[^\n]", icon);
             else if (!strncmp(line, "NoDisplay=true", 14)) nodisplay = 1;
         }
+        free(line);
         fclose(f);
-        if (nodisplay || !exec[0]) continue;
-        sd_strip_field_codes(exec);
+        if (exec) sd_strip_field_codes(exec);
+        if (nodisplay || !exec || !exec[0]) { free(exec); continue; }
         if (!name[0]) snprintf(name, sizeof name, "%.*s", (int)(len-8), e->d_name);
         snprintf(apps[n].name, 64, "%s", name);
-        snprintf(apps[n].exec, 256, "%s", exec);
+        apps[n].exec = exec;
         snprintf(apps[n].icon, 128, "%s", icon);
         n++;
     }
@@ -528,9 +532,10 @@ static int sd_desktop_pin_exists(const char *exec)
     char path[256]; sd_desktop_pins_path(path, sizeof path);
     FILE *f = sd_user_fopen_read(path);
     if (!f) return 0;
-    char line[768];
+    char *line = NULL;
+    size_t cap = 0;
     int found = 0;
-    while (fgets(line, sizeof line, f)) {
+    while (getline(&line, &cap, f) > 0) {
         /* positional tab fields; Icon may be empty, so no strtok (it would
          * merge the empty field and shift Exec into the icon slot) */
         line[strcspn(line, "\r\n")] = 0;
@@ -542,21 +547,24 @@ static int sd_desktop_pin_exists(const char *exec)
         (void)type; (void)name; (void)icon;
         if (target && !strcmp(target, exec)) { found = 1; break; }
     }
+    free(line);
     fclose(f);
     return found;
 }
 
 static void sd_pin_app_to_desktop(const struct sd_app *app)
 {
-    if (!app || !app->exec[0] || sd_desktop_pin_exists(app->exec)) return;
+    if (!app || !app->exec || !app->exec[0] || sd_desktop_pin_exists(app->exec)) return;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
     FILE *f = sd_user_fopen_append(path);
     if (!f) return;
     int slot = 0;
     {
         FILE *r = sd_user_fopen_read(path);
-        char line[768];
-        while (r && fgets(line, sizeof line, r)) slot++;
+        char *line = NULL;
+        size_t cap = 0;
+        while (r && getline(&line, &cap, r) > 0) slot++;
+        free(line);
         if (r) fclose(r);
     }
     int x = 300 + (slot % 6) * 104;
