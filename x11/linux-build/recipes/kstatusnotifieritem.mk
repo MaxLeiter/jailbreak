@@ -32,7 +32,8 @@ kstatusnotifieritem: kstatusnotifieritem-setup
 	cd $(BUILD_WORK)/kstatusnotifieritem/build && cmake .. \
 		-G Ninja \
 		$(KF6_CMAKE_FLAGS) \
-		-DWITHOUT_X11=ON
+		-DWITHOUT_X11=ON \
+		-DUSE_DBUS=ON
 	+ninja -C $(BUILD_WORK)/kstatusnotifieritem/build
 	+DESTDIR="$(BUILD_STAGE)/kstatusnotifieritem" ninja -C $(BUILD_WORK)/kstatusnotifieritem/build install
 	$(call AFTER_BUILD,copy)

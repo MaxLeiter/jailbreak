@@ -43,13 +43,22 @@ for old, new in [
     ("pkg_check_modules(QALCULATE libqalculate>2.0 REQUIRED IMPORTED_TARGET)", "pkg_check_modules(QALCULATE libqalculate>2.0 IMPORTED_TARGET)"),
     ("find_package(KF6Screen CONFIG REQUIRED)", "find_package(KF6Screen CONFIG)"),
     ("find_package(KScreenLocker 5.13.80 REQUIRED)", "find_package(KScreenLocker 5.13.80)"),
-    ("find_package(ScreenSaverDBusInterface CONFIG REQUIRED)", "find_package(ScreenSaverDBusInterface CONFIG)"),
+    ("find_package(ScreenSaverDBusInterface CONFIG REQUIRED)",
+     "find_package(ScreenSaverDBusInterface CONFIG)\n"
+     "if(NOT SCREENSAVER_DBUS_INTERFACE)\n"
+     "    # xios fallback ScreenSaver DBus interface until kscreenlocker is ported (file written below).\n"
+     "    set(SCREENSAVER_DBUS_INTERFACE \"${CMAKE_CURRENT_SOURCE_DIR}/iosc-dbus-interfaces/kf6_org.freedesktop.ScreenSaver.xml\")\n"
+     "endif()\n"
+     "# 6.7 relies on Qt6::DBus arriving transitively from Linux-only deps; give every target its headers.\n"
+     "link_libraries(Qt6::DBus)"),
     ("find_package(Phonon4Qt6 4.6.60 REQUIRED NO_MODULE)", "find_package(Phonon4Qt6 4.6.60 NO_MODULE)"),
     ("TYPE REQUIRED)", "TYPE OPTIONAL)"),
     ("find_package(UDev REQUIRED)", "find_package(UDev)"),
 ]:
     text = text.replace(old, new)
 
+# 6.7 writes the REQUIRED marker as its own line before ")": KSysGuard (guarded by KSysGuard_FOUND) and UDev.
+text = re.sub(r"TYPE REQUIRED(\n\))", r"TYPE OPTIONAL\1", text)
 text = text.replace('PROPERTIES DESCRIPTION "Unicode and Globalization support for software applications"\n        TYPE REQUIRED',
                     'PROPERTIES DESCRIPTION "Unicode and Globalization support for software applications"\n        TYPE OPTIONAL')
 
@@ -413,7 +422,42 @@ text = text.replace(
     "target_link_libraries(krdb PRIVATE Qt::Widgets Qt::DBus KF6::CoreAddons KF6::DBusAddons KF6::GuiAddons KF6::I18n KF6::WindowSystem KF6::ConfigWidgets X11::X11 Qt::GuiPrivate)",
     "target_link_libraries(krdb PRIVATE Qt::Widgets Qt::DBus KF6::CoreAddons KF6::DBusAddons KF6::GuiAddons KF6::I18n KF6::WindowSystem KF6::ConfigWidgets)\nif(HAVE_X11)\n    target_link_libraries(krdb PRIVATE X11::X11 Qt::GuiPrivate)\nendif()",
 )
+# 6.7 shape: ColorScheme replaced ConfigWidgets, and X11::X11 sits in the always-on list.
+text = text.replace(
+    "target_link_libraries(krdb PRIVATE Qt::Widgets Qt::DBus KF6::CoreAddons KF6::DBusAddons KF6::GuiAddons KF6::I18n KF6::WindowSystem KF6::ColorScheme X11::X11 Qt::GuiPrivate)",
+    "target_link_libraries(krdb PRIVATE Qt::Widgets Qt::DBus KF6::CoreAddons KF6::DBusAddons KF6::GuiAddons KF6::I18n KF6::WindowSystem KF6::ColorScheme Qt::GuiPrivate)\nif(HAVE_X11)\n    target_link_libraries(krdb PRIVATE X11::X11)\nendif()",
+)
 path.write_text(text)
+PY
+
+# 6.7 libnotificationmanager plays notification sounds through libcanberra (new since 6.1). No canberra on iOS yet:
+# compile the sound path out (XIOS_NO_CANBERRA); notifications still show, they are silent. See plan section 9.
+python3 - "$src/libnotificationmanager/CMakeLists.txt" "$src/libnotificationmanager/notifications.cpp" <<'PY'
+import sys
+from xios_fixlib import Path, todo
+
+cm = Path(sys.argv[1])
+text = cm.read_text()
+if "XIOS_NO_CANBERRA" not in text:
+    if "        Canberra::Canberra\n)" in text:
+        text = text.replace("        Canberra::Canberra\n)",
+            ")\nif(Canberra_FOUND)\n    target_link_libraries(notificationmanager PRIVATE Canberra::Canberra)\nelse()\n    target_compile_definitions(notificationmanager PRIVATE XIOS_NO_CANBERRA=1)\nendif()", 1)
+        cm.write_text(text)
+    else:
+        todo("notificationmanager Canberra link marker not found")
+
+src = Path(sys.argv[2])
+text = src.read_text()
+if "XIOS_NO_CANBERRA" not in text:
+    text = text.replace("#include <canberra.h>\n", "#ifndef XIOS_NO_CANBERRA\n#include <canberra.h>\n#endif\n", 1)
+    text = text.replace("    ca_context *canberraContext = nullptr;\n", "#ifndef XIOS_NO_CANBERRA\n    ca_context *canberraContext = nullptr;\n#endif\n", 1)
+    text = text.replace("    if (!d->canberraContext) {\n", "#ifdef XIOS_NO_CANBERRA\n    return;\n#else\n    if (!d->canberraContext) {\n", 1)
+    tail = '                                       << "with canberra:" << ca_strerror(ret);\n        return;\n    }\n}\n'
+    if tail in text:
+        text = text.replace(tail, tail[:-2] + "#endif\n}\n", 1)
+    else:
+        todo("notifications.cpp canberra tail marker not found")
+    src.write_text(text)
 PY
 
 python3 - "$src/kcms/colors/CMakeLists.txt" <<'PY'
@@ -588,7 +632,9 @@ path = Path(sys.argv[1])
 text = path.read_text()
 text = re.sub(
     r"^add_subdirectory\(([^)]+)\)",
-    lambda m: m.group(0) if m.group(1) == "desktop" else f"# ios-firstlight-skip: {m.group(0)}",
+    # desktop:/ worker needs KIO's KDirNotify/ForwardingWorkerBase, which exist only with USE_DBUS=ON in kio (our kio is
+    # built without it, like every KF6 unit on Apple). Nothing on the iPad uses desktop:/ yet; see plan section 9.
+    lambda m: f"# ios-firstlight-skip: {m.group(0)}",
     text,
     flags=re.M,
 )
@@ -799,17 +845,10 @@ text = text.replace(
     return city.isEmpty() ? timezoneId : city;
 """,
 )
-text = text.replace(
-    """    const auto locale = icu::Locale(QLocale::system().name().toLatin1());
-    UErrorCode error = U_ZERO_ERROR;
-    m_tzNames.reset(icu::TimeZoneNames::createInstance(locale, error));
-    if (!U_SUCCESS(error)) {
-        qWarning() << "failed to create timezone names:" << u_errorName(error);
-    }
-
-""",
-    "",
-)
+import re as _re
+# 6.7 spells the locale as ...toLatin1().constData(): match both.
+text = _re.sub(r"    const auto locale = icu::Locale\(QLocale::system\(\)\.name\(\)\.toLatin1\(\)(?:\.constData\(\))?\);\n"
+               r"    UErrorCode error = U_ZERO_ERROR;\n.*?\n    \}\n\n", "", text, flags=_re.S, count=1)
 source.write_text(text)
 PY
 
@@ -1420,6 +1459,61 @@ path = Path(sys.argv[1])
 text = path.read_text()
 text = re.sub(r"^([ \t]*)ecm_install_po_files_as_qm\(", r"\1# ios-bringup-no-linguist: ecm_install_po_files_as_qm(", text, flags=re.M)
 path.write_text(text)
+PY
+
+# ---- Plasma 6.7 X11/Linux-ism guards (new since the 6.1 port; shared helper in xios_fixlib) ------------------------------
+python3 - "$src" <<'PY'
+import re
+import sys
+from xios_fixlib import Path, todo, guard_x11, guard_x11_tree
+
+src = sys.argv[1]
+
+# libclock: timerfd is Linux-only; upstream already ships a portable alignedtimer_posix.cpp (used for OpenBSD).
+p = Path(f"{src}/libclock/CMakeLists.txt")
+t = p.read_text()
+t = t.replace('if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")', 'if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD" OR APPLE)')
+p.write_text(t)
+
+# libnotificationmanager portal: the X11 startup-id branch has no KStartupInfo here.
+p = Path(f"{src}/libnotificationmanager/portal_p.cpp")
+t = p.read_text()
+t = t.replace("#include <KStartupInfo>\n", "")
+new = re.sub(r"        KStartupInfoId startupId;\n        startupId\.initId\(\);\n        activateWithPlatformData\(\{\n            \{u\"desktop-startup-id\"_s, QString::fromUtf8\(startupId\.id\(\)\)\},\n        \}\);\n",
+             "        activateWithPlatformData({}); // xios: no X11 startup id\n", t)
+if new == t and "KStartupInfoId" in t:
+    todo("portal_p.cpp KStartupInfoId branch not found")
+p.write_text(new)
+
+# shutdowndlg: the whole X11 window-role block.
+p = Path(f"{src}/logout-greeter/shutdowndlg.cpp")
+t = p.read_text()
+new = re.sub(r"(    if \(KWindowSystem::isPlatformX11\(\)\) \{\n        constexpr auto role.*?NET::SkipSwitcher\);\n    \}\n)",
+             r"#if defined(HAVE_X11) && HAVE_X11\n\1#endif\n", t, count=1, flags=re.S)
+if new == t and "constexpr auto role" in t:
+    todo("shutdowndlg X11 block not found")
+p.write_text(new)
+
+# desktopview: X11 startup-id blocks and the X11-only window type.
+p = Path(f"{src}/shell/desktopview.cpp")
+t = p.read_text()
+t = re.sub(r"( *)if \(window && qGuiApp->nativeInterface<QNativeInterface::QX11Application>\(\)\) \{\n.*?\n\1\}\n",
+           lambda m: "#if defined(HAVE_X11) && HAVE_X11\n" + m.group(0) + "#endif\n", t, flags=re.S)
+p.write_text(t)
+
+# panelview: compositingActive() only exists on X11; off X11 the condition reduces to !isPlatformX11().
+p = Path(f"{src}/shell/panelview.cpp")
+t = p.read_text()
+t = t.replace("if (!KWindowSystem::isPlatformX11() || KX11Extras::compositingActive()) {", "if (!KWindowSystem::isPlatformX11()) {")
+p.write_text(t)
+
+# libclock header: the posix timer variant is selected by the same macro the .cpp uses.
+p = Path(f"{src}/libclock/alignedtimer.h")
+t = p.read_text()
+t = t.replace("#if defined(Q_OS_OPENBSD)", "#if defined(Q_OS_OPENBSD) || defined(Q_OS_DARWIN)")
+p.write_text(t)
+
+print("guard_x11_tree edits:", guard_x11_tree(src))
 PY
 
 printf '%s\n' "$self_sha" > "$stamp"

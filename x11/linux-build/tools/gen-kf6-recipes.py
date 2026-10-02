@@ -434,7 +434,7 @@ TABLE = [
     dict(t="kstatusnotifieritem", kind="kf", deb="kf6-statusnotifieritem",
          deps=["kwindowsystem"],
          qt_deps=["qt6-base"],
-         flags=["-DWITHOUT_X11=ON"],
+         flags=["-DWITHOUT_X11=ON", "-DUSE_DBUS=ON"],
          seds=["sed -i 's/^if(APPLE)$$/if(FALSE) # iOS: no AppKit/' $(BUILD_WORK)/kstatusnotifieritem/src/CMakeLists.txt"],
          desc="Status notifier item support for tray-style application indicators.",
          notes=["Workspace wants KF6::StatusNotifierItem. X11 probing is disabled explicitly;",

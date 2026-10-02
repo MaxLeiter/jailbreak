@@ -24,6 +24,7 @@ plasma-desktop: plasma-desktop-setup
 		-G Ninja \
 		$(KF6_CMAKE_FLAGS) \
 		-DWITH_X11=OFF \
+		-DWITH_X11_SESSION=OFF \
 		-DBUILD_QCH=OFF \
 		-DBUILD_TESTING=OFF \
 		-DBUILD_KCM_MOUSE_X11=OFF \

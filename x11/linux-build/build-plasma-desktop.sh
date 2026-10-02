@@ -9,6 +9,7 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+export KDE_NINJA_K="${KDE_NINJA_K:-0}"   # list every compile error per pass while porting
 . /work/x11/linux-build/tools/kde-lane-env.sh   # cmake >= 3.29
 
 QTVER=6.10.3
