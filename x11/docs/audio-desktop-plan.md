@@ -146,6 +146,15 @@ lifecycle), `module-suspend-on-idle` so the render clock stops on battery
 when nothing plays, `module-always-sink` as a null fallback so gvc never
 faces an empty sink list.
 
+The socket and the daemon's runtime dir are separate directories (since
+`17.0-7+ios3`). PulseAudio makes its runtime dir 0700 on every start and
+leaves the socket 0777 for that directory to guard. While both lived in
+`/var/jb/tmp/pulse`, only root could connect, and apps launched from the Home
+Screen (which run as mobile) were silent. The daemon now uses
+`/var/jb/tmp/pulse-daemon` (private: pid file, cli socket), and
+`xios_pulse_start` keeps `/var/jb/tmp/pulse` (the `native` socket that every
+launcher hardcodes) at 0755.
+
 Driver: `linux-build/build-audio-server.sh` on procursus-vol-shell (wipes the
 client-only pulseaudio build tree when present; the recipe's `.build_complete`
 guard would otherwise skip the daemon reconfigure). It also fingerprints the
