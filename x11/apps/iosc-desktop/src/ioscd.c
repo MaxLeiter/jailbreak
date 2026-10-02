@@ -80,6 +80,7 @@
 #include <stdint.h>
 
 #include "xios-desktop-entry.h"
+#include "xios-iosexec.h"
 
 #if defined(__has_include)
 #  if __has_include(<libproc.h>)
@@ -923,7 +924,7 @@ static void ensure_audio(void)
         setenv("XDG_RUNTIME_DIR", g_tmp, 1);
         set_rootless_path(0);
         snprintf(cmd, sizeof(cmd), ". %s 2>/dev/null && xios_pulse_start", g_xios_pulse_profile);
-        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
+        xios_execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
     int status;
@@ -979,7 +980,7 @@ static int ensure_iosc(int native)
          * Env override lets the launcher retune without a rebuild. */
         const char *logical = getenv("IOSC_LOGICAL");
         if (!logical || !*logical) logical = "1440x1080";
-        execl(g_iosc_bin, "iosc",
+        xios_execl(g_iosc_bin, "iosc",
               native ? "-native" : "-classic",
               "-s", mode->wayland_name,
               "-ddx-sock", mode->ddx_sock,
@@ -1020,7 +1021,7 @@ static void foreground_xios(void)
         /* -b (open as if tapped -> foreground) is required: the bare form
          * returns 0 but FrontBoard suspends the background-launched Metal app
          * before it adopts the IOSurface. Same form the run scripts use. */
-        execl(g_uiopen_bin, "uiopen", "-b", XIOS_BUNDLE, (char *)NULL);
+        xios_execl(g_uiopen_bin, "uiopen", "-b", XIOS_BUNDLE, (char *)NULL);
         _exit(127);
     }
     /* don't block on it; SIGCHLD reaps it */
@@ -1087,7 +1088,7 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     if (pid == 0) {
         child_stdio(NULL, 0);
         if (drop_to_mobile() != 0) _exit(126);
-        execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
+        xios_execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
               address_arg, "--print-address", (char *)NULL);
         _exit(127);
     }
@@ -1129,7 +1130,7 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
                  g_xios_hwbridged, busdir,
                  g_xios_sensord, busdir,
                  g_xios_sysintd, busdir);
-        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
+        xios_execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
 }
@@ -1170,7 +1171,7 @@ static int start_a11y_for_busdir(const char *busdir)
         setenv("DBUS_SESSION_BUS_ADDRESS", addr, 1);
         setenv("HOME", g_home, 1);
         set_rootless_path(1);
-        execl(g_xios_start_a11y, "xios-start-a11y", (char *)NULL);
+        xios_execl(g_xios_start_a11y, "xios-start-a11y", (char *)NULL);
         _exit(127);
     }
     return 1;
@@ -1258,7 +1259,9 @@ static void set_wayland_client_env(const struct mode_cfg *mode, const char *busd
 
 /* Spawn an already parsed desktop entry as mobile. The daemon never evaluates
  * command text: argv came from a trusted root-owned .desktop file and is passed
- * directly to execvp (or through dbus-run-session as an argv vector). */
+ * directly to libiosexec's execvp (or through dbus-run-session as an argv
+ * vector). libiosexec only resolves a script target's own "#!" interpreter
+ * into the jailbreak prefix; see xios-iosexec.h. */
 static pid_t launch_client(const char *app_id, char *const app_argv[], int native)
 {
     const struct mode_cfg *mode = mode_cfg(native);
@@ -1285,9 +1288,13 @@ static pid_t launch_client(const char *app_id, char *const app_argv[], int nativ
             for (size_t i = 0; app_argv[i] && n + 1 < sizeof(run_argv) / sizeof(run_argv[0]); i++)
                 run_argv[n++] = app_argv[i];
             run_argv[n] = NULL;
-            execv(g_dbus_run, run_argv);
+            xios_execv(g_dbus_run, run_argv);
+            fprintf(stderr, "ioscd: exec %s failed for %s: %s\n",
+                    g_dbus_run, app_id, strerror(errno));
         }
-        execvp(app_argv[0], app_argv);
+        xios_execvp(app_argv[0], app_argv);
+        fprintf(stderr, "ioscd: exec %s failed for %s: %s\n",
+                app_argv[0], app_id, strerror(errno));
         _exit(127);
     }
     remember_app(app_id, pid, native);
@@ -1346,13 +1353,13 @@ static pid_t launch_session_request(const char *preset, const char *app,
         set_session_request_env(width, height, dpi, slot);
 
         if (app && *app)
-            execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);
         else
-            execl(g_bash_bin, "bash", g_xios_session_bin, preset, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin, preset, (char *)NULL);
         if (app && *app)
-            execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, app, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, app, (char *)NULL);
         else
-            execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, (char *)NULL);
         fprintf(stderr, "ioscd: exec xios-session failed: %s\n", strerror(errno));
         _exit(127);
     }
@@ -1503,7 +1510,7 @@ static int run_and_stream(int fd, char *const argv[])
         dup2(pipefd[1], 2);
         if (pipefd[1] > 2) close(pipefd[1]);
         set_rootless_path(1);
-        execv(argv[0], argv);
+        xios_execv(argv[0], argv);
         fprintf(stderr, "exec %s failed: %s\n", argv[0], strerror(errno));
         _exit(127);
     }
@@ -1893,6 +1900,10 @@ int main(void)
     fprintf(stderr, "ioscd: default launch mode=%s; explicit LAUNCH_NATIVE/LAUNCH_CLASSIC supported\n",
             mode_name(g_default_native));
     fprintf(stderr, "ioscd: session policy active (ensure/switch guard, failure cooldown, peer attribution)\n");
+    if (xios_have_iosexec())
+        fprintf(stderr, "ioscd: exec via libiosexec (\"#!\" interpreters resolve under the jailbreak prefix)\n");
+    else
+        fprintf(stderr, "ioscd: WARNING libiosexec not loaded; plain exec, so \"#!/bin/sh\" Exec targets fail on rootless\n");
 
     signal(SIGPIPE, SIG_IGN);
     if (pipe(g_chld_pipe) == 0) {
