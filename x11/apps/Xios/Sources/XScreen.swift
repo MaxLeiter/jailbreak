@@ -1211,6 +1211,7 @@ final class XScreenView: UIView {
         serviceIoscInputTraits()
         if inputConnected && !iosc_input_is_open() {
             inputConnected = false
+            resetInputLatches()
             writeStatus()
         }
         if !inputConnected && tickCount % 30 == 0 {
@@ -1728,8 +1729,7 @@ final class XScreenView: UIView {
 
     /// Tear down connections tied to the compositor input endpoint.
     private func closeInput() {
-        hardwareKeyboard.releasePressedKeys()
-        releaseHardwarePointerButtons()
+        resetInputLatches()       // releases still reach the outgoing compositor
         iosc_input_close()
         iosc_clipboard_close()
         inputConnected = false
@@ -1940,7 +1940,30 @@ final class XScreenView: UIView {
             return
         }
         if inputConnected && iosc_input_is_open() { return }
+        // A new connection starts with nothing held. Whatever the app still
+        // thinks is down (left by a drop the tick has not noticed yet, or
+        // pressed while disconnected) is cleared before it opens; the old
+        // connection is closed, so this sends nothing.
+        if !iosc_input_is_open() { resetInputLatches() }
         inputConnected = iosc_input_open(sock)
+    }
+
+    /// The input connection dropped, or is being closed or replaced: let go of
+    /// every key, button and touch the app still believes is held, so none of
+    /// it stays latched into the next connection. Releases go out only if the
+    /// current connection is still open (closeInput); after a drop this just
+    /// clears app-side state. A trackpad button still physically held presses
+    /// again on its next event, because the touch phase, not buttonMask,
+    /// decides it (hardwarePointerMask).
+    private func resetInputLatches() {
+        hardwareKeyboard.releasePressedKeys()
+        releaseHardwarePointerButtons()
+        cancelPendingPress()
+        longPressFired = false
+        releaseLeftPress()
+        leftPressSent = false
+        for slot in touchSlots.values { iosc_input_touch(slot, 3, 0, 0) }
+        touchSlots.removeAll()
     }
 
     private func serviceIoscInputTraits() {
@@ -1953,7 +1976,7 @@ final class XScreenView: UIView {
         while true {
             var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
             let r = iosc_input_poll_traits(&hint, &purpose, &enabled)
-            if r < 0 { inputConnected = false; writeStatus(); return }
+            if r < 0 { inputConnected = false; resetInputLatches(); writeStatus(); return }
             if r == 0 { return }
             applyIoscInputTraits(hint: hint, purpose: purpose, enabled: enabled)
         }

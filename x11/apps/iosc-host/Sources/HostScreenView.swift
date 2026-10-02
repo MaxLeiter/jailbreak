@@ -660,8 +660,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private func openInput() {
         if let h = input, iosc_input_is_open(h) { return }
         if input != nil {
-            if Self.keyboardFocus === self { Self.hardwareKeyboard.releasePressedKeys() }
-            releaseHardwarePointerButtons()
+            resetInputLatches()
             iosc_input_close(input); input = nil
         }
         // serviceTraits() retries from the 60 Hz display link while the
@@ -671,6 +670,22 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         guard now.timeIntervalSince(lastInputConnectAttempt) >= 1 else { return }
         lastInputConnectAttempt = now
         input = iosc_input_open(inputSock, window_id)
+    }
+
+    /// The input connection dropped, or the window is closing: let go of every
+    /// key, button and touch this window still believes is held, so none of it
+    /// stays latched into the next connection. Releases go out only while the
+    /// handle is still open (teardown); after a drop this just clears app-side
+    /// state. A trackpad button still physically held presses again on its next
+    /// event, because the touch phase, not buttonMask, decides it.
+    private func resetInputLatches() {
+        if Self.keyboardFocus === self { Self.hardwareKeyboard.releasePressedKeys() }
+        releaseHardwarePointerButtons()
+        if pointerTouch != nil { releasePointerPress() }
+        if let h = input {
+            for slot in touchSlots.values { iosc_input_touch(h, slot, 3, 0, 0) }
+        }
+        touchSlots.removeAll()
     }
 
     private func serviceTraits() {
@@ -684,7 +699,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         while true {
             var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
             let r = iosc_input_poll_traits(h, &hint, &purpose, &enabled)
-            if r < 0 { iosc_input_close(input); input = nil; return }
+            if r < 0 { resetInputLatches(); iosc_input_close(input); input = nil; return }
             if r == 0 { return }
             applyTraits(hint: hint, purpose: purpose, enabled: enabled)
         }
@@ -1055,7 +1070,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         // Release held keys through this window while its input is still open;
         // the shared bridge itself stays up for the other windows.
         yieldKeyboardFocus()
-        releaseHardwarePointerButtons()
+        resetInputLatches()
         displayLink?.invalidate(); displayLink = nil
         for obs in lifecycleObservers { NotificationCenter.default.removeObserver(obs) }
         lifecycleObservers.removeAll()
