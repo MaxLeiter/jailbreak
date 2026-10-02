@@ -119,6 +119,31 @@ notify_keyval_click (MetaInputIOS *input,
                                               CLUTTER_KEY_STATE_RELEASED);
 }
 
+/* Non-ASCII soft-keyboard text (emoji, accents, autocorrect's smart quotes) has no key to
+ * click. Commit it through the ClutterInputMethod gnome-shell registers on the
+ * ClutterBackend, as the shell's own OSK does (Main.inputMethod.commit): Mutter queues a
+ * CLUTTER_IM_COMMIT behind the clicks already pushed and delivers it as text-input-v3
+ * commit_string to the focused Wayland client, or to a focused shell entry; with nothing
+ * focused it is dropped. A client applies a commit only at the done event, which Mutter
+ * defers until the queued events are handled, so a click pushed after the commit in the
+ * same record would land first. The caller therefore commits everything from the first
+ * non-ASCII byte to the end of the record here. FALSE (not valid UTF-8) leaves it to the
+ * byte loop. */
+static gboolean
+commit_text (ClutterInputMethod *im,
+             const char         *text,
+             size_t              len)
+{
+  g_autofree char *utf8 = NULL;
+
+  if (!g_utf8_validate_len (text, len, NULL))
+    return FALSE;
+
+  utf8 = g_strndup (text, len);
+  clutter_input_method_commit (im, utf8);
+  return TRUE;
+}
+
 static uint32_t
 modifier_bit_for_keyval (uint32_t keyval)
 {
@@ -372,22 +397,34 @@ on_input_msg (const xios_msg           *m,
       }
 
     case XIOS_IN_TEXT:
-      /* Committed text (soft keyboard / paste): type each ASCII byte as a keyval click,
-       * which notify_keyval turns into a real key (plus Shift) from the backend keymap.
-       * '\n' -> Return. Multibyte UTF-8 is skipped: this backend has no commit path for it.
-       * ios-inputd's commit_string needs zwp_input_method_v2, which Mutter does not
-       * implement, and no ClutterInputMethod bridge exists here (gnome-touch-ux.md
-       * "Phase 3" lists that as the upgrade). */
-      for (size_t i = 0; i < text_len; i++)
-        {
-          unsigned char c = (unsigned char) text[i];
+      {
+        /* Committed text (soft keyboard / paste): type each ASCII byte as a keyval click,
+         * which notify_keyval turns into a real key (plus Shift) from the backend keymap.
+         * '\n' -> Return. From the first non-ASCII byte on, the record goes to
+         * commit_text(). Without an input method (bare mutter: only gnome-shell registers
+         * one) non-ASCII bytes are skipped; ios-inputd cannot stand in, it needs
+         * zwp_input_method_v2, which Mutter does not implement. */
+        ClutterInputMethod *im =
+          clutter_backend_get_input_method (meta_backend_get_clutter_backend (input->backend));
 
-          if (c == '\n')
-            notify_keyval_click (input, 0xff0d);   /* XK_Return */
-          else if (c < 0x80)
-            notify_keyval_click (input, c);
-        }
-      break;
+        for (size_t i = 0; i < text_len; i++)
+          {
+            unsigned char c = (unsigned char) text[i];
+
+            if (c >= 0x80 && im)
+              {
+                if (commit_text (im, text + i, text_len - i))
+                  break;
+                im = NULL;
+              }
+
+            if (c == '\n')
+              notify_keyval_click (input, 0xff0d);   /* XK_Return */
+            else if (c < 0x80)
+              notify_keyval_click (input, c);
+          }
+        break;
+      }
 
     default:
       break;
