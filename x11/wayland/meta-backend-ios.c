@@ -478,13 +478,28 @@ meta_backend_ios_constructed (GObject *object)
 }
 
 static void
+meta_backend_ios_dispose (GObject *object)
+{
+  MetaBackendIOS *self = META_BACKEND_IOS (object);
+
+  /* Before MetaBackend's dispose destroys the default seat, the stage and the
+   * Clutter context: freeing the input pump releases held modifiers through
+   * its virtual devices (which reach the seat and push onto Clutter's event
+   * queue), and the cursor renderer's finalize disconnects from the stage. */
+  if (_meta_backend_ios_singleton == self)
+    _meta_backend_ios_singleton = NULL;
+  g_clear_pointer (&self->input, meta_input_ios_free);
+  g_clear_object (&self->cursor_renderer);
+
+  G_OBJECT_CLASS (meta_backend_ios_parent_class)->dispose (object);
+}
+
+static void
 meta_backend_ios_finalize (GObject *object)
 {
   MetaBackendIOS *self = META_BACKEND_IOS (object);
 
   g_clear_pointer (&self->clipboard, meta_clipboard_ios_free);
-  g_clear_pointer (&self->input, meta_input_ios_free);
-  g_clear_object (&self->cursor_renderer);
   g_clear_pointer (&self->xkb_keymap, xkb_keymap_unref);
   xios_server_stop ();
 
@@ -503,6 +518,7 @@ meta_backend_ios_class_init (MetaBackendIOSClass *klass)
   MetaBackendClass *backend_class = META_BACKEND_CLASS (klass);
 
   object_class->constructed = meta_backend_ios_constructed;
+  object_class->dispose = meta_backend_ios_dispose;
   object_class->finalize = meta_backend_ios_finalize;
 
   backend_class->create_clutter_backend = meta_backend_ios_create_clutter_backend;
