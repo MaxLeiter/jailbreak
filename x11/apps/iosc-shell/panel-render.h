@@ -164,6 +164,8 @@ static int pr_text(cairo_t *cr, pr_text_ctx *t, const char *font, const char *s,
 {
     pr_text_set_font(t, font);
     pango_layout_set_text(t->lay, s, -1);
+    /* the layout is shared: pr_text_centered leaves CENTER on it */
+    pango_layout_set_alignment(t->lay, PANGO_ALIGN_LEFT);
     if (max_w > 0) {
         pango_layout_set_width(t->lay, max_w * PANGO_SCALE);
         pango_layout_set_ellipsize(t->lay, PANGO_ELLIPSIZE_END);
