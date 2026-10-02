@@ -133,8 +133,8 @@ ensure_rust_ios_toolchain
 # libpoppler-glib8) is the PDF backend. The zathura stack remains an independent
 # GTK3 viewer: girara -> zathura -> zathura-pdf-poppler.
 
-PW=build_work/iphoneos-arm64-rootless/1900/papers
-PS=build_stage/iphoneos-arm64-rootless/1900/papers
+PW=build_work/$XIOS_TRIPLE/papers
+PS=build_stage/$XIOS_TRIPLE/papers
 PF="$PW/.xios_patch_series.sha256"
 if target_requests papers; then
   PAPERS_FP="$(find /work/ports/papers/patches -maxdepth 1 -type f -print0 |

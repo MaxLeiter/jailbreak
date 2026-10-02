@@ -121,8 +121,8 @@ refresh_patch_build_tree() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
   [ -d "$patch_dir" ] || return 0
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
-  local stage="build_stage/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
+  local stage="build_stage/$XIOS_TRIPLE/$pkg"
   local fp_file="$work/.xios_patch_series.sha256"
   local new_fp old_fp
   new_fp="$(find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
@@ -136,7 +136,7 @@ refresh_patch_build_tree() {
 record_patch_fingerprint() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
   [ -d "$patch_dir" ] && [ -d "$work" ] || return 0
   find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > "$work/.xios_patch_series.sha256"
 }
