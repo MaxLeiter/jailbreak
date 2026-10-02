@@ -132,7 +132,8 @@ echo "==> build xios-sensord"
 $CC "${CFLAGS[@]}" "$s" $SENSOR_DEPFLAGS -o "$o2"
 fixup_and_sign "$o2" "$SRC/sensor-entitlements.plist"
 
-# Drop the binary into the package tree so package-hwbridge (or make-repo) can pack it.
+# Drop the binaries into the package tree, where package-fhs.sh (rootless) and
+# build-template-package.sh xios-fhs (any target) pack them.
 DEST="$SRC$TARGET_PACKAGE_PATH_PREFIX$TARGET_SUBPREFIX/libexec"
 mkdir -p "$DEST"
 cp -a "$OUT/xios-hwbridged" "$DEST/xios-hwbridged"
