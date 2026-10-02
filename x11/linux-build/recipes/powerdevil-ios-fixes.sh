@@ -47,14 +47,19 @@ def sub(marker, old, new, why):
     text = text.replace(old, new, 1)
 
 
-# 1. DocTools
-sub(
-    "# ios: no docbook toolchain",
-    "find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Auth Config Crash DBusAddons DocTools I18n IdleTime ItemModels GlobalAccel KIO Kirigami2 KCMUtils Notifications Solid WindowSystem XmlGui)",
-    "# ios: no docbook toolchain in the cross container, DocTools dropped.\n"
-    "find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Auth Config Crash DBusAddons I18n IdleTime ItemModels GlobalAccel KIO Kirigami2 KCMUtils Notifications Solid WindowSystem XmlGui)",
-    "KF6 REQUIRED COMPONENTS line",
-)
+# 1. DocTools: REQUIRED component in 6.1 (cut it); in 6.7 it is a separate optional find_package and
+#    doc/ is guarded by KF6DocTools_FOUND, so there is nothing to cut. Either shape is accepted, anything else fails.
+if "# ios: no docbook toolchain" not in text:
+    if "DocTools I18n" in text:
+        sub(
+            "# ios: no docbook toolchain",
+            "find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Auth Config Crash DBusAddons DocTools I18n IdleTime ItemModels GlobalAccel KIO Kirigami2 KCMUtils Notifications Solid WindowSystem XmlGui)",
+            "# ios: no docbook toolchain in the cross container, DocTools dropped.\n"
+            "find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS Auth Config Crash DBusAddons I18n IdleTime ItemModels GlobalAccel KIO Kirigami2 KCMUtils Notifications Solid WindowSystem XmlGui)",
+            "KF6 REQUIRED COMPONENTS line",
+        )
+    elif "find_package(KF6DocTools ${KF6_MIN_VERSION})" not in text:
+        raise SystemExit("powerdevil-ios-fixes.sh: KF6 DocTools handling: unknown CMake shape")
 
 # 2. UDev
 sub(
@@ -77,14 +82,17 @@ sub(
     "find_package(XCB REQUIRED ...)",
 )
 
-# doc/ + kdoctools
-sub(
-    "# ios: no DocTools, so no handbook",
-    "add_subdirectory(doc)\nkdoctools_install(po)\n",
-    "# ios: no DocTools, so no handbook and no kdoctools_install.\n"
-    "# add_subdirectory(doc)\n# kdoctools_install(po)\n",
-    "add_subdirectory(doc) block",
-)
+# doc/ + kdoctools: 6.1 adds doc unconditionally; 6.7 guards it with KF6DocTools_FOUND (never found here).
+if "add_subdirectory(doc)\nkdoctools_install(po)\n" in text and "if(KF6DocTools_FOUND)" not in text:
+    sub(
+        "# ios: no DocTools, so no handbook",
+        "add_subdirectory(doc)\nkdoctools_install(po)\n",
+        "# ios: no DocTools, so no handbook and no kdoctools_install.\n"
+        "# add_subdirectory(doc)\n# kdoctools_install(po)\n",
+        "add_subdirectory(doc) block",
+    )
+elif "if(KF6DocTools_FOUND)" not in text and "# ios: no DocTools, so no handbook" not in text:
+    raise SystemExit("powerdevil-ios-fixes.sh: add_subdirectory(doc) block: pattern not found")
 
 # tests
 sub(
@@ -126,15 +134,20 @@ if not text.startswith(MARKER):
             raise SystemExit(f"powerdevil-ios-fixes.sh: {why}: pattern not found")
         text = text.replace(line, "", 1)
 
-    # UdevQt + the backlight detector it feeds.
-    drop("    controllers/backlightbrightness.cpp\n", "backlightbrightness source")
-    drop("    controllers/udevqtclient.cpp\n", "udevqtclient source")
-    drop("    controllers/udevqtdevice.cpp\n", "udevqtdevice source")
+    import re
+
+    # UdevQt + the backlight detector it feeds. 6.1 lists one file per line, 6.7 lists "x.cpp x.h" pairs.
+    for stem in ("backlightbrightness", "udevqtclient", "udevqtdevice"):
+        pat = re.compile(r"^[ \t]*controllers/" + stem + r"\.cpp[^\n]*\n", re.M)
+        if not pat.search(text):
+            raise SystemExit(f"powerdevil-ios-fixes.sh: {stem} source: pattern not found")
+        text = pat.sub("", text, count=1)
 
     # Unconditional link references to the packages dropped in the top-level CMakeLists.
     drop("    XCB::DPMS\n", "XCB::DPMS link entry")
     drop("    ${UDEV_LIBS}\n", "UDEV_LIBS link entry (powerdevilcore)")
-    drop("target_link_libraries(powerdevil ${UDEV_LIBS})\n", "UDEV_LIBS link entry (powerdevil)")
+    if "target_link_libraries(powerdevil ${UDEV_LIBS})\n" in text:
+        drop("target_link_libraries(powerdevil ${UDEV_LIBS})\n", "UDEV_LIBS link entry (powerdevil)")
 
     text = (
         MARKER
@@ -158,10 +171,13 @@ if '#include "backlightbrightness.h"' in text:
         "// ios: BacklightDetector needs libudev + /sys/class/backlight; dropped.\n",
         1,
     )
-if '          {new BacklightDetector(this), "internal display backlight"},\n' in text:
-    text = text.replace(
-        '          {new BacklightDetector(this), "internal display backlight"},\n', "", 1
-    )
+import re
+old_entry = '          {new BacklightDetector(this), "internal display backlight"},\n'
+new_entry = re.compile(r"          \{\n              \.detector = new BacklightDetector\(this\),\n.*?          \},\n", re.S)
+if old_entry in text:
+    text = text.replace(old_entry, "", 1)
+elif new_entry.search(text):
+    text = new_entry.sub("", text, count=1)
 elif "ios: BacklightDetector needs libudev" not in text:
     raise SystemExit("powerdevil-ios-fixes.sh: BacklightDetector entry not found")
 
@@ -172,8 +188,17 @@ PY
 # reader/writer for the synthetic sysfs backlight that xios-hwbridged publishes and
 # forwards to BackBoardServices. Direct on purpose -- upstream's node access needs a
 # KAuth/polkit helper for the privileged write, and nothing here is privileged.
-cp "$(dirname "$0")/powerdevil-xiosbacklight.h" "$src/daemon/controllers/xiosbacklight.h"
-cp "$(dirname "$0")/powerdevil-xiosbacklight.cpp" "$src/daemon/controllers/xiosbacklight.cpp"
+# DisplayBrightness gained id()/label()/isInternal(), setBrightness(int, bool) and
+# externalBrightnessChangeObserved in 6.7: pick the matching variant of our detector.
+if grep -q externalBrightnessChangeObserved "$src/daemon/controllers/displaybrightness.h"; then
+  variant=-67.
+else
+  variant=.
+fi
+v_h="$(dirname "$0")/powerdevil-xiosbacklight${variant/%./}.h"; v_c="$(dirname "$0")/powerdevil-xiosbacklight${variant/%./}.cpp"
+[ "$variant" = "." ] && { v_h="$(dirname "$0")/powerdevil-xiosbacklight.h"; v_c="$(dirname "$0")/powerdevil-xiosbacklight.cpp"; }
+cp "$v_h" "$src/daemon/controllers/xiosbacklight.h"
+cp "$v_c" "$src/daemon/controllers/xiosbacklight.cpp"
 
 python3 - "$src/daemon/CMakeLists.txt" <<'PY'
 import sys
@@ -183,10 +208,11 @@ path = Path(sys.argv[1])
 text = path.read_text()
 
 if "controllers/xiosbacklight.cpp" not in text:
-    anchor = "    controllers/kwinbrightness.cpp\n"
-    if anchor not in text:
+    import re
+    m = re.search(r"^[ \t]*controllers/kwinbrightness\.cpp[^\n]*\n", text, re.M)
+    if not m:
         raise SystemExit("powerdevil-ios-fixes.sh: kwinbrightness.cpp source entry not found")
-    text = text.replace(anchor, anchor + "    controllers/xiosbacklight.cpp\n", 1)
+    text = text.replace(m.group(0), m.group(0) + "    controllers/xiosbacklight.cpp controllers/xiosbacklight.h\n", 1)
     path.write_text(text)
 PY
 
@@ -207,14 +233,25 @@ if "XiosBacklightDetector(this)" not in text:
     anchor = "    , m_detectors({\n"
     if anchor not in text:
         raise SystemExit("powerdevil-ios-fixes.sh: m_detectors initialiser not found")
+    if ".detector = new KWinDisplayDetector(this)," in text:
+        # 6.7 designated-initialiser form; ours leads so it wins the priority walk.
+        text = text.replace(
+            anchor,
+            anchor + "          {\n              .detector = new XiosBacklightDetector(this),\n"
+            '              .debugName = "xios synthetic backlight",\n'
+            '              .displayIdPrefix = "xios:",\n          },\n',
+            1,
+        )
+        anchor = None
     # onDisplaysChanged() walks m_detectors in order and breaks at the first one that
     # returns any display, so order is priority. Ours leads: it is the only detector
     # that can see an SDR panel here.
-    text = text.replace(
-        anchor,
-        anchor + '          {new XiosBacklightDetector(this), "xios synthetic backlight"},\n',
-        1,
-    )
+    if anchor is not None:
+        text = text.replace(
+            anchor,
+            anchor + '          {new XiosBacklightDetector(this), "xios synthetic backlight"},\n',
+            1,
+        )
 
 path.write_text(text)
 PY
@@ -250,6 +287,8 @@ import sys
 from pathlib import Path
 
 path = Path(sys.argv[1])
+if not path.exists():
+    sys.exit(0)  # 6.7 moved the OSD out of powerdevil (kscreen owns it)
 text = path.read_text()
 
 MARKER = "// ios: KX11Extras is absent from the X11-off"

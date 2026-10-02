@@ -17,6 +17,7 @@ target_link_libraries(KF6ScreenDpms PUBLIC Qt::Gui
                                             Qt::GuiPrivate Qt::WaylandClient Wayland::Client
 )
 """
+original_dpmsh = original.replace("dpms.cpp abstractdpmshelper.cpp", "dpms.cpp dpms.h abstractdpmshelper.cpp")
 previous = """add_library(KF6ScreenDpms SHARED)
 set(kscreen_dpms_SRCS
     dpms.cpp
@@ -54,6 +55,8 @@ endif()
 if new not in text:
     if original in text:
         text = text.replace(original, new)
+    elif original_dpmsh in text:
+        text = text.replace(original_dpmsh, new)
     elif previous in text:
         text = text.replace(previous, new)
     else:
@@ -179,11 +182,15 @@ new = """#if !defined(__APPLE__)
             backendFilter = QStringLiteral("QScreen");
         }
 """
-if old not in text:
-    if "#if !defined(__APPLE__)\n        if (QX11Info::isPlatformX11())" not in text:
-        raise SystemExit("preferred backend selection block not found")
-else:
+# KF 6.7: upstream dropped the QScreen fallback branch.
+old_67 = old.replace('        } else {\n            backendFilter = QStringLiteral("QScreen");\n        }\n', '        }\n')
+new_67 = new.replace('        } else {\n            backendFilter = QStringLiteral("QScreen");\n        }\n', '        }\n')
+if old in text:
     text = text.replace(old, new)
+elif old_67 in text:
+    text = text.replace(old_67, new_67)
+elif "#if !defined(__APPLE__)\n        if (QX11Info::isPlatformX11())" not in text:
+    raise SystemExit("preferred backend selection block not found")
 path.write_text(text)
 PY
 
@@ -231,8 +238,10 @@ for arg, target, anchor in [
     fix = f"set_target_properties({target} PROPERTIES MACOSX_BUNDLE FALSE)"
     if fix in text:
         continue
-    if anchor not in text:
+    import re
+    m = re.search(r"^add_executable\(" + re.escape(target) + r"[^\n]*\)$", text, re.M)
+    if not m:
         raise SystemExit(f"{target} add_executable line not found")
-    text = text.replace(anchor, f"{anchor}\n{fix}")
+    text = text.replace(m.group(0), f"{m.group(0)}\n{fix}", 1)
     path.write_text(text)
 PY
