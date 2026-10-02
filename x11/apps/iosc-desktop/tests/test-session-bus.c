@@ -147,7 +147,24 @@ int main(void)
     }
     puts("session-bus: planted socket symlink replaced, target untouched");
 
-    /* 3. a bus dir owned by neither root nor the mobile uid is refused */
+    /* 3. the daemon's socket left behind by a daemon that died (nothing
+     *    listens): restarted, not handed to apps */
+    (void)unlink(sock);
+    make_socket(sock, 0777);
+    assert(lstat(sock, &st) == 0);
+    ino_t dead_ino = st.st_ino;
+    r = ensure_session_bus(addr, sizeof(addr));
+    if (have_daemon) {
+        assert(r == 1);
+        assert(lstat(sock, &st) == 0 && S_ISSOCK(st.st_mode) && st.st_ino != dead_ino);
+        assert(!bus_socket_dead(sock));
+        stop_daemons();
+    } else {
+        assert(r == 0);
+    }
+    puts("session-bus: dead socket restarted, not reused");
+
+    /* 4. a bus dir owned by neither root nor the mobile uid is refused */
     char uidbuf[32];
     snprintf(uidbuf, sizeof(uidbuf), "%u", (unsigned)getuid() + 1);
     setenv("TEST_MOBILE_UID", uidbuf, 1);
@@ -157,7 +174,7 @@ int main(void)
     unsetenv("TEST_MOBILE_UID");
     puts("session-bus: foreign-owned bus dir refused");
 
-    /* 4. fresh start: a 0700 dir and the daemon's own socket */
+    /* 5. fresh start: a 0700 dir and the daemon's own socket */
     if (have_daemon) {
         (void)unlink(sock);
         assert(rmdir(busdir) == 0);

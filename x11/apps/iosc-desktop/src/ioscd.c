@@ -1090,6 +1090,22 @@ static int a11y_enabled_gate(void)
            access(g_a11y_force, F_OK) == 0;
 }
 
+/* A bus socket whose daemon died without cleaning up (SIGKILL from a session
+ * teardown, jetsam) still looks like the daemon's socket; only a refused
+ * connect tells it from a live bus. Any other connect error counts as live,
+ * so a working bus is never torn down on a guess. */
+static int bus_socket_dead(const char *path)
+{
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return 0;
+    struct sockaddr_un a; memset(&a, 0, sizeof(a));
+    a.sun_family = AF_UNIX;
+    strncpy(a.sun_path, path, sizeof(a.sun_path) - 1);
+    int dead = connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0 && errno == ECONNREFUSED;
+    close(fd);
+    return dead;
+}
+
 static int ensure_session_bus(char *addr, size_t addr_len)
 {
     const char *busdir = g_ioscd_bus_dir;
@@ -1121,11 +1137,14 @@ static int ensure_session_bus(char *addr, size_t addr_len)
         return 0;
     }
     if (fstatat(dfd, "session-bus", &st, AT_SYMLINK_NOFOLLOW) == 0) {
-        if (S_ISSOCK(st.st_mode) && st.st_uid == uid) {
+        if (!S_ISSOCK(st.st_mode) || st.st_uid != uid) {
+            fprintf(stderr, "ioscd: replacing %s: not the mobile bus daemon's socket\n", sock);
+        } else if (bus_socket_dead(sock)) {
+            fprintf(stderr, "ioscd: restarting the session bus: nothing listens on %s\n", sock);
+        } else {
             close(dfd);
             return 1;
         }
-        fprintf(stderr, "ioscd: replacing %s: not the mobile bus daemon's socket\n", sock);
         (void)unlinkat(dfd, "session-bus", 0);
     }
 
