@@ -2,6 +2,13 @@
 # Build a prefix-aware package template for a selected Xios target.
 #
 #   packages/build-template-package.sh x11-fonts-sf [rootless-1900] [--stage-only]
+#   packages/build-template-package.sh xios-fhs --check-drift
+#
+# A template that mirrors a package dir (packages/<pkg> or packages/meta/<pkg>)
+# must agree with it: its rootless rendering is compared with the dir's DEBIAN/
+# (check-template-drift.py) before anything is staged, and --check-drift runs
+# only that comparison. A deb is never built at a Package+Version+Architecture
+# the target's committed index already lists, because that filename is public.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,16 +18,18 @@ _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname
 . "$_x/lib/xlib.sh"
 
 usage() {
-  echo "usage: $0 <package> [target-id] [--stage-only]" >&2
+  echo "usage: $0 <package> [target-id] [--stage-only | --check-drift]" >&2
 }
 
 [ "${1:-}" ] || { usage; exit 2; }
 PKG="$1"; shift
 TARGET="${XIOS_TARGET:-rootless-1900}"
 STAGE_ONLY=0
+CHECK_DRIFT=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --stage-only) STAGE_ONLY=1 ;;
+    --check-drift) CHECK_DRIFT=1 ;;
     -h|--help) usage; exit 0 ;;
     *) TARGET="$1" ;;
   esac
@@ -87,19 +96,48 @@ render_template() {
   ' "$src" > "$dst"
 }
 
+render_debian() {
+  local into="$1" src rel dst
+  while IFS= read -r src; do
+    rel="${src#"$TMPL/DEBIAN/"}"
+    dst="$into/${rel%.in}"
+    mkdir -p "$(dirname "$dst")"
+    if [[ "$src" == *.in ]]; then
+      render_template "$src" "$dst"
+    else
+      cp "$src" "$dst"
+    fi
+  done < <(find "$TMPL/DEBIAN" -type f | sort)
+}
+
+# The package dirs only exist as rootless trees, so the comparison always uses
+# the rootless rendering, whatever target this run builds.
+check_drift() {
+  local mirror="" d tmp rc=0
+  for d in "$HERE/$PKG/DEBIAN" "$HERE/meta/$PKG/DEBIAN"; do
+    [ -f "$d/control" ] && { mirror="$d"; break; }
+  done
+  [ -n "$mirror" ] || return 0
+  tmp="$(mktemp -d "${TMPDIR:-/tmp}/xios-template-drift.XXXXXX")"
+  ( xios_load_target rootless-1900 && render_debian "$tmp" ) || rc=2
+  [ "$rc" != 0 ] || python3 "$HERE/check-template-drift.py" "$PKG" "$tmp" "$mirror" || rc=$?
+  rm -rf "$tmp"
+  if [ "$rc" = 1 ]; then
+    echo "Reconcile packages/templates/$PKG with ${mirror#"$X11DIR/"} (decide which side is right), then rebuild." >&2
+  fi
+  return "$rc"
+}
+
+if [ "$CHECK_DRIFT" = 1 ]; then
+  check_drift && echo "$PKG: template matches its package dir"
+  exit
+fi
+
+check_drift || exit 2
+
 rm -rf "$STAGEROOT"
 mkdir -p "$STAGE/DEBIAN"
-
-while IFS= read -r src; do
-  rel="${src#"$TMPL/DEBIAN/"}"
-  dst="$STAGE/DEBIAN/${rel%.in}"
-  mkdir -p "$(dirname "$dst")"
-  if [[ "$src" == *.in ]]; then
-    render_template "$src" "$dst"
-  else
-    cp "$src" "$dst"
-  fi
-done < <(find "$TMPL/DEBIAN" -type f | sort)
+render_debian "$STAGE/DEBIAN"
 
 if [ -d "$TMPL/files" ]; then
   payload_root="$STAGE$XIOS_PACKAGE_PATH_PREFIX"
@@ -166,6 +204,21 @@ python3 "$X11DIR/linux-build/tools/check-target-package.py" "$STAGE" "$XIOS_TARG
 if [ "$STAGE_ONLY" = 1 ]; then
   find "$STAGE" -type f | sed "s#$STAGE/##" | sort
   exit 0
+fi
+
+INDEX="$X11DIR/../repo/Packages"
+[ "$XIOS_REPO_PROFILE" = rootless ] || INDEX="$X11DIR/../repo/profiles/$XIOS_REPO_PROFILE/Packages"
+control_field() { awk -F': ' -v k="$1" '$1 == k { print $2; exit }' "$STAGE/DEBIAN/control"; }
+if [ -f "$INDEX" ] && awk -v p="$(control_field Package)" -v v="$(control_field Version)" -v a="$(control_field Architecture)" '
+    /^Package: /      { pkg = substr($0, 10) }
+    /^Version: /      { ver = substr($0, 10) }
+    /^Architecture: / { arch = substr($0, 15) }
+    /^$/              { if (pkg == p && ver == v && arch == a) found = 1; pkg = ver = arch = "" }
+    END               { if (pkg == p && ver == v && arch == a) found = 1; exit(found ? 0 : 1) }
+  ' "$INDEX"; then
+  echo "$PKG $(control_field Version) ($(control_field Architecture)) is already published in ${INDEX#"$X11DIR/../"}." >&2
+  echo "Its filename is public; bump Version in templates/$PKG and the package dir, then rebuild." >&2
+  exit 2
 fi
 
 mkdir -p "$OUTDIR"
