@@ -6113,12 +6113,15 @@ static void dnd_drop(void)
     dnd_end();
 }
 
-/* Cancel any in-flight drag, telling the source it was cancelled first. The
- * session-lock path uses this: a drag cannot survive the screen locking, and
- * the source needs to hear about it rather than just having the grab vanish. */
+/* Cancel any in-flight drag: the destination under it gets its leave (or it
+ * would keep the offer and its drop highlight), then the source hears it was
+ * cancelled rather than just having the grab vanish. The session-lock path
+ * uses this (a drag cannot survive the screen locking), and so does an input
+ * client that disconnects mid-drag. */
 void dnd_cancel_active(void)
 {
     if (!g_dnd.active) return;
+    dnd_focus_leave();
     if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
     dnd_end();
 }
@@ -6447,10 +6450,8 @@ static void input_client_dropped(uint32_t client, void *user)
     int released = 0;
     /* A drag riding a held button is cancelled, not dropped: nobody let go. */
     for (int i = 0; i < g_nheld_buttons && g_dnd.active; i++)
-        if (g_held_buttons[i].client == client && g_held_buttons[i].code == g_dnd.button) {
-            dnd_focus_leave();
+        if (g_held_buttons[i].client == client && g_held_buttons[i].code == g_dnd.button)
             dnd_cancel_active();
-        }
     for (int i = 0; i < g_nheld_buttons; ) {
         if (g_held_buttons[i].client != client) { i++; continue; }
         uint32_t code = g_held_buttons[i].code;
