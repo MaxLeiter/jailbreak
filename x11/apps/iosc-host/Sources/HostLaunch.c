@@ -4,9 +4,17 @@
 #include <unistd.h>
 #include <errno.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 
 #define IOSCD_SOCK "/var/jb/tmp/ioscd.sock"
+/* Bounds the request write and the reply read, the way Xios's ioscd requests
+ * set SO_SNDTIMEO/SO_RCVTIMEO (XiosSocket.swift). LAUNCH_NATIVE can make ioscd
+ * bring up audio and then wait up to 8 s for a native iosc (ensure_iosc), so
+ * this sits with the longest Xios verb (APPS_SYNC, 15 s) rather than the 2 s
+ * SESSION reply. A wedged daemon now fails the launch instead of leaving the
+ * wrapper waiting forever with its watchdog never armed. */
+#define IOSCD_TIMEOUT_SEC 15
 
 int ioscd_send_launch(const char *app_id)
 {
@@ -16,6 +24,9 @@ int ioscd_send_launch(const char *app_id)
      * request lands must fail the write with EPIPE, not SIGPIPE the host. */
     int on = 1;
     setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
+    struct timeval tv = { IOSCD_TIMEOUT_SEC, 0 };
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     struct sockaddr_un a;
     memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;

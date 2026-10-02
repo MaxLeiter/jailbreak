@@ -9,7 +9,8 @@
  *
  * Sends "LAUNCH_NATIVE\t<app_id>\n" to /var/jb/tmp/ioscd.sock. Returns
  * 0 only when ioscd acknowledges LAUNCHED or RAISED. Returns -1 for transport
- * failures and daemon ERR replies.
+ * failures, daemon ERR replies, and a daemon that has not answered within
+ * IOSCD_TIMEOUT_SEC (HostLaunch.c). Blocking: call it off the main thread.
  */
 int ioscd_send_launch(const char *app_id);
 
