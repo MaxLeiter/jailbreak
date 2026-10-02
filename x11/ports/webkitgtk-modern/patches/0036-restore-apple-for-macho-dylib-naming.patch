@@ -1,0 +1,27 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Restore APPLE at generate time for JavaScriptCore/WebKit so CMake names the dylibs Mach-O style (libX.0.dylib)
+
+--- a/Source/JavaScriptCore/CMakeLists.txt	2026-10-02 00:46:31
++++ b/Source/JavaScriptCore/CMakeLists.txt	2026-10-02 00:46:31
+@@ -1881,4 +1881,10 @@
+ 
+ if (ENABLE_JAVASCRIPT_SHELL)
+   add_subdirectory(shell)
++endif ()
++
++# Xios: Source/cmake/WebKitCommon.cmake shadows APPLE for the GTK port; CMake derives the Mach-O
++# versioned library names (libX.<major>.dylib install name) from APPLE at generate time.
++if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++    set(APPLE ON)
+ endif ()
+--- a/Source/WebKit/CMakeLists.txt	2026-10-02 00:46:31
++++ b/Source/WebKit/CMakeLists.txt	2026-10-02 00:46:31
+@@ -1531,3 +1531,8 @@
+         )
+     endif ()
+ endif ()
++
++# See Source/JavaScriptCore/CMakeLists.txt: Mach-O dylib naming is keyed on APPLE at generate time.
++if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++    set(APPLE ON)
++endif ()

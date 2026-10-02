@@ -24,3 +24,5 @@
 0032-webkit-gtk-config-fixes-no-libdrm-2022api-off.patch
 0033-link-gaps-skia-angle-dmabuf-gtk-darwin.patch
 0034-skia-no-cf-bundle-lookup-gtk-ios.patch
+0035-wtf-no-readline-for-gtk-darwin.patch
+0036-restore-apple-for-macho-dylib-naming.patch

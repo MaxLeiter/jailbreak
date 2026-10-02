@@ -128,6 +128,10 @@ webkitgtk-modern-webcore: webkitgtk-modern-configure
 webkitgtk-modern-webkit: webkitgtk-modern-configure
 	cd $(BUILD_WORK)/webkitgtk-modern && ninja -C build -j$(WEBKIT_NINJA_JOBS) WebKit
 
+# The shared control templates (build_info/libwebkit2gtk-4.1-0.control etc.) substitute
+# @DEB_WEBKITGTK_V@; give that name this recipe's version for this target only (the 2.44 recipe sets
+# the global one to its own version).
+webkitgtk-modern-package: DEB_WEBKITGTK_V := $(DEB_WEBKITGTK_MODERN_V)
 webkitgtk-modern-package: webkitgtk-modern-stage
 	rm -rf $(BUILD_DIST)/libjavascriptcoregtk-4.1-0 \
 		$(BUILD_DIST)/libjavascriptcoregtk-4.1-dev \
@@ -205,10 +209,10 @@ webkitgtk-modern-package: webkitgtk-modern-stage
 	# The GPU-client profile deliberately excludes Procursus general.xml's
 	# no-container entitlement, which prevents graphics user-client access.
 	$(call SIGN,libwebkit2gtk-4.1-0,iosc-gpu-client-ent.xml,,,nogeneral)
-	$(call PACK,libjavascriptcoregtk-4.1-0,DEB_WEBKITGTK_MODERN_V)
-	$(call PACK,libjavascriptcoregtk-4.1-dev,DEB_WEBKITGTK_MODERN_V)
-	$(call PACK,libwebkit2gtk-4.1-0,DEB_WEBKITGTK_MODERN_V)
-	$(call PACK,libwebkit2gtk-4.1-dev,DEB_WEBKITGTK_MODERN_V)
+	$(call PACK,libjavascriptcoregtk-4.1-0,DEB_WEBKITGTK_V)
+	$(call PACK,libjavascriptcoregtk-4.1-dev,DEB_WEBKITGTK_V)
+	$(call PACK,libwebkit2gtk-4.1-0,DEB_WEBKITGTK_V)
+	$(call PACK,libwebkit2gtk-4.1-dev,DEB_WEBKITGTK_V)
 
 	rm -rf $(BUILD_DIST)/libjavascriptcoregtk-4.1-0 \
 		$(BUILD_DIST)/libjavascriptcoregtk-4.1-dev \
