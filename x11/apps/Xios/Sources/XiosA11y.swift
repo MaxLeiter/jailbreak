@@ -149,6 +149,11 @@ final class XiosA11yClient {
         var chunk = [UInt8](repeating: 0, count: 16 * 1024)
         while isCurrent(gen) {
             let n = read(s, &chunk, chunk.count)
+            // xiosConnectUnixSocket sets a 2 s SO_RCVTIMEO, and xios-a11yd sends
+            // nothing while the tree is unchanged, so EAGAIN is an idle desktop,
+            // not a dead daemon: keep the connection (the published elements
+            // with it) and re-check the generation.
+            if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) { continue }
             if n <= 0 { return }
             buf.append(contentsOf: chunk[0..<n])
             while let nl = buf.firstIndex(of: 0x0a) {
