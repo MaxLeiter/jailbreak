@@ -14,6 +14,10 @@
  *     SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\t<slot>\n
  *                                         -> SESSION_STARTED\n | SESSION_ACTIVE\n | ERR <msg>\n
  *     SESSION_ENSURE\t...same payload...  -> same replies, ensure semantics for all peers
+ *         <app> (the "app" preset): from root, command text for xios-session;
+ *         from any other peer, a desktop-file id (the .desktop basename without
+ *         ".desktop"), run from that trusted entry's argv. An id that does not
+ *         resolve -> ERR unknown app <id>.
  *     APPS_LIST\n                         -> TSV app list + APPS_END\t<status>\n
  *     APPS_SYNC\t<native|classic>\t<dry>\n -> sync log + APPS_END\t<status>\n
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
@@ -1395,6 +1399,39 @@ static void log_session_started(const char *preset, const char *app,
     fputc('\n', stderr);
 }
 
+static void sanitized_copy(char *dst, size_t dst_len, const char *src);
+
+/* xios-session runs the "app" preset's <app> as root through
+ * `bash -lc "exec <app>"`, so only root may hand it command text. Any other
+ * peer names a desktop-file id; it resolves through the same trusted,
+ * root-owned entries LAUNCH uses, and the text passed on is built from that
+ * entry's argv, shell-quoted word by word. */
+static int session_app_from_file_id(int fd, const char *file_id,
+                                    char *cmd, size_t cmd_len)
+{
+    struct xios_desktop_entry desktop;
+    char error[256], clean[260], msg[320];
+    char *app_argv[XIOS_DESKTOP_ARG_MAX];
+    char argv_storage[XIOS_DESKTOP_ARG_STORAGE];
+    error[0] = 0;
+    if (xios_desktop_entry_lookup_file_id(file_id, g_jbroot, 1, &desktop,
+                                          error, sizeof(error)) &&
+        xios_desktop_entry_argv(&desktop, app_argv,
+                                sizeof(app_argv) / sizeof(app_argv[0]),
+                                argv_storage, sizeof(argv_storage),
+                                error, sizeof(error)) > 0) {
+        if (xios_desktop_argv_shell_text(app_argv, cmd, cmd_len))
+            return 1;
+        snprintf(error, sizeof(error), "command line too long");
+    }
+    sanitized_copy(clean, sizeof(clean), file_id);
+    fprintf(stderr, "ioscd: app request REFUSED: %s is not a launchable desktop-file id (%s)\n",
+            clean, error);
+    snprintf(msg, sizeof(msg), "ERR unknown app %s\n", clean);
+    reply(fd, msg);
+    return 0;
+}
+
 static void handle_session_request(int fd, char *payload, int ensure,
                                    const struct peer_info *peer)
 {
@@ -1415,11 +1452,17 @@ static void handle_session_request(int fd, char *payload, int ensure,
      * side displays) never tear the desktop down: no policy. */
     int destructive = strcmp(preset, "app") != 0 && !*slot;
     int is_root = peer->have_eid && peer->uid == 0;
+    char app_cmd[XIOS_DESKTOP_ARG_STORAGE * 4];
 
     if (strcmp(preset, "app") == 0) {
         if (!*app) {
             reply(fd, "ERR empty app\n");
             return;
+        }
+        if (!is_root) {
+            if (!session_app_from_file_id(fd, app, app_cmd, sizeof(app_cmd)))
+                return;
+            app = app_cmd;
         }
         if (!*slot && !classic_compositor_socket_live()) {
             reply(fd, "ERR no active desktop compositor\n");
