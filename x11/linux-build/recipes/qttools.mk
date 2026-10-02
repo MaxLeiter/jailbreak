@@ -7,7 +7,7 @@ endif
 # CMake metadata are built.
 
 SUBPROJECTS      += qttools
-QTTOOLS_VERSION  := 6.6.3
+QTTOOLS_VERSION  := 6.10.3
 DEB_QTTOOLS_V    ?= $(QTTOOLS_VERSION)+ios1
 
 qttools-setup: setup

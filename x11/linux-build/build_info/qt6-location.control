@@ -1,0 +1,10 @@
+Package: qt6-location
+Version: @DEB_QTLOCATION_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base, qt6-declarative, qt6-positioning
+Description: Qt 6 Location for the Xios desktop
+ QtLocation map QML module and geoservice plugins. Required by plasma-workspace 6.7 (timezone selector map).

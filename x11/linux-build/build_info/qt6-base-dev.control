@@ -5,7 +5,9 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-base (= @DEB_QTBASE_V@)
+Depends: qt6-base (= @DEB_QTBASE_V@), libwayland-dev
+Replaces: qt6-wayland-dev (<< 6.10)
+Breaks: qt6-wayland-dev (<< 6.10)
 Description: Development files for Qt 6 base
  Headers, CMake package files, pkg-config files and mkspecs needed to build
  software against the Qt 6 base libraries on the Xios desktop. Cross-building

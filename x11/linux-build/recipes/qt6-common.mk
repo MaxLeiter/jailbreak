@@ -6,14 +6,14 @@ endif
 # qtwayland, qtsvg, qtimageformats); qtbase.mk documents the WHY of each flag. Variables
 # use recursive (=) assignment so include order never matters.
 
-QT6_VERSION = 6.6.3
-QT6_MINOR   = 6.6
+QT6_VERSION = 6.10.3
+QT6_MINOR   = 6.10
 
 # Host Qt tree (build-qt.sh stage 1 + build-qt-modules.sh stage 1). Same prefix as
 # qtbase.mk's QT_HOST_PATH; distinct name to avoid cross-recipe variable collisions.
 QT6_HOST_PATH = $(BUILD_TOOLS)/host-qt-$(QT6_VERSION)
 
-# $(call QT6_MODULE_URL,qtsvg) -> official 6.6.3 submodule tarball URL.
+# $(call QT6_MODULE_URL,qtsvg) -> official submodule tarball URL (6.10.x uses the plain everywhere-src name).
 # EXTRACT_TAR silently skips extraction when build_work/<name> already exists — on a
 # version bump, rm -rf the build_work tree first or you rebuild a stale tree.
 QT6_MODULE_URL = https://download.qt.io/archive/qt/$(QT6_MINOR)/$(QT6_VERSION)/submodules/$(1)-everywhere-src-$(QT6_VERSION).tar.xz
@@ -79,3 +79,14 @@ QT6_RM_SHADOW_HEADERS = \
 QT6_DISABLE_MACOS_CONDITIONS = \
 	find $(BUILD_WORK)/$(1)/src -name CMakeLists.txt -exec \
 		sed -i -E 's/CONDITION MACOS([^X])/CONDITION MACOS AND FALSE\1/g; s/CONDITION MACOS$$/CONDITION MACOS AND FALSE/' {} +
+
+# Official Qt CVE diffs for this lane (x11/ports/qt610-cve, mounted at /work/ports). `patch -N` skips hunks
+# already in the tree; any leftover .rej under src/ is a hard failure (a silent partial fix is worse than none).
+# Usage in a -setup recipe: $(call QT6_APPLY_CVE,<module>)   (module = build_work dir name = qtbase, qtsvg, ...)
+QT6_APPLY_CVE = \
+	for p in $$(ls /work/ports/qt610-cve/$(1)-CVE-*.diff 2>/dev/null | sort -V); do \
+		patch -p1 -N -s --no-backup-if-mismatch -d $(BUILD_WORK)/$(1) < $$p || true; \
+	done; \
+	if find $(BUILD_WORK)/$(1)/src -name '*.rej' | grep -q .; then \
+		echo "ERROR: Qt CVE diff left rejects in $(1):"; find $(BUILD_WORK)/$(1)/src -name '*.rej'; exit 1; \
+	fi

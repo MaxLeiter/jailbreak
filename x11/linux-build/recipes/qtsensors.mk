@@ -6,7 +6,7 @@ endif
 # refined later after first compositor bring-up.
 
 SUBPROJECTS       += qtsensors
-QTSENSORS_VERSION := 6.6.3
+QTSENSORS_VERSION := 6.10.3
 DEB_QTSENSORS_V   ?= $(QTSENSORS_VERSION)+ios1
 
 qtsensors-setup: setup

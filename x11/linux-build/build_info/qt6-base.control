@@ -5,7 +5,9 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: libfontconfig1, libfreetype6, libharfbuzz0b, libpng16-16, libjpeg62-turbo, libpcre2-16-0, libxkbcommon0, libsqlite3-1, libicu74, dbus, angle
+Depends: libfontconfig1, libfreetype6, libharfbuzz0b, libpng16-16, libjpeg62-turbo, libpcre2-16-0, libxkbcommon0, libsqlite3-1, libicu74, dbus, angle, libwayland0
+Replaces: qt6-wayland (<< 6.10)
+Breaks: qt6-wayland (<< 6.10)
 Description: Qt 6 core libraries for the Xios desktop
  Qt is a cross-platform C++ application framework. This build targets the
  rootless jailbreak environment as plain dylibs in /var/jb/usr/lib, built

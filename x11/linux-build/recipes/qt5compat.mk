@@ -9,13 +9,14 @@ endif
 # both halves in one deb.
 
 SUBPROJECTS       += qt5compat
-QT5COMPAT_VERSION := 6.6.3
+QT5COMPAT_VERSION := 6.10.3
 DEB_QT5COMPAT_V   ?= $(QT5COMPAT_VERSION)+ios1
 
 qt5compat-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qt5compat))
 	$(call EXTRACT_TAR,qt5compat-everywhere-src-$(QT5COMPAT_VERSION).tar.xz,qt5compat-everywhere-src-$(QT5COMPAT_VERSION),qt5compat)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qt5compat)
+	$(call QT6_APPLY_CVE,qt5compat)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

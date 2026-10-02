@@ -7,7 +7,7 @@ endif
 # this recipe provides the target half. glslang + SPIRV-Cross are bundled by Qt.
 
 SUBPROJECTS           += qtshadertools
-QTSHADERTOOLS_VERSION := 6.6.3
+QTSHADERTOOLS_VERSION := 6.10.3
 DEB_QTSHADERTOOLS_V   ?= $(QTSHADERTOOLS_VERSION)+ios1
 
 qtshadertools-setup: setup

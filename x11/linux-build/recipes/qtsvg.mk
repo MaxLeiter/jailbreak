@@ -6,13 +6,14 @@ endif
 # a hard KDE-flavor dependency despite being a small module.
 
 SUBPROJECTS   += qtsvg
-QTSVG_VERSION := 6.6.3
+QTSVG_VERSION := 6.10.3
 DEB_QTSVG_V   ?= $(QTSVG_VERSION)+ios1
 
 qtsvg-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtsvg))
 	$(call EXTRACT_TAR,qtsvg-everywhere-src-$(QTSVG_VERSION).tar.xz,qtsvg-everywhere-src-$(QTSVG_VERSION),qtsvg)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtsvg)
+	$(call QT6_APPLY_CVE,qtsvg)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
