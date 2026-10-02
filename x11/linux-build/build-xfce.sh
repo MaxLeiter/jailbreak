@@ -8,6 +8,7 @@
 #     -v "$PWD/linux-build/build-xfce.sh:/work/build-xfce.sh:ro" \
 #     -v "$PWD/linux-build/recipes:/work/recipes:ro" \
 #     -v "$PWD/linux-build/build_info:/work/build_info:ro" \
+#     -v "$PWD/ports:/work/ports:ro" \
 #     -v "$PWD/linux-build/out:/out" \
 #     procursus-xbuild:bookworm-arm64 /work/build-xfce.sh
 #

@@ -24,6 +24,7 @@
  *   IOSC_SHELL_ICONS=./design/preview-icons ./preview-host design
  */
 #include "shell-theme.h"
+#define PR_ENABLE_GRADIENTS        /* the mock wallpaper; panel-layout.h no longer needs it */
 #include "panel-layout.h"
 #include "overview-layout.h"
 #include "shell-blur.h"

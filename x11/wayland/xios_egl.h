@@ -66,7 +66,8 @@ void        xios_egl_destroy_image(EGLImageKHR image);
 /* ---- MetaBackendIOS contract: output geometry / scale ---------------------
  * Geometry is the created output IOSurface's size (from xios_surface). Scale is a
  * glue-held value (default 2.0; set with xios_output_set_scale — iosc uses its own
- * output_scale(), the mutter backend sets this). Signatures match xios-glue-stub.h. */
+ * output_scale(), and nothing calls the setter today, so the mutter backend runs at the
+ * 2.0 default). Signatures match xios-glue-stub.h. */
 void  xios_output_geometry(int *width, int *height);
 float xios_output_scale(void);
 void  xios_output_set_scale(float scale);

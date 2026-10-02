@@ -207,6 +207,13 @@ static XSurfaceConn *xsurface_connect_caps(const char *sock_path, uint32_t caps)
 {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { xlog("socket() failed errno=%d", errno); return NULL; }
+    /* The app sends PACING at the top of every display-link tick, before the
+     * drain that notices EOF. Without this, the first send after the compositor
+     * drops us (exit, session switch, an output resize) raises SIGPIPE, whose
+     * default action kills the app; with it the send fails with EPIPE and the
+     * drain tears the connection down as intended. */
+    int on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
     if (strlen(sock_path) >= sizeof(((struct sockaddr_un *) 0)->sun_path)) {
         xlog("socket path too long: %s", sock_path);
         close(fd);
@@ -380,10 +387,11 @@ int xsurface_height(XSurfaceConn *c) { return c ? c->height : 0; }
 int xsurface_stride(XSurfaceConn *c) { return c ? c->stride : 0; }
 int xsurface_fd(XSurfaceConn *c)     { return c ? c->fd : -1; }
 
-/* Parse 32-byte records (DIRTY + CURSOR, plus any HELLO/native records whose
- * payload we skip). Records span multiple non-blocking reads, so the partial-
- * header + payload-skip state lives in the conn. A magic mismatch means the
- * stream desynced — return -1 so the caller reconnects. */
+/* Parse 32-byte records (DIRTY, SURFACE, SURFACE_DROP, CURSOR, CURSOR_IMAGE).
+ * Records span multiple non-blocking reads, so the partial-header + payload
+ * state lives in the conn. A magic mismatch means the stream desynced, and a
+ * second HELLO or an unknown type is a protocol break: return -1 so the caller
+ * reconnects. */
 int xsurface_drain(XSurfaceConn *c)
 {
     if (!c) return -1;

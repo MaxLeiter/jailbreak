@@ -79,11 +79,11 @@ static int st_battery(int *pct, int *charging)
     return ok;
 }
 
-/* --------------------------------------------------------------- Wi-Fi ---- */
-/* 1 when the default route is up over a non-cellular interface (Wi-Fi on an
- * iPad); 0 when Wi-Fi is off / airplane mode / no network (caller hides the
- * glyph). SystemConfiguration via dlopen, same degrade-by-hiding pattern as
- * st_battery. */
+/* ------------------------------------------------------------- network ---- */
+/* ST_NET_WIFI when the default route is up over a non-cellular interface
+ * (Wi-Fi on an iPad), ST_NET_CELLULAR over WWAN, ST_NET_NONE when there is no
+ * route / airplane mode (caller hides the glyph). SystemConfiguration via
+ * dlopen, same degrade-by-hiding pattern as st_battery. */
 static enum st_network_kind st_network(void)
 {
     typedef CFTypeRef (*reach_create_fn)(CFAllocatorRef, const struct sockaddr *);

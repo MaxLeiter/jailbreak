@@ -3,6 +3,23 @@ set -euo pipefail
 
 src=${1:?usage: plasma-workspace-ios-fixes.sh <plasma-workspace-source-dir>}
 
+# plasma-workspace-setup re-runs this on the same tree when a failed build is
+# retried, and most edits below are not safe to apply twice (some rewrite their
+# own anchors, others duplicate code blocks). Stamp the tree with this script's
+# hash once every edit has landed: a re-run of the same script is a no-op, and a
+# tree fixed by an older version is refused instead of being edited again.
+stamp="$src/.xios-ios-fixes.sha256"
+self_sha=$(sha256sum "${BASH_SOURCE[0]}" | awk '{print $1}')
+if [ -f "$stamp" ]; then
+  if [ "$(cat "$stamp")" = "$self_sha" ]; then
+    echo "plasma-workspace-ios-fixes: already applied to $src"
+    exit 0
+  fi
+  echo "plasma-workspace-ios-fixes: $src was fixed by a different version of this script;" >&2
+  echo "  delete it so EXTRACT_TAR re-extracts a clean tree" >&2
+  exit 1
+fi
+
 cat > "$src/shell/config-X11.h" <<'EOF'
 #pragma once
 #define HAVE_X11 0
@@ -1393,3 +1410,5 @@ text = path.read_text()
 text = re.sub(r"^([ \t]*)ecm_install_po_files_as_qm\(", r"\1# ios-bringup-no-linguist: ecm_install_po_files_as_qm(", text, flags=re.M)
 path.write_text(text)
 PY
+
+printf '%s\n' "$self_sha" > "$stamp"

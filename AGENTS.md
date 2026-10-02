@@ -63,7 +63,7 @@ bin/publish-repo.sh                         # 6. production
 - **Step 5 is not bookkeeping.** Step 6 publishes the *committed* index, so the diff you commit is exactly the change users receive, and anything uncommitted stays unpublished. `publish-repo.sh` enforces this: a prod publish **refuses to run** while `repo/Packages` differs from `HEAD`.
 - **Never run step 6 alone** for a package built on this machine. Step 3 is what uploads the payloads; skipping it publishes an index pointing at 404s.
 - Defaults are chosen so the safe thing happens with no flags: **staging rebuilds the index from `repo/debs`** (that is what staging is for), **prod publishes the committed index**. Override with `--from-debs` / `--from-index` when you mean to.
-- `--from-index` and `--only` are the two ways to avoid shipping the accumulated tree delta, and they compose: `--only` reconciles against **what the target serves**, `--from-index` publishes **what git says**. With `--only` the drift gate runs `--warn-regressions`, since being behind the target is that mode's premise.
+- `--from-index` and `--only` are the two ways to avoid shipping the accumulated tree delta, and they compose: `--only` reconciles against **what the target serves**, `--from-index` publishes **what git says**. With `--only` the drift gate checks only the named packages, and a named package older than what the target serves is a hard error, because it would roll devices back; pass `--allow-rollback` to ship one deliberately.
 - Publishing needs no network secrets beyond your Vercel login, but it does need the signing key: prod and staging refuse to publish unsigned, checked before any work (`ALLOW_UNSIGNED=1` overrides; `--preview` only warns). An unsigned index makes apt reject the whole repo.
 
 ### Why this is not a GitHub Action
@@ -75,7 +75,7 @@ CI (`.github/workflows/ci.yml`, job `APT index`) validates instead: regenerate f
 ### Guardrails that will stop you
 
 - `make-repo.py` with no `--from-index` **refuses** when `repo/debs` is missing payloads for more than 5% of the index. A worktree always looks like that, because `repo/debs` is gitignored. Use `--from-index`; it regenerates the whole site and index from the committed `Packages` with no payloads at all. (`MAKE_REPO_ALLOW_SHRINK=1` if you truly are retiring packages.)
-- A Claude Code PreToolUse hook (`bin/lib/guard-repo-ops.sh`, installed by `bin/setup-repo-guards.sh`) blocks a bare `sync-packages-to-repo.py` — it applies by default and deletes debs — and blocks hand-edits of generated output under `repo/`. Edit the generator or `repo/meta/<pkg>.json` instead.
+- A Claude Code PreToolUse hook (`bin/lib/guard-repo-ops.sh`, installed by `bin/setup-repo-guards.sh`) blocks hand-edits of generated output under `repo/`. Edit the generator or `repo/meta/<pkg>.json` instead. `x11/tools/sync-packages-to-repo.py` guards itself: it is dry-run by default, and `--apply` needs an explicit `--only`.
 
 ## Parallel Branches and Version Drift
 

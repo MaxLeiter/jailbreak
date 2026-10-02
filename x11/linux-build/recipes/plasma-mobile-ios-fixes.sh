@@ -60,8 +60,11 @@ text = re.sub(
 path.write_text(text)
 PY
 
-# Keep mostly data/package installs for panel/taskpanel pieces whose matching
-# C++ containment plugins still depend on unsupported Linux service paths.
+# Drop the panel's C++ containment plugin (it still depends on unsupported Linux
+# service paths) and keep its data/package install. The regex needs a set(...)
+# block before install(TARGETS), which taskpanel's CMakeLists does not have, so
+# taskpanel's plugin is left alone on purpose: it is built and shipped, and the
+# navigation panel (patched further down) runs on it.
 python3 - "$src/containments/panel/CMakeLists.txt" "$src/containments/taskpanel/CMakeLists.txt" <<'PY'
 import re
 import sys

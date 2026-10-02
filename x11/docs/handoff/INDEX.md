@@ -32,6 +32,7 @@ One file per domain. Each is a self-contained charter for an independent agent: 
 16. **games.md** — SDL2/SDL3 strategy-game wave: OpenTTD, Warzone 2100, Battle for Wesnoth, and 0 A.D.; shared dependencies, packaging, and isolated device proof.
 17. **openjdk.md** — full OpenJDK 21 HotSpot JRE/JDK lane, rootless package split, iOS code-cache behavior, and A10 device proof.
 18. **amethyst-minecraft.md** — native UIKit/LWJGL graphical Minecraft launcher, rootless/rootful packaging, system OpenJDK integration, and physical GUI proof gate.
+19. **audit-2026-10-01.md** — what the 2026-10-01 repo-wide audit (PR #5) left open: the mobile-to-root decision, held-back diffs, GNOME keycode-0 typing, and the version-bump queue.
 
 ## Current headline status
 - **OpenJDK 21.0.12 HotSpot is built, packaged, and running on the A10 iPad

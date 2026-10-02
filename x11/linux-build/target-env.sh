@@ -53,9 +53,9 @@ XIOS_MEMO_ARGS="MEMO_TARGET=$XIOS_MEMO_TARGET MEMO_CFVER=$XIOS_MEMO_CFVER"
 # fallback for a bare docker run.
 if [ -z "${XIOS_DEB_ARCH:-}" ]; then
   case "$XIOS_MEMO_TARGET" in
+    *e-rootless|*e) XIOS_DEB_ARCH=iphoneos-arm64e ;;
     *-rootless) XIOS_DEB_ARCH=iphoneos-arm64 ;;
     iphoneos-arm64|iphoneos-arm64-ramdisk) XIOS_DEB_ARCH=iphoneos-arm ;;
-    *e-rootless|*e) XIOS_DEB_ARCH=iphoneos-arm64e ;;
     *) XIOS_DEB_ARCH=iphoneos-arm64 ;;
   esac
 fi

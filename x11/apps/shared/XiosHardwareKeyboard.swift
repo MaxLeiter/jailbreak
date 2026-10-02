@@ -9,7 +9,7 @@ import UIKit
 final class XiosHardwareKeyboard {
     typealias Handler = (_ keysym: UInt32, _ down: Bool, _ modifiers: UInt32) -> Void
 
-    // Wire modifier bits (xios_input_socket.h).
+    // Wire modifier bits (decoded by iosc.c keyboard_masks_from_app).
     static let shift: UInt32 = 1 << 0
     static let control: UInt32 = 1 << 1
     static let alternate: UInt32 = 1 << 2

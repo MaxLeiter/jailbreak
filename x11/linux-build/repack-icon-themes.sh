@@ -11,10 +11,10 @@
 #   docker run --rm -v "$PWD/out:/out" -v "$PWD/repack-icon-themes.sh:/r.sh:ro" \
 #     --entrypoint sh procursus-xbuild:bookworm-arm64 /r.sh
 set -e
-_xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
-. "$_xt/linux-build/target-lib.sh"
-xios_load_target "${XIOS_TARGET:-rootless-1900}"
+# In-container loader (POSIX, baked into the image): this runs as `sh /r.sh`, with
+# no repo checkout around it, so the host-side bash target-lib.sh is out of reach.
+[ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
+. "$XIOS_TARGET_ENV"
 OUT=/out
 WORK=/tmp/icons; rm -rf "$WORK"; mkdir -p "$WORK"; cd "$WORK"
 

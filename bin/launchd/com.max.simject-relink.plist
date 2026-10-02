@@ -4,22 +4,27 @@
   LaunchDaemon: re-create simject's substrate symlinks in the iOS Simulator
   runtimes after a reboot (they live on tmpfs, which is wiped on reboot).
 
-  Runs as root. ProgramArguments[0] is /bin/bash (root-owned) so launchd's
-  ownership check passes while the actual logic stays version-controlled in the repo.
+  Runs as root, so it runs root-owned COPIES, never files max can write: the
+  repo's bin/simject-relink.sh and ~/simject's installsubstrate.sh/remount.sh are
+  installed root:wheel 0755 into /Library/PrivilegedHelperTools/com.max.simject-relink/,
+  and the script refuses to run from anywhere that is not root-owned. It logs
+  to /Library/Logs/simject-relink.log, which only root can create or replace.
   RunAtLoad covers boot; StartOnMount re-fires when the iOS_* runtime volumes
   mount (they can mount lazily when Simulator launches, not just at boot).
 
-  Install (one-time, needs sudo):
-    sudo cp ~/Documents/jailbreak/bin/launchd/com.max.simject-relink.plist /Library/LaunchDaemons/
-    sudo chown root:wheel /Library/LaunchDaemons/com.max.simject-relink.plist
-    sudo chmod 644       /Library/LaunchDaemons/com.max.simject-relink.plist
+  Install (one-time, needs sudo; rerun the install lines after editing the
+  script or updating simject, since launchd only sees the installed copies):
+    sudo install -d -o root -g wheel -m 0755 /Library/PrivilegedHelperTools/com.max.simject-relink
+    sudo install -o root -g wheel -m 0755 ~/Documents/jailbreak/bin/simject-relink.sh ~/simject/installsubstrate.sh ~/simject/remount.sh /Library/PrivilegedHelperTools/com.max.simject-relink/
+    sudo install -o root -g wheel -m 0644 ~/Documents/jailbreak/bin/launchd/com.max.simject-relink.plist /Library/LaunchDaemons/
     sudo launchctl bootstrap system /Library/LaunchDaemons/com.max.simject-relink.plist
   Test now:
     sudo launchctl kickstart -k system/com.max.simject-relink
-    cat ~/Library/Logs/simject-relink.log
+    cat /Library/Logs/simject-relink.log
   Uninstall:
     sudo launchctl bootout system /Library/LaunchDaemons/com.max.simject-relink.plist
     sudo rm /Library/LaunchDaemons/com.max.simject-relink.plist
+    sudo rm -r /Library/PrivilegedHelperTools/com.max.simject-relink
 -->
 <plist version="1.0">
 <dict>
@@ -29,7 +34,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/max/Documents/jailbreak/bin/simject-relink.sh</string>
+        <string>/Library/PrivilegedHelperTools/com.max.simject-relink/simject-relink.sh</string>
     </array>
 
     <key>RunAtLoad</key>
@@ -39,6 +44,6 @@
     <true/>
 
     <key>StandardErrorPath</key>
-    <string>/Users/max/Library/Logs/simject-relink.log</string>
+    <string>/Library/Logs/simject-relink.log</string>
 </dict>
 </plist>

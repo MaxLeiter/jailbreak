@@ -11,7 +11,7 @@
 #
 # Provides:
 #   xsign   <bin> [ents] [required-marker...]   ldid-sign + verify entitlements
-#   xmkdeb  <staging_dir> <out_dir> [--no-minos]  build a .deb (+ minos stamp)
+#   xmkdeb  <staging_dir> <out_dir> [--minos]     build a .deb
 #   xstage_lagom_fonts <fonts_dir> [cache_dir]    stage Ladybird's text fonts
 #   xdeb_find    <stem> <dir>...                  newest matching iphoneos deb path
 #   xdeb_extract <sysroot> <deb-dir-list> <pkg>... extract dev debs into a sysroot
@@ -41,9 +41,11 @@ xsign() {
     # the selected target rather than making every caller remember to.
     # XIOS_PREFIX comes from linux-build/target-lib.sh; unset means rootless, so
     # this is a no-op for every existing caller.
+    local rendered=""
     if [ -n "$ents" ] && [ "${XIOS_PREFIX-/var/jb}" != "/var/jb" ]; then
-        local rendered
-        rendered="$(mktemp -t xios-ents)" || return 1
+        # An explicit XXXXXX template: GNU mktemp (the container) rejects a
+        # bare `-t xios-ents`.
+        rendered="$(mktemp "${TMPDIR:-/tmp}/xios-ents.XXXXXX")" || return 1
         # An empty prefix must NOT become "/": that grants the whole filesystem
         # where rootless granted one directory. Rootful installs under the
         # subprefix, so that is what gets excepted.
@@ -56,7 +58,10 @@ xsign() {
         ents="$rendered"
     fi
     if [ -n "$ents" ]; then
-        ldid -S"$ents" "$bin" || { echo "xsign: ERROR ldid failed on $bin" >&2; return 1; }
+        ldid -S"$ents" "$bin" || {
+            [ -z "$rendered" ] || rm -f "$rendered"
+            echo "xsign: ERROR ldid failed on $bin" >&2; return 1; }
+        [ -z "$rendered" ] || rm -f "$rendered"
     else
         ldid -S "$bin" || { echo "xsign: ERROR ldid failed on $bin" >&2; return 1; }
     fi
@@ -232,7 +237,7 @@ xstage_lagom_fonts() {
 }
 
 # ---- deb extraction into a cross sysroot ----------------------------------
-# xdeb_find <stem> <dir>...  -> newest matching <stem>_*_iphoneos-arm64.deb, or 1.
+# xdeb_find <stem> <dir>...  -> newest matching <stem>_*_$XIOS_DEB_ARCH.deb, or 1.
 xdeb_find() {
     local stem="$1"; shift
     local d f

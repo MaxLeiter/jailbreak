@@ -39,10 +39,12 @@ int xios_metal_event_broker_publish(MTLSharedEventHandle *handle,
 /* Fetch the handle and recreate the event on device. The publisher keeps its
  * XPC connection alive, so the same token can be imported by reconnecting
  * consumers until that producer exits. The returned object follows Cocoa's
- * create rule (+1); ARC callers receive it as retained. */
+ * create rule (+1); ARC and Swift callers receive it as retained. That needs
+ * NS_RETURNS_RETAINED: on an Objective-C object return, CF_RETURNS_RETAINED is
+ * ignored by Swift, which then treats the result as +0 and leaks every event. */
 id<MTLSharedEvent> xios_metal_event_broker_copy_event(
     id<MTLDevice> device, const void *token, size_t token_size)
-    CF_RETURNS_RETAINED;
+    NS_RETURNS_RETAINED;
 #endif
 
 #endif

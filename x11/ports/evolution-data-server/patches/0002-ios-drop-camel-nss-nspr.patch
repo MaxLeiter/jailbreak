@@ -117,8 +117,8 @@ diff -ru a/src/camel/camel.c b/src/camel/camel.c
 - * concurrent calls to shutdown () and init () by different threads */
 -PRLock *nss_initlock = NULL;
 +/* iOS cross build: camel is built without NSS/NSPR (no iOS port exists).
-+ * Mail-provider TLS is unavailable; the calendar/addressbook stack this
-+ * build ships never touches it. See recipes/evolution-data-server.mk. */
++ * Only S/MIME is lost: mail TLS goes through GIO (camel-network-service.c),
++ * not NSS. See recipes/evolution-data-server.mk. */
  
 -/* Whether or not Camel has initialized the NSS library. We cannot
 - * unconditionally call NSS_Shutdown () if NSS was initialized by other

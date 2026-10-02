@@ -102,7 +102,14 @@ void iosc_input_text(iosc_input_t *h, const char *utf8)
     if (!utf8) return;
     size_t len = strlen(utf8);
     if (len == 0) return;
-    if (len > 4096) len = 4096;
+    if (len > 4096) {
+        /* The compositor drops a record over 4096 bytes. Cut on a code point
+         * boundary: a split multi-byte sequence would reach the client as
+         * invalid UTF-8. */
+        len = 4096;
+        while (len > 0 && ((unsigned char)utf8[len] & 0xC0) == 0x80) len--;
+        if (len == 0) return;
+    }
     xios_msg m = xios_input_message(XIOS_IN_TEXT, 0, 0, (uint32_t)len, 0, 0);
     m.length = (uint32_t)len;
     send_msg(h, &m);

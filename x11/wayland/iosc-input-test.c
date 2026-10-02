@@ -1,6 +1,8 @@
 /*
  * iosc-input-test.c — inject input into the iosc compositor for testing, without
- * the Xios app. Speaks the same fixed 24-byte protocol the app uses over
+ * the Xios app. Speaks the same strict-v1 protocol the app uses (a HELLO, then
+ * 32-byte xios_msg records, TEXT followed by its UTF-8 payload; see
+ * apps/shared/XiosProtocol.h) over
  * /var/jb/tmp/mutter-input.sock or /var/jb/tmp/iosc-input.sock. Lets us prove
  * wl_keyboard/wl_pointer dispatch (e.g.
  * "type ls<Enter> into kgx") before wiring the device-side UIKit path.
@@ -189,7 +191,11 @@ int main(int argc, char **argv)
         for (int i = argi + 1; i < argc; i++) {
             size_t len = strlen(argv[i]);
             if (len == 0 || len > 4096) { fprintf(stderr, "skipping %zu-byte arg\n", len); continue; }
-            xios_msg m = { .type = XIOS_IN_TEXT, .code = (uint32_t)len };
+            /* Written by hand (header + payload), so it must carry what
+             * send_msg() would add: the reader drops any record without the
+             * magic, and a TEXT record's length must equal its code. */
+            xios_msg m = { .magic = XIOS_MSG_MAGIC, .type = XIOS_IN_TEXT,
+                           .length = (uint32_t)len, .code = (uint32_t)len };
             if (write(fd, &m, sizeof(m)) != (ssize_t)sizeof(m) ||
                 write(fd, argv[i], len) != (ssize_t)len) {
                 perror("write");

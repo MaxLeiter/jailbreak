@@ -16,9 +16,9 @@ Description: the display app for the Xios desktop
  Fullscreen desktop flavors need it.
  .
  Open it and pick a session, or start one from the shell with xios-session.
- Three-finger tap switches between running displays, four-finger tap opens the
- session and dimension picker, pinch zooms to fit, and a swipe up from the lower
- edge raises the keyboard.
+ Three-finger tap opens the session and screen size panel (other running
+ displays are under Advanced), pinch zooms, and a swipe up from the lower edge
+ raises the keyboard.
  .
  Install a flavor rather than this package on its own: xios-gnome, xios-kde,
  or xios-x11. Each one pulls this app in through xios-core. The per-app native

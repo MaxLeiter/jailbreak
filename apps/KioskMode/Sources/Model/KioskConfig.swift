@@ -53,6 +53,10 @@ final class KioskConfig {
     var paused: Bool = false
     /// Set once the user finishes onboarding, so we don't show it again.
     var configured: Bool = false
+    /// The `paused` value last read from / written to the file. The tweak flips
+    /// `paused` behind our back (escape gesture), so `save()` only overwrites it
+    /// when the app itself changed it.
+    private var syncedPaused: Bool = false
 
     // The shared config is stored under a filename that is deliberately NOT the
     // app's own CFPreferences domain. The app's bundle id is `com.max.kioskmode`,
@@ -103,10 +107,18 @@ final class KioskConfig {
         targetName     = dict["targetName"] as? String ?? ""
         escapeMethod   = (dict["escapeMethod"] as? String).flatMap(EscapeMethod.init) ?? .volumeUpTriple
         paused         = dict["paused"] as? Bool ?? false
+        syncedPaused   = paused
         configured     = dict["configured"] as? Bool ?? false
     }
 
     func save() {
+        // Unchanged here means any difference on disk is the tweak's escape
+        // gesture, which must not be reverted by an unrelated save.
+        if paused == syncedPaused,
+           let disk = NSDictionary(contentsOfFile: Self.path) as? [String: Any],
+           let p = disk["paused"] as? Bool {
+            paused = p
+        }
         let dict: [String: Any] = [
             "enabled":        enabled,
             "targetBundleID": targetBundleID,
@@ -119,6 +131,7 @@ final class KioskConfig {
             let data = try PropertyListSerialization.data(
                 fromPropertyList: dict, format: .xml, options: 0)
             try data.write(to: URL(fileURLWithPath: Self.path), options: .atomic)
+            syncedPaused = paused
         } catch {
             NSLog("[KioskMode] config write failed: \(error)")
         }

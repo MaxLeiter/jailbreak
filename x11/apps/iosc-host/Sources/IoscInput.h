@@ -10,11 +10,11 @@
  * PROCESS, so each scene needs its OWN connection, scoped to its window with a
  * one-time XIOS_IN_BIND. Hence the iosc_input_t handle instead of the single
  * static fd. Wire format and coordinate space are otherwise identical to the
- * Xios shim (fixed 24-byte record; coords are output/canvas pixels).
+ * Xios shim (the 32-byte xios_msg; coords are output/canvas pixels).
  *
- * XIOS_IN_BIND (code = window id) is authoritative in
- * x11/wayland/xios_input_socket.h and honored by iosc's bound-aware dispatch
- * path. See x11/docs/native-ipados-protocol.md.
+ * XIOS_IN_BIND (code = window id) is defined in apps/shared/XiosProtocol.h and
+ * honored by iosc's bound-aware dispatch path. See
+ * x11/docs/native-ipados-protocol.md.
  */
 
 typedef struct iosc_input iosc_input_t;
@@ -31,7 +31,7 @@ void iosc_input_text(iosc_input_t *h, const char *utf8);
 void iosc_input_touch(iosc_input_t *h, int slot, int phase, int x, int y);
 void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressure16,
                        int tilt_x_deg, int tilt_y_deg);
-/* Two-finger / wheel scroll (wire type 9, xios_input_socket.h XIOS_IN_AXIS).
+/* Two-finger / wheel scroll (XIOS_IN_AXIS in apps/shared/XiosProtocol.h).
  * dx256/dy256 = deltas in 1/256 canvas-pixel fixed point, wl_pointer sign
  * (positive = content scrolls down/right). source: 0 finger, 1 wheel. mods:
  * 1 shift, 2 ctrl, 4 alt. stop ends the gesture (dx=dy=0) so clients can fling
@@ -39,7 +39,7 @@ void iosc_input_tablet(iosc_input_t *h, int phase, int x, int y, unsigned pressu
  * made handle-based like the rest of this file. */
 void iosc_input_axis(iosc_input_t *h, int dx256, int dy256, unsigned source,
                      unsigned mods, bool stop);
-/* Trackpad pinch/rotate (wire type 14, xios_input_socket.h XIOS_IN_GESTURE) ->
+/* Trackpad pinch/rotate (XIOS_IN_GESTURE in apps/shared/XiosProtocol.h) ->
  * zwp_pointer_gestures_v1. kind: 1 swipe, 2 pinch, 3 hold. phase: 0 begin, 1 update,
  * 2 end, 3 cancel. scale256 = scale since begin in 1/256 (256 = 1.0), rot256 = rotation
  * since begin in 1/256 DEGREES clockwise; both ABSOLUTE since begin, as wl_pointer wants

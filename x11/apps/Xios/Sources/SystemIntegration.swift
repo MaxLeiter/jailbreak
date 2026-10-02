@@ -62,7 +62,13 @@ final class SystemIntegration {
         volumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume, options: [.initial, .new]
         ) { session, _ in
-            sysint_send_volume(UInt32((session.outputVolume * 65535).rounded()))
+            // KVO runs on whichever thread AVAudioSession updated outputVolume
+            // from, which is not guaranteed to be main. SysIntClient.c's links
+            // are unsynchronized and the 20 Hz pump below closes and reopens
+            // them on main, so a send from here could write to a closed (or
+            // reused) fd. Hop to main like everything else that touches them.
+            let v16 = UInt32((session.outputVolume * 65535).rounded())
+            DispatchQueue.main.async { sysint_send_volume(v16) }
         }
 
         // Rotation: UIKit rotates the scene, we mirror the new interface

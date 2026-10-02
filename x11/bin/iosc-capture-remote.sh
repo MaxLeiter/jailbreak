@@ -44,7 +44,13 @@ for var in IOSC_CAP_WAIT IOSC_CAP_OUT WAYLAND_DISPLAY XDG_RUNTIME_DIR; do
         remote_env+=("$var=${!var}")
     fi
 done
-remote_env_args="$(printf ' %q' "${remote_env[@]}")"
+# Only when non-empty: printf ' %q' with no arguments still prints " ''", which
+# runs `env ''` on the device (exit 127), and bash 3.2 + set -u calls an empty
+# array expansion unbound.
+remote_env_args=""
+if [ "${#remote_env[@]}" -gt 0 ]; then
+    remote_env_args="$(printf ' %q' "${remote_env[@]}")"
+fi
 echo "==> run on device: iosc-capture.sh $name $*"
 rc=0
 ssh_ "env$remote_env_args bash $REMOTE_SH$remote_args" || rc=$?

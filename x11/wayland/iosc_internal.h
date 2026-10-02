@@ -1,6 +1,6 @@
 /*
  * iosc_internal.h — the compositor core shared between iosc.c and the protocol
- * modules split out of it (iosc_text_input.c, iosc_cursor.c, ...).
+ * modules split out of it (iosc_text_input.c, iosc_pointer_ext.c, ...).
  *
  * iosc.c grew to ~9.6k lines with every Wayland protocol implementation inlined
  * into one translation unit, so everything could be `static` and reach every
@@ -214,6 +214,8 @@ struct iosc_surface {
     struct wl_list      surface_link;    /* all live wl_surface resources */
     struct wl_resource *resource;        /* wl_surface */
     struct wl_resource *pending_buffer;  /* last wl_surface.attach (may be NULL) */
+    struct wl_listener  pending_buffer_destroy; /* NULLs pending_buffer if it dies first */
+    int                 pending_listener_active;
     int                 buffer_attached; /* attach was called this cycle */
     struct wl_resource *current_buffer;  /* committed buffer, retained for recompositing */
     struct wl_listener  buffer_destroy;  /* fires if the client destroys current_buffer */
@@ -326,7 +328,6 @@ extern int g_force_output_composite;
  * present; a repaint requested before that has nothing to compose. */
 extern int g_output_damage_valid;
 
-void output_damage_add_rect(int x0, int y0, int x1, int y1);
 void output_damage_add_full(void);
 int  rect_intersects_rect(const struct iosc_rect *a, const struct iosc_rect *b);
 
@@ -418,12 +419,13 @@ void toplevel_reconfigure_state(struct iosc_surface *s);
  * wm control socket  (iosc_wm_socket.c)
  * ======================================================================== */
 
-/* A tiny line protocol so a NON-Wayland client (ioscd, the panel) can raise,
- * focus or minimise a window by app_id. Returns 0 on success. */
+/* A tiny line protocol so a NON-Wayland client (ioscd) can raise and focus a
+ * window by app_id; `raise` is the only command. Returns 0 on success. */
 int wm_socket_start(struct wl_event_loop *loop, const char *path);
 
-/* Shared AF_UNIX listener plumbing (the wm socket and the app input socket both
- * use it): unlink, bind, listen, and register on_accept with the event loop. */
+/* AF_UNIX listener plumbing for the wm socket (the app input socket now has its
+ * own listener in xios_input_socket.c): unlink, bind, listen, and register
+ * on_accept with the event loop. */
 int unix_listen_start(struct wl_event_loop *loop, const char *path,
                       int (*on_accept)(int, uint32_t, void *));
 

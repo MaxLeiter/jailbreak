@@ -9,7 +9,8 @@
 +    !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
 +#define GEGL_APPLE_OPENCL 1
 +#endif
-++#ifdef GEGL_APPLE_OPENCL
++
++#ifdef GEGL_APPLE_OPENCL
  #define GL_LIBRARY_NAME "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL"
  #define CL_LIBRARY_NAME "/System/Library/Frameworks/OpenCL.framework/Versions/Current/OpenCL"
  #else

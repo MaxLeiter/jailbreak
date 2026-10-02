@@ -3,7 +3,9 @@ Subject: [PATCH] basu: port the sd-bus compatibility seams to Darwin
 Darwin exposes the BSD local-socket credential APIs used by basu's
 FreeBSD path. Use those paths on Apple targets and map endian operations
 to libkern's OSByteOrder API. Darwin has no ELF start/stop section symbols,
-so retain and search the built-in error table directly.
+so retain and search the built-in error table directly. Darwin also has no
+SOCK_CLOEXEC, SOCK_NONBLOCK or MSG_CMSG_CLOEXEC: they are defined as 0, and
+the connect and receive paths set FD_CLOEXEC and O_NONBLOCK with fcntl.
 
 diff -ruN a/meson.build b/meson.build
 --- a/meson.build	2022-12-16 02:13:02
@@ -430,6 +432,41 @@ diff -ruN a/src/libsystemd/sd-bus/bus-socket.c b/src/libsystemd/sd-bus/bus-socke
                  char creds[CMSG_SPACE(sizeof(struct cmsgcred))];
  #endif
          } control;
+@@ -745,6 +753,20 @@
+                         return -errno;
+ 
+                 b->input_fd = fd_move_above_stdio(b->input_fd);
++
++#if defined(__APPLE__)
++                {
++                        /* Darwin has no SOCK_CLOEXEC/SOCK_NONBLOCK (missing.h defines both as
++                         * 0), so set the flags the socket() call above asked for by hand. */
++                        int r = fd_cloexec(b->input_fd, true);
++                        if (r >= 0)
++                                r = fd_nonblock(b->input_fd, true);
++                        if (r < 0) {
++                                b->input_fd = safe_close(b->input_fd);
++                                return r;
++                        }
++                }
++#endif
+ 
+                 b->output_fd = b->input_fd;
+                 bus_socket_setup(b);
+@@ -999,7 +1021,13 @@
+                                 return -ENOMEM;
+                         }
+ 
++#if defined(__APPLE__)
++                        /* No MSG_CMSG_CLOEXEC on Darwin either: mark the received fds by
++                         * hand, before fd_move_above_stdio() so any dup inherits it. */
+                         for (i = 0; i < n; i++)
++                                (void) fd_cloexec(((int*) CMSG_DATA(cmsg))[i], true);
++#endif
++                        for (i = 0; i < n; i++)
+                                 f[bus->n_fds++] = fd_move_above_stdio(((int*) CMSG_DATA(cmsg))[i]);
+                         bus->fds = f;
+                 } else
 diff -ruN a/src/libsystemd/sd-bus/sd-bus.c b/src/libsystemd/sd-bus/sd-bus.c
 --- a/src/libsystemd/sd-bus/sd-bus.c	2022-12-16 02:13:02
 +++ b/src/libsystemd/sd-bus/sd-bus.c	2026-07-29 18:31:00

@@ -28,8 +28,9 @@
 /* ===========================================================================
  * ext-session-lock-v1 (screen locking)
  *
- * State + the render/input/focus confinement hooks live at the top of the file
- * (g_slock; recomposite_all, surface_at, keyboard_set_focus, surface_unmap).
+ * The state (g_slock) is declared in iosc_internal.h and the render/input/focus
+ * confinement hooks stay in iosc.c (recomposite_all, surface_at,
+ * keyboard_set_focus, surface_unmap).
  * This section is just the protocol plumbing: grant/deny the lock, hand out
  * the (single-output) lock surface with an output-sized configure, and unlock.
  * =========================================================================== */

@@ -30,7 +30,10 @@ a container, keep the Mac clean, and get reproducible artifacts.
 | `libfribidi*`, `libpango*`, `gtk*`, … debs | The GTK3 desktop stack (from `build-gtk.sh`) |
 | `iosc*`, `xios-session*`, GNOME/KDE/Wayland app debs | Built by their specialized `build-*.sh` and package scripts; see `docs/handoff/` for the current active lanes |
 
-The `+rootless1`-revision debs are the rootless variants to publish.
+The published tigervnc debs are `1.11.0+rootless1`, but nothing in this pipeline sets that
+marker: `build.sh` leaves Procursus's `DEB_TIGERVNC_V` alone, so a rebuild comes out as plain
+`1.11.0`, the same version string as Procursus's own tigervnc packages. Set the deb version
+deliberately before publishing a rebuild.
 
 ## Prerequisites (one Mac action)
 
@@ -60,11 +63,14 @@ for policy, the weekly report, and the build/package/device verification loop.
 
 What `run.sh` (Mac side) does:
 
-1. Stages the iOS SDK into `sdk/iPhoneOS.sdk` (once; `rsync` only if missing).
+1. Stages the iOS SDK into `sdk/iPhoneOS.sdk` (once; `rsync` only if missing). It does not
+   stage `sdk/MacOSX.sdk`, which the `docker build` needs (see Prerequisites);
+   `build-procursus-target.sh` and the other target wrappers copy it from `xcrun` if missing.
 2. `docker build` the toolchain image (slow first time — `cctools-port` + `ldid` from
    source — then cached).
-3. `docker run` the image with `build.sh`, the `patches/` dir, the **named volume**, and
-   `out/` mounted; this is where the actual package build happens.
+3. `docker run` the image with `build.sh`, the `patches/` dir, `../ports` (the tigervnc and
+   mesa patch stacks), the **named volume**, and `out/` mounted; this is where the actual
+   package build happens.
 4. Builds the Xios audio package from `audio/`: `xios-audiod` mixes local PCM clients into
    iOS RemoteIO output, and `xios-audio-play` is the on-device smoke test. Real PulseAudio
    clients use the PulseAudio package and its native socket.
@@ -209,12 +215,18 @@ that **do** exist in Procursus (glib/cairo/harfbuzz/freetype/fontconfig/libpng/�
 docker run --rm --platform linux/arm64 \
   -v procursus-vol:/work/Procursus \
   -v "$PWD/build-gtk.sh:/work/build-gtk.sh:ro" \
+  -v "$PWD/procursus-common-edits.py:/work/procursus-common-edits.py:ro" \
   -v "$PWD/recipes:/work/recipes:ro" \
+  -v "$PWD/build_info:/work/build_info:ro" \
   -v "$PWD/../ports:/work/ports:ro" \
   -v "$PWD/out:/out" \
   -e TARGETS="fribidi-package pango-package gdk-pixbuf-package atk gtk+3.0-package" \
   procursus-xbuild:bookworm-arm64 /work/build-gtk.sh
 ```
+
+Without the `build_info` mount pango/atk/gdk-pixbuf/gtk have no control templates and PACK
+emits a control with no `Package:` field. `run-target-script.sh [target] build-gtk.sh` passes
+this whole mount set (and the target) for you.
 
 `TARGETS` defaults to the full fribidi→pango→gdk-pixbuf→atk→gtk3 chain; set it to build a
 subset. Resulting `lib{fribidi,pango,gdk-pixbuf,atk,gtk}*` debs are copied to `out/`.

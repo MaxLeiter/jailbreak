@@ -171,7 +171,7 @@ xios_profile_env_pairs() {
             ;;
         iosc-platform-gl)
             xios_profile_pair XIOS_CAPABILITY_PROFILE "$profile"
-            xios_profile_pair XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-$XIOS_PREFIX/tmp}"
+            xios_profile_pair XDG_RUNTIME_DIR "${XDG_RUNTIME_DIR:-$jb/tmp}"
             xios_profile_pair ANGLE_REAL_LIBEGL "$angle"
             ;;
         kde-kwin)

@@ -145,7 +145,7 @@ extension OPACK {
             let nb = Int(tag) & 0xF
             guard data.count >= 1 + nb else { throw DecodeError.truncated }
             let len = le(data[1..<(1 + nb)])
-            guard data.count >= 1 + nb + len else { throw DecodeError.truncated }
+            guard len >= 0, data.count >= 1 + nb + len else { throw DecodeError.truncated }
             value = .string(String(decoding: data[(1 + nb)..<(1 + nb + len)], as: UTF8.self)); rest = slice(1 + nb + len)
         case 0x70...0x90:
             let n = Int(tag) - 0x70
@@ -155,7 +155,7 @@ extension OPACK {
             let nb = 1 << ((Int(tag) & 0xF) - 1)
             guard data.count >= 1 + nb else { throw DecodeError.truncated }
             let len = le(data[1..<(1 + nb)])
-            guard data.count >= 1 + nb + len else { throw DecodeError.truncated }
+            guard len >= 0, data.count >= 1 + nb + len else { throw DecodeError.truncated }
             value = .data(Data(data[(1 + nb)..<(1 + nb + len)])); rest = slice(1 + nb + len)
         case let t where (t & 0xF0) == 0xD0:
             let count = Int(tag & 0xF)
@@ -188,11 +188,15 @@ extension OPACK {
             }
             value = .dict(out); rest = ptr; addToList = false
         case 0xA0...0xC0:
+            // Back-reference into a list the peer controls: don't trust the index.
+            guard Int(tag) - 0xA0 < objectList.count else { throw DecodeError.truncated }
             value = objectList[Int(tag) - 0xA0]; rest = slice(1); addToList = false
         case 0xC1...0xC4:
             let nb = Int(tag) - 0xC0
             guard data.count >= 1 + nb else { throw DecodeError.truncated }
-            value = objectList[le(data[1..<(1 + nb)])]; rest = slice(1 + nb); addToList = false
+            let idx = le(data[1..<(1 + nb)])
+            guard idx >= 0, idx < objectList.count else { throw DecodeError.truncated }
+            value = objectList[idx]; rest = slice(1 + nb); addToList = false
         default:
             throw DecodeError.badTag(tag)
         }

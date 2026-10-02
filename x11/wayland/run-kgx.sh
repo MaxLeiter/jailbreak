@@ -10,7 +10,7 @@
 set -u
 # Resolve the jailbreak prefix. Prefer where this script is installed -- the iosc
 # deb stages it under the prefix -- but fall back to probing, because the
-# documented way to run this is `ssh root@ipad 'bash -s' < run-iosc.sh`, where
+# documented way to run this is `ssh root@ipad 'bash -s' < run-kgx.sh`, where
 # the script has no path on disk at all. Set XS_JB= to force rootful.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 if [ "${XS_JB+x}" != x ]; then
@@ -36,7 +36,7 @@ echo "==> stop any Xios X server, app, prior iosc, stray kgx + session bus"
 # Anchor kgx/iosc to their binary paths (not "kgx" anywhere, which matches this
 # script's own path when run as `bash /path/run-kgx.sh`) and never kill our own
 # shell ($$) or parent ($PPID) — that self-kill aborted the run before iosc started.
-ps ax | grep -v grep | grep -E "/Xios\.app/Xios|bin/iosc|bin/kgx|dbus-daemon.*--session" \
+ps ax | grep -v grep | grep -E "/Xios\.app/Xios|/bin/iosc( |$)|/bin/iosc-|ioscbg|ioscbar|ioscdock|ioscoverview|bin/kgx|dbus-daemon.*--session" \
   | awk '{print $1}' | while read -r pid; do
       [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
   done

@@ -22,7 +22,9 @@ VERSION="$(awk -F': ' '/^Version:/{print $2}' "$PKGDIR/DEBIAN/control")"
 DEB="xios-desktop-theme_${VERSION}_$XIOS_DEB_ARCH.deb"
 IMAGE="debian:bookworm-slim"
 
-docker run --rm -v "$OUTDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
+# The container script below is single-quoted, so it only sees XIOS_PREFIX if it
+# is forwarded; under `bash -u` an unforwarded one aborts the build.
+docker run --rm -e XIOS_PREFIX="$XIOS_PREFIX" -v "$OUTDIR":/work -w /work "$IMAGE" bash -euo pipefail -c '
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq >/dev/null
   apt-get install -y -qq --no-install-recommends python3-pil python3-numpy ca-certificates >/dev/null

@@ -100,6 +100,10 @@ struct desktop_pin {
     char target[256];    /* app Exec or file path */
     int x, y, visible;
     cairo_surface_t *icon_surf;
+    /* the line pins_load read, written back as-is unless the pin moved: the
+     * fields above truncate long names/Execs that another writer can produce */
+    char *raw;
+    int   raw_head_len, raw_x, raw_y;   /* type..target prefix, x/y as read */
 };
 
 static struct {
@@ -122,6 +126,8 @@ static struct {
     struct widget widgets[WIDGET_MAX];
     struct desktop_pin pins[PIN_MAX];
     int   npins, pins_loaded, pin_drag_idx, pin_drag_dx, pin_drag_dy;
+    char  *pins_extra;                 /* pin lines not loaded, kept for pins_save */
+    size_t pins_extra_len;
     time_t pins_mtime;
     off_t  pins_size;
     uint64_t last_pins_check_ms;
@@ -243,7 +249,22 @@ static void widgets_save(void)
 static void pin_destroy(struct desktop_pin *p)
 {
     if (p->icon_surf) cairo_surface_destroy(p->icon_surf);
+    free(p->raw);
     memset(p, 0, sizeof *p);
+}
+
+/* pins_load keeps lines it does not load (past PIN_MAX, or not a pin it can
+ * parse) so pins_save writes them back instead of deleting them. */
+static void pins_keep_extra(const char *line)
+{
+    size_t n = strlen(line);
+    char *p = realloc(B.pins_extra, B.pins_extra_len + n + 2);
+    if (!p) return;
+    B.pins_extra = p;
+    memcpy(p + B.pins_extra_len, line, n);
+    B.pins_extra_len += n;
+    p[B.pins_extra_len++] = '\n';
+    p[B.pins_extra_len] = 0;
 }
 
 static void pins_save(void)
@@ -254,9 +275,15 @@ static void pins_save(void)
     for (int i = 0; i < B.npins; i++) {
         struct desktop_pin *p = &B.pins[i];
         if (!p->visible) continue;
-        fprintf(f, "%s\t%s\t%s\t%s\t%d\t%d\n",
-                p->type[0] ? p->type : "app", p->name, p->icon, p->target, p->x, p->y);
+        if (p->raw && p->x == p->raw_x && p->y == p->raw_y)
+            fprintf(f, "%s\n", p->raw);
+        else if (p->raw)
+            fprintf(f, "%.*s\t%d\t%d\n", p->raw_head_len, p->raw, p->x, p->y);
+        else
+            fprintf(f, "%s\t%s\t%s\t%s\t%d\t%d\n",
+                    p->type[0] ? p->type : "app", p->name, p->icon, p->target, p->x, p->y);
     }
+    if (B.pins_extra) fputs(B.pins_extra, f);
     fclose(f);
 }
 
@@ -298,6 +325,9 @@ static void pins_load(void)
 {
     for (int i = 0; i < B.npins; i++) pin_destroy(&B.pins[i]);
     B.npins = 0;
+    free(B.pins_extra);
+    B.pins_extra = NULL;
+    B.pins_extra_len = 0;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
     struct stat st;
     if (stat(path, &st) == 0) {
@@ -309,25 +339,39 @@ static void pins_load(void)
     }
     FILE *f = fopen(path, "r");
     if (!f) { B.pins_loaded = 1; return; }
-    char line[768];
-    while (fgets(line, sizeof line, f) && B.npins < PIN_MAX) {
-        char *save = NULL;
-        char *type = strtok_r(line, "\t\r\n", &save);
-        char *name = strtok_r(NULL, "\t\r\n", &save);
-        char *icon = strtok_r(NULL, "\t\r\n", &save);
-        char *target = strtok_r(NULL, "\t\r\n", &save);
-        char *xs = strtok_r(NULL, "\t\r\n", &save);
-        char *ys = strtok_r(NULL, "\t\r\n", &save);
-        if (!type || !name || !target || !xs || !ys) continue;
+    char *line = NULL;
+    size_t cap = 0;
+    while (getline(&line, &cap, f) > 0) {
+        /* positional tab fields with Icon allowed empty (see
+         * sd_desktop_pin_exists): strsep keeps empty fields in place */
+        line[strcspn(line, "\r\n")] = 0;
+        if (!line[0]) continue;
+        char *raw = B.npins < PIN_MAX ? strdup(line) : NULL;
+        if (!raw) { pins_keep_extra(line); continue; }
+        char *rest = line;
+        char *type = strsep(&rest, "\t");
+        char *name = strsep(&rest, "\t");
+        char *icon = strsep(&rest, "\t");
+        char *target = strsep(&rest, "\t");
+        char *xs = strsep(&rest, "\t");
+        char *ys = strsep(&rest, "\t");
+        if (!type || !name || !target || !*target || !xs || !ys) {
+            pins_keep_extra(raw);
+            free(raw);
+            continue;
+        }
         struct desktop_pin *p = &B.pins[B.npins++];
+        p->raw = raw;
+        p->raw_head_len = (int)(target - line + strlen(target));
         snprintf(p->type, sizeof p->type, "%s", type);
         snprintf(p->name, sizeof p->name, "%s", name);
         snprintf(p->icon, sizeof p->icon, "%s", icon ? icon : "");
         snprintf(p->target, sizeof p->target, "%s", target);
-        p->x = atoi(xs); p->y = atoi(ys); p->visible = 1;
+        p->x = p->raw_x = atoi(xs); p->y = p->raw_y = atoi(ys); p->visible = 1;
         pin_clamp(p);
         pin_load_icon(p);
     }
+    free(line);
     fclose(f);
     if (pins_resolve_collisions()) pins_save();
     B.pins_loaded = 1;
@@ -760,7 +804,7 @@ static void menu_reset_wallpaper(void)
 static void menu_new_folder(void)
 {
     char docs[256], path[320], name[96];
-    sd_join_path(docs, sizeof docs, sd_jbroot(), "/var/mobile/Documents");
+    snprintf(docs, sizeof docs, "%s", SD_USER_DOCUMENTS);
     mkdir(docs, 0755);
     for (int i = 0; i < 100; i++) {
         snprintf(name, sizeof name, i == 0 ? "Untitled Folder" : "Untitled Folder %d", i + 1);
@@ -798,7 +842,7 @@ static void menu_act(int action)
         menu_new_folder();
         break;
     case MENU_ACT_OPEN_DOCUMENTS:
-        sd_launch("xdg-open /var/mobile/Documents");
+        sd_launch("xdg-open " SD_USER_DOCUMENTS);
         break;
     case MENU_ACT_SET_WALLPAPER:
         if (kind == BG_PRESS_PIN) menu_set_wallpaper_from_pin(idx);
@@ -1420,7 +1464,12 @@ int main(void)
 
     int fd = wl_display_get_fd(B.dpy);
     while (B.running) {
-        while (wl_display_prepare_read(B.dpy) != 0) wl_display_dispatch_pending(B.dpy);
+        /* A dead display (compositor gone, protocol error) fails these calls
+         * on every pass while poll() reports HUP at once: exit, don't spin. */
+        int dead = 0;
+        while (!dead && wl_display_prepare_read(B.dpy) != 0)
+            dead = wl_display_dispatch_pending(B.dpy) < 0;
+        if (dead) break;
         wl_display_flush(B.dpy);
         struct pollfd pfd = { .fd = fd, .events = POLLIN };
         int timeout = 1000;
@@ -1428,9 +1477,13 @@ int main(void)
             timeout = 50;
         int n = poll(&pfd, 1, timeout);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(B.dpy); break; }
-        if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(B.dpy);
-        else wl_display_cancel_read(B.dpy);
-        wl_display_dispatch_pending(B.dpy);
+        if (n > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (wl_display_read_events(B.dpy) < 0) break;
+        } else wl_display_cancel_read(B.dpy);
+        if (wl_display_dispatch_pending(B.dpy) < 0) break;
+        /* redraw a frame the buffer pool had to drop (a release since freed a slot) */
+        if (B.wall_pool.starved) render_wallpaper();
+        if (B.desk_pool.starved) render_desktop();
         uint64_t ms = now_ms();
         maybe_begin_drag(ms);
         if (menu_dismiss_if_idle(ms)) {
@@ -1442,6 +1495,8 @@ int main(void)
             if (changed) render_desktop_widgets(changed);
         }
     }
+    if (wl_display_get_error(B.dpy))
+        fprintf(stderr, "ioscbg: compositor connection lost, exiting\n");
     sd_cairo_pool_destroy(&B.wall_pool);
     sd_cairo_pool_destroy(&B.desk_pool);
     wl_display_disconnect(B.dpy);

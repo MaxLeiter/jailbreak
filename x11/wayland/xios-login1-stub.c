@@ -240,8 +240,11 @@ manager_method_call (GDBusConnection       *connection,
           return;
         }
 
-      /* Reclaim our read end when the client drops its write end. */
-      g_unix_fd_add (pipefd[0], G_IO_HUP | G_IO_ERR, inhibitor_hangup, NULL);
+      /* Reclaim our read end when the client drops its write end. Watch G_IO_IN too:
+       * GLib on Darwin builds with BROKEN_POLL, and its select() emulation only selects
+       * IN/OUT/PRI, so a HUP-only watch never fires there. A pipe whose writers are all
+       * gone reads as EOF, i.e. readable, on every platform. */
+      g_unix_fd_add (pipefd[0], G_IO_IN | G_IO_HUP | G_IO_ERR, inhibitor_hangup, NULL);
 
       g_dbus_method_invocation_return_value_with_unix_fd_list (
         invocation, g_variant_new ("(h)", idx), fd_list);

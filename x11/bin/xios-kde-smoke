@@ -212,21 +212,21 @@ desktop_launcher_smoke() {
 
     local app_args=()
     [ -z "$SLOT" ] || app_args=(--slot "$SLOT")
-    run_logged launcher-app "$XIOS_DEVICE" app "${app_args[@]}" "/var/jb/Applications/KDE/plasmawindowed.app/plasmawindowed $plugin" || true
+    run_logged launcher-app "$XIOS_DEVICE" app ${app_args[@]+"${app_args[@]}"} "/var/jb/Applications/KDE/plasmawindowed.app/plasmawindowed $plugin" || true
     sleep 2
     local shot_args=()
     [ -z "$SLOT" ] || shot_args=(--slot "$SLOT")
-    run_logged launcher-open-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-open" || true
+    run_logged launcher-open-shot "$XIOS_DEVICE" shot ${shot_args[@]+"${shot_args[@]}"} "$OUT/launcher-open" || true
 
     if [ -n "$LAUNCHER_QUERY" ]; then
         desktop_launcher_focus_search "$plugin" || true
         input_text_line "$LAUNCHER_QUERY" || input_text_chars "$LAUNCHER_QUERY" || true
         sleep 2
-        run_logged launcher-query-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-query" || true
+        run_logged launcher-query-shot "$XIOS_DEVICE" shot ${shot_args[@]+"${shot_args[@]}"} "$OUT/launcher-query" || true
         if [ "$LAUNCHER_ACTIVATE" = 1 ]; then
             desktop_launcher_activate_result "$plugin" || true
             sleep "$WARMUP"
-            run_logged launcher-activate-shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT/launcher-activate" || true
+            run_logged launcher-activate-shot "$XIOS_DEVICE" shot ${shot_args[@]+"${shot_args[@]}"} "$OUT/launcher-activate" || true
         fi
     fi
 }
@@ -296,7 +296,7 @@ LOG="$OUT/kde-smoke.log"
 
 status_args=()
 [ -z "$SLOT" ] || status_args=(--slot "$SLOT")
-run_logged status-before "$XIOS_DEVICE" status "${status_args[@]}" || true
+run_logged status-before "$XIOS_DEVICE" status ${status_args[@]+"${status_args[@]}"} || true
 CURRENT_PRESET="$(sed -n 's/.*"preset":"\([^"]*\)".*/\1/p' "$OUT/status-before.log" | head -1)"
 if [ -n "$CURRENT_PRESET" ]; then
     echo "current_preset: $CURRENT_PRESET" | tee -a "$LOG"
@@ -305,7 +305,7 @@ fi
 if [ "$START_SESSION" = 1 ]; then
     session_args=()
     [ -z "$SLOT" ] || session_args=(--slot "$SLOT")
-    run_logged session "$XIOS_DEVICE" session "${session_args[@]}" "$PRESET" || true
+    run_logged session "$XIOS_DEVICE" session ${session_args[@]+"${session_args[@]}"} "$PRESET" || true
 elif [ -n "$CURRENT_PRESET" ] && [ "$CURRENT_PRESET" != "$PRESET" ]; then
     echo "WARN: --no-session requested $PRESET but device reports $CURRENT_PRESET" | tee -a "$LOG"
 fi
@@ -319,7 +319,7 @@ fi
 if [ -n "$APP" ]; then
     app_args=()
     [ -z "$SLOT" ] || app_args=(--slot "$SLOT")
-    run_logged app "$XIOS_DEVICE" app "${app_args[@]}" "$APP" || true
+    run_logged app "$XIOS_DEVICE" app ${app_args[@]+"${app_args[@]}"} "$APP" || true
 fi
 
 if [ "$DRAWER" = 1 ]; then
@@ -348,7 +348,7 @@ run_logged package-state "$XIOS_DEVICE" exec \
 
 shot_args=()
 [ -z "$SLOT" ] || shot_args=(--slot "$SLOT")
-run_logged shot "$XIOS_DEVICE" shot "${shot_args[@]}" "$OUT" || true
+run_logged shot "$XIOS_DEVICE" shot ${shot_args[@]+"${shot_args[@]}"} "$OUT" || true
 
 cat >"$OUT/summary.txt" <<EOF
 KDE smoke

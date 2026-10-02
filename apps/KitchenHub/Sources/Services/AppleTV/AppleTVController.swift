@@ -82,6 +82,7 @@ final class AppleTVController: ObservableObject {
                     flashPulse(command)
                 } catch {
                     // Session likely dropped — reset so the next press reconnects.
+                    self.client?.close()
                     self.client = nil
                     self.status = .failed(Self.describe(error))
                 }

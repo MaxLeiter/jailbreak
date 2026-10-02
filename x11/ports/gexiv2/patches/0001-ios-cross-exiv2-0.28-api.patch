@@ -14,6 +14,7 @@
 +  xmpdatum_has_to_long = false
 +  exifdatum_has_to_long = false
 +endif
-+ build_config = configuration_data ()
++
+ build_config = configuration_data ()
  build_config.set('EXIV2_DATABUF_HAS_PRIVATE_PDATA', private_pdata)
  build_config.set('EXIV2_HAS_ANY_ERROR', has_any_error)

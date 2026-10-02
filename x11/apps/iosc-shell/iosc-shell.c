@@ -1,15 +1,16 @@
 /*
  * iosc shell chrome — status bar and dock clients for the iosc Wayland compositor.
  *
- * A self-contained zwlr_layer_shell_v1 client anchored to the top edge of the
- * iosc output. It reserves an exclusive zone (maximized toplevels don't draw
- * under it) and renders:
+ * One zwlr_layer_shell_v1 client, two roles picked by argv[0]. Each reserves an
+ * exclusive zone (maximized toplevels don't draw under it):
  *
- *   [ ⊞ apps | launcher icons | taskbar pills (open windows) | battery date time ]
+ *   ioscbar   top edge:    [ focused app | clock | wifi battery ]
+ *   ioscdock  bottom edge: [ favorites | running windows | apps ]
  *
- * plus a QUICK-SETTINGS card (a second layer surface, toggled by the status
- * cluster) with device name, date, a battery gauge, and Overview / Screenshot
- * actions over a frosted screencopy backdrop.
+ * The bar also owns a QUICK-SETTINGS card (a second layer surface, toggled by
+ * the status cluster) with device name, date, a battery gauge, and Overview /
+ * Screenshot actions over a frosted screencopy backdrop, and a window menu
+ * (Minimize / Maximize / Close) opened from the focused app's name.
  *
  * Rendering is real vector drawing via cairo + pangocairo (panel-render.h /
  * panel-layout.h): San Francisco text, rounded translucent surfaces, and PNG
@@ -18,8 +19,9 @@
  * on the CPU and iosc composites it (no GPU/IOSurface entitlements needed).
  *
  * Input: wl_pointer (hover + click) AND wl_touch (press feedback on down, act
- * on up) — this is a tablet first. The ⊞ button and the QS "Overview" action
- * fork+exec ioscoverview; launcher taps fork+exec the app (sd_launch);
+ * on up) — this is a tablet first. The dock's apps button, a swipe up on the
+ * dock and the QS "Overview" action fork+exec ioscoverview; launcher taps
+ * fork+exec the app (sd_launch);
  * "Screenshot" captures the output via zwlr_screencopy and writes a PNG.
  *
  * Status: battery via IOKit power-source APIs (dlopen'd, hides cleanly if
@@ -50,15 +52,14 @@
 
 /* ------------------------------------------------------------------ config */
 /* Reference design space (matches preview-host.c + shell-theme.h tuning). The
- * panel is always drawn PL_REF_W wide x PL_REF_H tall in these units, then
- * scaled to the real output by P.ui so its on-glass size is -logical-invariant. */
+ * panel is always drawn PL_REF_W wide x its role's reference height (BAR_REF_H
+ * or DOCK_REF_H) in these units, then scaled to the real output by P.ui so its
+ * on-glass size is -logical-invariant. */
 /* Must track package-shell.sh's VER (deb version); this is an internal build
  * stamp only and bumping it does NOT bump the shipped package version. */
 #define IOSC_SHELL_VER "0.9.13"
 
 #define PL_REF_W    1440
-#define PL_REF_H    64     /* >= TH_TOUCH (44+ iOS pt at the 1.5 default) */
-#define PANEL_H     PL_REF_H
 #define DOCK_REORDER_HOLD_MS 540
 
 enum shell_surface_mode {
@@ -103,7 +104,7 @@ static struct {
     int   width, height, scale, scale_env, configured, running;
     /* UI scale: keep the chrome a CONSTANT on-glass size at any -logical.
      * ui = logical_width / PL_REF_W. The panel is drawn in a fixed
-     * PL_REF_W x PL_REF_H reference space (what shell-theme.h is tuned for) and
+     * PL_REF_W-wide reference space (what shell-theme.h is tuned for) and
      * scaled by ui, so raising -logical shrinks app content WITHOUT shrinking
      * the panel's 44pt+ touch targets. ui = 1.0 at the 1440x1080 default. */
     double ui;
@@ -124,7 +125,7 @@ static struct {
     struct sd_cairo_pool wm_pool;
     int   wm_w, wm_h, wm_configured;
     struct panel_hits wm_hits;
-    int   wm_idx;                      /* task index the menu was opened for */
+    struct zwlr_foreign_toplevel_handle_v1 *wm_handle;  /* window the menu acts on */
 
     /* input routing: which of our surfaces the pointer/touch is on */
     struct wl_surface *ptr_surf;
@@ -313,10 +314,8 @@ static void render(void)
     build_model(&m);
     if (P.mode == MODE_BAR)
         panel_draw_statusbar(cr, &t, wref, BAR_REF_H, &m, &P.hits);
-    else if (P.mode == MODE_DOCK)
-        panel_draw_dock(cr, &t, wref, DOCK_REF_H, &m, &P.hits);
     else
-        panel_draw_topbar(cr, &t, wref, PL_REF_H, &m, &P.hits);
+        panel_draw_dock(cr, &t, wref, DOCK_REF_H, &m, &P.hits);
     pr_text_ctx_free(&t);
 
     cairo_surface_flush(surf);
@@ -392,9 +391,9 @@ static void qs_close(void)
     if (!P.qs_surf) return;
     if (P.ptr_surf == P.qs_surf) P.ptr_surf = NULL;
     if (P.touch_surf == P.qs_surf) { P.touch_surf = NULL; P.press_kind = 0; }
-    sd_cairo_pool_destroy(&P.qs_pool);
     zwlr_layer_surface_v1_destroy(P.qs_layer); P.qs_layer = NULL;
     wl_surface_destroy(P.qs_surf);             P.qs_surf = NULL;
+    sd_cairo_pool_destroy(&P.qs_pool);
     if (P.qs_backdrop) { cairo_surface_destroy(P.qs_backdrop); P.qs_backdrop = NULL; }
     P.qs_configured = 0;
     render();   /* un-light the status cluster */
@@ -426,16 +425,17 @@ static void wm_close(void)
     if (!P.wm_surf) return;
     if (P.ptr_surf == P.wm_surf) P.ptr_surf = NULL;
     if (P.touch_surf == P.wm_surf) { P.touch_surf = NULL; P.press_kind = 0; }
-    sd_cairo_pool_destroy(&P.wm_pool);
     zwlr_layer_surface_v1_destroy(P.wm_layer); P.wm_layer = NULL;
     wl_surface_destroy(P.wm_surf);             P.wm_surf = NULL;
+    sd_cairo_pool_destroy(&P.wm_pool);
     P.wm_configured = 0;
+    P.wm_handle = NULL;
 }
 
 static void wm_open(int task_idx)
 {
     if (P.wm_surf) { wm_close(); return; }
-    P.wm_idx = task_idx;
+    P.wm_handle = P.tasks[task_idx].handle;
 
     double ui = pl_ui();
     P.wm_w = (int)lround(WM_W * ui);
@@ -568,7 +568,7 @@ static void take_screenshot(void)
     strftime(name, sizeof name, "xios-%Y%m%d-%H%M%S.png", &tm);
 
     char docs[256], tmpdir[256];
-    sd_join_path(docs, sizeof docs, sd_jbroot(), "/var/mobile/Documents");
+    snprintf(docs, sizeof docs, "%s", SD_USER_DOCUMENTS);
     sd_join_path(tmpdir, sizeof tmpdir, sd_jbroot(), "/tmp");
     const char *dirs[] = { docs, tmpdir };
     char path[300] = "";
@@ -610,28 +610,24 @@ static void act_on_hit(const struct panel_hit *r)
         if (r->idx < P.ntasks && P.tasks[r->idx].handle)
             zwlr_foreign_toplevel_handle_v1_activate(P.tasks[r->idx].handle, P.seat);
         break;
-    case PL_HIT_CLOSE:
-        if (r->idx < P.ntasks && P.tasks[r->idx].handle)
-            zwlr_foreign_toplevel_handle_v1_close(P.tasks[r->idx].handle);
-        break;
     case PL_HIT_APPGRID:  P.want_overview = 1; break;
     case PL_HIT_STATUS:   P.want_qs_toggle = 1; break;
     case PL_HIT_APPNAME:  P.want_wm_toggle = 1; break;
     case WM_HIT_CLOSE:
-        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
-            zwlr_foreign_toplevel_handle_v1_close(P.tasks[P.wm_idx].handle);
+        if (P.wm_handle) {
+            zwlr_foreign_toplevel_handle_v1_close(P.wm_handle);
             wm_close();
         }
         break;
     case WM_HIT_MINIMIZE:
-        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
-            zwlr_foreign_toplevel_handle_v1_set_minimized(P.tasks[P.wm_idx].handle);
+        if (P.wm_handle) {
+            zwlr_foreign_toplevel_handle_v1_set_minimized(P.wm_handle);
             wm_close();
         }
         break;
     case WM_HIT_MAXIMIZE:
-        if (P.wm_idx >= 0 && P.wm_idx < P.ntasks) {
-            zwlr_foreign_toplevel_handle_v1_set_maximized(P.tasks[P.wm_idx].handle);
+        if (P.wm_handle) {
+            zwlr_foreign_toplevel_handle_v1_set_maximized(P.wm_handle);
             wm_close();
         }
         break;
@@ -640,7 +636,7 @@ static void act_on_hit(const struct panel_hit *r)
     }
 }
 
-/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in $XDG_RUNTIME_DIR/<client>.log
+/* Input tracing (IOSC_SHELL_DEBUG=1): stderr lands in <jbroot>/tmp/<client>.log
  * via run-shell.sh, so a dead-to-taps report can be diagnosed from the log —
  * it shows whether events arrive at all, with what coords, and what they hit. */
 static int pdbg(void)
@@ -650,9 +646,17 @@ static int pdbg(void)
     return on;
 }
 
+/* Each of our surfaces records its own hit table (reference space). */
+static const struct panel_hits *hits_for(struct wl_surface *sf)
+{
+    if (P.qs_surf && sf == P.qs_surf) return &P.qs_hits;
+    if (P.wm_surf && sf == P.wm_surf) return &P.wm_hits;
+    return &P.hits;
+}
+
 static void hit_at(struct wl_surface *sf, int x, int y)
 {
-    const struct panel_hits *hs = sf == P.qs_surf && P.qs_surf ? &P.qs_hits : &P.hits;
+    const struct panel_hits *hs = hits_for(sf);
     /* x,y are logical (surface-local); the hit table is in reference space */
     int rx = pl_to_ref(x), ry = pl_to_ref(y);
     int i = pl_hit_test(hs, rx, ry);
@@ -739,6 +743,7 @@ static void ft_done(void *d, struct zwlr_foreign_toplevel_handle_v1 *h){ (void)d
 static void ft_closed(void *d, struct zwlr_foreign_toplevel_handle_v1 *h)
 {
     (void)d;
+    if (h == P.wm_handle) wm_close();   /* its window is gone */
     for (int i = 0; i < P.ntasks; i++) if (P.tasks[i].handle == h) {
         if (P.tasks[i].icon) cairo_surface_destroy(P.tasks[i].icon);
         zwlr_foreign_toplevel_handle_v1_destroy(h);
@@ -772,12 +777,14 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener ftm_listener = {
 
 static void rerender_for(struct wl_surface *sf)
 {
-    if (P.qs_surf && sf == P.qs_surf) render_qs(); else render();
+    if (P.qs_surf && sf == P.qs_surf) render_qs();
+    else if (P.wm_surf && sf == P.wm_surf) wm_render();
+    else render();
 }
 
 static void ptr_update_hover(struct wl_surface *sf)
 {
-    const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
+    const struct panel_hits *hs = hits_for(sf);
     int i = P.have_ptr ? pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py)) : -1;
     P.ptr_kind = i >= 0 ? hs->v[i].kind : -1;
     P.ptr_idx = i >= 0 ? hs->v[i].idx : -1;
@@ -854,7 +861,7 @@ static void tc_down(void *d, struct wl_touch *t, uint32_t serial, uint32_t time,
     P.press_ms = mono_ms();
     P.px = wl_fixed_to_int(x); P.py = wl_fixed_to_int(y);
     P.touch_x0 = P.px; P.touch_y0 = P.py; P.touch_moved = 0;
-    const struct panel_hits *hs = (P.qs_surf && sf == P.qs_surf) ? &P.qs_hits : &P.hits;
+    const struct panel_hits *hs = hits_for(sf);
     int i = pl_hit_test(hs, pl_to_ref(P.px), pl_to_ref(P.py));
     if (pdbg()) fprintf(stderr, "%s: tc_down id=%d %s logical(%d,%d) ui=%.3f -> press %d\n",
                         mode_name(), id, sf == P.qs_surf ? "qs" : mode_name(), P.px, P.py, pl_ui(), i);
@@ -1131,7 +1138,12 @@ int main(int argc, char **argv)
     int wfd = wl_display_get_fd(P.dpy);
     int last_min = -1;
     while (P.running) {
-        while (wl_display_prepare_read(P.dpy) != 0) wl_display_dispatch_pending(P.dpy);
+        /* A dead display (compositor gone, protocol error) fails these calls
+         * on every pass while poll() reports HUP at once: exit, don't spin. */
+        int dead = 0;
+        while (!dead && wl_display_prepare_read(P.dpy) != 0)
+            dead = wl_display_dispatch_pending(P.dpy) < 0;
+        if (dead) break;
         wl_display_flush(P.dpy);
         time_t now = time(NULL);
         int to_ms = (int)(60 - (now % 60)) * 1000;   /* wake at the next minute */
@@ -1140,9 +1152,14 @@ int main(int argc, char **argv)
         struct pollfd pfd = { .fd = wfd, .events = POLLIN };
         int n = poll(&pfd, 1, to_ms);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(P.dpy); break; }
-        if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(P.dpy);
-        else wl_display_cancel_read(P.dpy);
-        wl_display_dispatch_pending(P.dpy);
+        if (n > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (wl_display_read_events(P.dpy) < 0) break;
+        } else wl_display_cancel_read(P.dpy);
+        if (wl_display_dispatch_pending(P.dpy) < 0) break;
+        /* redraw a frame the buffer pool had to drop (a release since freed a slot) */
+        if (P.surface_pool.starved) render();
+        if (P.qs_pool.starved) render_qs();
+        if (P.wm_pool.starved) wm_render();
         dock_maybe_begin_reorder();
 
         /* deferred actions (safe here: outside any listener) */
@@ -1170,6 +1187,8 @@ int main(int argc, char **argv)
             render();
         }
     }
+    if (wl_display_get_error(P.dpy))
+        fprintf(stderr, "%s: compositor connection lost, exiting\n", mode_name());
     sd_cairo_pool_destroy(&P.surface_pool);
     sd_cairo_pool_destroy(&P.qs_pool);
     sd_cairo_pool_destroy(&P.wm_pool);

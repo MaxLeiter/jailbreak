@@ -5,8 +5,8 @@
  * Used to build the frosted "material" backdrops (shell-blur.h): the overview
  * captures the whole desktop right before it maps; quick settings captures the
  * region its card will cover. The capture is a snapshot — correct for these
- * transient surfaces, and the only way to get "behind" pixels while iosc
- * composites layer surfaces opaque.
+ * transient surfaces, and the only way to get "behind" pixels to blur: iosc
+ * blends layer surfaces but hands no client what is under them.
  *
  * Protocol flow implemented: capture_output[_region] → `buffer` event
  * (format/size/stride to allocate) [→ `buffer_done` on v3] → copy(wl_shm

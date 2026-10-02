@@ -36,6 +36,8 @@ final class ChaChaSession {
     }
 
     func decrypt(_ data: Data, aad: Data) throws -> Data {
+        // A frame shorter than the Poly1305 tag would make prefix() trap.
+        guard data.count >= 16 else { throw CompanionAuthError.decryptFailed }
         let ct = data.prefix(data.count - 16)
         let tag = data.suffix(16)
         let box = try ChaChaPoly.SealedBox(nonce: nonce(inCounter), ciphertext: ct, tag: tag)
@@ -84,13 +86,22 @@ final class CompanionConnection {
         }
     }
 
+    // enableEncryption / send run on `queue`, the same serial queue that
+    // receives and decrypts: the nonce counters are plain vars, and encrypting
+    // then enqueueing from two threads (trackpad touches on main vs. a button
+    // press from a Task) could reuse a nonce or put frames on the wire out of
+    // counter order, which the TV answers by dropping the session.
     func enableEncryption(output: Data, input: Data) {
-        session = ChaChaSession(out: output, input: input)
+        queue.async { self.session = ChaChaSession(out: output, input: input) }
     }
 
     func close() { conn.cancel() }
 
     func send(_ frameType: FrameType, _ payload: Data) {
+        queue.async { self.sendOnQueue(frameType, payload) }
+    }
+
+    private func sendOnQueue(_ frameType: FrameType, _ payload: Data) {
         var payloadLen = payload.count
         if session != nil && payload.count > 0 { payloadLen += 16 }
         var header = Data([frameType.rawValue])

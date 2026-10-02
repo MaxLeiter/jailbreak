@@ -12,7 +12,7 @@
 #      clone), so every clone opts in explicitly.
 #
 #   2. The Claude Code PreToolUse guard (bin/lib/guard-repo-ops.sh), which blocks
-#      a bare sync-packages-to-repo.py and hand-edits of generated repo output.
+#      hand-edits of generated repo output.
 #      Hook config lives in .claude/settings.json, which is gitignored.
 #
 # Both are idempotent, so rerunning is always safe. Note the two halves have
@@ -32,8 +32,12 @@ chmod +x "$DRIVER" "$GUARD" 2>/dev/null || true
 # ── 1. repo/Packages merge driver ────────────────────────────────────────────
 git -C "$REPO_ROOT" config merge.aptindex.name \
   "APT Packages index merge (newer version per package wins)"
+# Resolved at merge time, not baked in: the config is shared by every worktree,
+# so an absolute $DRIVER would make all of them run the copy in whichever
+# worktree last ran this script, and break every merge once that worktree is
+# removed. Git runs the driver from the top of the worktree being merged.
 git -C "$REPO_ROOT" config merge.aptindex.driver \
-  "python3 '$DRIVER' %O %A %B %P"
+  'python3 "$(git rev-parse --show-toplevel)/bin/lib/merge-packages.py" %O %A %B %P'
 echo "==> merge.aptindex registered in $(git -C "$REPO_ROOT" rev-parse --git-common-dir)/config"
 
 # ── 2. Claude Code PreToolUse guard ──────────────────────────────────────────

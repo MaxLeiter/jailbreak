@@ -45,9 +45,12 @@ struct iosc_text_input {
 static struct iosc_text_input *g_text_inputs[IOSC_MAX_TEXT_INPUTS];
 static int g_ntext_inputs;
 
+struct iosc_input_method;
+
 struct iosc_input_popup {
     struct wl_resource *resource;
     struct iosc_surface *surface;
+    struct iosc_input_method *im;   /* owner; outlives the popup (it destroys them) */
 };
 
 struct iosc_input_method {
@@ -275,13 +278,16 @@ static void input_popup_resource_destroy(struct wl_resource *r)
 {
     struct iosc_input_popup *p = wl_resource_get_user_data(r);
     if (!p) return;
-    if (g_input_method) {
-        for (int i = 0; i < g_input_method->npopups; i++)
-            if (g_input_method->popups[i] == p) {
-                g_input_method->popups[i] = g_input_method->popups[--g_input_method->npopups];
-                break;
-            }
-    }
+    /* Unlink from the method that created the popup, not g_input_method: a
+     * second input method (sent `unavailable`) can create popups too, and if
+     * they stayed in its array after being freed, its destructor would loop
+     * destroying a freed resource. */
+    struct iosc_input_method *im = p->im;
+    for (int i = 0; im && i < im->npopups; i++)
+        if (im->popups[i] == p) {
+            im->popups[i] = im->popups[--im->npopups];
+            break;
+        }
     free(p);
 }
 
@@ -293,6 +299,7 @@ static void input_method_get_popup_surface(struct wl_client *c, struct wl_resour
     struct iosc_input_popup *p = calloc(1, sizeof(*p));
     if (!p) { wl_client_post_no_memory(c); return; }
     p->surface = wl_resource_get_user_data(surface);
+    p->im = im;
     p->resource = wl_resource_create(c, &zwp_input_popup_surface_v2_interface,
                                      wl_resource_get_version(r), id);
     if (!p->resource) { free(p); wl_client_post_no_memory(c); return; }
@@ -310,8 +317,12 @@ static const struct zwp_input_method_keyboard_grab_v2_interface input_method_gra
 
 static void input_method_grab_destroy(struct wl_resource *r)
 {
-    if (g_input_method && g_input_method->keyboard_grab == r)
-        g_input_method->keyboard_grab = NULL;
+    /* Clear the owning method's pointer, whichever method that is (see
+     * input_popup_resource_destroy): a stale keyboard_grab would be destroyed a
+     * second time when the method itself goes away. */
+    struct iosc_input_method *im = wl_resource_get_user_data(r);
+    if (im && im->keyboard_grab == r)
+        im->keyboard_grab = NULL;
 }
 
 static void input_method_grab_keyboard(struct wl_client *c, struct wl_resource *r, uint32_t id)
@@ -323,7 +334,7 @@ static void input_method_grab_keyboard(struct wl_client *c, struct wl_resource *
     if (!grab) { wl_client_post_no_memory(c); return; }
     if (im->keyboard_grab) wl_resource_destroy(im->keyboard_grab);
     im->keyboard_grab = grab;
-    wl_resource_set_implementation(grab, &input_method_grab_impl, NULL, input_method_grab_destroy);
+    wl_resource_set_implementation(grab, &input_method_grab_impl, im, input_method_grab_destroy);
     if (g_keymap_fd >= 0)
         zwp_input_method_keyboard_grab_v2_send_keymap(grab, WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1,
                                                       g_keymap_fd, iosc_input_keymap_size());

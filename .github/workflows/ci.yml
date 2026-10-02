@@ -46,6 +46,9 @@ jobs:
       - name: Repo-ops guard hook
         run: python bin/lib/guard-repo-ops.test.py
 
+      - name: repo/Packages merge driver
+        run: python bin/lib/merge-packages.test.py
+
       # Logic only -- no debs, no otool, so it runs on the Linux runner. The gate
       # itself is a host publish gate; this keeps its rpath-resolution rules honest.
       - name: Ladybird TLS rpath rules
@@ -71,7 +74,9 @@ jobs:
           python-version: "3.12"
 
       - name: Regenerate derived index from committed Packages
-        run: python bin/lib/make-repo.py --from-index
+        run: |
+          python bin/lib/make-repo.py --from-index
+          XIOS_REPO_PROFILE=rootful python bin/lib/make-repo.py --from-index
 
       - name: Committed index must match what the generator produces
         run: |
@@ -80,10 +85,11 @@ jobs:
           # derived artifact (a depiction, the landing page) drifted from the index
           # it is generated from -- someone edited output instead of input, or
           # committed a stale regeneration. Deletions mean a retired package left
-          # its depiction/icon/banner behind and the prune collected them.
-          if ! git diff --quiet -- repo/; then
-            echo "Regenerating from repo/Packages changed tracked files:"
-            git diff --stat -- repo/
+          # its depiction/icon/banner behind and the prune collected them. New
+          # untracked files mean a package entered the index without its pages.
+          if [ -n "$(git status --porcelain -- repo/)" ]; then
+            echo "Regenerating from repo/Packages changed or added files:"
+            git status --short --untracked-files=all -- repo/
             echo
             echo "Run 'python3 bin/lib/make-repo.py --from-index' locally and commit the result."
             exit 1
