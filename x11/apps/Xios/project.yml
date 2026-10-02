@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.12"
+    MARKETING_VERSION: "0.1.13"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -68,7 +68,7 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.12"
+        CFBundleShortVersionString: "0.1.13"
         UILaunchScreen: {}
         # Fallback route for the share extension. An appex cannot reach the host
         # app's memory, and if its sandbox denies /var/jb/tmp it cannot reach
@@ -136,7 +136,7 @@ targets:
       path: XiosShare/Info.generated.plist
       properties:
         CFBundleDisplayName: Open on Desktop
-        CFBundleShortVersionString: "0.1.12"
+        CFBundleShortVersionString: "0.1.13"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.share-services
           # @objc(ShareViewController) pins the ObjC name, so no module prefix.
@@ -180,7 +180,7 @@ targets:
       path: XiosFileProvider/Info.generated.plist
       properties:
         CFBundleDisplayName: Xios
-        CFBundleShortVersionString: "0.1.12"
+        CFBundleShortVersionString: "0.1.13"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.fileprovider-nonui
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).FileProviderExtension

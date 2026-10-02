@@ -462,7 +462,9 @@ backend verb their ioscd does not implement. Package and publish both, or neithe
 ## 2026-08-03 Files.app FileProvider extension — HOST-BUILT, WHOLLY UNVERIFIED ON DEVICE
 
 Publishes a shared folder into the iPad Files app so the desktop's storage stops
-being reachable only over scp. `com.max.xios 0.1.12`.
+being reachable only over scp. `com.max.xios 0.1.13`: the share-extension
+0.1.12 above plus this extension. It is a separate version on purpose, because
+that 0.1.12 (without the FileProvider) is already hand-installed on the iPad.
 
 ### What it is
 - `XiosFileProvider.appex` inside `Xios.app/PlugIns/`, bundle id
@@ -544,6 +546,10 @@ The iPad was in use by two other sessions, so nothing here has run on device.
    honors a fakesigned exception on an appex is untested. If it does not, the
    fallback is routing operations through a helper over a socket in
    `/var/jb/tmp` — and whether the appex can open *that* is the same question.
+   XiosShare took the other route, `com.apple.private.security.no-container`
+   plus absolute-path exceptions, and its sandbox probe asks the same thing at
+   runtime. Whichever smoke runs first answers part of this for both. This
+   extension's entitlements are left as written until then.
 2. **Does `uicache -p` register app extensions?** Extensions are normally
    registered by installd at install time. If uicache does not pick up PlugIns,
    the domain will never bind and `NSFileProviderManager.add` will fail.
@@ -556,7 +562,10 @@ The iPad was in use by two other sessions, so nothing here has run on device.
    normally require real provisioning.
 
 ### Device smoke, in order
-1. Install the deb, then check `/var/mobile/Xios` exists after first app launch.
+1. Install 0.1.13 over the hand-installed 0.1.12, then check `/var/mobile/Xios`
+   exists after first app launch. Publishing it carries the same constraint as the
+   share extension: it ships with an `xios-launcher-tools` whose ioscd has
+   `OPEN_URL`.
 2. Watch the syslog for `[xios-fileprovider]` on launch. Registration failure ends
    the smoke — go to unknown 2 and 3 above.
 3. Files.app → Browse → confirm an "Xios" location appears.
