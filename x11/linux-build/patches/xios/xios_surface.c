@@ -1609,7 +1609,7 @@ int xios_read_output_region(int x, int y, int w, int h, void *dst, int dst_strid
      * black padding. A screenshot that lies is worse than no screenshot --
      * on 2026-08-06 a capture in exactly that state was read as evidence about
      * a game's rendering. grim reports the failure instead now. */
-    if (x + w > s_width || y + h > s_height) {
+    if ((int64_t) x + w > s_width || (int64_t) y + h > s_height) {   /* no int wrap */
         fprintf(stderr,
                 "xios: read_output_region %dx%d+%d+%d exceeds surface %dx%d; "
                 "refusing (output geometry and surface geometry disagree)\n",
