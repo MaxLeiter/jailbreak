@@ -49,7 +49,9 @@ void iosc_input_gesture(iosc_input_t *h, unsigned kind, unsigned phase, unsigned
                         int dx256, int dy256, unsigned scale256, int rot256);
 /* Drain the server->app stream. Returns 1 with ONE TRAITS record's fields filled
  * (call again for more; every enable/disable transition is delivered, nothing
- * coalesces), 0 when no complete record is pending, -1 on disconnect. */
+ * coalesces), 0 when no complete record is pending, -1 on disconnect. Also
+ * flushes input queued while the compositor was not reading, so call it every
+ * tick. */
 int  iosc_input_poll_traits(iosc_input_t *h, unsigned *hint, unsigned *purpose, unsigned *enabled);
 
 #endif

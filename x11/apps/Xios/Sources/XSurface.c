@@ -78,6 +78,10 @@ struct XSurfaceConn {
     /* Client cursor PIXELS (XIOS_MSG_CURSOR_IMAGE), so the overlay layer can be
      * a real cursor plane instead of the compositor painting into the output. */
     unsigned char cursor_pixels[XIOS_CURSOR_IMAGE_MAX * XIOS_CURSOR_IMAGE_MAX * 4];
+    /* The next image is received here and copied over cursor_pixels only once
+     * complete: a payload that is still arriving when the app reads the
+     * current image would otherwise overwrite it under the old dimensions. */
+    unsigned char cursor_rx_pixels[XIOS_CURSOR_IMAGE_MAX * XIOS_CURSOR_IMAGE_MAX * 4];
     int cursor_img_w, cursor_img_h, cursor_hot_x, cursor_hot_y;
     uint32_t cursor_img_seq;   /* bumped per image change; 0 = none seen */
     uint32_t cursor_rx_expected, cursor_rx_got;
@@ -453,13 +457,14 @@ int xsurface_drain(XSurfaceConn *c)
         }
         if (c->cursor_rx_expected > 0) {
             ssize_t r = recv(c->fd,
-                             c->cursor_pixels + c->cursor_rx_got,
+                             c->cursor_rx_pixels + c->cursor_rx_got,
                              c->cursor_rx_expected - c->cursor_rx_got,
                              MSG_DONTWAIT);
             if (r > 0) {
                 c->cursor_rx_got += (uint32_t)r;
                 if (c->cursor_rx_got < c->cursor_rx_expected)
                     continue;
+                memcpy(c->cursor_pixels, c->cursor_rx_pixels, c->cursor_rx_expected);
                 c->cursor_img_w = c->cursor_rx_w;
                 c->cursor_img_h = c->cursor_rx_h;
                 c->cursor_hot_x = c->cursor_rx_hot_x;

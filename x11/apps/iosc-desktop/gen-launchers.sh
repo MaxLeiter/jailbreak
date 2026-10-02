@@ -125,7 +125,7 @@ for DESKTOP in "${DESKTOPS[@]}"; do
     chmod 0755 "$BDIR/IOSCLaunch"
   fi
 
-  # Placeholder values below get set via PlistBuddy so &, quotes, etc. in
+  # Placeholder values below get set via plutil so &, quotes, etc. in
   # Names are escaped correctly. Classic bundle = one fullscreen landscape
   # Xios window; native bundle = multi-scene host that follows device rotation.
   if [ "$NATIVE" = "1" ]; then
@@ -218,11 +218,14 @@ PLIST
 PLIST
   fi
 
-  "$PB" -c "Set :CFBundleIdentifier $BUNDLE_ID" "$BDIR/Info.plist"
-  "$PB" -c "Set :CFBundleName $NAME"            "$BDIR/Info.plist"
-  "$PB" -c "Set :CFBundleDisplayName $NAME"     "$BDIR/Info.plist"
-  "$PB" -c "Set :IOSCAppID $APPID"              "$BDIR/Info.plist"
-  "$PB" -c "Set :IOSCName $NAME"                "$BDIR/Info.plist"
+  # plutil takes the value as its own argument. PlistBuddy parses it out of the
+  # command string, so a Name with an apostrophe (e.g. "Simon Tatham's Puzzles")
+  # aborts the Set under set -e, and quotes/backslashes get dropped silently.
+  plutil -replace CFBundleIdentifier  -string "$BUNDLE_ID" "$BDIR/Info.plist"
+  plutil -replace CFBundleName        -string "$NAME"      "$BDIR/Info.plist"
+  plutil -replace CFBundleDisplayName -string "$NAME"      "$BDIR/Info.plist"
+  plutil -replace IOSCAppID           -string "$APPID"     "$BDIR/Info.plist"
+  plutil -replace IOSCName            -string "$NAME"      "$BDIR/Info.plist"
   # X-Xios-RawTouch=true -> IOSCRawTouch: the native host drops its direct-touch
   # gesture recognizers and pointer emulation so every touch reaches the client
   # (games). Same rule as xios-launcher-sync; host-only hint, never sent to ioscd.

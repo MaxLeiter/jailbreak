@@ -121,8 +121,8 @@ pack_runtime_and_dev() {
   write_control "$dev" "$dev_pkg" "$version" Development \
     "$runtime_pkg (= $version)" "development files for $summary"
   sign_stage "$runtime"
-  xmkdeb "$runtime" "$OUT" --minos >/dev/null
-  xmkdeb "$dev" "$OUT" --minos >/dev/null
+  xmkdeb "$runtime" "$OUT" >/dev/null
+  xmkdeb "$dev" "$OUT" >/dev/null
 }
 
 pack_runtime_and_dev json-c libjson-c5 libjson-c-dev 0.18+ios1 \
@@ -154,7 +154,7 @@ write_control "$TIFF" libtiff6 4.7.0+ios2 Libraries \
   "libjpeg62-turbo, libwebp7, libz1" \
   "TIFF image codec runtime for GIMP with a private XZ runtime"
 sign_stage "$TIFF"
-xmkdeb "$TIFF" "$OUT" --minos >/dev/null
+xmkdeb "$TIFF" "$OUT" >/dev/null
 
 pack_runtime_and_dev babl libbabl-0.1-0 libbabl-0.1-dev 0.1.126+ios1 \
   "liblcms2-2" "babl pixel-format conversion runtime"
@@ -184,9 +184,9 @@ echo "Replaces: libgegl-0.4-0 (<< 0.4.70+ios2)" \
   >> "$GEGL_CLI/DEBIAN/control"
 sign_stage "$GEGL_RUNTIME"
 sign_stage "$GEGL_CLI"
-xmkdeb "$GEGL_RUNTIME" "$OUT" --minos >/dev/null
-xmkdeb "$GEGL_DEV" "$OUT" --minos >/dev/null
-xmkdeb "$GEGL_CLI" "$OUT" --minos >/dev/null
+xmkdeb "$GEGL_RUNTIME" "$OUT" >/dev/null
+xmkdeb "$GEGL_DEV" "$OUT" >/dev/null
+xmkdeb "$GEGL_CLI" "$OUT" >/dev/null
 
 pack_runtime_and_dev libmypaint libmypaint-1.5-1 libmypaint-dev 1.6.1+ios1 \
   "libjson-c5, libglib2.0-0" "MyPaint brush engine used by GIMP"
@@ -195,7 +195,7 @@ BRUSHES="$WORK/mypaint-brushes"
 copy_component mypaint-brushes "$BRUSHES"
 write_control "$BRUSHES" mypaint-brushes 2.0.2+ios1 Graphics \
   "" "MyPaint 2 brush collection used by GIMP"
-xmkdeb "$BRUSHES" "$OUT" --minos >/dev/null
+xmkdeb "$BRUSHES" "$OUT" >/dev/null
 
 GIMP="$WORK/gimp"
 copy_component gimp "$GIMP"
@@ -225,7 +225,7 @@ write_control "$GIMP" gimp 3.2.4+ios3 Graphics \
   "libbabl-0.1-0, libgegl-0.4-0, gegl, libgexiv2-2, libmypaint-1.5-1, mypaint-brushes, libbz2-1.0, libtiff6, libgtk-3-0, libgdk-pixbuf-2.0-0, libglib2.0-0, libpango-1.0-0, libcairo2, libfontconfig1, libfreetype6, libharfbuzz0b, libjson-glib-1.0-0, libjpeg62-turbo, libpng16-16, liblcms2-2, libexiv2-28, librsvg2-2, libwebp7, libappstream5, libarchive13, libgtkintl, libpoppler-glib8, libpoppler140, shared-mime-info" \
   "GIMP 3.2 image editor for Xios Wayland desktops"
 sign_stage "$GIMP"
-xmkdeb "$GIMP" "$OUT" --minos >/dev/null
+xmkdeb "$GIMP" "$OUT" >/dev/null
 
 DESKTOP="$(find "$GIMP/var/jb/usr/share/applications" -type f -name '*.desktop' | head -1)"
 [ -n "$DESKTOP" ] || { echo "GIMP package has no desktop entry" >&2; exit 2; }
@@ -285,7 +285,7 @@ xsign "$GIMP_NATIVE/var/jb/Applications/GIMP.app/IOSCHost" \
   AGXDeviceUserClient IOGPUDeviceUserClient IOSurfaceRootUserClient \
   com.max.xios.metal-event-broker \
   com.apple.security.exception.files.absolute-path.read-write
-xmkdeb "$GIMP_NATIVE" "$OUT" --minos >/dev/null
+xmkdeb "$GIMP_NATIVE" "$OUT" >/dev/null
 
 echo "==> standalone GIMP packages"
 find "$OUT" -maxdepth 1 -type f \

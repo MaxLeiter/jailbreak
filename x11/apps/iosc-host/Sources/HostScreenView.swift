@@ -29,6 +29,9 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     private var canvasW = 1
     private var canvasH = 1
+    // A canvas bound before Metal was reachable (background launch). Adopted
+    // once start() succeeds; until then there is no device to texture it with.
+    private var deferredCanvas: (surface: IOSurfaceRef, width: Int, height: Int)?
 
     // Metal
     private var device: MTLDevice!
@@ -43,6 +46,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var presentFenceEvent: MTLSharedEvent?
     private var presentFenceValue: UInt64 = 0
     private var fenceFailureLogged = false
+    // A token whose broker import is running off the main thread, and the
+    // newest frame value that arrived for it meanwhile (applied when it lands).
+    private var fenceImportToken: Data?
+    private var fenceImportPendingValue: UInt64 = 0
     private var displayLink: CADisplayLink?
     private var metalLayer: CAMetalLayer { layer as! CAMetalLayer }
     override class var layerClass: AnyClass { CAMetalLayer.self }
@@ -58,7 +65,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private weak var keyboardRevealPan: UIPanGestureRecognizer?
     private var keyboardSwipeTriggered = false
 
-    // Two-finger / trackpad scroll -> AXIS (wire type 9). Mirrors XScreen.swift's
+    // Two-finger / trackpad scroll -> XIOS_IN_AXIS. Mirrors XScreen.swift's
     // handleTwoFingerPan/sendScroll; single-finger pointer emulation above is
     // untouched, this is additive.
     private enum TwoFingerMode { case undecided, scroll }
@@ -72,7 +79,15 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private var hardwareButtonMask = 0
     // An `.indirectPointer` touch is live, i.e. at least one button is held.
     private var hardwarePointerTouchDown = false
-    private let hardwareKeyboard = XiosHardwareKeyboard()
+    // GameController keeps ONE keyChangedHandler per process, so a bridge per
+    // view meant the last window to start owned every keystroke (typing into the
+    // key window landed in another window's input connection) and closing that
+    // window cleared the handler for all of them. One shared bridge instead,
+    // routed to the host window with keyboard focus: the one whose window most
+    // recently became key or whose scene most recently activated (the same edge
+    // NativeManager.sceneBecameKey reports to iosc).
+    private static let hardwareKeyboard = XiosHardwareKeyboard()
+    private static weak var keyboardFocus: HostScreenView?
 
     // UITextInputTraits — literal keyboard (one tap one char).
     @objc var autocorrectionType: UITextAutocorrectionType = .no
@@ -106,6 +121,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     required init?(coder: NSCoder) { fatalError() }
 
     func start() {
+        // At most one pending retry: a start() that fails again from
+        // retryStart must not stack a second registration on the first.
+        NotificationCenter.default.removeObserver(
+            self, name: UIApplication.didBecomeActiveNotification, object: nil)
         guard setupMetal() else {
             // GPU unreachable (background launch); retry when active.
             NotificationCenter.default.addObserver(
@@ -117,9 +136,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         makePlaceholder()
         openInput()
         installLifecycleObservers()
-        hardwareKeyboard.start { [weak self] keysym, down, modifiers in
-            self?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
+        Self.hardwareKeyboard.start { keysym, down, modifiers in
+            Self.keyboardFocus?.sendHardwareKey(keysym, down: down, modifiers: modifiers)
         }
+        if window?.isKeyWindow == true { takeKeyboardFocus() }
         let dl = CADisplayLink(target: self, selector: #selector(tick))
         // Asked for nothing before, which means the panel's maximum. A range lets
         // CoreAnimation throttle a thermally constrained A10 on its own instead of
@@ -137,6 +157,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         dl.add(to: .main, forMode: .common)
         displayLink = dl
         needsPresent = true
+        if let canvas = deferredCanvas {
+            deferredCanvas = nil
+            adoptCanvas(canvas.surface, width: canvas.width, height: canvas.height)
+        }
     }
 
     @objc private func retryStart() {
@@ -146,7 +170,10 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 
     /// Adopt a canvas IOSurface (WINDOW_NEW / WINDOW_GEOM). Zero-copy Metal texture.
     func adoptCanvas(_ surface: IOSurfaceRef, width: Int, height: Int) {
-        guard metalReady else { return }
+        guard metalReady else {
+            deferredCanvas = (surface, width, height)
+            return
+        }
         canvasW = max(1, width); canvasH = max(1, height)
         let td = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: canvasW, height: canvasH, mipmapped: false)
@@ -157,6 +184,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         // the matching NATIVE_FRAME arrives with a producer completion fence.
         canvasFrameReady = false
         presentFenceValue = 0
+        fenceImportPendingValue = 0   // a frame held for an import was the old canvas's
         needsPresent = false
     }
 
@@ -175,17 +203,18 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             return
         }
         if token != presentFenceToken {
-            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
-                guard let base = raw.baseAddress else { return nil }
-                return xios_metal_event_broker_copy_event(device, base, raw.count)
-            }
-            guard let event else {
-                logFenceFailure("broker token import failed")
-                return
-            }
-            presentFenceToken = token
-            presentFenceEvent = event
+            // A new token costs a broker round trip, a blocking XPC call. Run it
+            // off the main thread and hold this frame (the newest one wins)
+            // until the event lands; nothing is sampled unfenced meanwhile.
+            fenceImportPendingValue = value
+            importFenceEvent(token)
+            return
         }
+        fenceImportPendingValue = 0   // newer than any frame held for an import
+        acceptFencedFrame(value)
+    }
+
+    private func acceptFencedFrame(_ value: UInt64) {
         guard presentFenceEvent != nil else {
             logFenceFailure("broker event unavailable")
             return
@@ -194,6 +223,36 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         fenceFailureLogged = false
         canvasFrameReady = true
         needsPresent = true
+    }
+
+    private func importFenceEvent(_ token: Data) {
+        guard fenceImportToken != token else { return }   // already on its way
+        fenceImportToken = token
+        let device = self.device
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
+                guard let device, let base = raw.baseAddress else { return nil }
+                return xios_metal_event_broker_copy_event_timeout(
+                    device, base, raw.count, XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC)
+            }
+            DispatchQueue.main.async { self?.fenceImportFinished(token, event: event) }
+        }
+    }
+
+    private func fenceImportFinished(_ token: Data, event: MTLSharedEvent?) {
+        guard fenceImportToken == token else { return }   // superseded, or torn down
+        fenceImportToken = nil
+        let value = fenceImportPendingValue
+        fenceImportPendingValue = 0
+        guard let event else {
+            // As before: the held frame is dropped and the next one retries.
+            logFenceFailure("broker token import failed")
+            return
+        }
+        presentFenceToken = token
+        presentFenceEvent = event
+        guard metalReady, canvasTexture != nil, value > 0 else { return }
+        acceptFencedFrame(value)
     }
 
     private func logFenceFailure(_ reason: String) {
@@ -525,14 +584,48 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
             forName: UIScene.didActivateNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, note.object as? UIScene === self.window?.windowScene else { return }
+            if self.window?.isKeyWindow == true { self.takeKeyboardFocus() }
             self.refreshAutoKeyboardFromTraits()
         })
         lifecycleObservers.append(center.addObserver(
             forName: UIWindow.didBecomeKeyNotification, object: nil, queue: .main
         ) { [weak self] note in
             guard let self, note.object as? UIWindow === self.window else { return }
+            self.takeKeyboardFocus()
             self.refreshAutoKeyboardFromTraits()
         })
+        lifecycleObservers.append(center.addObserver(
+            forName: UIScene.willDeactivateNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let self, note.object as? UIScene === self.window?.windowScene else { return }
+            self.yieldKeyboardFocus()
+        })
+    }
+
+    /// Route the shared hardware keyboard here. Keys still held went down in the
+    /// previous focus, so release them there first (the bridge does the same on
+    /// an app-level resign) rather than delivering their key-ups to this window.
+    private func takeKeyboardFocus() {
+        guard Self.keyboardFocus !== self else { return }
+        Self.hardwareKeyboard.releasePressedKeys()
+        Self.keyboardFocus = self
+    }
+
+    /// This window is leaving (scene deactivating or torn down): release what it
+    /// holds, then hand focus to a key window still in an active scene, if any.
+    private func yieldKeyboardFocus() {
+        guard Self.keyboardFocus === self else { return }
+        Self.hardwareKeyboard.releasePressedKeys()
+        Self.keyboardFocus = nil
+        for case let scene as UIWindowScene in UIApplication.shared.connectedScenes
+        where scene !== window?.windowScene && scene.activationState == .foregroundActive {
+            for w in scene.windows where w.isKeyWindow {
+                if let view = w.rootViewController?.view as? HostScreenView {
+                    Self.keyboardFocus = view
+                    return
+                }
+            }
+        }
     }
 
     private func aspectFitRect(content: CGSize, in container: CGSize) -> CGRect {
@@ -603,8 +696,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     private func openInput() {
         if let h = input, iosc_input_is_open(h) { return }
         if input != nil {
-            hardwareKeyboard.releasePressedKeys()
-            releaseHardwarePointerButtons()
+            resetInputLatches()
             iosc_input_close(input); input = nil
         }
         // serviceTraits() retries from the 60 Hz display link while the
@@ -614,6 +706,22 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         guard now.timeIntervalSince(lastInputConnectAttempt) >= 1 else { return }
         lastInputConnectAttempt = now
         input = iosc_input_open(inputSock, window_id)
+    }
+
+    /// The input connection dropped, or the window is closing: let go of every
+    /// key, button and touch this window still believes is held, so none of it
+    /// stays latched into the next connection. Releases go out only while the
+    /// handle is still open (teardown); after a drop this just clears app-side
+    /// state. A trackpad button still physically held presses again on its next
+    /// event, because the touch phase, not buttonMask, decides it.
+    private func resetInputLatches() {
+        if Self.keyboardFocus === self { Self.hardwareKeyboard.releasePressedKeys() }
+        releaseHardwarePointerButtons()
+        if pointerTouch != nil { releasePointerPress() }
+        if let h = input {
+            for slot in touchSlots.values { iosc_input_touch(h, slot, 3, 0, 0) }
+        }
+        touchSlots.removeAll()
     }
 
     private func serviceTraits() {
@@ -627,7 +735,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         while true {
             var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
             let r = iosc_input_poll_traits(h, &hint, &purpose, &enabled)
-            if r < 0 { iosc_input_close(input); input = nil; return }
+            if r < 0 { resetInputLatches(); iosc_input_close(input); input = nil; return }
             if r == 0 { return }
             applyTraits(hint: hint, purpose: purpose, enabled: enabled)
         }
@@ -989,8 +1097,16 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
     }
 
     func teardown() {
-        hardwareKeyboard.stop()
-        releaseHardwarePointerButtons()
+        // A view whose start() failed (background launch) is still waiting on
+        // didBecomeActive; without this a torn-down window would revive itself
+        // with a display link, an input connection and the keyboard handler.
+        NotificationCenter.default.removeObserver(
+            self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        deferredCanvas = nil
+        // Release held keys through this window while its input is still open;
+        // the shared bridge itself stays up for the other windows.
+        yieldKeyboardFocus()
+        resetInputLatches()
         displayLink?.invalidate(); displayLink = nil
         for obs in lifecycleObservers { NotificationCenter.default.removeObserver(obs) }
         lifecycleObservers.removeAll()
@@ -1001,6 +1117,8 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
         presentFenceToken = nil
         presentFenceEvent = nil
         presentFenceValue = 0
+        fenceImportToken = nil
+        fenceImportPendingValue = 0
         lastReportedSceneSize = nil
         accessibilityElements = nil
     }
@@ -1028,7 +1146,7 @@ final class HostScreenView: UIView, UIGestureRecognizerDelegate {
 extension HostScreenView: UIKeyInput {
     var hasText: Bool { true }
     func insertText(_ text: String) {
-        if hardwareKeyboard.isLikelyUIKitEcho() { return }
+        if Self.hardwareKeyboard.isLikelyUIKitEcho() { return }
         if !modCtrl && !modAlt && !modShift { sendTextWithKeyBreaks(text); return }
         for ch in text where keysym(for: ch) != nil {
             sendKeysym(keysym(for: ch)!, ctrl: modCtrl, alt: modAlt, shift: modShift)
@@ -1036,7 +1154,7 @@ extension HostScreenView: UIKeyInput {
         clearStickyMods()
     }
     func deleteBackward() {
-        if hardwareKeyboard.isLikelyUIKitEcho() { return }
+        if Self.hardwareKeyboard.isLikelyUIKitEcho() { return }
         sendKeysym(0xff08, ctrl: modCtrl, alt: modAlt, shift: modShift)
         clearStickyMods()
     }

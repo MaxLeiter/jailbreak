@@ -745,7 +745,9 @@ static int client_readable_locked(int idx)
  * host stalls only this thread, not the compositor. */
 static void process_pending_deliveries(void)
 {
-    for (int i = 0; i < XIOS_CANVAS_MAX_WINDOWS; i++) {
+    /* Stop handing off once xios_canvas_server_stop() is waiting for this thread:
+     * each hand-off can take the full mach send timeout. */
+    for (int i = 0; i < XIOS_CANVAS_MAX_WINDOWS && s_thread_running; i++) {
         pthread_mutex_lock(&s_lock);
         struct canvas_entry *e = &s_windows[i];
         if (!e->window_id || !e->surface || e->deliver_pending == CANVAS_DELIVER_NONE) {
@@ -915,7 +917,6 @@ int xios_canvas_server_start(const char *sock_path)
         close(fd); s_listen_fd = -1; s_thread_running = 0;
         return -1;
     }
-    pthread_detach(s_thread);
     fprintf(stderr, "xios-canvas: serving native rendezvous on %s\n", path);
     return 0;
 }
@@ -923,10 +924,25 @@ int xios_canvas_server_start(const char *sock_path)
 void xios_canvas_server_stop(void)
 {
     s_thread_running = 0;
-    /* Wake the reader out of poll(-1) so it observes the cleared flag and exits
-     * before we close the fds under it. */
-    if (s_wake_pipe[1] >= 0) { char b = 1; (void)write(s_wake_pipe[1], &b, 1); }
-    if (s_listen_fd >= 0) { close(s_listen_fd); s_listen_fd = -1; }
+    /* Wake the reader out of poll(-1) and wait for it to exit before closing the fds
+     * it polls. Without the join it could still be in handle_bind() (a 3 s BIND read)
+     * or a 2 s mach send, then re-add a host after the teardown below, or
+     * accept()/read() on fd numbers this function closed and another thread
+     * (xios_surface's accept and client readers) already reused. Every blocking call
+     * in the reader has such a timeout and no new hand-off starts once
+     * s_thread_running is clear, so the join waits a few seconds at most. The reader
+     * exists exactly while s_listen_fd does; without a wake pipe nothing can wake it,
+     * so it is left detached as before. */
+    if (s_listen_fd >= 0) {
+        if (s_wake_pipe[1] >= 0) {
+            char b = 1;
+            (void)write(s_wake_pipe[1], &b, 1);
+            pthread_join(s_thread, NULL);
+        } else {
+            pthread_detach(s_thread);
+        }
+        close(s_listen_fd); s_listen_fd = -1;
+    }
     pthread_mutex_lock(&s_lock);
     for (int i = 0; i < s_nclients; i++) close(s_clients[i].fd);
     s_nclients = 0;

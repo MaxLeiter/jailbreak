@@ -19,6 +19,12 @@ final class SystemIntegration {
     private var volumeObservation: NSKeyValueObservation?
     private var volumeView: MPVolumeView?
     private weak var volumeSlider: UISlider?
+    // A desktop volume request waiting for MPVolumeView to grow its slider: only
+    // the newest is kept, with one retry pending at a time.
+    private var pendingVolume: UInt32?
+    private var volumeRetryScheduled = false
+    private var volumeRetries = 0
+    private static let maxVolumeRetries = 100   // 10 s at 0.1 s
     private var lastTransform: Int32 = -1
     private var lastDark: Int32 = -1
 
@@ -157,11 +163,16 @@ final class SystemIntegration {
             refreshVolumeSlider()
         }
         guard let slider = volumeSlider else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                self?.setDeviceVolume(v16)
-            }
+            // Each request used to start its own 10 Hz retry that never ended
+            // while the slider was missing, and once it appeared the stacked
+            // retries applied old values in no particular order. Now the newest
+            // request waits alone, and is dropped after maxVolumeRetries.
+            pendingVolume = v16
+            scheduleVolumeRetry()
             return
         }
+        pendingVolume = nil
+        volumeRetries = 0
 
         let clamped = min(v16, 65535)
         let value = Float(clamped) / 65535.0
@@ -169,6 +180,22 @@ final class SystemIntegration {
         slider.setValue(value, animated: false)
         slider.sendActions(for: .valueChanged)
         slider.sendActions(for: .touchUpInside)
+    }
+
+    private func scheduleVolumeRetry() {
+        guard !volumeRetryScheduled else { return }
+        guard volumeRetries < Self.maxVolumeRetries else {
+            pendingVolume = nil
+            volumeRetries = 0
+            return
+        }
+        volumeRetryScheduled = true
+        volumeRetries += 1
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            self.volumeRetryScheduled = false
+            if let v16 = self.pendingVolume { self.setDeviceVolume(v16) }
+        }
     }
 
     // MARK: brightness

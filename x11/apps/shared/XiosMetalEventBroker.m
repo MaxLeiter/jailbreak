@@ -145,3 +145,96 @@ id<MTLSharedEvent> xios_metal_event_broker_copy_event(
         return event;
     }
 }
+
+/* The reply and the error handler of the asynchronous proxy run on the
+ * connection's queue and may land after the caller has stopped waiting. They
+ * only touch this box, under its lock, and once the caller has taken the
+ * result a late handle is ignored rather than retained. */
+@interface XiosBrokerReply : NSObject {
+    MTLSharedEventHandle *_handle;
+    BOOL _taken;
+}
+- (void)offer:(MTLSharedEventHandle *)handle;
+- (MTLSharedEventHandle *)take NS_RETURNS_RETAINED;
+@end
+
+@implementation XiosBrokerReply
+- (void)offer:(MTLSharedEventHandle *)handle
+{
+    @synchronized(self) {
+        if (!_taken && !_handle)
+            _handle = [handle retain];
+    }
+}
+
+- (MTLSharedEventHandle *)take
+{
+    @synchronized(self) {
+        _taken = YES;
+        MTLSharedEventHandle *handle = _handle;
+        _handle = nil;
+        return handle;
+    }
+}
+
+- (void)dealloc
+{
+    [_handle release];
+    [super dealloc];
+}
+@end
+
+id<MTLSharedEvent> xios_metal_event_broker_copy_event_timeout(
+    id<MTLDevice> device, const void *token, size_t token_size,
+    double timeout_seconds)
+{
+    if (!device || !token || token_size != XIOS_GPU_FENCE_TOKEN_SIZE)
+        return nil;
+
+    @autoreleasepool {
+        NSData *tokenData = [NSData dataWithBytes:token length:token_size];
+        NSXPCConnection *connection = xios_broker_connection();
+        if (!connection)
+            return nil;
+
+        XiosBrokerReply *box = [[XiosBrokerReply alloc] init];
+        dispatch_semaphore_t done = dispatch_semaphore_create(0);
+        BOOL sent = NO;
+        @try {
+            id<XiosMetalEventBrokerProtocol> proxy =
+                [connection remoteObjectProxyWithErrorHandler:^(NSError *error) {
+                    fprintf(stderr, "xios-metal-broker: XPC request failed: %s\n",
+                            error.localizedDescription.UTF8String);
+                    dispatch_semaphore_signal(done);
+                }];
+            [proxy copyHandleForToken:tokenData
+                           withReply:^(MTLSharedEventHandle *value) {
+                               [box offer:value];
+                               dispatch_semaphore_signal(done);
+                           }];
+            sent = YES;
+        } @catch (NSException *exception) {
+            fprintf(stderr, "xios-metal-broker: take exception: %s\n",
+                    exception.reason.UTF8String);
+        }
+        if (sent) {
+            dispatch_time_t deadline = dispatch_time(
+                DISPATCH_TIME_NOW,
+                (int64_t)(timeout_seconds * (double)NSEC_PER_SEC));
+            if (dispatch_semaphore_wait(done, deadline) != 0)
+                fprintf(stderr, "xios-metal-broker: no reply within %.1fs\n",
+                        timeout_seconds);
+        }
+        MTLSharedEventHandle *handle = [box take];
+        [connection invalidate];
+        [connection release];
+        [box release];
+        dispatch_release(done);
+        if (!handle)
+            return nil;
+
+        id<MTLSharedEvent> event = [device newSharedEventWithHandle:handle];
+        [handle release];
+        return event;
+    }
+}

@@ -151,10 +151,14 @@ void xios_egl_destroy_pbuffer(EGLSurface pb)
 static EGLImageKHR (*s_create_image)(EGLDisplay, EGLContext, EGLenum, EGLClientBuffer, const EGLint *);
 static EGLBoolean  (*s_destroy_image)(EGLDisplay, EGLImageKHR);
 
-/* Retain each image's backing pbuffer + GL texture so it stays valid until
- * xios_egl_destroy_image. */
+/* Retain each image's backing pbuffer so it stays valid until xios_egl_destroy_image.
+ * The GL texture name it was wrapped from lives in xios_egl's own context; it is not
+ * deleted here, because both teardown paths run in the caller's context, where
+ * glDeleteTextures would free an unrelated texture of the same name. Nothing calls these
+ * two functions at runtime (the backend builds only check them against the contract);
+ * a caller would need to make the image context current to reclaim the name. */
 #define XIOS_EGL_MAX_IMAGES 64
-static struct { EGLImageKHR img; EGLSurface pb; GLuint tex; } s_images[XIOS_EGL_MAX_IMAGES];
+static struct { EGLImageKHR img; EGLSurface pb; } s_images[XIOS_EGL_MAX_IMAGES];
 
 EGLImageKHR xios_egl_image_from_iosurface(void *iosurface, int width, int height)
 {
@@ -198,13 +202,12 @@ EGLImageKHR xios_egl_image_from_iosurface(void *iosurface, int width, int height
 
     if (img == EGL_NO_IMAGE_KHR) {
         fprintf(stderr, "xios_egl: eglCreateImageKHR(GL_TEXTURE_2D) failed 0x%x\n", eglGetError());
-        glDeleteTextures(1, &tex);
         xios_egl_destroy_pbuffer(pb);
         return EGL_NO_IMAGE_KHR;
     }
     for (int i = 0; i < XIOS_EGL_MAX_IMAGES; i++)
         if (s_images[i].img == EGL_NO_IMAGE_KHR) {
-            s_images[i].img = img; s_images[i].pb = pb; s_images[i].tex = tex;
+            s_images[i].img = img; s_images[i].pb = pb;
             return img;
         }
     fprintf(stderr, "xios_egl: image retain table full; leaking backing pbuffer\n");
@@ -217,9 +220,8 @@ void xios_egl_destroy_image(EGLImageKHR image)
     if (s_destroy_image) s_destroy_image(s_dpy, image);
     for (int i = 0; i < XIOS_EGL_MAX_IMAGES; i++)
         if (s_images[i].img == image) {
-            if (s_images[i].tex) glDeleteTextures(1, &s_images[i].tex);
             xios_egl_destroy_pbuffer(s_images[i].pb);
-            s_images[i].img = EGL_NO_IMAGE_KHR; s_images[i].pb = EGL_NO_SURFACE; s_images[i].tex = 0;
+            s_images[i].img = EGL_NO_IMAGE_KHR; s_images[i].pb = EGL_NO_SURFACE;
             return;
         }
 }

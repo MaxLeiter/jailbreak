@@ -17,6 +17,7 @@
 #include "backends/ios/meta-keymap-ios.h"
 #include "backends/ios/meta-virtual-input-device-ios.h"
 #include "clutter/clutter.h"
+#include "clutter/clutter-mutter.h"
 
 enum
 {
@@ -37,7 +38,13 @@ struct _MetaSeatIOS
   GList              *devices;      /* all three core devices, for peek_devices */
 
   graphene_point_t    pointer_pos;
-  ClutterModifierType modifiers;
+  ClutterModifierType modifiers;     /* xkb_state's effective modifiers */
+
+  /* The keyboard state key events are built from, as MetaSeatImpl keeps one for the native
+   * seat. xkb_keymap holds a reference so a replacement map can never reuse its address. */
+  struct xkb_keymap  *xkb_keymap;
+  struct xkb_state   *xkb_state;
+  xkb_layout_index_t  xkb_layout;
 };
 
 G_DEFINE_TYPE (MetaSeatIOS, meta_seat_ios, CLUTTER_TYPE_SEAT)
@@ -224,6 +231,8 @@ meta_seat_ios_finalize (GObject *object)
   g_clear_object (&self->core_keyboard);
   g_clear_object (&self->core_touch);
   g_clear_object (&self->keymap);
+  g_clear_pointer (&self->xkb_state, xkb_state_unref);
+  g_clear_pointer (&self->xkb_keymap, xkb_keymap_unref);
 
   G_OBJECT_CLASS (meta_seat_ios_parent_class)->finalize (object);
 }
@@ -276,4 +285,102 @@ meta_seat_ios_get_touch (MetaSeatIOS *seat)
   g_return_val_if_fail (META_IS_SEAT_IOS (seat), NULL);
 
   return seat->core_touch;
+}
+
+/* Follow the backend's keymap and locked layout group. A new map starts a new state that
+ * keeps the latched and locked modifiers, as the native seat's set_keyboard_map does. */
+static void
+sync_xkb_state (MetaSeatIOS        *self,
+                struct xkb_keymap  *keymap,
+                xkb_layout_index_t  layout)
+{
+  xkb_mod_mask_t depressed = 0, latched = 0, locked = 0;
+
+  if (keymap == self->xkb_keymap && layout == self->xkb_layout)
+    return;
+
+  if (self->xkb_state)
+    {
+      depressed = xkb_state_serialize_mods (self->xkb_state, XKB_STATE_MODS_DEPRESSED);
+      latched = xkb_state_serialize_mods (self->xkb_state, XKB_STATE_MODS_LATCHED);
+      locked = xkb_state_serialize_mods (self->xkb_state, XKB_STATE_MODS_LOCKED);
+    }
+
+  if (keymap != self->xkb_keymap)
+    {
+      depressed = 0;
+      g_clear_pointer (&self->xkb_state, xkb_state_unref);
+      g_clear_pointer (&self->xkb_keymap, xkb_keymap_unref);
+      if (keymap)
+        {
+          self->xkb_keymap = xkb_keymap_ref (keymap);
+          self->xkb_state = xkb_state_new (keymap);
+        }
+    }
+
+  self->xkb_layout = layout;
+  if (self->xkb_state)
+    xkb_state_update_mask (self->xkb_state, depressed, latched, locked, 0, 0, layout);
+  self->modifiers = self->xkb_state
+    ? xkb_state_serialize_mods (self->xkb_state, XKB_STATE_MODS_EFFECTIVE) : 0;
+}
+
+ClutterEvent *
+meta_seat_ios_key_event_new (MetaSeatIOS        *seat,
+                             ClutterInputDevice *device,
+                             int64_t             time_us,
+                             struct xkb_keymap  *keymap,
+                             xkb_layout_index_t  layout,
+                             xkb_keycode_t       keycode,
+                             uint32_t            keyval,
+                             gboolean            pressed)
+{
+  ClutterModifierSet raw_modifiers = { 0 };
+  ClutterModifierType modifiers = 0;
+  gunichar unicode;
+  ClutterEvent *event;
+
+  g_return_val_if_fail (META_IS_SEAT_IOS (seat), NULL);
+
+  /* ASCII keysyms equal their codepoint; a keysym without a key carries no unicode (it is
+   * still authoritative for keybindings). */
+  unicode = (keyval < 0x80) ? (gunichar) keyval : 0;
+
+  sync_xkb_state (seat, keymap, layout);
+  if (seat->xkb_state)
+    {
+      raw_modifiers = (ClutterModifierSet) {
+        .pressed = xkb_state_serialize_mods (seat->xkb_state, XKB_STATE_MODS_DEPRESSED),
+        .latched = xkb_state_serialize_mods (seat->xkb_state, XKB_STATE_MODS_LATCHED),
+        .locked = xkb_state_serialize_mods (seat->xkb_state, XKB_STATE_MODS_LOCKED),
+      };
+      modifiers = xkb_state_serialize_mods (seat->xkb_state, XKB_STATE_MODS_EFFECTIVE);
+
+      if (keycode)
+        {
+          xkb_keysym_t sym = xkb_state_key_get_one_sym (seat->xkb_state, keycode);
+          char buffer[8];
+          int n;
+
+          if (sym != XKB_KEY_NoSymbol)
+            keyval = sym;
+          n = xkb_keysym_to_utf8 (keyval, buffer, sizeof (buffer));
+          unicode = (n > 0) ? g_utf8_get_char_validated (buffer, n) : 0;
+          if (unicode == (gunichar) -1 || unicode == (gunichar) -2)
+            unicode = 0;
+        }
+    }
+
+  event = clutter_event_key_new (pressed ? CLUTTER_KEY_PRESS : CLUTTER_KEY_RELEASE,
+                                 CLUTTER_EVENT_NONE, time_us, device,
+                                 raw_modifiers, modifiers, keyval,
+                                 keycode ? keycode - 8 : 0 /* evcode */, keycode, unicode);
+
+  if (seat->xkb_state && keycode)
+    {
+      xkb_state_update_key (seat->xkb_state, keycode, pressed ? XKB_KEY_DOWN : XKB_KEY_UP);
+      seat->modifiers = xkb_state_serialize_mods (seat->xkb_state, XKB_STATE_MODS_EFFECTIVE);
+    }
+
+  return event;
 }

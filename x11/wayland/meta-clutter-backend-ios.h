@@ -18,3 +18,7 @@ G_DECLARE_FINAL_TYPE (MetaClutterBackendIOS, meta_clutter_backend_ios,
                       META, CLUTTER_BACKEND_IOS, ClutterBackend)
 
 MetaClutterBackendIOS *meta_clutter_backend_ios_new (MetaBackend *backend);
+
+/* The MetaBackend this ClutterBackend was created for. Clutter-side objects that only see
+ * clutter_get_default_backend() (the virtual input device) reach the keymap through it. */
+MetaBackend *meta_clutter_backend_ios_get_backend (MetaClutterBackendIOS *clutter_backend);

@@ -23,6 +23,11 @@ int  iosc_gl_init(void *output_iosurface, int w, int h);
 /* True once iosc_gl_init() has succeeded. */
 int  iosc_gl_ok(void);
 
+/* Largest edge, in pixels, of a render target the GPU accepts (the context's
+ * GL_MAX_TEXTURE_SIZE): iosc_gl_resize()/_bind_target() fail past it. 0 before
+ * iosc_gl_init() has made the context current. */
+int  iosc_gl_max_target_size(void);
+
 /* Rebind the render target to a NEW output IOSurface at w x h (device rotation:
  * iosc reallocated the output via xios_surface_resize). The EGL display/context,
  * shader program, and the client-surface texture cache all survive; only the

@@ -14,6 +14,10 @@
  *     SESSION\t<preset>\t<app>\t<w>\t<h>\t<dpi>\t<slot>\n
  *                                         -> SESSION_STARTED\n | SESSION_ACTIVE\n | ERR <msg>\n
  *     SESSION_ENSURE\t...same payload...  -> same replies, ensure semantics for all peers
+ *         <app> (the "app" preset): from root, command text for xios-session;
+ *         from any other peer, a desktop-file id (the .desktop basename without
+ *         ".desktop"), run from that trusted entry's argv. An id that does not
+ *         resolve -> ERR unknown app <id>.
  *     APPS_LIST\n                         -> TSV app list + APPS_END\t<status>\n
  *     APPS_SYNC\t<native|classic>\t<dry>\n -> sync log + APPS_END\t<status>\n
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
@@ -80,6 +84,7 @@
 #include <stdint.h>
 
 #include "xios-desktop-entry.h"
+#include "xios-iosexec.h"
 
 #if defined(__has_include)
 #  if __has_include(<libproc.h>)
@@ -356,15 +361,31 @@ static int socket_exists(const char *p)
     struct stat st; return stat(p, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
+/* Hand a root-made socket to mobile. These names sit in the world-writable
+ * tmp dir, where the name of a socket that is gone can be taken by a planted
+ * symlink or hard link: act only on a socket root owns under this one name
+ * (the sticky dir keeps mobile from swapping it out), never through a link. */
 static void mobile_socket_perms(const char *path, const char *label)
 {
     struct passwd *pw = getpwnam("mobile");
     uid_t uid = pw ? pw->pw_uid : 501;
     gid_t gid = pw ? pw->pw_gid : 501;
-    if (chown(path, uid, gid) == 0) {
-        chmod(path, 0660);
+    struct stat st;
+    if (lstat(path, &st) != 0) {
+        fprintf(stderr, "ioscd: cannot hand %s %s to mobile: %s\n",
+                label, path, strerror(errno));
+        return;
+    }
+    if (!S_ISSOCK(st.st_mode) || st.st_uid != 0 || st.st_nlink != 1) {
+        if (!S_ISSOCK(st.st_mode) || st.st_uid != uid)   /* else: handed over already */
+            fprintf(stderr, "ioscd: leaving %s %s alone: not a singly linked socket root owns\n",
+                    label, path);
+        return;
+    }
+    if (lchown(path, uid, gid) == 0) {
+        (void)fchmodat(AT_FDCWD, path, 0660, AT_SYMLINK_NOFOLLOW);
     } else {
-        chmod(path, 0600);
+        (void)fchmodat(AT_FDCWD, path, 0600, AT_SYMLINK_NOFOLLOW);
         fprintf(stderr, "ioscd: keeping %s %s owner-only; chown mobile failed: %s\n",
                 label, path, strerror(errno));
     }
@@ -399,6 +420,16 @@ static void child_stdio(const char *logpath, int append)
         dup2(out, 2);
         if (out > 2) close(out);
     }
+}
+
+/* For a child about to drop to mobile: nothing ioscd holds past stdio may
+ * cross into it. The daemon's own long-lived fds are close-on-exec as well;
+ * this also covers anything opened without it. */
+static void close_inherited_fds(void)
+{
+    int max = getdtablesize();
+    if (max <= 0 || max > 65536) max = 65536;
+    for (int fd = 3; fd < max; fd++) close(fd);
 }
 
 static void set_rootless_path(int include_local)
@@ -923,7 +954,7 @@ static void ensure_audio(void)
         setenv("XDG_RUNTIME_DIR", g_tmp, 1);
         set_rootless_path(0);
         snprintf(cmd, sizeof(cmd), ". %s 2>/dev/null && xios_pulse_start", g_xios_pulse_profile);
-        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
+        xios_execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
     int status;
@@ -979,7 +1010,7 @@ static int ensure_iosc(int native)
          * Env override lets the launcher retune without a rebuild. */
         const char *logical = getenv("IOSC_LOGICAL");
         if (!logical || !*logical) logical = "1440x1080";
-        execl(g_iosc_bin, "iosc",
+        xios_execl(g_iosc_bin, "iosc",
               native ? "-native" : "-classic",
               "-s", mode->wayland_name,
               "-ddx-sock", mode->ddx_sock,
@@ -1020,7 +1051,7 @@ static void foreground_xios(void)
         /* -b (open as if tapped -> foreground) is required: the bare form
          * returns 0 but FrontBoard suspends the background-launched Metal app
          * before it adopts the IOSurface. Same form the run scripts use. */
-        execl(g_uiopen_bin, "uiopen", "-b", XIOS_BUNDLE, (char *)NULL);
+        xios_execl(g_uiopen_bin, "uiopen", "-b", XIOS_BUNDLE, (char *)NULL);
         _exit(127);
     }
     /* don't block on it; SIGCHLD reaps it */
@@ -1059,6 +1090,22 @@ static int a11y_enabled_gate(void)
            access(g_a11y_force, F_OK) == 0;
 }
 
+/* A bus socket whose daemon died without cleaning up (SIGKILL from a session
+ * teardown, jetsam) still looks like the daemon's socket; only a refused
+ * connect tells it from a live bus. Any other connect error counts as live,
+ * so a working bus is never torn down on a guess. */
+static int bus_socket_dead(const char *path)
+{
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return 0;
+    struct sockaddr_un a; memset(&a, 0, sizeof(a));
+    a.sun_family = AF_UNIX;
+    strncpy(a.sun_path, path, sizeof(a.sun_path) - 1);
+    int dead = connect(fd, (struct sockaddr *)&a, sizeof(a)) != 0 && errno == ECONNREFUSED;
+    close(fd);
+    return dead;
+}
+
 static int ensure_session_bus(char *addr, size_t addr_len)
 {
     const char *busdir = g_ioscd_bus_dir;
@@ -1068,34 +1115,61 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     if (!addr || addr_len == 0) return 0;
     snprintf(sock, sizeof(sock), "%s/session-bus", busdir);
     snprintf(addr, addr_len, "unix:path=%s", sock);
-    mkdir(busdir, 0700);
     struct passwd *mobile = getpwnam("mobile");
     uid_t uid = mobile ? mobile->pw_uid : 501;
     gid_t gid = mobile ? mobile->pw_gid : 501;
-    if (chown(busdir, uid, gid) != 0) return 0;
-    chmod(busdir, 0700);
-    if (socket_exists(sock)) {
-        mobile_socket_perms(sock, "session bus socket");
-        return 1;
+
+    /* The dir sits in the world-writable tmp dir, so it is adopted through an
+     * fd that refused a planted symlink, and only if it is one ioscd made
+     * (root's before the first chown, mobile's after); chown by path would
+     * hand a symlink's target to mobile. Inside it, the socket is reused only
+     * if it is the mobile daemon's own, and nothing is chowned or chmodded by
+     * name: the dir is mobile's, so a name there can be swapped at any time. */
+    struct stat st;
+    mkdir(busdir, 0700);
+    int dfd = open(busdir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dfd < 0 || fstat(dfd, &st) != 0 || !S_ISDIR(st.st_mode) ||
+        (st.st_uid != 0 && st.st_uid != uid) ||
+        fchown(dfd, uid, gid) != 0 || fchmod(dfd, 0700) != 0) {
+        fprintf(stderr, "ioscd: not using %s for the session bus: not a directory ioscd made\n",
+                busdir);
+        if (dfd >= 0) close(dfd);
+        return 0;
+    }
+    if (fstatat(dfd, "session-bus", &st, AT_SYMLINK_NOFOLLOW) == 0) {
+        if (!S_ISSOCK(st.st_mode) || st.st_uid != uid) {
+            fprintf(stderr, "ioscd: replacing %s: not the mobile bus daemon's socket\n", sock);
+        } else if (bus_socket_dead(sock)) {
+            fprintf(stderr, "ioscd: restarting the session bus: nothing listens on %s\n", sock);
+        } else {
+            close(dfd);
+            return 1;
+        }
+        (void)unlinkat(dfd, "session-bus", 0);
     }
 
-    unlink(sock);
     snprintf(address_arg, sizeof(address_arg), "--address=%s", addr);
 
     pid_t pid = fork();
-    if (pid < 0) return 0;
+    if (pid < 0) {
+        close(dfd);
+        return 0;
+    }
     if (pid == 0) {
         child_stdio(NULL, 0);
+        close_inherited_fds();
         if (drop_to_mobile() != 0) _exit(126);
-        execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
+        xios_execl(g_dbus_daemon, "dbus-daemon", "--session", "--fork",
               address_arg, "--print-address", (char *)NULL);
         _exit(127);
     }
 
     int status = 0;
     waitpid(pid, &status, 0);
-    if (socket_exists(sock)) mobile_socket_perms(sock, "session bus socket");
-    return socket_exists(sock);
+    int ok = fstatat(dfd, "session-bus", &st, AT_SYMLINK_NOFOLLOW) == 0 &&
+             S_ISSOCK(st.st_mode) && st.st_uid == uid;
+    close(dfd);
+    return ok;
 }
 
 static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_addr, int have_bus)
@@ -1129,7 +1203,7 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
                  g_xios_hwbridged, busdir,
                  g_xios_sensord, busdir,
                  g_xios_sysintd, busdir);
-        execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
+        xios_execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
     }
 }
@@ -1170,7 +1244,7 @@ static int start_a11y_for_busdir(const char *busdir)
         setenv("DBUS_SESSION_BUS_ADDRESS", addr, 1);
         setenv("HOME", g_home, 1);
         set_rootless_path(1);
-        execl(g_xios_start_a11y, "xios-start-a11y", (char *)NULL);
+        xios_execl(g_xios_start_a11y, "xios-start-a11y", (char *)NULL);
         _exit(127);
     }
     return 1;
@@ -1258,7 +1332,9 @@ static void set_wayland_client_env(const struct mode_cfg *mode, const char *busd
 
 /* Spawn an already parsed desktop entry as mobile. The daemon never evaluates
  * command text: argv came from a trusted root-owned .desktop file and is passed
- * directly to execvp (or through dbus-run-session as an argv vector). */
+ * directly to libiosexec's execvp (or through dbus-run-session as an argv
+ * vector). libiosexec only resolves a script target's own "#!" interpreter
+ * into the jailbreak prefix; see xios-iosexec.h. */
 static pid_t launch_client(const char *app_id, char *const app_argv[], int native)
 {
     const struct mode_cfg *mode = mode_cfg(native);
@@ -1274,6 +1350,7 @@ static pid_t launch_client(const char *app_id, char *const app_argv[], int nativ
     if (pid == 0) {
         setsid();
         child_stdio(g_ioscd_client_log, 1);
+        close_inherited_fds();
 
         set_wayland_client_env(mode, busdir, have_bus, bus_addr, enable_a11y);
         if (drop_to_mobile() != 0) _exit(126);
@@ -1285,9 +1362,13 @@ static pid_t launch_client(const char *app_id, char *const app_argv[], int nativ
             for (size_t i = 0; app_argv[i] && n + 1 < sizeof(run_argv) / sizeof(run_argv[0]); i++)
                 run_argv[n++] = app_argv[i];
             run_argv[n] = NULL;
-            execv(g_dbus_run, run_argv);
+            xios_execv(g_dbus_run, run_argv);
+            fprintf(stderr, "ioscd: exec %s failed for %s: %s\n",
+                    g_dbus_run, app_id, strerror(errno));
         }
-        execvp(app_argv[0], app_argv);
+        xios_execvp(app_argv[0], app_argv);
+        fprintf(stderr, "ioscd: exec %s failed for %s: %s\n",
+                app_argv[0], app_id, strerror(errno));
         _exit(127);
     }
     remember_app(app_id, pid, native);
@@ -1346,13 +1427,13 @@ static pid_t launch_session_request(const char *preset, const char *app,
         set_session_request_env(width, height, dpi, slot);
 
         if (app && *app)
-            execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);
         else
-            execl(g_bash_bin, "bash", g_xios_session_bin, preset, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin, preset, (char *)NULL);
         if (app && *app)
-            execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, app, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, app, (char *)NULL);
         else
-            execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, (char *)NULL);
+            xios_execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, (char *)NULL);
         fprintf(stderr, "ioscd: exec xios-session failed: %s\n", strerror(errno));
         _exit(127);
     }
@@ -1388,6 +1469,39 @@ static void log_session_started(const char *preset, const char *app,
     fputc('\n', stderr);
 }
 
+static void sanitized_copy(char *dst, size_t dst_len, const char *src);
+
+/* xios-session runs the "app" preset's <app> as root through
+ * `bash -lc "exec <app>"`, so only root may hand it command text. Any other
+ * peer names a desktop-file id; it resolves through the same trusted,
+ * root-owned entries LAUNCH uses, and the text passed on is built from that
+ * entry's argv, shell-quoted word by word. */
+static int session_app_from_file_id(int fd, const char *file_id,
+                                    char *cmd, size_t cmd_len)
+{
+    struct xios_desktop_entry desktop;
+    char error[256], clean[260], msg[320];
+    char *app_argv[XIOS_DESKTOP_ARG_MAX];
+    char argv_storage[XIOS_DESKTOP_ARG_STORAGE];
+    error[0] = 0;
+    if (xios_desktop_entry_lookup_file_id(file_id, g_jbroot, 1, &desktop,
+                                          error, sizeof(error)) &&
+        xios_desktop_entry_argv(&desktop, app_argv,
+                                sizeof(app_argv) / sizeof(app_argv[0]),
+                                argv_storage, sizeof(argv_storage),
+                                error, sizeof(error)) > 0) {
+        if (xios_desktop_argv_shell_text(app_argv, cmd, cmd_len))
+            return 1;
+        snprintf(error, sizeof(error), "command line too long");
+    }
+    sanitized_copy(clean, sizeof(clean), file_id);
+    fprintf(stderr, "ioscd: app request REFUSED: %s is not a launchable desktop-file id (%s)\n",
+            clean, error);
+    snprintf(msg, sizeof(msg), "ERR unknown app %s\n", clean);
+    reply(fd, msg);
+    return 0;
+}
+
 static void handle_session_request(int fd, char *payload, int ensure,
                                    const struct peer_info *peer)
 {
@@ -1408,11 +1522,17 @@ static void handle_session_request(int fd, char *payload, int ensure,
      * side displays) never tear the desktop down: no policy. */
     int destructive = strcmp(preset, "app") != 0 && !*slot;
     int is_root = peer->have_eid && peer->uid == 0;
+    char app_cmd[XIOS_DESKTOP_ARG_STORAGE * 4];
 
     if (strcmp(preset, "app") == 0) {
         if (!*app) {
             reply(fd, "ERR empty app\n");
             return;
+        }
+        if (!is_root) {
+            if (!session_app_from_file_id(fd, app, app_cmd, sizeof(app_cmd)))
+                return;
+            app = app_cmd;
         }
         if (!*slot && !classic_compositor_socket_live()) {
             reply(fd, "ERR no active desktop compositor\n");
@@ -1503,7 +1623,7 @@ static int run_and_stream(int fd, char *const argv[])
         dup2(pipefd[1], 2);
         if (pipefd[1] > 2) close(pipefd[1]);
         set_rootless_path(1);
-        execv(argv[0], argv);
+        xios_execv(argv[0], argv);
         fprintf(stderr, "exec %s failed: %s\n", argv[0], strerror(errno));
         _exit(127);
     }
@@ -1873,6 +1993,9 @@ static int make_ctl_socket(void)
     unlink(g_ctl_sock);
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) { perror("socket"); return -1; }
+    /* Every child would otherwise hold the listening socket, and a launched
+     * mobile app could accept() requests meant for ioscd. */
+    fcntl(fd, F_SETFD, FD_CLOEXEC);
     struct sockaddr_un a; memset(&a, 0, sizeof(a));
     a.sun_family = AF_UNIX;
     strncpy(a.sun_path, g_ctl_sock, sizeof(a.sun_path) - 1);
@@ -1893,11 +2016,17 @@ int main(void)
     fprintf(stderr, "ioscd: default launch mode=%s; explicit LAUNCH_NATIVE/LAUNCH_CLASSIC supported\n",
             mode_name(g_default_native));
     fprintf(stderr, "ioscd: session policy active (ensure/switch guard, failure cooldown, peer attribution)\n");
+    if (xios_have_iosexec())
+        fprintf(stderr, "ioscd: exec via libiosexec (\"#!\" interpreters resolve under the jailbreak prefix)\n");
+    else
+        fprintf(stderr, "ioscd: WARNING libiosexec not loaded; plain exec, so \"#!/bin/sh\" Exec targets fail on rootless\n");
 
     signal(SIGPIPE, SIG_IGN);
     if (pipe(g_chld_pipe) == 0) {
         fcntl(g_chld_pipe[0], F_SETFL, O_NONBLOCK);
         fcntl(g_chld_pipe[1], F_SETFL, O_NONBLOCK);
+        fcntl(g_chld_pipe[0], F_SETFD, FD_CLOEXEC);
+        fcntl(g_chld_pipe[1], F_SETFD, FD_CLOEXEC);
     }
     struct sigaction sa; memset(&sa, 0, sizeof(sa));
     sa.sa_handler = on_sigchld;

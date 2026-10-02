@@ -15,6 +15,7 @@
  */
 #define _GNU_SOURCE
 #define SD_DESKTOP_PINS
+#define SD_USER_REPLACE            /* pins, widgets, wallpaper choice */
 #define SD_CAIRO
 #include "shell-draw.h"
 #include "shell-theme.h"
@@ -104,6 +105,7 @@ struct desktop_pin {
      * fields above truncate long names/Execs that another writer can produce */
     char *raw;
     int   raw_head_len, raw_x, raw_y;   /* type..target prefix, x/y as read */
+    int   raw_target_off;               /* where target starts in raw */
 };
 
 static struct {
@@ -201,7 +203,7 @@ static void wallpaper_current_path(char *out, size_t n)
     if (wp && *wp) { snprintf(out, n, "%s", wp); return; }
     char cfg[256];
     wallpaper_config_path(cfg, sizeof cfg);
-    FILE *f = fopen(cfg, "r");
+    FILE *f = sd_user_fopen_read(cfg);
     if (f) {
         if (fgets(out, (int)n, f)) {
             out[strcspn(out, "\r\n")] = 0;
@@ -224,7 +226,7 @@ static void widgets_load(void)
 {
     widgets_default();
     char path[256]; bg_config_path(path, sizeof path);
-    FILE *f = fopen(path, "r");
+    FILE *f = sd_user_fopen_read(path);
     if (!f) { B.widgets_loaded = 1; return; }
     char key[32]; int x, y, vis;
     while (fscanf(f, "%31s %d %d %d", key, &x, &y, &vis) == 4) {
@@ -238,12 +240,12 @@ static void widgets_load(void)
 
 static void widgets_save(void)
 {
-    char path[256]; bg_config_path(path, sizeof path);
-    FILE *f = fopen(path, "w");
+    char path[256], tmp[272]; bg_config_path(path, sizeof path);
+    FILE *f = sd_user_replace_begin(path, tmp, sizeof tmp);
     if (!f) return;
     for (int i = 0; i < WIDGET_MAX; i++)
         fprintf(f, "%s %d %d %d\n", B.widgets[i].key, B.widgets[i].x, B.widgets[i].y, B.widgets[i].visible);
-    fclose(f);
+    sd_user_replace_end(f, tmp, path, 1);
 }
 
 static void pin_destroy(struct desktop_pin *p)
@@ -269,8 +271,8 @@ static void pins_keep_extra(const char *line)
 
 static void pins_save(void)
 {
-    char path[256]; sd_desktop_pins_path(path, sizeof path);
-    FILE *f = fopen(path, "w");
+    char path[256], tmp[272]; sd_desktop_pins_path(path, sizeof path);
+    FILE *f = sd_user_replace_begin(path, tmp, sizeof tmp);
     if (!f) return;
     for (int i = 0; i < B.npins; i++) {
         struct desktop_pin *p = &B.pins[i];
@@ -284,7 +286,7 @@ static void pins_save(void)
                     p->type[0] ? p->type : "app", p->name, p->icon, p->target, p->x, p->y);
     }
     if (B.pins_extra) fputs(B.pins_extra, f);
-    fclose(f);
+    sd_user_replace_end(f, tmp, path, 1);
 }
 
 static void pin_load_icon(struct desktop_pin *p)
@@ -330,14 +332,14 @@ static void pins_load(void)
     B.pins_extra_len = 0;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
     struct stat st;
-    if (stat(path, &st) == 0) {
+    if (lstat(path, &st) == 0) {
         B.pins_mtime = st.st_mtime;
         B.pins_size = st.st_size;
     } else {
         B.pins_mtime = 0;
         B.pins_size = 0;
     }
-    FILE *f = fopen(path, "r");
+    FILE *f = sd_user_fopen_read(path);
     if (!f) { B.pins_loaded = 1; return; }
     char *line = NULL;
     size_t cap = 0;
@@ -363,6 +365,7 @@ static void pins_load(void)
         struct desktop_pin *p = &B.pins[B.npins++];
         p->raw = raw;
         p->raw_head_len = (int)(target - line + strlen(target));
+        p->raw_target_off = (int)(target - line);
         snprintf(p->type, sizeof p->type, "%s", type);
         snprintf(p->name, sizeof p->name, "%s", name);
         snprintf(p->icon, sizeof p->icon, "%s", icon ? icon : "");
@@ -384,7 +387,7 @@ static int pins_reload_if_changed(void)
     struct stat st;
     time_t mt = 0;
     off_t sz = 0;
-    if (stat(path, &st) == 0) {
+    if (lstat(path, &st) == 0) {
         mt = st.st_mtime;
         sz = st.st_size;
     }
@@ -647,14 +650,25 @@ static void pin_launch(int idx)
 {
     if (idx < 0 || idx >= B.npins) return;
     struct desktop_pin *p = &B.pins[idx];
+    /* launch what the line says, not p->target's 255-byte copy */
+    char *target = p->raw ? strndup(p->raw + p->raw_target_off,
+                                    (size_t)(p->raw_head_len - p->raw_target_off))
+                          : strdup(p->target);
+    if (!target) return;
     if (!strcmp(p->type, "file")) {
-        char q[320], cmd[384];
-        quote_sh(q, sizeof q, p->target);
-        snprintf(cmd, sizeof cmd, "xdg-open %s", q);
-        sd_launch(cmd);
+        static const char opener[] = "xdg-open ";
+        size_t n = sizeof opener + strlen(target) * 4 + 2;
+        char *cmd = malloc(n);
+        if (cmd) {
+            memcpy(cmd, opener, sizeof opener - 1);
+            quote_sh(cmd + sizeof opener - 1, n - (sizeof opener - 1), target);
+            sd_launch(cmd);
+            free(cmd);
+        }
     } else {
-        sd_launch(p->target);
+        sd_launch(target);
     }
+    free(target);
 }
 
 static int menu_actions(int kind, int idx, const char **labels, int *actions)
@@ -784,12 +798,12 @@ static void menu_set_wallpaper_from_pin(int idx)
     if (idx < 0 || idx >= B.npins) return;
     struct desktop_pin *p = &B.pins[idx];
     if (strcmp(p->type, "file") || !is_image_path(p->target)) return;
-    char cfg[256];
+    char cfg[256], tmp[272];
     wallpaper_config_path(cfg, sizeof cfg);
-    FILE *f = fopen(cfg, "w");
+    FILE *f = sd_user_replace_begin(cfg, tmp, sizeof tmp);
     if (!f) return;
     fprintf(f, "%s\n", p->target);
-    fclose(f);
+    sd_user_replace_end(f, tmp, cfg, 1);
     reload_wallpaper_image();
 }
 
@@ -801,15 +815,29 @@ static void menu_reset_wallpaper(void)
     reload_wallpaper_image();
 }
 
+/* mkdir in mobile's Documents, handed to mobile so the user's apps can use
+ * it. mkdir never follows a link at the last name; the new dir is chowned
+ * through an fd that refused one, in case it was swapped in between. */
+static int user_mkdir(const char *path)
+{
+    if (mkdir(path, 0755) != 0) return -1;
+    int fd = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd >= 0) {
+        sd_user_give(fd);
+        close(fd);
+    }
+    return 0;
+}
+
 static void menu_new_folder(void)
 {
     char docs[256], path[320], name[96];
     snprintf(docs, sizeof docs, "%s", SD_USER_DOCUMENTS);
-    mkdir(docs, 0755);
+    user_mkdir(docs);
     for (int i = 0; i < 100; i++) {
         snprintf(name, sizeof name, i == 0 ? "Untitled Folder" : "Untitled Folder %d", i + 1);
         snprintf(path, sizeof path, "%s/%s", docs, name);
-        if (mkdir(path, 0755) == 0) {
+        if (user_mkdir(path) == 0) {
             pin_add_file(name, path, "folder", B.menu_x, B.menu_y);
             return;
         }

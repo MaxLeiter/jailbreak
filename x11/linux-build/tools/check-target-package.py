@@ -156,6 +156,11 @@ def macho_load_paths(path: Path) -> list[str]:
     if magic in (b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"):
         little = magic == b"\xbe\xba\xfe\xca"
         count = u32(4, little)
+        # A Java .class shares the CAFEBABE magic. There the next word is
+        # minor<<16|major, and every class-file major is >= 45 (JDK 1.1); a fat
+        # header's nfat_arch is a handful. Not a Mach-O, so no load paths.
+        if count >= 45:
+            return []
         for i in range(count):
             slices.append(u32(8 + i * 20 + 8, little))   # fat_arch.offset
     else:

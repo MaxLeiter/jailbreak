@@ -45,7 +45,20 @@ struct _MetaInputIOS
   int                        cursor_x;
   int                        cursor_y;
   uint32_t                   wire_mods;         /* Xios modifier snapshot, bits 0..5 */
+  uint32_t                   mods_client;       /* input client that sent wire_mods */
+  GArray                    *held_keys;         /* HeldInput: KEY presses (keysyms) */
+  GArray                    *held_buttons;      /* HeldInput: BUTTON/pencil presses (evdev) */
+  uint32_t                   touch_client[CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS];
+                                                /* client per touch slot down, 0 = up */
 };
+
+/* A key or button an input client pressed and has not released, so on_client_dropped() can
+ * release it for a client that goes away holding it. */
+typedef struct
+{
+  uint32_t code;
+  uint32_t client;
+} HeldInput;
 
 static int
 input_log_budget_from_env (void)
@@ -119,6 +132,31 @@ notify_keyval_click (MetaInputIOS *input,
                                               CLUTTER_KEY_STATE_RELEASED);
 }
 
+/* Non-ASCII soft-keyboard text (emoji, accents, autocorrect's smart quotes) has no key to
+ * click. Commit it through the ClutterInputMethod gnome-shell registers on the
+ * ClutterBackend, as the shell's own OSK does (Main.inputMethod.commit): Mutter queues a
+ * CLUTTER_IM_COMMIT behind the clicks already pushed and delivers it as text-input-v3
+ * commit_string to the focused Wayland client, or to a focused shell entry; with nothing
+ * focused it is dropped. A client applies a commit only at the done event, which Mutter
+ * defers until the queued events are handled, so a click pushed after the commit in the
+ * same record would land first. The caller therefore commits everything from the first
+ * non-ASCII byte to the end of the record here. FALSE (not valid UTF-8) leaves it to the
+ * byte loop. */
+static gboolean
+commit_text (ClutterInputMethod *im,
+             const char         *text,
+             size_t              len)
+{
+  g_autofree char *utf8 = NULL;
+
+  if (!g_utf8_validate_len (text, len, NULL))
+    return FALSE;
+
+  utf8 = g_strndup (text, len);
+  clutter_input_method_commit (im, utf8);
+  return TRUE;
+}
+
 static uint32_t
 modifier_bit_for_keyval (uint32_t keyval)
 {
@@ -160,6 +198,83 @@ sync_wire_modifiers (MetaInputIOS *input,
 }
 
 static void
+track_held (GArray   *held,
+            uint32_t  code,
+            gboolean  pressed,
+            uint32_t  client)
+{
+  for (guint i = 0; i < held->len; i++)
+    {
+      HeldInput *h = &g_array_index (held, HeldInput, i);
+
+      if (h->code != code)
+        continue;
+      if (pressed)
+        h->client = client;
+      else
+        g_array_remove_index_fast (held, i);
+      return;
+    }
+
+  if (pressed)
+    {
+      HeldInput h = { code, client };
+
+      g_array_append_val (held, h);
+    }
+}
+
+/* An input client went away (the Xios app was killed, its connection dropped) without
+ * releasing what it held. As iosc does: release its buttons (the pencil tip included) so
+ * a drag ends, cancel its touch points, then release its keys and the depressed modifiers
+ * of its last snapshot. Otherwise every later motion is a drag, a touch grab pins its
+ * surface, a key autorepeats or Ctrl stays held until the user happens to press it again.
+ * Caps and Num Lock are latched state, not held keys, and stay; the last client leaving
+ * still clears them in on_poll_tick(). */
+static void
+on_client_dropped (uint32_t  client,
+                   void     *user)
+{
+  MetaInputIOS *input = user;
+
+  for (guint i = input->held_buttons->len; i-- > 0;)
+    {
+      HeldInput button = g_array_index (input->held_buttons, HeldInput, i);
+
+      if (button.client != client)
+        continue;
+      g_array_remove_index_fast (input->held_buttons, i);
+      clutter_virtual_input_device_notify_button (input->pointer, CLUTTER_CURRENT_TIME,
+                                                  button.code, CLUTTER_BUTTON_STATE_RELEASED);
+    }
+
+  for (int slot = 0; slot < CLUTTER_VIRTUAL_INPUT_DEVICE_MAX_TOUCH_SLOTS; slot++)
+    {
+      if (input->touch_client[slot] != client)
+        continue;
+      input->touch_client[slot] = 0;
+      meta_virtual_input_device_ios_notify_touch_cancel (input->pointer, CLUTTER_CURRENT_TIME, slot);
+    }
+
+  for (guint i = input->held_keys->len; i-- > 0;)
+    {
+      HeldInput key = g_array_index (input->held_keys, HeldInput, i);
+
+      if (key.client != client)
+        continue;
+      g_array_remove_index_fast (input->held_keys, i);
+      clutter_virtual_input_device_notify_keyval (input->keyboard, CLUTTER_CURRENT_TIME,
+                                                  key.code, CLUTTER_KEY_STATE_RELEASED);
+    }
+
+  if (input->mods_client == client)
+    {
+      sync_wire_modifiers (input, input->wire_mods & ((1u << 4) | (1u << 5)));
+      input->mods_client = 0;
+    }
+}
+
+static void
 on_input_msg (const xios_msg           *m,
               const char               *text,
               size_t                    text_len,
@@ -168,6 +283,7 @@ on_input_msg (const xios_msg           *m,
 {
   MetaInputIOS *input = user;
   gboolean log_record = input->msg_log_budget > 0;
+  uint32_t client = xios_input_socket_current_client (input->socket);
   (void) bound_window;
 
   /* Opt-in diagnostic: log the first N decoded records so a device-side inject test can
@@ -215,6 +331,8 @@ on_input_msg (const xios_msg           *m,
                                                   map_button (XIOS_INPUT_CODE(m)),
                                                   XIOS_INPUT_STATE(m) ? CLUTTER_BUTTON_STATE_PRESSED
                                                            : CLUTTER_BUTTON_STATE_RELEASED);
+      track_held (input->held_buttons, map_button (XIOS_INPUT_CODE(m)), XIOS_INPUT_STATE(m) != 0,
+                  client);
       break;
 
     case XIOS_IN_KEY:
@@ -222,6 +340,7 @@ on_input_msg (const xios_msg           *m,
        * snapshot. Modifier key records are represented by sync_wire_modifiers()
        * itself; ordinary releases happen before the snapshot changes so a
        * Ctrl-key chord remains active for the released key. */
+      input->mods_client = client;
       if (modifier_bit_for_keyval (XIOS_INPUT_CODE(m)))
         {
           sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
@@ -234,6 +353,7 @@ on_input_msg (const xios_msg           *m,
                                                    XIOS_INPUT_CODE(m),
                                                    XIOS_INPUT_STATE(m) ? CLUTTER_KEY_STATE_PRESSED
                                                             : CLUTTER_KEY_STATE_RELEASED);
+      track_held (input->held_keys, XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m) != 0, client);
       if (!XIOS_INPUT_STATE(m))
         sync_wire_modifiers (input, XIOS_INPUT_MODS(m));
       break;
@@ -299,6 +419,7 @@ on_input_msg (const xios_msg           *m,
           case 1: /* down */
             clutter_virtual_input_device_notify_touch_down (input->pointer, CLUTTER_CURRENT_TIME,
                                                              slot, x, y);
+            input->touch_client[slot] = client;
             break;
           case 2: /* motion */
             clutter_virtual_input_device_notify_touch_motion (input->pointer, CLUTTER_CURRENT_TIME,
@@ -306,10 +427,12 @@ on_input_msg (const xios_msg           *m,
             break;
           case 0: /* up */
             clutter_virtual_input_device_notify_touch_up (input->pointer, CLUTTER_CURRENT_TIME, slot);
+            input->touch_client[slot] = 0;
             break;
           case 3: /* cancel */
           default:
             meta_virtual_input_device_ios_notify_touch_cancel (input->pointer, CLUTTER_CURRENT_TIME, slot);
+            input->touch_client[slot] = 0;
             break;
           }
         break;
@@ -341,11 +464,13 @@ on_input_msg (const xios_msg           *m,
           case 1: /* down: press where the tip landed */
             clutter_virtual_input_device_notify_button (input->pointer, CLUTTER_CURRENT_TIME,
                                                         IOS_BTN_LEFT, CLUTTER_BUTTON_STATE_PRESSED);
+            track_held (input->held_buttons, IOS_BTN_LEFT, TRUE, client);
             break;
           case 0: /* up */
           case 3: /* cancel: release rather than leave the button stuck down */
             clutter_virtual_input_device_notify_button (input->pointer, CLUTTER_CURRENT_TIME,
                                                         IOS_BTN_LEFT, CLUTTER_BUTTON_STATE_RELEASED);
+            track_held (input->held_buttons, IOS_BTN_LEFT, FALSE, client);
             break;
           case 2: /* motion: the absolute_motion above already placed the pointer */
           default:
@@ -372,19 +497,34 @@ on_input_msg (const xios_msg           *m,
       }
 
     case XIOS_IN_TEXT:
-      /* Committed text (soft keyboard / paste): type each byte as a keyval click.
-       * '\n' -> Return; Latin-1 keysyms equal their codepoint. Multibyte UTF-8 is
-       * skipped here (the IME path in ios-inputd covers full unicode via commit_string). */
-      for (size_t i = 0; i < text_len; i++)
-        {
-          unsigned char c = (unsigned char) text[i];
+      {
+        /* Committed text (soft keyboard / paste): type each ASCII byte as a keyval click,
+         * which notify_keyval turns into a real key (plus Shift) from the backend keymap.
+         * '\n' -> Return. From the first non-ASCII byte on, the record goes to
+         * commit_text(). Without an input method (bare mutter: only gnome-shell registers
+         * one) non-ASCII bytes are skipped; ios-inputd cannot stand in, it needs
+         * zwp_input_method_v2, which Mutter does not implement. */
+        ClutterInputMethod *im =
+          clutter_backend_get_input_method (meta_backend_get_clutter_backend (input->backend));
 
-          if (c == '\n')
-            notify_keyval_click (input, 0xff0d);   /* XK_Return */
-          else if (c < 0x80)
-            notify_keyval_click (input, c);
-        }
-      break;
+        for (size_t i = 0; i < text_len; i++)
+          {
+            unsigned char c = (unsigned char) text[i];
+
+            if (c >= 0x80 && im)
+              {
+                if (commit_text (im, text + i, text_len - i))
+                  break;
+                im = NULL;
+              }
+
+            if (c == '\n')
+              notify_keyval_click (input, 0xff0d);   /* XK_Return */
+            else if (c < 0x80)
+              notify_keyval_click (input, c);
+          }
+        break;
+      }
 
     default:
       break;
@@ -446,6 +586,9 @@ meta_input_ios_new (MetaBackend *backend,
   input->pointer = clutter_seat_create_virtual_device (seat, CLUTTER_POINTER_DEVICE);
   input->keyboard = clutter_seat_create_virtual_device (seat, CLUTTER_KEYBOARD_DEVICE);
   input->last_client_count = 0;
+  input->held_keys = g_array_new (FALSE, FALSE, sizeof (HeldInput));
+  input->held_buttons = g_array_new (FALSE, FALSE, sizeof (HeldInput));
+  xios_input_socket_set_drop_cb (socket, on_client_dropped, input);
   input->msg_log_budget = input_log_budget_from_env ();
   if (input->msg_log_budget > 0)
     g_message ("MetaInputIOS: logging first %d input records", input->msg_log_budget);
@@ -469,6 +612,8 @@ meta_input_ios_free (MetaInputIOS *input)
   g_clear_object (&input->pointer);
   g_clear_object (&input->keyboard);
   xios_input_socket_free (input->socket);
+  g_array_unref (input->held_keys);
+  g_array_unref (input->held_buttons);
   g_free (input);
 }
 
