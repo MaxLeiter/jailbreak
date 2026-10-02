@@ -3973,6 +3973,15 @@ int output_reconfigure_px(int pw, int ph, int transform, int scale)
 {
     if (pw <= 0 || ph <= 0)
         return -1;
+    /* XIOS_IN_OUTPUT sizes come from any input-socket peer. Past the GPU's
+     * largest render target the iosc_gl_resize() below fails, and that is
+     * fatal, so refuse such a size here and keep the current output. */
+    int max_px = iosc_gl_max_target_size();
+    if (max_px > 0 && (pw > max_px || ph > max_px)) {
+        fprintf(stderr, "iosc: output %dx%d px exceeds the GPU's %d px target limit; "
+                        "keeping %dx%d\n", pw, ph, max_px, g_width, g_height);
+        return -1;
+    }
     if (scale < 1) scale = 1;
     int old_scale = output_scale();
     if (scale == old_scale && pw == g_width && ph == g_height &&
@@ -4069,7 +4078,13 @@ static void output_reconfigure(int lw, int lh, int transform)
 {
     if (lw <= 0 || lh <= 0) return;
     int s = output_scale();
-    (void)output_reconfigure_px(lw * s, lh * s, transform, s);
+    int64_t pw = (int64_t)lw * s, ph = (int64_t)lh * s;
+    if (pw > INT32_MAX || ph > INT32_MAX) {
+        fprintf(stderr, "iosc: XIOS_IN_OUTPUT %dx%d at scale %d overflows; ignored\n",
+                lw, lh, s);
+        return;
+    }
+    (void)output_reconfigure_px((int)pw, (int)ph, transform, s);
 }
 
 static int resize_has_left(uint32_t edges)

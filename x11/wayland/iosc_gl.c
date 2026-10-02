@@ -27,6 +27,7 @@
 
 static int s_ok = 0;
 static int s_ow = 0, s_oh = 0;
+static int s_max_target = 0;   /* GL_MAX_TEXTURE_SIZE: largest output/canvas edge */
 
 /* The display/config/context live in xios_egl (shared); iosc_gl caches the display
  * only for the one eglMakeCurrent in init. */
@@ -263,6 +264,9 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
                 eglGetError());
         return -1;
     }
+    GLint max_tex = 0;
+    glGetIntegerv(GL_MAX_TEXTURE_SIZE, &max_tex);
+    s_max_target = max_tex > 0 ? (int)max_tex : 0;
 
     /* The output IOSurface as a texture-backed render target. */
     s_out_pb = xios_egl_create_iosurface_pbuffer(output_iosurface, w, h);
@@ -332,6 +336,8 @@ int iosc_gl_init(void *output_iosurface, int w, int h)
 }
 
 int iosc_gl_ok(void) { return s_ok; }
+
+int iosc_gl_max_target_size(void) { return s_max_target; }
 
 int iosc_gl_bind_output(void *iosurface, int w, int h)
 {
