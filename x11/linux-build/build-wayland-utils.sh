@@ -145,20 +145,6 @@ for pkg in slurp dunst basu mako; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
 
-DW=build_work/$XIOS_TRIPLE/dunst
-DS=build_stage/$XIOS_TRIPLE/dunst
-DF="$DW/.xios_patch_series.sha256"
-if [[ " $TARGETS " == *" dunst"* ]]; then
-  NEW_FP="$(sha256sum \
-    /work/ports/dunst/patches/series \
-    /work/ports/dunst/patches/*.patch | sha256sum | awk '{print $1}')"
-  OLD_FP="$(cat "$DF" 2>/dev/null || true)"
-  if [ -d "$DW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
-    echo "==> wiping stale dunst build after patch changes"
-    rm -rf "$DW" "$DS"
-  fi
-fi
-
 for t in $TARGETS; do
   echo "==> make $t"
   make $t $COMMON -j"$(nproc)"
