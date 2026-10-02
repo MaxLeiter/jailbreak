@@ -38,6 +38,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import functools
+import importlib.util
 import os
 import re
 import shutil
@@ -138,27 +140,46 @@ def macho_filetype(path: Path) -> int | None:
     return int.from_bytes(head[12:16], "little")
 
 
-def deb_version_key(deb: Path) -> tuple:
-    """Sort key from the filename's version field (name_VERSION_arch.deb).
+def deb_version(deb: Path) -> str:
+    """The filename's version field (name_VERSION_arch.deb).
 
-    Naturally ordered so 0.1.0+wl5 > 0.1.0+wl4 > 0.1.0+wl2, and 0.1.25 > 0.1.9.
+    Compared with dpkg semantics by make-repo.py's compare_deb_versions, the same
+    function that decides which deb the index carries, so 0.1.0+wl5 > 0.1.0+wl4,
+    0.1.25 > 0.1.9, and 0.2.0 > 0.2.0~rc1. A home-grown natural sort agreed on the
+    first two but put ~rc1 above the release, i.e. it gated a deb that never ships.
     mtime is NOT a version: cloning or re-staging a pool rewrites timestamps and would
     silently pick an older build as "the one that ships".
     """
     parts = deb.name.split("_")
-    version = parts[1] if len(parts) > 2 else ""
-    return tuple(int(t) if t.isdigit() else t
-                 for t in re.split(r"(\d+)", version))
+    return parts[1] if len(parts) > 2 else ""
+
+
+@functools.cache
+def _make_repo():
+    spec = importlib.util.spec_from_file_location(
+        "make_repo", Path(__file__).with_name("make-repo.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _compare_deb_versions(a: str, b: str) -> int:
+    return _make_repo().compare_deb_versions(a, b)
+
+
+def newest_by_package(debs: list[Path]) -> list[Path]:
+    """Newest *version* of each package among `debs` -- the one the index will carry."""
+    by_pkg: dict[str, Path] = {}
+    for deb in sorted(debs):
+        pkg = deb.name.split("_", 1)[0]
+        if pkg not in by_pkg or _compare_deb_versions(
+                deb_version(deb), deb_version(by_pkg[pkg])) > 0:
+            by_pkg[pkg] = deb
+    return sorted(by_pkg.values())
 
 
 def newest_ladybird_debs(debs_dir: Path) -> list[Path]:
-    """Newest *version* of each ladybird-* deb -- that is the one the index will carry."""
-    by_pkg: dict[str, Path] = {}
-    for deb in sorted(debs_dir.glob("ladybird-*.deb")):
-        pkg = deb.name.split("_", 1)[0]
-        if pkg not in by_pkg or deb_version_key(deb) > deb_version_key(by_pkg[pkg]):
-            by_pkg[pkg] = deb
-    return sorted(by_pkg.values())
+    return newest_by_package(list(debs_dir.glob("ladybird-*.deb")))
 
 
 def check_deb(deb: Path) -> list[str]:
@@ -242,9 +263,13 @@ def self_test() -> int:
          ["ladybird-app_0.1.9+ios1_iphoneos-arm64.deb",
           "ladybird-app_0.1.25+ios1_iphoneos-arm64.deb"],
          "ladybird-app_0.1.25+ios1_iphoneos-arm64.deb"),
+        ("0.2.0 beats 0.2.0~rc1 (dpkg ~ ordering)",
+         ["ladybird-app_0.2.0~rc1_iphoneos-arm64.deb",
+          "ladybird-app_0.2.0_iphoneos-arm64.deb"],
+         "ladybird-app_0.2.0_iphoneos-arm64.deb"),
     ]
     for name, names, want in vcases:
-        got = max(names, key=lambda n: deb_version_key(Path(n)))
+        got = newest_by_package([Path(n) for n in names])[0].name
         ok = got == want
         bad += not ok
         print(f"{'ok   ' if ok else 'FAIL '} {name}: picked {got}")
