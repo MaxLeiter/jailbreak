@@ -802,6 +802,16 @@ xwl_glamor_init(struct xwl_screen *xwl_screen)
         return FALSE;
     }
 
+    /* Surface (and drop) any GL error ANGLE has pending from EGL bring-up so
+     * it cannot be mistaken for a failure of glamor's own format probes. */
+    for (int i = 0; i < 16; i++) {
+        GLenum e = glGetError();
+        if (e == GL_NO_ERROR)
+            break;
+        LogMessageVerb(X_INFO, 3, "glamor/iosurface: pending GL error 0x%x "
+                       "after EGL init (dropped)\n", e);
+    }
+
     if (!glamor_init(xwl_screen->screen, GLAMOR_USE_EGL_SCREEN)) {
         ErrorF("Failed to initialize glamor\n");
         return FALSE;
