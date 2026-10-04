@@ -71,7 +71,8 @@ export function statusLine(m: Pick<ScreenshotMeta, "frontmost" | "orientation" |
 function fail(e: unknown): ToolResult {
   if (e instanceof DaemonRequestError) {
     const hint: Record<string, string> = {
-      locked: " The iPad is locked. Ask the user to unlock it; do not attempt the passcode.",
+      locked:
+        " The iPad is locked or asleep. Ask the user to unlock it (send them a notification if they may be away), then call wait_for_unlock. Never attempt the passcode.",
       app_mismatch: " Take a fresh screenshot and re-check which app is frontmost, then retry with the right `app`.",
       target_mismatch: " The daemon did not find your described target at those coordinates. Re-screenshot and re-aim.",
       app_blocked: " Policy forbids driving this app. Do not retry; tell the user.",
@@ -198,6 +199,45 @@ export function registerTools(server: McpServer, daemon: DaemonClient): void {
       try {
         const apps = await daemon.apps();
         return { content: [{ type: "text", text: apps.map((a) => `${a.bundle_id}\t${a.name}`).join("\n") }] };
+      } catch (e) {
+        return fail(e);
+      }
+    },
+  );
+
+  // Watches the daemon's existing locked/asleep flags; it never wakes or unlocks anything.
+  const pollMs = Number(process.env.IPADCTL_POLL_MS ?? 2000);
+  server.registerTool(
+    "wait_for_unlock",
+    {
+      title: "Wait for the user to unlock the iPad",
+      description:
+        "Use after an action fails with [locked] and you have asked the user to unlock the iPad. Waits until the user has unlocked it (up to timeout_s), then returns a fresh screenshot. It only watches; it never wakes or unlocks the device, and you must never attempt the passcode.",
+      inputSchema: {
+        timeout_s: z.number().int().min(1).max(600).default(180).describe("How long to wait, in seconds (default 180)"),
+      },
+      annotations: readAnnot("Wait for the user to unlock the iPad"),
+    },
+    async ({ timeout_s }): Promise<ToolResult> => {
+      const deadline = Date.now() + timeout_s * 1000;
+      try {
+        for (;;) {
+          const i = await daemon.info();
+          if (!i.locked && !i.asleep) {
+            const s = await daemon.screenshot({});
+            return {
+              content: [
+                { type: "image", data: Buffer.from(s.jpeg).toString("base64"), mimeType: "image/jpeg" },
+                { type: "text", text: `Unlocked by the user.\n${statusLine(s.meta)}` },
+              ],
+            };
+          }
+          const left = deadline - Date.now();
+          if (left <= 0) {
+            return { content: [{ type: "text", text: `Still locked after ${timeout_s}s. Ask the user again, or stop.` }] };
+          }
+          await new Promise((r) => setTimeout(r, Math.min(pollMs, left)));
+        }
       } catch (e) {
         return fail(e);
       }

@@ -17,7 +17,7 @@ beforeAll(async () => {
     new StdioClientTransport({
       command: "bun",
       args: ["run", `${import.meta.dir}/../src/index.ts`],
-      env: { ...process.env, IPADCTL_URL: daemon.url, IPADCTL_TOKEN: daemon.token } as Record<string, string>,
+      env: { ...process.env, IPADCTL_URL: daemon.url, IPADCTL_TOKEN: daemon.token, IPADCTL_POLL_MS: "50" } as Record<string, string>,
     }),
   );
 });
@@ -31,9 +31,9 @@ describe("tool surface", () => {
     const { tools } = await client.listTools();
     const by = Object.fromEntries(tools.map((t) => [t.name, t]));
     expect(Object.keys(by).sort()).toEqual(
-      ["batch", "button", "double_tap", "key", "list_apps", "long_press", "open_app", "open_url", "screenshot", "scroll", "swipe", "tap", "type", "zoom"],
+      ["batch", "button", "double_tap", "key", "list_apps", "long_press", "open_app", "open_url", "screenshot", "scroll", "swipe", "tap", "type", "wait_for_unlock", "zoom"],
     );
-    for (const n of ["screenshot", "zoom", "list_apps"]) expect(by[n]!.annotations?.readOnlyHint).toBe(true);
+    for (const n of ["screenshot", "zoom", "list_apps", "wait_for_unlock"]) expect(by[n]!.annotations?.readOnlyHint).toBe(true);
     for (const n of ["tap", "double_tap", "long_press", "swipe", "scroll", "type", "key", "button", "open_app", "open_url", "batch"]) {
       expect(by[n]!.annotations?.readOnlyHint).toBe(false);
       expect(by[n]!.annotations?.openWorldHint).toBe(true);
@@ -102,6 +102,16 @@ describe("actions", () => {
     daemon.state.locked = true;
     expect(text(await call("tap", { x: 5, y: 5, ...intent }))).toContain("locked");
     daemon.state.locked = false;
+  });
+  test("wait_for_unlock times out while locked, returns once the user unlocks", async () => {
+    daemon.state.recorded.length = 0;
+    daemon.state.locked = true;
+    expect(text(await call("wait_for_unlock", { timeout_s: 1 }))).toContain("Still locked");
+    setTimeout(() => (daemon.state.locked = false), 300);
+    const r = await call("wait_for_unlock", { timeout_s: 10 });
+    expect(text(r)).toContain("Unlocked by the user");
+    expect((r.content as { type: string }[]).some((c) => c.type === "image")).toBe(true);
+    expect(daemon.state.recorded.length).toBe(0); // it never sent an action
   });
   test("batch stops at first failure", async () => {
     daemon.state.recorded.length = 0;

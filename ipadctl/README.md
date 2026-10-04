@@ -33,7 +33,9 @@ mkdir -p ~/.config/ipadctl && (umask 077; ipadctl/daemon/deploy.sh token > ~/.co
 claude mcp add --scope user ipad -e IPADCTL_URL=http://MaxsiPad.local:8790 -- bun run /abs/path/to/ipadctl/mcp/src/index.ts
 ```
 
-Tools appear as `mcp__ipad__screenshot`, `zoom`, `tap`, `double_tap`, `long_press`, `swipe`, `scroll`, `type`, `key`, `button`, `open_app`, `open_url`, `list_apps`, `batch`. Coordinates are screenshot pixels.
+Tools appear as `mcp__ipad__screenshot`, `zoom`, `tap`, `double_tap`, `long_press`, `swipe`, `scroll`, `type`, `key`, `button`, `open_app`, `open_url`, `list_apps`, `wait_for_unlock`, `batch`. Coordinates are screenshot pixels.
+
+When the iPad is locked or asleep, actions fail with `locked` and Claude asks you to unlock it (in Claude Code it can push a notification to your phone). You unlock it yourself; `wait_for_unlock` only watches the daemon's locked flag and returns a fresh screenshot once you have, so you don't need to reply. Nothing in ipadctl wakes or unlocks the device.
 
 ### Auto mode config (Claude Code)
 
@@ -87,7 +89,7 @@ cd ipadctl/agent && bun install
 IPADCTL_URL=http://127.0.0.1:8791 IPADCTL_TOKEN=test-token bun run agent "take a screenshot and tap the center"
 ```
 
-It runs `query()` with `permissionMode: "auto"`, allowlists only `screenshot`, `zoom` and `list_apps`, applies the autoMode block inline, and adds a PostToolUse hook that gives the classifier the frontmost app and orientation. `IPAD_AGENT_MODEL` overrides the model (default `claude-opus-5-5`), `IPAD_AGENT_MAX_TURNS` the turn cap.
+It runs `query()` with `permissionMode: "auto"`, allowlists only the read-only tools (`screenshot`, `zoom`, `list_apps`, `wait_for_unlock`), applies the autoMode block inline, and adds a PostToolUse hook that gives the classifier the frontmost app and orientation. `IPAD_AGENT_MODEL` overrides the model (default `claude-opus-5-5`), `IPAD_AGENT_MAX_TURNS` the turn cap.
 
 ## Safety model
 

@@ -16,7 +16,7 @@ const MODEL = process.env.IPAD_AGENT_MODEL ?? "claude-opus-5-5";
 const MCP_ENTRY = resolve(import.meta.dir, "../../mcp/src/index.ts");
 
 // Read-only tools only. An allow rule skips the classifier, so action tools must never appear here.
-const READ_ONLY = ["mcp__ipad__screenshot", "mcp__ipad__zoom", "mcp__ipad__list_apps"];
+const READ_ONLY = ["mcp__ipad__screenshot", "mcp__ipad__zoom", "mcp__ipad__list_apps", "mcp__ipad__wait_for_unlock"];
 
 // PostToolUse: tell the classifier where the agent is. The values come from the MCP server's own status
 // line (daemon-reported, never user text); we only forward strictly sanitized tokens.
