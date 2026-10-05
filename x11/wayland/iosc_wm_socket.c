@@ -1,9 +1,10 @@
 /*
  * iosc_wm_socket.c — the wm control socket (/var/jb/tmp/iosc-wm.sock).
  *
- * Split out of iosc.c. A tiny line-oriented AF_UNIX protocol that lets the Xios
- * app (and shell tooling) raise, focus and minimise windows by app_id without
- * speaking Wayland — the same raise+focus the xdg-activation path performs.
+ * Split out of iosc.c. A tiny line-oriented AF_UNIX protocol that lets ioscd
+ * (and shell tooling) raise and focus a window by app_id without speaking
+ * Wayland, using the same raise+focus the xdg-activation path performs.
+ * `raise` is the only command; anything else gets "err".
  */
 #include <wayland-server.h>
 #include <wayland-server-protocol.h>
@@ -82,7 +83,12 @@ static void wm_client_drop(struct iosc_wm_client *c)
 static int wm_client_readable(int fd, uint32_t mask, void *data)
 {
     struct iosc_wm_client *c = data;
-    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) { wm_client_drop(c); return 0; }
+    /* HANGUP is not a reason to stop reading: ioscd's iosc_raise() connects,
+     * writes its one line and closes, normally before this loop has even
+     * accepted it, so the line arrives in the same wakeup as the hangup.
+     * Dropping on HANGUP threw such a raise away unread. Drain first; read()
+     * returning 0 drops the client. */
+    if (mask & WL_EVENT_ERROR) { wm_client_drop(c); return 0; }
     for (;;) {
         if (c->have >= IOSC_WM_BUF - 1) c->have = 0;   /* overflow: drop partial */
         ssize_t r = read(fd, c->buf + c->have, IOSC_WM_BUF - 1 - c->have);
@@ -104,6 +110,7 @@ static int wm_client_readable(int fd, uint32_t mask, void *data)
         if (errno == EINTR) continue;
         wm_client_drop(c); return 0;
     }
+    if (mask & WL_EVENT_HANGUP) wm_client_drop(c);   /* never re-poll a dead fd */
     return 0;
 }
 
@@ -114,6 +121,13 @@ static int wm_listen_readable(int fd, uint32_t mask, void *data)
     int cfd = accept(fd, NULL, NULL);
     if (cfd < 0) return 0;
     fcntl(cfd, F_SETFL, fcntl(cfd, F_GETFL, 0) | O_NONBLOCK);
+    /* wm_handle_line() replies on this fd, and ioscd's iosc_raise() closes its
+     * end without reading the reply. Darwin has no MSG_NOSIGNAL, so without this
+     * that write raises SIGPIPE and kills iosc whenever it was not launched with
+     * SIGPIPE already ignored (ioscd ignores it; run-iosc.sh and a root shell
+     * do not). */
+    int on = 1;
+    setsockopt(cfd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
     int slot = -1;
     for (int i = 0; i < IOSC_MAX_WM_CLIENTS; i++) if (!g_wm_clients[i]) { slot = i; break; }
     if (slot < 0) { close(cfd); return 0; }

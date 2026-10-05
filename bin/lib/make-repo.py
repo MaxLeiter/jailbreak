@@ -173,6 +173,18 @@ def parse_packages_text(raw):
         out.append(d)
     return out
 
+# dpkg's own rule for a package name (pkg_name_is_illegal): an alphanumeric, then
+# alphanumerics and "-+._". The name becomes a file path (depictions/<pkg>.html)
+# and is interpolated unescaped into every page that links it, so a name dpkg
+# would reject is refused here rather than written out.
+PACKAGE_NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9+._-]*")
+
+def checked_package_name(name, source):
+    if not PACKAGE_NAME_RE.fullmatch(name):
+        raise SystemExit(f"ERROR: {source}: invalid Package name {name!r} (dpkg allows "
+                         "letters, digits and -+._, starting with a letter or digit)")
+    return name
+
 def guard_shrink(deb_filenames):
     """Refuse a from-debs regeneration that would silently retire packages.
 
@@ -1493,6 +1505,8 @@ def main():
         if not packages.endswith("\n"):
             packages += "\n"
         for ctrl in ctrls:
+            checked_package_name(ctrl["Package"], index_path)
+        for ctrl in ctrls:
             pid = ctrl["Package"]
             meta = load_meta(pid)
             pkgs.append({"ctrl": ctrl, "meta": meta})
@@ -1519,7 +1533,7 @@ def main():
             if not fn.endswith(".deb"):
                 continue
             blob = open(os.path.join(DEBS, fn), "rb").read()
-            ctrl = control_dict(blob); pid = ctrl["Package"]
+            ctrl = control_dict(blob); pid = checked_package_name(ctrl["Package"], fn)
             payload_profile = deb_payload_profile(blob)
             if payload_profile is not None and payload_profile != PROFILE:
                 raise SystemExit(

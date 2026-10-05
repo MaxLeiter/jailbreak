@@ -17,7 +17,10 @@ fixes back into this table (preferred, keeps the table canonical) or stop
 regenerating. Run from x11/linux-build: python3 tools/gen-kf6-recipes.py
 
 The audit's dependency DAG doubles as the build order: the script topo-sorts
-TABLE and prints the wave list that build-kf6.sh's TARGETS default must match.
+TABLE and prints the wave list. build-kf6.sh's TARGETS default follows that order
+but leaves out the units build-plasma-desktop.sh builds (attica, kdeclarative,
+krunner, kded, kstatusnotifieritem, kunitconversion, kparts, knewstuff, kwallet,
+knotifyconfig, qqc2-desktop-style).
 """
 
 import os
@@ -161,7 +164,7 @@ TABLE = [
                 "(deb exists) feeds language name lookups at runtime.",
                 "Host build is a dependency of host kpackage (stage 1)."]),
     dict(t="solid", kind="kf", deb="kf6-solid", deps=[],
-         qt_deps=["qt6-base"],
+         qt_deps=["qt6-base"], rev="ios2",
          seds=["bash /work/recipes/solid-ios-fixes.sh $(BUILD_WORK)/solid"],
          desc="Hardware discovery and power management abstraction.",
          notes=["Re-audited 2026-07-08: the elseif(APPLE) branch no longer goes fakehw-only.",
@@ -637,7 +640,8 @@ def emit_recipe(e):
                 "\t$(call PACK,%s,DEB_%s_V)" % (deb, uv),
                 "\t$(call PACK,%s-dev,DEB_%s_V)" % (deb, uv)]
         if t == "ki18n":
-            pkg.append("\tbash /work/recipes/relink-gtkintl.sh $(BUILD_DIST)/ki18n")
+            # PACK writes the debs to $(BUILD_DIST)/../<make target>, not under BUILD_DIST.
+            pkg.append("\tbash /work/recipes/relink-gtkintl.sh $(BUILD_DIST)/../ki18n")
         pkg.append("\trm -rf $(BUILD_DIST)/%s $(BUILD_DIST)/%s-dev" % (deb, deb))
     pkg += ["", ".PHONY: %s %s-package" % (t, t), ""]
 
@@ -731,7 +735,8 @@ def main():
         emit_controls(e)
     waves = topo_waves()
     print("emitted %d recipes into %s" % (len(TABLE), RECIPES))
-    print("\nbuild waves (build-kf6.sh TARGETS default must match):")
+    print("\nbuild waves (build-kf6.sh TARGETS default = these minus the "
+          "build-plasma-desktop.sh units):")
     for i, w in enumerate(waves):
         print("  wave %d: %s" % (i, " ".join(w)))
     print("\nTARGETS=\"%s\"" % " ".join(t for w in waves for t in w))

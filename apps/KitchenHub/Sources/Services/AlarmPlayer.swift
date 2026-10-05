@@ -21,6 +21,10 @@ final class AlarmPlayer {
     private var alarmPlayer: AVAudioPlayer?
     private var keepAlivePlayer: AVAudioPlayer?
     private var autoStop: Foundation.Timer?
+    /// Finished timers currently ringing, and those already silenced by the
+    /// 2-minute cutoff. Only a timer outside `silenced` re-arms the alarm.
+    private var finishedIDs: Set<UUID> = []
+    private var silenced: Set<UUID> = []
 
     private lazy var alarmWAV: Data = AlarmPlayer.makeAlarmWAV()
     private lazy var silentWAV: Data = AlarmPlayer.makeSilentWAV()
@@ -44,7 +48,16 @@ final class AlarmPlayer {
 
     // MARK: Alarm
 
-    func start() {
+    /// Reconcile the alarm with the set of finished timers: ring while any
+    /// finished timer hasn't been silenced by the cutoff, stop once all are
+    /// dismissed (which also clears the silenced set).
+    func setFinished(_ ids: Set<UUID>) {
+        finishedIDs = ids
+        silenced.formIntersection(ids)
+        if ids.subtracting(silenced).isEmpty { stop() } else { start() }
+    }
+
+    private func start() {
         if alarmPlayer?.isPlaying == true { return }
         activateSession()
         if let p = makePlayer(alarmWAV) {
@@ -55,11 +68,15 @@ final class AlarmPlayer {
         }
         autoStop?.invalidate()
         autoStop = Foundation.Timer.scheduledTimer(withTimeInterval: 120, repeats: false) { [weak self] _ in
-            Task { @MainActor in self?.stop() }
+            Task { @MainActor in
+                guard let self else { return }
+                self.silenced = self.finishedIDs
+                self.stop()
+            }
         }
     }
 
-    func stop() {
+    private func stop() {
         autoStop?.invalidate(); autoStop = nil
         alarmPlayer?.stop(); alarmPlayer = nil
         deactivateIfIdle()

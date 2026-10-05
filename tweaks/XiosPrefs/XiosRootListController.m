@@ -300,8 +300,10 @@ static NSString *const XiosPrefsSocketPath = @"/var/jb/tmp/ioscd.sock";
         ssize_t n = read(fd, buf, sizeof(buf));
         if (n > 0) {
             [reply appendBytes:buf length:(NSUInteger)n];
+            // The sentinel is "APPS_END\t<status>\n"; wait for the newline so a
+            // read that splits it before the status doesn't truncate the reply.
             NSString *partial = [[NSString alloc] initWithData:reply encoding:NSUTF8StringEncoding];
-            if ([partial containsString:@"APPS_END\t"]) {
+            if ([partial containsString:@"APPS_END\t"] && [partial hasSuffix:@"\n"]) {
                 sawEnd = YES;
                 break;
             }

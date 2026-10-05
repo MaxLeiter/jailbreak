@@ -101,6 +101,10 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$PRESET" ] || die "preset required"
+# PRESET lands in remote file names and, single-quoted, in the ssh command line.
+case "$PRESET" in
+    *[!A-Za-z0-9_.-]*) die "invalid preset: $PRESET" ;;
+esac
 [ "$INTERVAL" -gt 0 ] || die "--interval must be > 0"
 
 OUT="$(make_outdir)"

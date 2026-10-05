@@ -137,7 +137,8 @@ make font-util libxkbfile $COMMON -j"$(nproc)"
 make tigervnc-package     $COMMON -j"$(nproc)"
 
 echo "==> extract + sign Xvfb (built alongside Xvnc via --enable-xvfb)"
-XVFB="$(find build_stage -name Xvfb -type f 2>/dev/null | head -1)"
+# Only this target's tree: a volume shared via PROCURSUS_VOL can hold other targets.
+XVFB="$(find "build_stage/$MEMO_TARGET/$MEMO_CFVER" -name Xvfb -type f 2>/dev/null | head -1)"
 if [ -n "$XVFB" ]; then
   mkdir -p "$OUT"; cp -v "$XVFB" "$OUT"/Xvfb
   ldid -Sbuild_misc/entitlements/general.xml "$OUT"/Xvfb 2>/dev/null || ldid -S "$OUT"/Xvfb
@@ -149,7 +150,7 @@ fi
 echo "==> [4/4] collect debs -> $OUT"
 mkdir -p "$OUT"
 found=0
-for d in $(find . -name 'tigervnc-*_*.deb'); do
+for d in $(find "build_dist/$MEMO_TARGET/$MEMO_CFVER" -name 'tigervnc-*_*.deb'); do
   cp -v "$d" "$OUT"/; found=1
 done
 [ "$found" = 1 ] || { echo "!! no tigervnc debs produced"; exit 1; }

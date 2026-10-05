@@ -43,7 +43,8 @@
 #define WIN_MAX   OV_MAX_WINS
 #define APP_PIN_HOLD_MS 540
 
-/* IOSC_SHELL_DEBUG=1 -> trace to $XDG_RUNTIME_DIR/ioscoverview.log */
+/* IOSC_SHELL_DEBUG=1 -> trace on stderr, which the spawning ioscbar/ioscdock
+ * shares, so it lands in that client's log */
 static int ovdbg(void)
 { static int on=-1; if(on<0){ const char*e=getenv("IOSC_SHELL_DEBUG"); on=e&&*e&&*e!='0'; } return on; }
 
@@ -629,7 +630,10 @@ int main(void)
         for (size_t i = 0; i < sizeof steps / sizeof steps[0] && O.running; i++) {
             O.anim_t = steps[i];
             render();
-            wl_display_flush(O.dpy);
+            /* not just a flush: the release of the frame this one replaced
+             * must be dispatched, or the 3-slot pool runs dry by step 3 and
+             * the settled frame is never drawn */
+            wl_display_roundtrip(O.dpy);
             usleep(33000);
         }
     }
@@ -637,17 +641,27 @@ int main(void)
 
     int fd = wl_display_get_fd(O.dpy);
     while (O.running) {
-        while (wl_display_prepare_read(O.dpy) != 0) wl_display_dispatch_pending(O.dpy);
+        /* A dead display (compositor gone, protocol error) fails these calls
+         * on every pass while poll() reports HUP at once: exit, don't spin. */
+        int dead = 0;
+        while (!dead && wl_display_prepare_read(O.dpy) != 0)
+            dead = wl_display_dispatch_pending(O.dpy) < 0;
+        if (dead) break;
         wl_display_flush(O.dpy);
         struct pollfd pfd = { .fd = fd, .events = POLLIN };
         int timeout = (O.touch_active && O.press_kind == OV_HIT_APP && !O.long_press_done) ? 50 : -1;
         int n = poll(&pfd, 1, timeout);
         if (n < 0 && errno != EINTR) { wl_display_cancel_read(O.dpy); break; }
-        if (n > 0 && (pfd.revents & POLLIN)) wl_display_read_events(O.dpy);
-        else wl_display_cancel_read(O.dpy);
-        wl_display_dispatch_pending(O.dpy);
+        if (n > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR))) {
+            if (wl_display_read_events(O.dpy) < 0) break;
+        } else wl_display_cancel_read(O.dpy);
+        if (wl_display_dispatch_pending(O.dpy) < 0) break;
+        /* redraw a frame the buffer pool had to drop (a release since freed a slot) */
+        if (O.surface_pool.starved) render();
         maybe_pin_pressed_app();
     }
+    if (wl_display_get_error(O.dpy))
+        fprintf(stderr, "ioscoverview: compositor connection lost, exiting\n");
     if (O.backdrop) cairo_surface_destroy(O.backdrop);
     sd_cairo_pool_destroy(&O.surface_pool);
     wl_display_disconnect(O.dpy);

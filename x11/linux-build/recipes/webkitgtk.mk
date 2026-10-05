@@ -22,6 +22,8 @@ DEB_WEBKITGTK_V   ?= $(WEBKITGTK_VERSION)+ios2
 webkitgtk-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://webkitgtk.org/releases/webkitgtk-$(WEBKITGTK_VERSION).tar.xz)
 	$(call EXTRACT_TAR,webkitgtk-$(WEBKITGTK_VERSION).tar.xz,webkitgtk-$(WEBKITGTK_VERSION),webkitgtk)
+	# Before DO_PATCH: 0006 patches bmalloc/ProcessCheck.mm, which only exists once hydrated.
+	bash /work/recipes/hydrate-webkit-apple-sources.sh $(BUILD_WORK)/webkitgtk $(WEBKITGTK_COMMIT)
 	$(call DO_PATCH,webkitgtk,webkitgtk,-p1)
 
 webkitgtk-configure: webkitgtk-setup

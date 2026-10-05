@@ -531,6 +531,10 @@ static void accept_app_client(struct app_state *s)
 {
     int fd = accept(s->listen_fd, NULL, NULL);
     if (fd < 0) return;
+    /* The HELLO below must fail with EPIPE, not kill the bridge with SIGPIPE, if
+     * the app already hung up (proxy_connect() sets the same option). */
+    int on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, sizeof(on));
     if (s->client_fd >= 0) app_client_drop(s);
     s->client_fd = fd;
     xios_msg hello = xios_protocol_hello();

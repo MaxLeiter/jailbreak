@@ -35,12 +35,13 @@ int xsurface_fd(XSurfaceConn *c);
 
 /* Drain pending "framebuffer changed" notifications (non-blocking). Returns 1 if the
  * surface changed since the last call (present a frame), 0 if nothing pending, -1 if
- * the server disconnected. Also parses the CURSOR/HELLO records interleaved on
- * the same stream (see xsurface_cursor). */
+ * the server disconnected or broke the protocol. Also parses the SURFACE,
+ * SURFACE_DROP and CURSOR records interleaved on the same stream (see
+ * xsurface_cursor). */
 int xsurface_drain(XSurfaceConn *c);
 
-/* Latest DIRTY present sequence received from the compositor. Echo it back after
- * the Metal command buffer that presents that frame completes. */
+/* Latest DIRTY present sequence received from the compositor. Echo it back once
+ * the frame that shows it reaches the display (xsurface_presented_at below). */
 uint64_t xsurface_dirty_sequence(XSurfaceConn *c);
 int xsurface_presented(XSurfaceConn *c, uint64_t seq);
 
@@ -48,7 +49,7 @@ int xsurface_presented(XSurfaceConn *c, uint64_t seq);
  * MTLDrawable.addPresentedHandler. `present_age_us` is how long before this call
  * the frame actually reached the display — a delta, not a timestamp, because
  * CACurrentMediaTime() and the compositor's CLOCK_MONOTONIC are different clocks
- * (see XIOS_MSG_PRESENTED in xios_surface.h). The compositor forwards it to the
+ * (see XIOS_MSG_PRESENTED in XiosProtocol.h). The compositor forwards it to the
  * Wayland presentation-time protocol instead of timing its own repaint.
  * xsurface_presented() remains the no-measurement form. */
 int xsurface_presented_at(XSurfaceConn *c, uint64_t seq, uint32_t present_age_us);

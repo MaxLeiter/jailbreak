@@ -205,10 +205,14 @@ void *xios_metal_sync_import_event(const void *token, size_t token_size)
         return event;
     }
     if (events.count >= 256) {
+        /* Producers come and go for the consumer's whole lifetime, and an
+         * entry is never removed when its producer exits, so refusing here
+         * would reject every GPU client after the 256th. Each caller holds
+         * its own +1, so dropping the cache's references only costs a
+         * re-fetch for producers that are still alive. */
         fprintf(stderr,
-                "xios_metal_sync: imported-event cache full; refusing token\n");
-        pthread_mutex_unlock(&s_lock);
-        return NULL;
+                "xios_metal_sync: imported-event cache full; evicting\n");
+        [events removeAllObjects];
     }
 
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();

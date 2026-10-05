@@ -47,6 +47,11 @@
 # It prints the exact version transitions and refuses a no-op (which is how you
 # find out the deb in repo/debs is stale).
 #
+# A named package OLDER than what the target serves is refused: that publish
+# would roll every device back to it. A deliberate rollback (pulling a bad
+# release) needs --allow-rollback, which names each package and its from/to
+# versions in the output.
+#
 # SCOPE OF --only, precisely: Packages, Packages.gz, Release, InRelease and
 # Release.gpg -- everything apt reads, so what users can install is exactly the
 # live set plus your packages. It does NOT scope the static site that deploys
@@ -93,33 +98,55 @@
 #                   edge request with its path, so filter on /debs/ there instead.
 #                   Retention is short (~1 day, 30 days with Observability Plus);
 #                   that is the accepted tradeoff for keeping installs static.
+#
+# OVERRIDES -- environment variables, each deliberate and for one run only:
+#   ALLOW_UNSIGNED=1           publish staging/prod without the signing key
+#   ALLOW_UNREACHABLE_INDEX=1  let the drift check skip a published index it
+#                              cannot read (check-version-collisions.py); a 404
+#                              already counts as "never deployed" without it
+#   ALLOW_SHADOW_SKIP=1        let the Procursus shadow check pass checks it could
+#                              not run (check-procursus-shadow.py)
 set -euo pipefail
 
 TARGET=prod
 ONLY=""
+ONLY_SET=0
 SOURCE=""   # empty until the per-target default is applied below
 REPUBLISH_METADATA=0
+ALLOW_ROLLBACK=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --staging|staging) TARGET=staging ;;
     --prod|prod)       TARGET=prod ;;
     --preview|preview) TARGET=preview ;;
-    --only)            ONLY="${2:-}"; shift ;;
-    --only=*)          ONLY="${1#--only=}" ;;
+    --only)            ONLY="${2:-}"; ONLY_SET=1; [ "$#" -gt 1 ] && shift ;;
+    --only=*)          ONLY="${1#--only=}"; ONLY_SET=1 ;;
     --from-index)      SOURCE=index ;;
     --from-debs)       SOURCE=debs ;;
     --republish-metadata) REPUBLISH_METADATA=1 ;;
+    --allow-rollback)  ALLOW_ROLLBACK=1 ;;
     "") ;;
-    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...]] [--from-index|--from-debs] [--republish-metadata]" >&2; exit 2 ;;
+    *) echo "usage: bin/publish-repo.sh [--staging|--prod|--preview] [--only pkg[,pkg...] [--allow-rollback]] [--from-index|--from-debs] [--republish-metadata]" >&2; exit 2 ;;
   esac
   shift
 done
+
+# `--only "$PKGS"` with an empty $PKGS must not quietly become an unscoped
+# publish of the whole tree.
+if [ "$ONLY_SET" = 1 ] && [ -z "$(printf '%s' "$ONLY" | tr -d ', \t')" ]; then
+  echo "ERROR: --only named no packages; refusing to fall back to an unscoped publish." >&2
+  exit 2
+fi
 
 if [ -z "$SOURCE" ]; then
   case "$TARGET" in
     prod) SOURCE=index ;;
     *)    SOURCE=debs ;;
   esac
+fi
+if [ "$ALLOW_ROLLBACK" = 1 ] && [ -z "$ONLY" ]; then
+  echo "ERROR: --allow-rollback only applies to a scoped publish; name the packages with --only." >&2
+  exit 2
 fi
 if [ "$REPUBLISH_METADATA" = 1 ] \
    && { [ "$TARGET" != prod ] || [ "$SOURCE" != index ] || [ -z "$ONLY" ]; }; then
@@ -128,6 +155,7 @@ if [ "$REPUBLISH_METADATA" = 1 ] \
 fi
 republish_note=""
 [ "$REPUBLISH_METADATA" = 1 ] && republish_note=" republish-metadata"
+[ "$ALLOW_ROLLBACK" = 1 ] && republish_note="$republish_note allow-rollback"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROFILE="${XIOS_REPO_PROFILE:-rootless}"
 case "$PROFILE" in
@@ -327,6 +355,7 @@ deploy_static_repo() {
       --only "$ONLY"
     )
     [ "$REPUBLISH_METADATA" = 1 ] && scope_args+=(--allow-noop)
+    [ "$ALLOW_ROLLBACK" = 1 ] && scope_args+=(--allow-rollback)
     "$PY" "$REPO_ROOT/bin/lib/scope-index.py" \
       "${scope_args[@]}"
     # Re-check solvability on what we are ACTUALLY publishing. The full-tree check
@@ -469,20 +498,21 @@ fi
 
 if [ -n "$DRIFT_REF" ]; then
   echo "==> Checking the index against what $TARGET already publishes"
-  # With --only, being behind the target is the normal case -- scope-index.py
-  # reconciles against the live index on the deploy copy -- so regressions are
-  # informational there. Collisions stay fatal for the packages actually being
-  # shipped, since those bytes cannot be uploaded at all; for everything else a
-  # scoped publish neither uploads nor reindexes them, so they are out of scope.
   if [ -n "$ONLY" ]; then
-    # Also scope WHICH packages are checked, not just how regressions are treated.
-    # A scoped publish uploads nothing but these packages and reuses every other
-    # stanza from the target verbatim, so another package colliding cannot affect
-    # what ships here -- and used to fail the run anyway, which meant one session's
-    # un-bumped package blocked every other session's unrelated hotfix.
-    "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
-      --index "$PROFILE_REPO_DIR/Packages" \
-      --against "$DRIFT_REF" --only "$ONLY" --warn-regressions
+    # Scope WHICH packages are checked. A scoped publish uploads nothing but these
+    # packages and reuses every other stanza from the target verbatim, so another
+    # package colliding or being behind cannot affect what ships here -- and used
+    # to fail the run anyway, which meant one session's un-bumped package blocked
+    # every other session's unrelated hotfix.
+    #
+    # For the named packages a regression is NOT informational: scope-index.py
+    # swaps exactly these stanzas into the target's index, so "the target has a
+    # newer version" means this publish rolls devices back. Fatal unless the
+    # rollback is deliberate (--allow-rollback), which scope-index.py then
+    # announces package by package.
+    drift_args=(--index "$PROFILE_REPO_DIR/Packages" --against "$DRIFT_REF" --only "$ONLY")
+    [ "$ALLOW_ROLLBACK" = 1 ] && drift_args+=(--warn-regressions)
+    "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" "${drift_args[@]}"
   else
     "$PY" "$REPO_ROOT/bin/lib/check-version-collisions.py" \
       --index "$PROFILE_REPO_DIR/Packages" --against "$DRIFT_REF"

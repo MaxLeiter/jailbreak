@@ -21,10 +21,18 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <dirent.h>
+#include <errno.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
+
+/* The user's Documents. mobile's home is not under the jbroot: ioscd runs apps
+ * as mobile with HOME from getpwnam("mobile"), i.e. /var/mobile, so this is
+ * where they and "Open Documents" look. */
+#define SD_USER_DOCUMENTS "/var/mobile/Documents"
 
 static const char *sd_jbroot(void)
 {
@@ -69,6 +77,23 @@ static int sd_socket_exists(const char *path)
     return path && stat(path, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 
+/* A bus socket whose dbus-daemon died without its own cleanup (SIGKILL from
+ * the session teardown's second pass, jetsam) still stat()s as a socket;
+ * only a refused connect tells it apart from a live listener. */
+static int sd_socket_dead(const char *path)
+{
+    struct sockaddr_un sa;
+    memset(&sa, 0, sizeof sa);
+    sa.sun_family = AF_UNIX;
+    if (!path || strlen(path) >= sizeof sa.sun_path) return 0;
+    snprintf(sa.sun_path, sizeof sa.sun_path, "%s", path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0) return 0;
+    int dead = connect(fd, (struct sockaddr *)&sa, sizeof sa) < 0 && errno == ECONNREFUSED;
+    close(fd);
+    return dead;
+}
+
 static int sd_shared_session_bus(const char *root, const char *busdir,
                                  char *addr, size_t addr_n)
 {
@@ -76,7 +101,7 @@ static int sd_shared_session_bus(const char *root, const char *busdir,
     if (!busdir || !*busdir || !addr || addr_n == 0) return 0;
     snprintf(sock, sizeof sock, "%s/session-bus", busdir);
     snprintf(addr, addr_n, "unix:path=%s", sock);
-    if (sd_socket_exists(sock)) return 1;
+    if (sd_socket_exists(sock) && !sd_socket_dead(sock)) return 1;
 
     mkdir(busdir, 0700);
     chmod(busdir, 0700);
@@ -143,6 +168,9 @@ struct sd_cairo_slot {
 
 struct sd_cairo_pool {
     struct sd_cairo_slot slots[3];
+    /* a frame was dropped because the compositor still held every slot; the
+     * client re-renders from its main loop until one comes back */
+    int starved;
 };
 
 static void sd_cairo_slot_destroy(struct sd_cairo_slot *slot)
@@ -238,8 +266,10 @@ static struct sd_cairo_slot *sd_cairo_pool_begin(struct sd_cairo_pool *pool,
         for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++)
             if (pool->slots[i].buffer && pool->slots[i].busy)
                 pool->slots[i].retire = 1;
+        pool->starved = 1;
         return NULL;
     }
+    pool->starved = 0;
 
     cairo_surface_t *surf = cairo_image_surface_create_for_data(
         (unsigned char *)chosen->map, CAIRO_FORMAT_ARGB32,
@@ -252,13 +282,16 @@ static struct sd_cairo_slot *sd_cairo_pool_begin(struct sd_cairo_pool *pool,
     return chosen;
 }
 
+/* Frees every slot, attached or not. Call it after destroying the wl_surface
+ * the pool drew into (or at exit): iosc never sends wl_buffer.release for a
+ * destroyed surface's last buffer, so a busy slot left to wait for one would
+ * stay busy forever and the next surface reusing the pool would run dry. */
 static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
 {
     if (!pool) return;
-    for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++) {
-        if (pool->slots[i].busy) pool->slots[i].retire = 1;
-        else sd_cairo_slot_destroy(&pool->slots[i]);
-    }
+    for (size_t i = 0; i < sizeof(pool->slots)/sizeof(pool->slots[0]); i++)
+        sd_cairo_slot_destroy(&pool->slots[i]);
+    pool->starved = 0;
 }
 
 #endif /* SD_CAIRO */
@@ -350,11 +383,14 @@ static int sd_desktop_pin_exists(const char *exec)
     char line[768];
     int found = 0;
     while (fgets(line, sizeof line, f)) {
-        char *save = NULL;
-        char *type = strtok_r(line, "\t\r\n", &save);
-        char *name = strtok_r(NULL, "\t\r\n", &save);
-        char *icon = strtok_r(NULL, "\t\r\n", &save);
-        char *target = strtok_r(NULL, "\t\r\n", &save);
+        /* positional tab fields; Icon may be empty, so no strtok (it would
+         * merge the empty field and shift Exec into the icon slot) */
+        line[strcspn(line, "\r\n")] = 0;
+        char *rest = line;
+        char *type = strsep(&rest, "\t");
+        char *name = strsep(&rest, "\t");
+        char *icon = strsep(&rest, "\t");
+        char *target = strsep(&rest, "\t");
         (void)type; (void)name; (void)icon;
         if (target && !strcmp(target, exec)) { found = 1; break; }
     }
@@ -392,8 +428,12 @@ static void sd_launch(const char *exec)
     setsid();
     const char *root = sd_jbroot();
     char tmp[256], wayland[256], home[256], path[512], busdir[256], bus_addr[320];
-    char dbus_run[256], sh_bin[256], usr_sh[256];
+    char dbus_run[256], sh_bin[256], usr_sh[256], angle[256];
+    char a11y_enabled[256], a11y_force[256];
     sd_join_path(tmp, sizeof tmp, root, "/tmp");
+    sd_join_path(angle, sizeof angle, root, "/lib/angle/libEGL.angle.dylib");
+    sd_join_path(a11y_enabled, sizeof a11y_enabled, root, "/tmp/xios-a11y-enabled");
+    sd_join_path(a11y_force, sizeof a11y_force, root, "/tmp/xios-a11y-force");
     sd_join_path(wayland, sizeof wayland, root, "/tmp/wayland-0");
     sd_join_path(home, sizeof home, root, "/var/root");
     sd_join_path(busdir, sizeof busdir, root, "/tmp/iosc-shell-bus");
@@ -414,10 +454,14 @@ static void sd_launch(const char *exec)
     if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
     setenv("GDK_BACKEND", "wayland", 1);
     setenv("GSK_RENDERER", "ngl", 1);
-    setenv("ANGLE_REAL_LIBEGL", "/var/jb/lib/angle/libEGL.angle.dylib", 1);
+    setenv("ANGLE_REAL_LIBEGL", angle, 1);
     setenv("GSETTINGS_BACKEND", "memory", 1);
     setenv("LC_CTYPE", "UTF-8", 0);
-    int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") || access("/var/jb/tmp/xios-a11y-force", F_OK) == 0;
+    /* same gate as ioscd and xios-session: the VoiceOver state file ioscd
+     * maintains, the smoke-test force file, or XIOS_ENABLE_A11Y */
+    int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") ||
+                      access(a11y_enabled, F_OK) == 0 ||
+                      access(a11y_force, F_OK) == 0;
     if (enable_a11y) unsetenv("GTK_A11Y");
     else setenv("GTK_A11Y", "none", 1);
     setenv("SHELL", sh_bin, 1);

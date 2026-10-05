@@ -144,7 +144,8 @@ static int is_client_message(uint32_t type)
     case XIOS_IN_BRIGHTNESS:
         return 1;
     case XIOS_IN_TRAITS:
-        return 1; /* accepted below only from an authenticated improxy */
+        return 1; /* accepted below only from a client that sent XIOS_IN_IMPROXY
+                   * (self-declared: any peer that can connect may register) */
     default:
         return 0;
     }

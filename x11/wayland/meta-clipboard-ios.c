@@ -44,6 +44,7 @@ struct _MetaClipboardIOS
   MetaSelection *selection;             /* display owns this */
   char *socket_path;
   gulong context_started_id;
+  gulong prepare_shutdown_id;
   gulong owner_changed_id;
 
   MetaSelectionSource *current_owner;
@@ -439,6 +440,36 @@ context_started (MetaContext      *context,
              clipboard->socket_path);
 }
 
+static void
+meta_clipboard_ios_stop (MetaClipboardIOS *clipboard)
+{
+  if (clipboard->stopped)
+    return;
+
+  clipboard->stopped = TRUE;
+  discard_outbound (clipboard);
+  if (clipboard->owner_changed_id && clipboard->selection)
+    g_signal_handler_disconnect (clipboard->selection,
+                                 clipboard->owner_changed_id);
+  clipboard->owner_changed_id = 0;
+  g_clear_signal_handler (&clipboard->context_started_id, clipboard->context);
+  g_clear_signal_handler (&clipboard->prepare_shutdown_id, clipboard->context);
+  if (clipboard->started)
+    ioscclip_stop ();
+  clipboard->started = FALSE;
+  clipboard->selection = NULL;
+}
+
+static void
+context_prepare_shutdown (MetaContext      *context,
+                          MetaClipboardIOS *clipboard)
+{
+  /* MetaContext closes the display (freeing its MetaSelection) and destroys
+   * the Wayland display (whose event loop holds the bridge's fd sources)
+   * before it destroys the backend that owns us, so stop while both exist. */
+  meta_clipboard_ios_stop (clipboard);
+}
+
 MetaClipboardIOS *
 meta_clipboard_ios_new (MetaBackend *backend,
                         const char  *socket_path)
@@ -457,25 +488,20 @@ meta_clipboard_ios_new (MetaBackend *backend,
                       "started",
                       G_CALLBACK (context_started),
                       clipboard);
+  clipboard->prepare_shutdown_id =
+    g_signal_connect (clipboard->context,
+                      "prepare-shutdown",
+                      G_CALLBACK (context_prepare_shutdown),
+                      clipboard);
   return clipboard;
 }
 
 void
 meta_clipboard_ios_free (MetaClipboardIOS *clipboard)
 {
-  if (!clipboard || clipboard->stopped)
+  if (!clipboard)
     return;
 
-  clipboard->stopped = TRUE;
-  discard_outbound (clipboard);
-  if (clipboard->owner_changed_id && clipboard->selection)
-    g_signal_handler_disconnect (clipboard->selection,
-                                 clipboard->owner_changed_id);
-  if (clipboard->context_started_id)
-    g_signal_handler_disconnect (clipboard->context,
-                                 clipboard->context_started_id);
-  if (clipboard->started)
-    ioscclip_stop ();
-  clipboard->selection = NULL;
+  meta_clipboard_ios_stop (clipboard);
   meta_clipboard_ios_unref (clipboard);
 }

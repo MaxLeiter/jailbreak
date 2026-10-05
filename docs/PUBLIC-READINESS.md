@@ -118,7 +118,10 @@ Do not use a Vercel rewrite/proxy for package downloads unless redirects fail in
 - local-only file guard
 - Python syntax checks (`py_compile` over tracked `*.py`)
 - shell syntax checks (`bash -n` over tracked `*.sh`)
-- package dependency metadata check (`bin/lib/check-repo-solvable.py repo/Packages`)
+- repo-ops guard hook test (`bin/lib/guard-repo-ops.test.py`)
+- Ladybird TLS rpath rule self-test (`bin/lib/check-ladybird-tls-rpath.py --self-test`)
+- APT index job: regenerate from the committed `repo/Packages` (`make-repo.py --from-index`) and fail on drift,
+  `check-repo-solvable.py`, `audit-repo.py --no-payloads`, and `check-version-collisions.py` against the published indexes
 - Xios site build (`bun install --frozen-lockfile && bun run build`)
 
 Do not deploy production from arbitrary PRs.
@@ -152,7 +155,7 @@ Maintainers still need to perform:
 ## Cleanup Backlog
 
 - Decide whether generated repo depictions/icons/banners stay committed or are rebuilt only during publish.
-- Decide whether binary package skeleton payloads such as `x11/packages/x11-xvfb/var/jb/usr/bin/Xvfb` and `x11/packages/xios-server/var/jb/usr/bin/Xios` stay as bootstrap artifacts.
+- Decide whether binary package skeleton payloads such as `x11/packages/x11-xvfb/var/jb/usr/bin/Xvfb` stay as bootstrap artifacts. (`x11/packages/xios-server/` and its `Xios` binary were removed with the retired software X server.)
 
 The vendored-tarball question is settled (untracked and git-ignored since 2026-07-08; the
 recipes fetch from upstream), and the site lockfile now exists — both fold into the history

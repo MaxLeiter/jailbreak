@@ -652,6 +652,13 @@ void iosc_gl_draw_shm(void *key, int dirty, const void *data, int sw, int sh, in
                       int sx, int sy, int src_w, int src_h,
                       int dx, int dy, int dw, int dh)
 {
+    /* libwayland checks only stride >= width when a wl_shm buffer is created (it
+     * does not know bytes per pixel), so a client can hand us an ARGB8888 buffer
+     * whose rows are shorter than width*4 bytes. Every upload below reads width*4
+     * bytes per row, which would run past the end of the buffer, and past the
+     * pool mapping when the buffer sits at its end. Skip such a buffer. */
+    if (sw <= 0 || sh <= 0 || (int64_t)stride < (int64_t)sw * 4)
+        return;
     s_upload_stats.draws++;
     glActiveTexture(GL_TEXTURE0);
     int need_alloc = 1;

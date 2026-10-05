@@ -2,14 +2,13 @@
  * shell-blur.h — the shell's "material": a fast client-side blur used to build
  * frosted backdrops from a screen capture (overview, quick settings).
  *
- * iosc composites layer surfaces opaque today, so translucency can't come from
- * the compositor yet — instead we capture what is on screen (wlr-screencopy),
- * downscale it hard, blur the small image, and paint it scaled back up under a
- * dim scrim. The result reads as iPadOS-style frosted glass, costs milliseconds
- * (the blur runs on ~1/8-scale pixels), and — because these surfaces are
- * transient snapshots — looks identical to a live blur in practice. When iosc
- * gains layer-surface alpha blending this same code keeps working; the blend
- * only adds live translucency at the edges.
+ * iosc blends layer surfaces but never blurs what is behind them, so the frost
+ * can't come from the compositor. Instead we capture what is on screen
+ * (wlr-screencopy), downscale it hard, blur the small image, and paint it
+ * scaled back up under a dim scrim. The result reads as iPadOS-style frosted
+ * glass, costs milliseconds (the blur runs on ~1/8-scale pixels), and, because
+ * these surfaces are transient snapshots, looks identical to a live blur in
+ * practice.
  *
  * Blur: three box-blur passes (running-sum, O(n) per pass) ≈ a gaussian.
  * Operates on cairo ARGB32/RGB24 data in place, per channel, ignoring alpha

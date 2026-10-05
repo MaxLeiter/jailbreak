@@ -78,6 +78,7 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <pwd.h>
+#include <signal.h>
 
 /* xios_surface.c writes the geometry handshake JSON and references `display`
  * (the X display-number string) for it. There is no X server here; this is only
@@ -419,10 +420,25 @@ static struct iosc_surface *surface_by_window_id(uint32_t window_id)
     return NULL;
 }
 
+/* Longest ->parent chain any walk follows. The requests that set a parent
+ * refuse to close a cycle (surface_is_ancestor_of() below), so this only keeps
+ * a walk finite if one ever slips through; no real chain comes near it. */
+#define IOSC_MAX_PARENT_DEPTH IOSC_MAX_SURFACES
+
+/* True if `anc` is `s` itself or one of its ancestors, i.e. giving `anc` the
+ * parent `s` would close a cycle. */
+static int surface_is_ancestor_of(struct iosc_surface *anc, struct iosc_surface *s)
+{
+    for (int d = 0; s && d < IOSC_MAX_PARENT_DEPTH; s = s->parent, d++)
+        if (s == anc) return 1;
+    return 0;
+}
+
 static struct iosc_surface *native_focus_toplevel(void)
 {
     struct iosc_surface *s = g_kbd_focus;
-    while (s && s->role != IOSC_ROLE_TOPLEVEL && s->parent)
+    for (int d = 0; s && s->role != IOSC_ROLE_TOPLEVEL && s->parent &&
+                    d < IOSC_MAX_PARENT_DEPTH; d++)
         s = s->parent;
     return (s && s->role == IOSC_ROLE_TOPLEVEL) ? s : NULL;
 }
@@ -612,9 +628,7 @@ static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
     struct iosc_frame *f, *tmp;
     wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
         wl_callback_send_done(f->resource, time);
-        wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
+        wl_resource_destroy(f->resource);   /* frame_callback_destroy frees f */
     }
 }
 
@@ -1203,6 +1217,19 @@ static int output_damage_add_overlay_surface(struct iosc_surface *s)
     return 0;
 }
 
+/* Damage what `s` covers on screen right now, for callers about to drop its
+ * buffer (NULL attach, wl_buffer destroyed). surface_rect() and the overlay
+ * paths size a surface by its current buffer, so damaging only after the
+ * buffer is gone added nothing: the repaint was skipped and the window's last
+ * frame stayed on screen. Returns nonzero if damage was added. */
+static int output_damage_add_surface_before_detach(struct iosc_surface *s)
+{
+    if (output_damage_add_overlay_surface(s)) return 1;
+    if (!s->mapped || !s->current_buffer) return 0;
+    output_damage_add_surface(s);
+    return 1;
+}
+
 static void output_damage_add_surface_rect(struct iosc_surface *s, int x, int y, int w, int h)
 {
     if (!s || w <= 0 || h <= 0 || !s->mapped) return;
@@ -1363,8 +1390,8 @@ static int native_toplevel_canvas_live(struct iosc_surface *s)
  * dialog's parent scene. */
 static struct iosc_surface *native_owner_toplevel(struct iosc_surface *s)
 {
-    while (s && s->role != IOSC_ROLE_TOPLEVEL)
-        s = s->parent;
+    for (int d = 0; s && s->role != IOSC_ROLE_TOPLEVEL; d++)
+        s = d < IOSC_MAX_PARENT_DEPTH ? s->parent : NULL;
     return s;
 }
 
@@ -2066,8 +2093,11 @@ static void cursor_image_publish(void)
     int32_t h = wl_shm_buffer_get_height(shm);
     int32_t stride = wl_shm_buffer_get_stride(shm);
     uint32_t format = wl_shm_buffer_get_format(shm);
+    /* stride >= w*4 too: libwayland only checks stride >= w, and the row copy
+     * below reads w*4 bytes per row, past the buffer on the last rows. */
     if (w <= 0 || h <= 0 ||
         w > XIOS_CURSOR_IMAGE_MAX || h > XIOS_CURSOR_IMAGE_MAX ||
+        stride < w * 4 ||
         (format != WL_SHM_FORMAT_ARGB8888 && format != WL_SHM_FORMAT_XRGB8888)) {
         cursor_image_note("cursor-size-or-format-unsupported");
         if (g_cursor_image_sent) {
@@ -2619,12 +2649,13 @@ static void on_buffer_destroyed(struct wl_listener *l, void *data)
     (void)data;
     struct iosc_surface *s = wl_container_of(l, s, buffer_destroy);
     int was_mapped = s->mapped;
+    int damaged = output_damage_add_surface_before_detach(s);
     s->current_buffer = NULL;          /* listener auto-removed by libwayland */
     s->buffer_listener_active = 0;
-    if (was_mapped) {
+    if (was_mapped)
         surface_unmap(s);
+    if (was_mapped || damaged)
         recomposite_all();
-    }
 }
 
 /* Replace a surface's current buffer; release the old one (double-buffering). */
@@ -2711,7 +2742,8 @@ static int popup_hit_is_within_grab(struct iosc_surface *hit)
 {
     if (g_popup_grab_count == 0) return 1;
     if (!hit) return 0;
-    for (struct iosc_surface *s = hit; s; s = s->parent)
+    int d = 0;
+    for (struct iosc_surface *s = hit; s && d < IOSC_MAX_PARENT_DEPTH; s = s->parent, d++)
         for (int i = 0; i < g_popup_grab_count; i++)
             if (g_popup_grab_stack[i] == s) return 1;
     return 0;
@@ -2736,6 +2768,10 @@ static void popup_grab_dismiss_all(void)
     }
     g_popup_grab_count = 0;
     g_popup_grab_prev_focus = NULL;
+    /* The pre-grab window may have been unmapped meanwhile; focusing it would
+     * leave g_kbd_focus on a surface nothing clears until it is destroyed. */
+    if (prev_focus && !prev_focus->mapped)
+        prev_focus = topmost_focusable();
     if (g_kbd_focus != prev_focus)
         keyboard_set_focus(prev_focus);
     if (g_output_damage_valid) recomposite_all();
@@ -2769,6 +2805,7 @@ static void popup_grab_on_surface_gone(struct iosc_surface *s)
     if (g_popup_grab_count == 0) {
         struct iosc_surface *prev = g_popup_grab_prev_focus;
         g_popup_grab_prev_focus = NULL;
+        if (prev && !prev->mapped) prev = topmost_focusable();   /* see dismiss_all */
         if (g_kbd_focus != prev) keyboard_set_focus(prev);
     } else {
         struct iosc_surface *new_top = g_popup_grab_stack[g_popup_grab_count - 1];
@@ -2878,6 +2915,17 @@ void surface_unmap(struct iosc_surface *s)
             dnd_end();
         }
     }
+    /* A window going away mid move/resize ends the operation. Only a pointer
+     * button release cleared g_interactive_surface, so motion in the meantime
+     * kept moving (and configuring) the gone window: freed memory, if it was
+     * destroyed. Before the mapped gate: move/resize never required a mapped
+     * window. */
+    if (g_interactive_surface == s) {
+        s->toplevel_resizing = 0;
+        g_interactive_surface = NULL;
+        g_interactive_op = IOSC_INTERACTIVE_NONE;
+        g_interactive_edges = 0;
+    }
     /* The lock surface going away mid-lock: back to a blank locked screen (the
      * session itself stays locked). Also before the mapped gate: never mapped. */
     if (g_slock.surface == s) {
@@ -2983,13 +3031,37 @@ static void surface_handle_destroy(struct wl_client *c, struct wl_resource *r)
 {
     (void)c; wl_resource_destroy(r);
 }
+/* attach -> wl_buffer.destroy -> commit is legal, and a synchronized
+ * subsurface can hold its attach until the parent commits. Without this the
+ * commit read a freed wl_resource (and hung a destroy listener on it). A
+ * pending buffer that dies is a NULL attach, as in other compositors. */
+static void on_pending_buffer_destroyed(struct wl_listener *l, void *data)
+{
+    (void)data;
+    struct iosc_surface *s = wl_container_of(l, s, pending_buffer_destroy);
+    s->pending_buffer = NULL;          /* listener auto-removed by libwayland */
+    s->pending_listener_active = 0;
+}
+static void pending_buffer_forget(struct iosc_surface *s)
+{
+    if (s->pending_listener_active) {
+        wl_list_remove(&s->pending_buffer_destroy.link);
+        s->pending_listener_active = 0;
+    }
+}
 static void surface_attach(struct wl_client *c, struct wl_resource *r,
                            struct wl_resource *buffer, int32_t x, int32_t y)
 {
     (void)c; (void)x; (void)y;
     struct iosc_surface *s = wl_resource_get_user_data(r);
+    pending_buffer_forget(s);
     s->pending_buffer  = buffer;
     s->buffer_attached = 1;
+    if (buffer) {
+        s->pending_buffer_destroy.notify = on_pending_buffer_destroyed;
+        wl_resource_add_destroy_listener(buffer, &s->pending_buffer_destroy);
+        s->pending_listener_active = 1;
+    }
 }
 static void surface_damage(struct wl_client *c, struct wl_resource *r,
                            int32_t x, int32_t y, int32_t w, int32_t h)
@@ -3002,6 +3074,18 @@ static void surface_damage(struct wl_client *c, struct wl_resource *r,
           output_damage_add_surface_rect(s, x, y, w, h);
   } }
 
+/* The wl_callback can die before we send `done`: wl_client_destroy() frees a
+ * disconnecting client's objects in id order, and a frame callback usually
+ * reuses a low id, so it goes before its surface. Unlinking here (not in the
+ * code that sends `done`) keeps the surface's lists from holding a freed
+ * resource that the surface destructor would then destroy a second time. */
+static void frame_callback_destroy(struct wl_resource *r)
+{
+    struct iosc_frame *f = wl_resource_get_user_data(r);
+    wl_list_remove(&f->link);
+    free(f);
+}
+
 static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t cb)
 {
     struct iosc_surface *s = wl_resource_get_user_data(r);
@@ -3009,7 +3093,8 @@ static void surface_frame(struct wl_client *c, struct wl_resource *r, uint32_t c
     if (!f) { wl_client_post_no_memory(c); return; }
     f->resource = wl_resource_create(c, &wl_callback_interface, 1, cb);
     if (!f->resource) { free(f); wl_client_post_no_memory(c); return; }
-    /* No impl/user-data: a callback has no requests; we destroy it after done. */
+    /* No impl: a callback has no requests; we destroy it after done. */
+    wl_resource_set_implementation(f->resource, NULL, f, frame_callback_destroy);
     wl_list_insert(&s->pending_frame_callbacks, &f->link);
 }
 static void surface_set_opaque_region(struct wl_client *c, struct wl_resource *r,
@@ -3105,6 +3190,7 @@ static void surface_commit_apply(struct iosc_surface *s)
     if (s->buffer_attached) {
         struct wl_resource *buf = s->pending_buffer;
         int was_mapped = s->mapped;
+        pending_buffer_forget(s);
         s->pending_buffer  = NULL;
         s->buffer_attached = 0;
 
@@ -3130,6 +3216,7 @@ static void surface_commit_apply(struct iosc_surface *s)
                 output_damage_add_surface(s);
         } else {
             /* NULL buffer attach + commit = unmap the surface */
+            output_damage_add_surface_before_detach(s);
             surface_set_buffer(s, NULL, 0, 0, 1);
             surface_unmap(s);
         }
@@ -3255,6 +3342,7 @@ static void surface_resource_destroy(struct wl_resource *r)
         wl_list_remove(&s->buffer_destroy.link);
         s->buffer_listener_active = 0;
     }
+    pending_buffer_forget(s);
     if (s->viewport) {
         s->viewport->surface = NULL;
         s->viewport = NULL;
@@ -3304,19 +3392,23 @@ static void surface_resource_destroy(struct wl_resource *r)
      * Neither may outlive s. */
     popup_grab_on_surface_gone(s);
     if (g_popup_grab_prev_focus == s) g_popup_grab_prev_focus = NULL;
+    /* surface_unmap() drops input focus only for a MAPPED surface, but an
+     * unmapped one can hold it too: surface_at() hands the never-mapped
+     * session-lock surface to the pointer, touch and pencil paths, so a locker
+     * that died mid-lock left them pointing at freed memory. None of them may
+     * outlive s. */
+    if (g_ptr_focus == s) g_ptr_focus = NULL;
+    touch_surface_gone(s);
+    pen_surface_gone(s);
+    constraints_surface_gone(s);
+    if (g_kbd_focus == s) keyboard_set_focus(topmost_focusable());
     s->current_buffer = NULL;
     presentation_discard_surface(s);
     struct iosc_frame *f, *tmp;
-    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
+    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link)
+        wl_resource_destroy(f->resource);   /* frame_callback_destroy frees f */
+    wl_list_for_each_safe(f, tmp, &s->pending_frame_callbacks, link)
         wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
-    }
-    wl_list_for_each_safe(f, tmp, &s->pending_frame_callbacks, link) {
-        wl_resource_destroy(f->resource);
-        wl_list_remove(&f->link);
-        free(f);
-    }
     free(s);
     if (was_mapped) recomposite_all();   /* repaint without the closed window */
 }
@@ -3480,7 +3572,7 @@ static void decoration_manager_get(struct wl_client *c, struct wl_resource *r,
                                    uint32_t id, struct wl_resource *toplevel)
 {
     struct iosc_surface *s = wl_resource_get_user_data(toplevel);
-    if (s->xdg_decoration) {
+    if (s && s->xdg_decoration) {
         wl_resource_post_error(r, ZXDG_TOPLEVEL_DECORATION_V1_ERROR_ALREADY_CONSTRUCTED,
                                "toplevel already has a decoration object");
         return;
@@ -3488,8 +3580,9 @@ static void decoration_manager_get(struct wl_client *c, struct wl_resource *r,
     struct wl_resource *dr = wl_resource_create(c, &zxdg_toplevel_decoration_v1_interface,
                                                 wl_resource_get_version(r), id);
     if (!dr) { wl_client_post_no_memory(c); return; }
-    s->xdg_decoration = dr;
     wl_resource_set_implementation(dr, &decoration_impl, s, decoration_resource_destroy);
+    if (!s) return;   /* toplevel's wl_surface already destroyed; leave the object inert */
+    s->xdg_decoration = dr;
     decoration_configure_client_side(s);
 }
 static const struct zxdg_decoration_manager_v1_interface decoration_manager_impl = {
@@ -3660,6 +3753,9 @@ static void popup_place(struct iosc_surface *s, const struct iosc_positioner *p)
 
 static void popup_send_configure(struct iosc_surface *s, int token)
 {
+    /* The client may already have destroyed the xdg_surface (a defunct-role
+     * protocol violation we do not police); there is nothing to configure. */
+    if (!s->xdg_popup || !s->xdg_surface) return;
     /* xdg_popup.configure is sent before the client attaches its first buffer,
      * so its size comes from the xdg_positioner snapshot—not from the current
      * buffer (which is necessarily absent on the initial configure). Falling
@@ -3755,14 +3851,16 @@ static void popup_reposition(struct wl_client *c, struct wl_resource *r,
     (void)c;
     struct iosc_surface *s = wl_resource_get_user_data(r);
     struct iosc_positioner *p = wl_resource_get_user_data(positioner);
-    if (s && p) {
-        s->popup_positioner = *p;
-        s->popup_positioner_set = 1;
-    }
-    if (s && s->mapped) output_damage_add_surface(s);
+    if (!s || !p) return;   /* wl_surface already destroyed: the popup is inert */
+    s->popup_positioner = *p;
+    s->popup_positioner_set = 1;
+    /* A layer-shell popup has no parent until zwlr_layer_surface_v1.get_popup,
+     * which places it from the snapshot just taken; popup_place() needs one. */
+    if (!s->parent) return;
+    if (s->mapped) output_damage_add_surface(s);
     popup_place(s, p);
     popup_send_configure(s, (int)token);
-    if (s && s->mapped) {
+    if (s->mapped) {
         output_damage_add_surface(s);
         recomposite_all();
     }
@@ -4097,7 +4195,12 @@ static void xt_set_parent(struct wl_client *c, struct wl_resource *r, struct wl_
     struct iosc_surface *s = wl_resource_get_user_data(r);
     if (!s) return;
     struct iosc_surface *parent = p ? wl_resource_get_user_data(p) : NULL;
-    s->parent = (parent && parent != s) ? parent : NULL;
+    if (parent && surface_is_ancestor_of(s, parent)) {
+        wl_resource_post_error(r, XDG_TOPLEVEL_ERROR_INVALID_PARENT,
+                               "parent is this toplevel or one of its descendants");
+        return;
+    }
+    s->parent = parent;
 }
 static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char *t)
 { (void)c; struct iosc_surface *s = wl_resource_get_user_data(r);
@@ -4164,9 +4267,22 @@ static void toplevel_resource_destroy(struct wl_resource *r)
 
 /* xdg_surface */
 static void xs_destroy(struct wl_client *c, struct wl_resource *r){ (void)c; wl_resource_destroy(r); }
+/* One role object per xdg_surface, and none on a surface that already has a
+ * role. The role pointers on iosc_surface hold exactly one resource each, and
+ * surface_resource_destroy() can only disarm the one it knows about: a second
+ * xdg_toplevel/xdg_popup would keep a pointer into the freed surface. */
+static int xs_role_taken(struct wl_resource *r, struct iosc_surface *s)
+{
+    if (!s || (s->role == IOSC_ROLE_NONE && !s->xdg_toplevel && !s->xdg_popup))
+        return 0;
+    wl_resource_post_error(r, XDG_SURFACE_ERROR_ALREADY_CONSTRUCTED,
+                           "xdg_surface already has a role object");
+    return 1;
+}
 static void xs_get_toplevel(struct wl_client *c, struct wl_resource *r, uint32_t id)
 {
     struct iosc_surface *s = wl_resource_get_user_data(r);
+    if (xs_role_taken(r, s)) return;
     struct wl_resource *tl = wl_resource_create(c, &xdg_toplevel_interface,
                                                 wl_resource_get_version(r), id);
     if (!tl) { wl_client_post_no_memory(c); return; }
@@ -4187,6 +4303,12 @@ static void xs_get_popup(struct wl_client *c, struct wl_resource *r, uint32_t id
      * must run before the client's first commit. */
     struct iosc_surface *ps = parent ? wl_resource_get_user_data(parent) : NULL;
     struct iosc_positioner *pos = wl_resource_get_user_data(positioner);
+    if (xs_role_taken(r, s)) return;
+    if (s && ps && surface_is_ancestor_of(s, ps)) {
+        wl_resource_post_error(r, XDG_WM_BASE_ERROR_INVALID_POPUP_PARENT,
+                               "popup parent is the popup itself or its descendant");
+        return;
+    }
     struct wl_resource *p = wl_resource_create(c, &xdg_popup_interface,
                                                wl_resource_get_version(r), id);
     if (!p) { wl_client_post_no_memory(c); return; }
@@ -4255,6 +4377,14 @@ static void wb_get_xdg_surface(struct wl_client *c, struct wl_resource *r,
                                uint32_t id, struct wl_resource *surface)
 {
     struct iosc_surface *s = wl_resource_get_user_data(surface);
+    /* Same single-pointer rule as xs_role_taken(): only one live xdg_surface,
+     * and none on a subsurface, layer or lock surface. */
+    if (s->xdg_surface || s->role == IOSC_ROLE_SUBSURFACE ||
+        s->role == IOSC_ROLE_LAYER || s->role == IOSC_ROLE_LOCK) {
+        wl_resource_post_error(r, XDG_WM_BASE_ERROR_ROLE,
+                               "wl_surface already has an xdg_surface or another role");
+        return;
+    }
     struct wl_resource *xs = wl_resource_create(c, &xdg_surface_interface,
                                                 wl_resource_get_version(r), id);
     if (!xs) { wl_client_post_no_memory(c); return; }
@@ -5208,6 +5338,24 @@ static void subcompositor_get_subsurface(struct wl_client *c, struct wl_resource
 {
   struct iosc_surface *s = wl_resource_get_user_data(surface);
   struct iosc_surface *p = wl_resource_get_user_data(parent);
+  /* A second wl_subsurface for the same surface would leave the first one's
+   * ->surface pointing at it after surface_resource_destroy() disarms only
+   * s->subsurface (and any other role is a protocol error anyway). */
+  if (s->role != IOSC_ROLE_NONE || s->subsurface) {
+      wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
+                             "wl_surface already has a role");
+      return;
+  }
+  if (s == p) {
+      wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_SURFACE,
+                             "wl_surface cannot be its own parent");
+      return;
+  }
+  if (surface_is_ancestor_of(s, p)) {
+      wl_resource_post_error(r, WL_SUBCOMPOSITOR_ERROR_BAD_PARENT,
+                             "parent is a descendant of the wl_surface");
+      return;
+  }
   struct iosc_subsurface *sub = calloc(1, sizeof(*sub));
   if (!sub) { wl_client_post_no_memory(c); return; }
   struct wl_resource *ss = wl_resource_create(c, &wl_subsurface_interface, wl_resource_get_version(r), id);
@@ -5401,17 +5549,76 @@ static int clip_item_set(const char *mime, const char *data, size_t len)
     return 0;
 }
 
-static int write_all_fd(int fd, const void *buf, size_t len)
+/* Clipboard bytes owed to a client's receive() fd. A pipe holds far less than
+ * a clipboard item (up to XIOS_CLIP_ITEM_MAX), and a client may roundtrip to us
+ * before it starts reading, so one blocking write of the whole item stalled the
+ * compositor until the reader caught up, or forever if it never read. Copy the
+ * bytes and feed the fd from the event loop as it drains instead. The caps bound
+ * what readers that never read can pin; past them the fd is closed at once and
+ * that reader sees an empty paste. */
+#define IOSC_MAX_CLIP_WRITERS      32
+#define IOSC_MAX_CLIP_WRITER_BYTES (64u * 1024u * 1024u)
+struct iosc_clip_writer {
+    int fd;
+    struct wl_event_source *src;
+    char *data;
+    size_t len, off;
+};
+static int g_nclip_writers;
+static size_t g_clip_writer_bytes;
+
+static void clip_writer_free(struct iosc_clip_writer *w)
 {
-    const char *p = buf;
-    size_t put = 0;
-    while (put < len) {
-        ssize_t w = write(fd, p + put, len - put);
-        if (w > 0) { put += (size_t)w; continue; }
-        if (w < 0 && errno == EINTR) continue;
-        return -1;
+    if (w->src) wl_event_source_remove(w->src);
+    close(w->fd);
+    g_nclip_writers--;
+    g_clip_writer_bytes -= w->len;
+    free(w->data);
+    free(w);
+}
+
+static int clip_writer_writable(int fd, uint32_t mask, void *data)
+{
+    struct iosc_clip_writer *w = data;
+    while (w->off < w->len) {
+        ssize_t n = write(fd, w->data + w->off, w->len - w->off);
+        if (n > 0) { w->off += (size_t)n; continue; }
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) &&
+            !(mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)))
+            return 0;                  /* pipe full: wait until it drains */
+        break;                         /* EPIPE (reader gone) or a real error */
     }
+    clip_writer_free(w);
     return 0;
+}
+
+/* Send `len` bytes of `data` to a receive() fd without blocking. Takes
+ * ownership of fd (closed once the bytes are out, or on any failure). */
+static void clip_send_to_fd(int fd, const char *data, size_t len)
+{
+    struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
+    struct iosc_clip_writer *w = NULL;
+    if (!loop || len == 0 || g_nclip_writers >= IOSC_MAX_CLIP_WRITERS ||
+        len > IOSC_MAX_CLIP_WRITER_BYTES - g_clip_writer_bytes ||
+        !(w = calloc(1, sizeof(*w))) || !(w->data = malloc(len))) {
+        free(w);
+        close(fd);
+        return;
+    }
+    memcpy(w->data, data, len);
+    w->fd = fd;
+    w->len = len;
+    fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
+    w->src = wl_event_loop_add_fd(loop, fd, WL_EVENT_WRITABLE, clip_writer_writable, w);
+    if (!w->src) {
+        free(w->data);
+        free(w);
+        close(fd);
+        return;
+    }
+    g_nclip_writers++;
+    g_clip_writer_bytes += len;
 }
 
 static void clipboard_selection_send_to_device(struct iosc_data_device *d)
@@ -5514,7 +5721,7 @@ static void data_offer_receive(struct wl_client *c, struct wl_resource *r,
         if (!m && is_text_mime(mime_type))
             for (int i = 0; i < o->nitems; i++)
                 if (is_text_mime(o->items[i].mime)) { m = &o->items[i]; break; }
-        if (m && m->data) write_all_fd(fd, m->data, m->len);
+        if (m && m->data) { clip_send_to_fd(fd, m->data, m->len); return; }
     }
     close(fd);
 }
@@ -6274,9 +6481,20 @@ static int make_keymap_fd(void)
     char tmpl[256]; snprintf(tmpl, sizeof(tmpl), "%s/iosc-keymap-XXXXXX", dir);
     int fd = mkstemp(tmpl);
     if (fd < 0) return -1;
+    if (write(fd, str, size) != (ssize_t)size) { unlink(tmpl); close(fd); return -1; }
+    /* Every wl_keyboard and input-method grab is handed this same open file, and
+     * mkstemp() opens it O_RDWR: any client could ftruncate() or rewrite the
+     * keymap every other client mmaps (SIGBUS, or someone else's layout). Give
+     * them a read-only open of the file instead. */
+    int ro = open(tmpl, O_RDONLY | O_CLOEXEC);
     unlink(tmpl);
-    if (write(fd, str, size) != (ssize_t)size) { close(fd); return -1; }
-    return fd;
+    if (ro < 0) {
+        fprintf(stderr, "iosc: read-only keymap reopen failed (%s); sharing the "
+                        "writable fd\n", strerror(errno));
+        return fd;
+    }
+    close(fd);
+    return ro;
 }
 
 /* ---- zwlr_layer_shell_v1 / zwlr_layer_surface_v1 ------------------------- */
@@ -6606,7 +6824,7 @@ static void data_control_offer_receive(struct wl_client *c, struct wl_resource *
     struct iosc_data_control_offer *o = wl_resource_get_user_data(r);
     if (o && o->is_primary) { primary_forward_send(mime, fd); return; }
     struct iosc_mime_data *m = clip_find_item(mime);
-    if (m && m->data) write_all_fd(fd, m->data, m->len);
+    if (m && m->data) { clip_send_to_fd(fd, m->data, m->len); return; }
     close(fd);
 }
 static void data_control_offer_destroy_req(struct wl_client *c, struct wl_resource *r)
@@ -6856,6 +7074,13 @@ static void register_wayland_globals(void)
 
 int main(int argc, char **argv)
 {
+    /* iosc writes into many peers' sockets and pipes (clipboard receive() fds,
+     * the wm socket, the app streams), and any of them can close first. A write
+     * then has to fail with EPIPE, not kill the compositor. ioscd ignores SIGPIPE
+     * and its children inherit that; a root shell running xios-session or
+     * run-iosc.sh does not, so set it here rather than rely on the launcher. */
+    signal(SIGPIPE, SIG_IGN);
+
     struct iosc_options opts;
     iosc_options_init(&opts);
     iosc_parse_args(argc, argv, &opts);

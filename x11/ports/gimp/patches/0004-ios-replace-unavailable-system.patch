@@ -13,7 +13,8 @@
 +    {
 +      GError *error = NULL;
 +      gint    wait_status = 0;
-++      if (! g_spawn_command_line_sync (cmd, NULL, NULL, &wait_status, &error) ||
++
++      if (! g_spawn_command_line_sync (cmd, NULL, NULL, &wait_status, &error) ||
 +          ! g_spawn_check_wait_status (wait_status, &error))
 +        {
 +          if (! silent)

@@ -56,7 +56,6 @@ HICOLOR_SIZES="512x512 256x256 192x192 128x128 96x96 64x64 48x48"
 resolve() {
   local name="${1:-}"; local base="$name"; local p ext theme size
   [ -n "$name" ] || return 0
-  case "$name" in /*) [ -f "$name" ] && { echo "$name"; return; } ;; esac
   base="${base%.png}"; base="${base%.svg}"; base="${base%.xpm}"
   for theme in hicolor Adwaita gnome default; do
     for size in $HICOLOR_SIZES; do
@@ -76,6 +75,13 @@ for desktop in "$APPS"/*.desktop; do
   [ -f "$desktop" ] || continue
   icon="$(awk -F= '/^\[/{e=($0=="[Desktop Entry]")} e&&/^Icon=/{print substr($0,6); exit}' "$desktop")"
   [ -n "$icon" ] || continue
+  case "$icon" in
+    /*)  # panel-icons.h loads an absolute Icon= straight from the device, so
+         # there is nothing to ship; only check that some deb installs it.
+      if [ -f "$MERGE$icon" ]; then echo "  -- $icon: absolute, loaded in place"
+      else echo "  -- $icon: absolute, but no deb installs it"; fi
+      continue ;;
+  esac
   src="$(resolve "$icon")" || true
   [ -n "${src:-}" ] || { echo "  -- $icon: no source"; continue; }
   case "$src" in

@@ -121,8 +121,8 @@ refresh_patch_build_tree() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
   [ -d "$patch_dir" ] || return 0
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
-  local stage="build_stage/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
+  local stage="build_stage/$XIOS_TRIPLE/$pkg"
   local fp_file="$work/.xios_patch_series.sha256"
   local new_fp old_fp
   new_fp="$(find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')"
@@ -136,7 +136,7 @@ refresh_patch_build_tree() {
 record_patch_fingerprint() {
   local pkg="$1"
   local patch_dir="/work/ports/$pkg/patches"
-  local work="build_work/iphoneos-arm64-rootless/1900/$pkg"
+  local work="build_work/$XIOS_TRIPLE/$pkg"
   [ -d "$patch_dir" ] && [ -d "$work" ] || return 0
   find "$patch_dir" -maxdepth 1 -type f -print0 | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}' > "$work/.xios_patch_series.sha256"
 }
@@ -144,20 +144,6 @@ record_patch_fingerprint() {
 for pkg in slurp dunst basu mako; do
   target_requests "$pkg" && refresh_patch_build_tree "$pkg"
 done
-
-DW=build_work/$XIOS_TRIPLE/dunst
-DS=build_stage/$XIOS_TRIPLE/dunst
-DF="$DW/.xios_patch_series.sha256"
-if [[ " $TARGETS " == *" dunst"* ]]; then
-  NEW_FP="$(sha256sum \
-    /work/ports/dunst/patches/series \
-    /work/ports/dunst/patches/*.patch | sha256sum | awk '{print $1}')"
-  OLD_FP="$(cat "$DF" 2>/dev/null || true)"
-  if [ -d "$DW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
-    echo "==> wiping stale dunst build after patch changes"
-    rm -rf "$DW" "$DS"
-  fi
-fi
 
 for t in $TARGETS; do
   echo "==> make $t"

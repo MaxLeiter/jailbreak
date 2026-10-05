@@ -61,7 +61,7 @@ index 1d24e50..bb22ef4 100644
  struct res {
    int exit_code;
    std::string out;
-@@ -73,7 +97,7 @@ inline FILE* open(const std::string& cmd, int& pid, const std::string& output_na
+@@ -73,8 +97,8 @@ inline FILE* open(const std::string& cmd, int& pid, const std::string& output_na
    // Open the pipe with the close-on-exec flag set, so it will not be inherited
    // by any other subprocesses launched by other threads (which could result in
    // the pipe staying open after this child dies, causing us to hang when trying
@@ -71,7 +71,7 @@ index 1d24e50..bb22ef4 100644
      spdlog::error("Unable to pipe fd");
      return nullptr;
    }
-@@ -125,14 +149,14 @@ inline struct res exec(const std::string& cmd, const std::string& output_name) {
+@@ -125,15 +149,15 @@ inline struct res exec(const std::string& cmd, const std::string& output_name) {
    if (!fp) return {-1, ""};
    auto output = command::read(fp);
    auto stat = command::close(fp, pid);

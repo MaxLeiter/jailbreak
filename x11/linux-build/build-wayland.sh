@@ -125,12 +125,16 @@ stage_required_patch_stack() {
   bash /work/recipes/stage-port-patches.sh "$pkg" /work/ports build_patch
 }
 
-target_requests wayland && stage_required_patch_stack wayland
+# Both spellings: the default TARGETS asks for wayland-package, and the exact match
+# (d14193d2) no longer lets "wayland" stand for it.
+if target_requests wayland || target_requests wayland-package; then
+  stage_required_patch_stack wayland
+fi
 
 WAYLAND_W=build_work/$XIOS_TRIPLE/wayland
 WAYLAND_S=build_stage/$XIOS_TRIPLE/wayland
 WAYLAND_F="$WAYLAND_W/.xios_patch_series.sha256"
-if target_requests wayland; then
+if target_requests wayland || target_requests wayland-package; then
   WAYLAND_FP="$(sha256sum \
     /work/ports/wayland/patches/series \
     /work/ports/wayland/patches/*.patch | sha256sum | awk '{print $1}')"

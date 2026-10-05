@@ -18,7 +18,7 @@
 //   paused         BOOL    runtime: escape gesture flips this; when YES the
 //                          kiosk stops enforcing so you can use the device
 //
-// Escape: perform the chosen volume pattern (triple-press within ~1.4s) to
+// Escape: perform the chosen volume pattern (triple-press within ~2s) to
 // toggle `paused`. A short haptic confirms. Nothing is enforced until you arm
 // it in the app, so it can never trap you unexpectedly.
 // ─────────────────────────────────────────────────────────────────────────────

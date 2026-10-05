@@ -14,8 +14,9 @@
 #   4. ioscdock    floating launcher/task dock (bottom layer)
 #
 # Usage:  run-shell.sh [--no-compositor]
-# Env:    IOSC_PANEL_SCALE (default 2), IOSC_WALLPAPER, IOSC_SHELL_ICONS,
-#         IOSC_PANEL_OPACITY (once iosc blends layer surfaces)
+# Env:    IOSC_PANEL_SCALE (override; unset, the clients follow iosc's
+#         wl_output scale), IOSC_WALLPAPER, IOSC_SHELL_ICONS,
+#         IOSC_PANEL_OPACITY (0-100, default 85)
 #
 # This is the future `xios-iosc` flavor: iosc + these clients are the whole
 # desktop — no Mutter, no JS, pure C/Wayland. Package: package-shell.sh.
@@ -68,14 +69,13 @@ export IOSC_INPUT_SOCK="${IOSC_INPUT_SOCK:-$TMP/iosc-input.sock}"
 export IOSC_CLIPBOARD_SOCK="${IOSC_CLIPBOARD_SOCK:-$TMP/iosc-clipboard.sock}"
 export IOSC_WM_SOCK="${IOSC_WM_SOCK:-$TMP/iosc-wm.sock}"
 IOSC_LOG="${IOSC_LOG:-$TMP/iosc.log}"
-export IOSC_PANEL_SCALE="${IOSC_PANEL_SCALE:-2}"
 # Logical desktop the shell designs its elements for. iosc renders a 2x-oversized
 # output IOSurface (1440x1080 -> 2880x2160) that the Xios app supersamples down to
 # the 2160x1620 panel = ~1.5 effective scale. Override to retune.
 export IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
-# Input tracing to $XDG_RUNTIME_DIR/{ioscbar,ioscdock}.log — default ON while
-# hunting the shell-tap bug (panel dead to taps). Flip to 0 once fixed.
-export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-1}"
+# Input tracing to $TMP/{ioscbar,ioscdock}.log. Off by default now that the
+# panel tap path is proven on device; set IOSC_SHELL_DEBUG=1 to trace again.
+export IOSC_SHELL_DEBUG="${IOSC_SHELL_DEBUG:-0}"
 
 SOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 log() { echo "run-shell: $*" >&2; }
@@ -108,8 +108,11 @@ if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
 fi
 
 # -- 2 + 3 + 4. shell clients -------------------------------------------------
-is_running() {
-    ps ax | grep -v grep | grep -F "/$1" >/dev/null 2>&1
+is_running() {  # is_running <name>: a live process whose argv[0] basename is <name>
+    # Match the program, not any argv containing "/<name>" (a `tail -f
+    # $TMP/ioscbar.log` used to count). ps ax: PID TT STAT TIME COMMAND, and a
+    # defunct entry shows as "(name)" so it never matches.
+    ps ax 2>/dev/null | awk -v b="$1" 'NR > 1 { n = split($5, p, "/"); if (p[n] == b) f = 1 } END { exit !f }'
 }
 
 start() {  # start <name> (skips if already running)

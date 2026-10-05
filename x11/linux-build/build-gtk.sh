@@ -229,8 +229,15 @@ echo "==> staging Wayland backend prerequisites for GTK4"
 # which links host expat to parse protocol XML. (The cross wayland libs get expat/ffi from
 # build_base.) Without them the native scanner's meson aborts: "Dependency expat not found".
 apt-get install -y --no-install-recommends libwayland-bin linux-libc-dev libexpat1-dev libffi-dev >/dev/null 2>&1 || true
+# Newest by dpkg ordering: /out keeps old builds, and both `ls | head -1` and
+# sort -V pick older ones (sort -V even puts 1.23.1 above 1.23.1+ios1).
 for d in libwayland0 libwayland-dev wayland-protocols libxkbcommon0 libxkbcommon-dev libepoll-shim0 libepoll-shim-dev; do
-  f=$(ls /out/${d}_*.deb 2>/dev/null | head -1) || true
+  f="" fv=""
+  for c in /out/${d}_*_$XIOS_DEB_ARCH.deb; do
+    [ -f "$c" ] || continue
+    v=$(dpkg-deb -f "$c" Version 2>/dev/null) || continue
+    if [ -z "$f" ] || dpkg --compare-versions "$v" gt "$fv"; then f=$c; fv=$v; fi
+  done
   [ -n "$f" ] && dpkg-deb -x "$f" $XIOS_BUILD_BASE 2>/dev/null || true
 done
 mkdir -p "$BBINC/linux" "$BBINC/sys"

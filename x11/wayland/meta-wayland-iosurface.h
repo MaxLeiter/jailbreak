@@ -6,9 +6,10 @@
  * iOS has no dma-buf, so GPU clients share buffers via IOSurface + a mach-port rendezvous
  * (the iosc_iosurface protocol, iosc-iosurface.xml). This is the mutter-side counterpart to
  * meta-wayland-dma-buf.{c,h}: it serves the iosc_iosurface global, imports the client's
- * IOSurface (libxios_glue), and bridges it to a Cogl texture via an ANGLE EGLImage — the
- * same idiomatic path (cogl_egl_texture_2d_new_from_image) mutter uses for its EGL_IMAGE
- * and DMA_BUF buffer types (docs/mutter-on-iosc.md Option (b), Step 4). GPL-2.0+.
+ * IOSurface (libxios_glue), and aliases it into a Cogl texture through an ANGLE IOSurface
+ * pbuffer + eglBindTexImage (ANGLE-Metal has no IOSurface->EGLImage path), the
+ * mutter-side counterpart of its EGL_IMAGE and DMA_BUF buffer types
+ * (docs/mutter-on-iosc.md Option (b), Step 4). GPL-2.0+.
  */
 #pragma once
 
@@ -27,7 +28,7 @@ G_DECLARE_FINAL_TYPE (MetaWaylandIosurfaceBuffer, meta_wayland_iosurface_buffer,
 MetaWaylandIosurfaceBuffer *
 meta_wayland_iosurface_buffer_from_buffer (MetaWaylandBuffer *buffer);
 
-/* Import the client IOSurface as a Cogl texture (via an ANGLE EGLImage) and hand back a
+/* Import the client IOSurface as a Cogl texture (via an ANGLE pbuffer) and hand back a
  * MetaMultiTexture. The IOSurface case of meta_wayland_buffer_attach(). */
 gboolean
 meta_wayland_iosurface_buffer_attach (MetaWaylandBuffer  *buffer,

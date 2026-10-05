@@ -155,7 +155,7 @@ SYSROOT=build_base/$XIOS_TRIPLE$XIOS_PREFIX/usr
 # eglGetProcAddress at runtime (no link dep). Stage it from the Khronos EGL-Registry.
 if [ ! -e "$SYSROOT/include/EGL/eglmesaext.h" ]; then
   echo "==> staging EGL/eglmesaext.h (from the mesa source tarball) for Cogl"
-  MESA_TAR=$(ls build_source/mesa-*.tar.* 2>/dev/null | head -1)
+  MESA_TAR=$(ls build_source/mesa-*.tar.* 2>/dev/null | head -1) || true  # no match must reach the WARN, not pipefail-exit
   if [ -n "$MESA_TAR" ]; then
     tar xf "$MESA_TAR" -C /tmp $(tar tf "$MESA_TAR" 2>/dev/null | grep -m1 'include/EGL/eglmesaext.h') 2>/dev/null
     F=$(find /tmp -path '*include/EGL/eglmesaext.h' 2>/dev/null | head -1)
@@ -181,7 +181,7 @@ echo "==> staging stub <systemd/sd-login.h> (session tracking inert on iOS; logi
 mkdir -p "$SYSROOT/include/systemd"
 cp /work/recipes/build_info/systemd-sd-login.h "$SYSROOT/include/systemd/sd-login.h"
 if [ ! -e "$SYSROOT/lib/pkgconfig/egl.pc" ]; then
-  ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep -v "+es3" | head -1)
+  ANGLE_DEB=$(ls /out/angle_*_$XIOS_DEB_ARCH.deb 2>/dev/null | grep -v "+es3" | head -1) || true  # ditto
   if [ -n "$ANGLE_DEB" ]; then
     echo "==> staging ANGLE libEGL + egl.pc into cross sysroot from $(basename "$ANGLE_DEB")"
     rm -rf /tmp/angle-x && mkdir -p /tmp/angle-x && dpkg-deb -x "$ANGLE_DEB" /tmp/angle-x

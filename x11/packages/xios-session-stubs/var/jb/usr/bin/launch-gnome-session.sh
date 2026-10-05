@@ -140,7 +140,7 @@ echo "==> start GNOME session -> $GNOME_SHELL_LOG"
   LC_CTYPE="${LC_CTYPE:-${LANG:-C}}" \
   LIBEXEC="$LIBEXEC" \
   GNOME_SESSION_BUS_FILE="$GNOME_SESSION_BUS_FILE" \
-  PULSE_PROFILE="$PREFIX/etc/profile.d/xios-pulse.sh" \
+  PULSE_PROFILE="${XS_JB:-}/etc/profile.d/xios-pulse.sh" \
   SYSINT_LOG="$XS_TMP/xios-sysintd$slot_suffix.log" \
   dbus-run-session -- sh -c '
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"

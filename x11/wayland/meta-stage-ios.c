@@ -7,7 +7,7 @@
  * MetaRendererIOS: get_geometry from the (single fixed) monitor and get_views from the
  * renderer. redraw_view is inherited from MetaStageImpl, whose swap path calls
  * cogl_onscreen_swap_buffers_with_damage on our view framebuffer — which IS a CoglOnscreen
- * (MetaOnscreenIOS), so the present (finish + xios_notify_dirty) happens there, NOT here.
+ * (MetaOnscreenIOS), so the present (fence signal + fenced dirty notify) happens there, NOT here.
  * finish_frame therefore only settles the frame result. realize / resize / show / hide /
  * get_frame_counter are inherited from MetaStageImpl. Modeled on meta-stage-native.c minus
  * the KMS/atomic per-frame prep. GPL-2.0+.
@@ -83,7 +83,7 @@ meta_stage_ios_prepare_frame (ClutterStageWindow *stage_window,
                               ClutterFrame       *frame)
 {
   /* No per-frame renderer prep on iOS (no KMS/atomic commit); the present happens in
-   * finish_frame via the IOSurface dirty-notify. */
+   * MetaOnscreenIOS's swap, not here or in finish_frame. */
 }
 
 static void
