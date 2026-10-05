@@ -15,15 +15,29 @@
  * in xios-hwbridged; motion/orientation belongs here; camera/mic/location need
  * separate media/location bridges because their permission and streaming models
  * are different.
+ *
+ * Claims gate all the work, as in iio-sensor-proxy. With no claims held there
+ * is no poll timer, no CoreMotion update stream and no file write. The first
+ * ClaimAccelerometer starts the accelerometer (ClaimCompass the magnetometer)
+ * and the last release stops it. Claims are tracked per bus client, and each
+ * client's unique name is watched, so a client that exits or crashes without
+ * releasing drops its claims instead of keeping the sensors running forever.
+ * The gyroscope has no claim type on this interface, so it is never started.
+ *
+ * While a sensor runs, its IIO value files are rewritten only when the value
+ * changes, in place and without fsync (see write_in_place).
  */
 
 #include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <objc/message.h>
 #include <objc/runtime.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <gio/gio.h>
 #include <glib/gstdio.h>
@@ -75,16 +89,79 @@ static gboolean has_accel;
 static gboolean has_gyro;
 static gboolean has_mag;
 
-static int accel_claims;
-static int light_claims;
-static int prox_claims;
-static int compass_claims;
+enum {
+  CLAIM_ACCEL,
+  CLAIM_LIGHT,
+  CLAIM_PROX,
+  CLAIM_COMPASS,
+  N_CLAIM_KINDS
+};
+
+static const struct {
+  const char *claim;
+  const char *release;
+} claim_methods[N_CLAIM_KINDS] = {
+  [CLAIM_ACCEL]   = { "ClaimAccelerometer", "ReleaseAccelerometer" },
+  [CLAIM_LIGHT]   = { "ClaimLight",         "ReleaseLight" },
+  [CLAIM_PROX]    = { "ClaimProximity",     "ReleaseProximity" },
+  [CLAIM_COMPASS] = { "ClaimCompass",       "ReleaseCompass" },
+};
+
+/* A bus client holding at least one claim, keyed by its unique name. Claims
+ * are counted per client, so a client that claims twice must release twice. */
+typedef struct {
+  guint watch_id;
+  int   claims[N_CLAIM_KINDS];
+} SensorClient;
+
+static GHashTable *clients;
+static int claim_totals[N_CLAIM_KINDS];
+
+/* One IIO value file, plus the value last written to it. */
+typedef struct {
+  const char *name;
+  char       *path;
+  int         raw;
+  gboolean    valid;   /* raw is what the file holds */
+  gboolean    warned;  /* one warning per failure streak, not one per tick */
+} IioValue;
+
+static IioValue iio_accel[3] = {
+  { .name = "in_accel_x_raw" },
+  { .name = "in_accel_y_raw" },
+  { .name = "in_accel_z_raw" },
+};
+static IioValue iio_magn[3] = {
+  { .name = "in_magn_x_raw" },
+  { .name = "in_magn_y_raw" },
+  { .name = "in_magn_z_raw" },
+};
+
+/* A CoreMotion update stream that runs only while something claims it. */
+typedef struct {
+  const char *label;
+  const char *interval_sel;
+  const char *start_sel;
+  const char *stop_sel;
+  IioValue   *iio;
+  gboolean    running;
+} MotionStream;
+
+static MotionStream accel_stream = {
+  "accelerometer", "setAccelerometerUpdateInterval:",
+  "startAccelerometerUpdates", "stopAccelerometerUpdates", iio_accel, FALSE
+};
+static MotionStream mag_stream = {
+  "magnetometer", "setMagnetometerUpdateInterval:",
+  "startMagnetometerUpdates", "stopMagnetometerUpdates", iio_magn, FALSE
+};
+
+static guint poll_id;
 
 static char *sys_root;
 static char *iio_dir;
 
 static double accel_x, accel_y, accel_z;  /* g */
-static double gyro_x, gyro_y, gyro_z;     /* rad/s */
 static double mag_x, mag_y, mag_z;        /* microtesla */
 static const char *orientation = "undefined";
 
@@ -184,20 +261,94 @@ emit_property_change_string (const char *name, const char *value)
                                  NULL);
 }
 
-static void
-update_iio_values (void)
+/*
+ * Rewrite a per-sample value file in place: pwrite at offset 0, then shrink
+ * the file if the old value was longer. No temp file, no rename, no fsync.
+ * These files are scratch data mirrored at up to 10 Hz, and g_file_set_contents
+ * (temp + write + fsync + rename) forced every sample of every file out to
+ * flash.
+ *
+ * A concurrent reader never sees an empty file (which O_TRUNC would allow).
+ * The worst case is the moment between pwrite and ftruncate, when it can see
+ * the new value followed by the tail of a longer old one ("12\n34\n").
+ * Integer parsers stop at the first newline, so they still read the new value.
+ *
+ * ensure_iio_tree() recreates every value file at startup, so the files are
+ * owned by this process's user and the in-place open has write permission.
+ */
+static gboolean
+write_in_place (const char *path, const char *text)
 {
-  writef (iio_dir, "in_accel_x_raw", "%d\n", (int) lrint (accel_x * 1000.0));
-  writef (iio_dir, "in_accel_y_raw", "%d\n", (int) lrint (accel_y * 1000.0));
-  writef (iio_dir, "in_accel_z_raw", "%d\n", (int) lrint (accel_z * 1000.0));
+  size_t len = strlen (text);
+  struct stat st;
+  ssize_t n;
+  int saved_errno;
+  int fd;
 
-  writef (iio_dir, "in_anglvel_x_raw", "%d\n", (int) lrint (gyro_x * 1000.0));
-  writef (iio_dir, "in_anglvel_y_raw", "%d\n", (int) lrint (gyro_y * 1000.0));
-  writef (iio_dir, "in_anglvel_z_raw", "%d\n", (int) lrint (gyro_z * 1000.0));
+  fd = open (path, O_WRONLY | O_CREAT | O_CLOEXEC, 0666);
+  if (fd < 0)
+    return FALSE;
 
-  writef (iio_dir, "in_magn_x_raw", "%d\n", (int) lrint (mag_x * 1000.0));
-  writef (iio_dir, "in_magn_y_raw", "%d\n", (int) lrint (mag_y * 1000.0));
-  writef (iio_dir, "in_magn_z_raw", "%d\n", (int) lrint (mag_z * 1000.0));
+  do
+    n = pwrite (fd, text, len, 0);
+  while (n < 0 && errno == EINTR);
+
+  if (n == (ssize_t) len)
+    {
+      if (fstat (fd, &st) == 0 && st.st_size > (off_t) len &&
+          ftruncate (fd, (off_t) len) != 0)
+        n = -1;
+    }
+  else if (n >= 0)
+    {
+      errno = EIO;  /* short write */
+      n = -1;
+    }
+
+  saved_errno = errno;
+  close (fd);
+  errno = saved_errno;
+  return n == (ssize_t) len;
+}
+
+static void
+iio_value_set (IioValue *v, double value)
+{
+  int raw = (int) lrint (value * 1000.0);
+  char text[32];
+
+  if (v->valid && v->raw == raw)
+    return;
+
+  g_snprintf (text, sizeof text, "%d\n", raw);
+  if (write_in_place (v->path, text))
+    {
+      v->raw = raw;
+      v->valid = TRUE;
+      v->warned = FALSE;
+      return;
+    }
+
+  v->valid = FALSE;
+  if (!v->warned)
+    {
+      g_warning ("sensord: write %s failed: %s", v->path, g_strerror (errno));
+      v->warned = TRUE;
+    }
+}
+
+static void
+iio_values_init (IioValue *values, guint n)
+{
+  for (guint i = 0; i < n; i++)
+    values[i].path = g_build_filename (iio_dir, values[i].name, NULL);
+}
+
+static void
+iio_values_free (IioValue *values, guint n)
+{
+  for (guint i = 0; i < n; i++)
+    g_clear_pointer (&values[i].path, g_free);
 }
 
 static id
@@ -233,10 +384,13 @@ objc_call_vec3 (id obj, const char *sel)
 static gboolean
 poll_motion (gpointer user_data)
 {
+  gboolean got_accel = FALSE;
+  gboolean got_mag = FALSE;
+
   (void) user_data;
 
   @autoreleasepool {
-    if (has_accel)
+    if (accel_stream.running)
       {
         id d = objc_call_id (motion_manager, "accelerometerData");
         if (d)
@@ -245,22 +399,11 @@ poll_motion (gpointer user_data)
             accel_x = v.x;
             accel_y = v.y;
             accel_z = v.z;
+            got_accel = TRUE;
           }
       }
 
-    if (has_gyro)
-      {
-        id d = objc_call_id (motion_manager, "gyroData");
-        if (d)
-          {
-            MotionVec3 v = objc_call_vec3 (d, "rotationRate");
-            gyro_x = v.x;
-            gyro_y = v.y;
-            gyro_z = v.z;
-          }
-      }
-
-    if (has_mag)
+    if (mag_stream.running)
       {
         id d = objc_call_id (motion_manager, "magnetometerData");
         if (d)
@@ -269,11 +412,15 @@ poll_motion (gpointer user_data)
             mag_x = v.x;
             mag_y = v.y;
             mag_z = v.z;
+            got_mag = TRUE;
           }
       }
   }
 
-  if (has_accel)
+  /* Only a real sample moves the orientation. Right after a claim starts the
+   * stream, CoreMotion has no data yet, and the old zeros would read as
+   * "normal". */
+  if (got_accel)
     {
       const char *next = orientation_from_accel (accel_x, accel_y, accel_z);
       if (strcmp (next, orientation) != 0)
@@ -281,14 +428,25 @@ poll_motion (gpointer user_data)
           orientation = next;
           emit_property_change_string ("AccelerometerOrientation", orientation);
         }
+
+      iio_value_set (&iio_accel[0], accel_x);
+      iio_value_set (&iio_accel[1], accel_y);
+      iio_value_set (&iio_accel[2], accel_z);
     }
 
-  update_iio_values ();
+  if (got_mag)
+    {
+      iio_value_set (&iio_magn[0], mag_x);
+      iio_value_set (&iio_magn[1], mag_y);
+      iio_value_set (&iio_magn[2], mag_z);
+    }
+
   return G_SOURCE_CONTINUE;
 }
 
+/* Probe what the hardware has. Nothing starts until a client claims it. */
 static void
-start_coremotion (void)
+init_coremotion (void)
 {
   @autoreleasepool {
     Class cls = objc_getClass ("CMMotionManager");
@@ -302,31 +460,148 @@ start_coremotion (void)
     has_accel = objc_call_bool (motion_manager, "isAccelerometerAvailable");
     has_gyro = objc_call_bool (motion_manager, "isGyroAvailable");
     has_mag = objc_call_bool (motion_manager, "isMagnetometerAvailable");
-
-    if (has_accel)
-      {
-        objc_call_void_double (motion_manager, "setAccelerometerUpdateInterval:",
-                               POLL_MS / 1000.0);
-        objc_call_void (motion_manager, "startAccelerometerUpdates");
-      }
-    if (has_gyro)
-      {
-        objc_call_void_double (motion_manager, "setGyroUpdateInterval:",
-                               POLL_MS / 1000.0);
-        objc_call_void (motion_manager, "startGyroUpdates");
-      }
-    if (has_mag)
-      {
-        objc_call_void_double (motion_manager, "setMagnetometerUpdateInterval:",
-                               POLL_MS / 1000.0);
-        objc_call_void (motion_manager, "startMagnetometerUpdates");
-      }
   }
 
   g_message ("sensord: CoreMotion accel=%s gyro=%s magnetometer=%s",
              has_accel ? "yes" : "no",
              has_gyro ? "yes" : "no",
              has_mag ? "yes" : "no");
+}
+
+static void
+motion_stream_set_running (MotionStream *s, gboolean run)
+{
+  if (s->running == run)
+    return;
+
+  @autoreleasepool {
+    if (run)
+      {
+        objc_call_void_double (motion_manager, s->interval_sel, POLL_MS / 1000.0);
+        objc_call_void (motion_manager, s->start_sel);
+      }
+    else
+      {
+        objc_call_void (motion_manager, s->stop_sel);
+      }
+  }
+
+  s->running = run;
+
+  /* The first sample after a start always lands on disk, even if something
+   * else touched the file while the stream was stopped. */
+  if (run)
+    for (guint i = 0; i < 3; i++)
+      s->iio[i].valid = FALSE;
+
+  g_message ("sensord: %s updates %s", s->label, run ? "started" : "stopped");
+}
+
+/* Make the running streams and the poll timer match the claims held. */
+static void
+sync_sensors (void)
+{
+  gboolean polling;
+
+  motion_stream_set_running (&accel_stream,
+                             has_accel && claim_totals[CLAIM_ACCEL] > 0);
+  motion_stream_set_running (&mag_stream,
+                             has_mag && claim_totals[CLAIM_COMPASS] > 0);
+
+  polling = accel_stream.running || mag_stream.running;
+  if (polling && poll_id == 0)
+    {
+      poll_id = g_timeout_add (POLL_MS, poll_motion, NULL);
+    }
+  else if (!polling && poll_id != 0)
+    {
+      g_source_remove (poll_id);
+      poll_id = 0;
+    }
+}
+
+static void
+sensor_client_free (gpointer data)
+{
+  SensorClient *client = data;
+
+  if (client->watch_id != 0)
+    g_bus_unwatch_name (client->watch_id);
+  g_free (client);
+}
+
+/* Forget everything a client claimed. The caller runs sync_sensors(). */
+static void
+client_drop (const char *name)
+{
+  SensorClient *client = g_hash_table_lookup (clients, name);
+
+  if (!client)
+    return;
+
+  for (int kind = 0; kind < N_CLAIM_KINDS; kind++)
+    claim_totals[kind] -= client->claims[kind];
+  g_hash_table_remove (clients, name);
+}
+
+static void
+client_vanished (GDBusConnection *connection, const char *name, gpointer user_data)
+{
+  (void) connection;
+  (void) user_data;
+
+  if (!g_hash_table_contains (clients, name))
+    return;
+
+  g_message ("sensord: client %s left the bus, dropping its claims", name);
+  client_drop (name);
+  sync_sensors ();
+}
+
+static void
+client_claim (GDBusConnection *connection, const char *sender, int kind)
+{
+  const char *key = sender ? sender : "";
+  SensorClient *client = g_hash_table_lookup (clients, key);
+
+  if (!client)
+    {
+      client = g_new0 (SensorClient, 1);
+      g_hash_table_insert (clients, g_strdup (key), client);
+      /* A peer-to-peer connection has no sender to watch. */
+      if (sender)
+        client->watch_id =
+          g_bus_watch_name_on_connection (connection, sender,
+                                          G_BUS_NAME_WATCHER_FLAGS_NONE,
+                                          NULL, client_vanished, NULL, NULL);
+    }
+
+  client->claims[kind]++;
+  claim_totals[kind]++;
+  sync_sensors ();
+}
+
+static void
+client_release (const char *sender, int kind)
+{
+  const char *key = sender ? sender : "";
+  SensorClient *client = g_hash_table_lookup (clients, key);
+  gboolean holds_any = FALSE;
+
+  /* Releasing a claim this client never made is a no-op, as in
+   * iio-sensor-proxy. It must not cancel another client's claim. */
+  if (!client || client->claims[kind] == 0)
+    return;
+
+  client->claims[kind]--;
+  claim_totals[kind]--;
+
+  for (int k = 0; k < N_CLAIM_KINDS; k++)
+    holds_any = holds_any || client->claims[k] > 0;
+  if (!holds_any)
+    g_hash_table_remove (clients, key);
+
+  sync_sensors ();
 }
 
 static void
@@ -339,30 +614,28 @@ handle_method_call (GDBusConnection       *connection,
                     GDBusMethodInvocation *invocation,
                     void                  *user_data)
 {
-  (void) connection;
-  (void) sender;
+  int kind;
+
   (void) object_path;
   (void) interface_name;
   (void) parameters;
   (void) user_data;
 
-  if (g_str_equal (method_name, "ClaimAccelerometer"))
-    accel_claims++;
-  else if (g_str_equal (method_name, "ReleaseAccelerometer"))
-    accel_claims = MAX (0, accel_claims - 1);
-  else if (g_str_equal (method_name, "ClaimLight"))
-    light_claims++;
-  else if (g_str_equal (method_name, "ReleaseLight"))
-    light_claims = MAX (0, light_claims - 1);
-  else if (g_str_equal (method_name, "ClaimProximity"))
-    prox_claims++;
-  else if (g_str_equal (method_name, "ReleaseProximity"))
-    prox_claims = MAX (0, prox_claims - 1);
-  else if (g_str_equal (method_name, "ClaimCompass"))
-    compass_claims++;
-  else if (g_str_equal (method_name, "ReleaseCompass"))
-    compass_claims = MAX (0, compass_claims - 1);
-  else
+  for (kind = 0; kind < N_CLAIM_KINDS; kind++)
+    {
+      if (g_str_equal (method_name, claim_methods[kind].claim))
+        {
+          client_claim (connection, sender, kind);
+          break;
+        }
+      if (g_str_equal (method_name, claim_methods[kind].release))
+        {
+          client_release (sender, kind);
+          break;
+        }
+    }
+
+  if (kind == N_CLAIM_KINDS)
     {
       g_dbus_method_invocation_return_error (invocation,
                                              G_DBUS_ERROR,
@@ -450,6 +723,15 @@ on_name_lost (GDBusConnection *connection, const char *name, void *user_data)
   (void) connection;
   (void) user_data;
   g_warning ("sensord: lost %s (bus gone or another provider won)", name);
+
+  /* Clients follow the name to its new owner, or went away with the bus, so
+   * nothing will release the claims they made here. Drop them all. */
+  if (g_hash_table_size (clients) > 0)
+    {
+      g_hash_table_remove_all (clients);
+      memset (claim_totals, 0, sizeof claim_totals);
+      sync_sensors ();
+    }
 }
 
 int
@@ -468,9 +750,13 @@ main (int argc, char **argv)
     sys_root = g_strdup ((env_sys && *env_sys) ? env_sys : DEFAULT_SYS_ROOT);
     iio_dir = g_build_filename (sys_root, "bus", "iio", "devices",
                                 IIO_DEVICE, NULL);
+    iio_values_init (iio_accel, G_N_ELEMENTS (iio_accel));
+    iio_values_init (iio_magn, G_N_ELEMENTS (iio_magn));
+    clients = g_hash_table_new_full (g_str_hash, g_str_equal,
+                                     g_free, sensor_client_free);
 
     ensure_iio_tree ();
-    start_coremotion ();
+    init_coremotion ();
 
     sensor_node_info = g_dbus_node_info_new_for_xml (sensor_xml, &error);
     if (!sensor_node_info)
@@ -489,14 +775,16 @@ main (int argc, char **argv)
                                NULL,
                                NULL);
 
-    g_timeout_add (POLL_MS, poll_motion, NULL);
-
+    /* No poll timer here: sync_sensors() starts one on the first claim. */
     loop = g_main_loop_new (NULL, FALSE);
     g_main_loop_run (loop);
 
     g_bus_unown_name (owner_id);
     g_main_loop_unref (loop);
     g_dbus_node_info_unref (sensor_node_info);
+    g_hash_table_destroy (clients);
+    iio_values_free (iio_accel, G_N_ELEMENTS (iio_accel));
+    iio_values_free (iio_magn, G_N_ELEMENTS (iio_magn));
     g_free (iio_dir);
     g_free (sys_root);
   }
