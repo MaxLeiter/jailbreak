@@ -12723,18 +12723,18 @@ Native Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.json
 Homepage: https://repo.maxleiter.com
 
 Package: xios-audio-server
-Version: 0.1.1
+Version: 0.1.2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: sound
 Priority: optional
 Description: CoreAudio bridge daemon for Xios desktop audio
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/xios-audio-server_0.1.1_iphoneos-arm64.deb
-Size: 9028
-MD5sum: f42aeb1ebe1d8aab1a8812ae846f13da
-SHA1: 1fda7deb5e5c69826ab17c03ec1f24b62c7b8170
-SHA256: fc3375778d9e250cf96aa6d065cad1edda77e34ae1891b0aaa83fe7e1fc42334
+Filename: debs/xios-audio-server_0.1.2_iphoneos-arm64.deb
+Size: 10220
+MD5sum: 383c5dee43550156d3377c6179d0a7ce
+SHA1: b0402c497a14dae24e0eba63bc8dfb759a87e932
+SHA256: 477e95774a47f6cda0809c174df0073948c54bfdc9c55156489fc52633791b05
 Icon: https://repo.maxleiter.com/icons/xios-audio-server.png
 Depiction: https://repo.maxleiter.com/depictions/xios-audio-server.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-audio-server.json
@@ -12828,7 +12828,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-fhs
 Name: Xios filesystem + hardware bridge
-Version: 1.0.5
+Version: 1.0.6
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -12837,11 +12837,11 @@ Provides: xios-hwbridge, xios-sensor-bridge
 Section: X11
 Priority: optional
 Description: Standard Linux paths + hardware bridges for the Xios desktop
-Filename: debs/xios-fhs_1.0.5_iphoneos-arm64.deb
-Size: 20612
-MD5sum: fc7d34d678ef9fd66de20c127364c025
-SHA1: 96b3c730109668b62081bddc87d7c0b7ba934d94
-SHA256: 50fd63e4b799c54a9c49792a94edf21be19ea24c4035efda479795c67b969ce1
+Filename: debs/xios-fhs_1.0.6_iphoneos-arm64.deb
+Size: 22054
+MD5sum: e7355506eb8c3711a2f30ffdaaf17d76
+SHA1: 5572be5c28e79611da59ec76a7c4a13e57768a7b
+SHA256: 701239f5db5ea75b6b4abac4c025070791abe39e9b002700d4ad1c1793f55ce3
 Icon: https://repo.maxleiter.com/icons/xios-fhs.png
 Depiction: https://repo.maxleiter.com/depictions/xios-fhs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-fhs.json
@@ -12961,7 +12961,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.json
 Homepage: https://repo.maxleiter.com
 
 Package: xios-media-server
-Version: 0.1.0
+Version: 0.1.1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -12969,11 +12969,11 @@ Section: utils
 Priority: optional
 Description: Camera and microphone bridge daemon for Xios desktop sessions
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/xios-media-server_0.1.0_iphoneos-arm64.deb
-Size: 12156
-MD5sum: 8a241df74dd4e90175e5c80f53f3fddd
-SHA1: a0f884c5305f41cb7e1709b0c0a33761f0e81381
-SHA256: 3acd719b093bf3b76f13ffd407879806ff5777f0efb7430a6706615b71f7a3bf
+Filename: debs/xios-media-server_0.1.1_iphoneos-arm64.deb
+Size: 13612
+MD5sum: b1cbb5de15695f508dc68fef46b2f591
+SHA1: 3452a0688220f16123168d2111a7bfcb87ce3e24
+SHA256: 75a4a4f2eb0c9d6d3d58e33a0442a43e9ff87d0b235fcd2b67da3bbc11f6deba
 Icon: https://repo.maxleiter.com/icons/xios-media-server.png
 Depiction: https://repo.maxleiter.com/depictions/xios-media-server.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-media-server.json

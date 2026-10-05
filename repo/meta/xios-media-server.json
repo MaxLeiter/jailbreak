@@ -1,0 +1,9 @@
+{
+  "tagline": "Camera and microphone bridge for Xios",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "description": "**xios-media-server** runs **xios-mediad**, which gives Xios desktop apps access to the iPad's microphone (and optionally the camera) over local sockets.\n\nYou normally don't install this directly. The Xios desktop flavors pull it in.",
+  "changelog": [
+    { "version": "0.1.1", "date": "2026-10-05", "notes": "- The microphone now turns on only while an app is connected to it, and turns off when the last one disconnects. The camera works the same way\n- Before this, the microphone started at launch and stayed on with nothing listening, which also kept the iPad awake" }
+  ]
+}
