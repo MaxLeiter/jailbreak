@@ -1,0 +1,10 @@
+# Apple binaries, plists, extracted dylibs, and disassembly copied off the device /
+# derived from the dyld shared cache for analysis. Not redistributable; keep out of git.
+# Only calaccessd-bfu-wakes.md (in the parent _research dir) is tracked.
+bin/
+plists/
+dylibs/
+dis/
+*.a2s
+*.dylib
+*.o

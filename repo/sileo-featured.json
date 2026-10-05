@@ -69,6 +69,11 @@
       "url": "https://repo.maxleiter.com/banners/com.max.autolockpicker.png"
     },
     {
+      "title": "Hush",
+      "package": "com.max.hush",
+      "url": "https://repo.maxleiter.com/banners/com.max.hush.png"
+    },
+    {
       "title": "Kiosk Mode",
       "package": "com.max.kioskmode-app",
       "url": "https://repo.maxleiter.com/banners/com.max.kioskmode-app.png"

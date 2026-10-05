@@ -1,0 +1,9 @@
+{
+  "tagline": "Linux paths and hardware bridges for Xios",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "description": "**xios-fhs** sets up the standard Linux filesystem paths the Xios desktop expects, plus small daemons that expose iPad hardware to Linux apps: battery and backlight through **xios-hwbridged**, and the motion sensors through **xios-sensord** (an iio-sensor-proxy stand-in, used by GNOME for auto-rotate).\n\nYou normally don't install this directly. The Xios desktop flavors pull it in.",
+  "changelog": [
+    { "version": "1.0.6", "date": "2026-10-05", "notes": "- xios-sensord now reads the motion sensors only while an app asks for them, and writes a value only when it changes\n- Before this, it polled the sensors ten times a second around the clock and rewrote nine files on every poll, syncing each one to flash. On my iPad that was about 29 GB of flash writes a day and a fifth of a CPU core, even with no desktop running\n- Sensor claims are now tracked per app, so an app that crashes no longer leaves a sensor running" }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "tagline": "Desktop audio output for Xios",
+  "developer": "Max",
+  "homepage": "https://repo.maxleiter.com",
+  "description": "**xios-audio-server** runs **xios-audiod**, the bridge that plays Xios desktop audio through the iPad's speaker. PulseAudio sends desktop sound to it over a local socket, and it hands that to CoreAudio.\n\nYou normally don't install this directly. The Xios desktop flavors pull it in.",
+  "changelog": [
+    { "version": "0.1.2", "date": "2026-10-05", "notes": "- Only keeps the iPad's audio output open while something is actually playing, and closes it about 5 seconds after the sound stops\n- Before this, it held the output open from launch onward, which stopped the iPad from ever going to sleep. On my iPad that meant roughly four times the normal idle battery drain" }
+  ]
+}

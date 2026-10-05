@@ -1,0 +1,4 @@
+# Apple firmware files pulled from current public iOS/iPadOS OTAs for static
+# comparison against 17.6.1. Not redistributable; keep out of git.
+*
+!.gitignore
