@@ -13,10 +13,31 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
+#include <time.h>
 #include <unistd.h>
 
 #define RING_FRAMES (XIOS_AUDIO_DEFAULT_RATE * 4)
 #define MAX_PAYLOAD (1024u * 1024u)
+
+/* Output lifecycle. The RemoteIO unit and the AVAudioSession are only up while
+ * clients are actually sending audio. A running output IO is what makes
+ * audiomxd hold a PreventUserIdleSystemSleep assertion on our behalf, so an
+ * always-on unit rendering silence kept the iPad out of idle sleep for days.
+ *
+ * The decision is made on data flow, not on client count: module-xios-sink
+ * stays connected while PulseAudio has the sink suspended, it just stops
+ * writing. So the unit starts on the first non-empty DATA after idle and stops
+ * once no client has sent a frame for IDLE_STOP_SEC. */
+#define IDLE_STOP_SEC 5u
+#define IDLE_STOP_NS ((uint64_t)IDLE_STOP_SEC * 1000000000ull)
+/* Audio that arrives while the unit is starting is fresh and is kept, so a
+ * short UI sound plays from its first sample. But a slow or retried start must
+ * not turn into a burst or a long-lived delay, so at start each client ring is
+ * trimmed (drop-oldest, like the ring itself) to at most this much backlog. */
+#define START_BACKLOG_FRAMES (XIOS_AUDIO_DEFAULT_RATE / 4) /* 250 ms */
+/* Backoff between start attempts while audio keeps arriving and starts fail. */
+#define START_RETRY_MIN_MS 1000u
+#define START_RETRY_MAX_MS 30000u
 
 typedef struct client {
     int fd;
@@ -36,13 +57,30 @@ static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static client *g_clients;
 static volatile sig_atomic_t g_stop;
 static volatile sig_atomic_t g_dump_stats;
+/* Created, started, stopped and disposed only by unit_thread (and by main()
+ * after unit_thread has been joined). */
 static AudioComponentInstance g_unit;
+
+/* Unit lifecycle state, guarded by g_lock. Client threads never start or stop
+ * the unit themselves: they note that data arrived and wake unit_thread, so a
+ * slow session activation can never stall a socket reader (module-xios-sink
+ * drops blocks, or reconnects with a 2 s gap, when its writes back up). */
+static pthread_cond_t g_unit_cond = PTHREAD_COND_INITIALIZER;
+static int g_unit_running;   /* RemoteIO started (session activated) */
+static int g_unit_wanted;    /* audio arrived while stopped: start requested */
+static int g_unit_quit;
+static uint64_t g_last_data_ns; /* now_ns() of the last non-empty DATA */
 
 /* Render diagnostics, updated inside the (locked) render callback. A nonzero,
  * growing render_calls count is the definitive proof that the HAL is actually
  * pulling audio from us, independent of whether anyone is listening. */
 static uint64_t g_render_calls;
 static uint64_t g_render_frames;
+
+/* Uptime clock (mach_absolute_time); only ever compared with itself. */
+static uint64_t now_ns(void) {
+    return clock_gettime_nsec_np(CLOCK_UPTIME_RAW);
+}
 
 static void on_signal(int sig) {
     (void)sig;
@@ -58,13 +96,15 @@ static void dump_stats(void) {
     pthread_mutex_lock(&g_lock);
     uint64_t calls = g_render_calls;
     uint64_t frames = g_render_frames;
+    int running = g_unit_running;
     int clients = 0;
     for (client *c = g_clients; c; c = c->next) clients++;
     pthread_mutex_unlock(&g_lock);
     fprintf(stderr,
-            "xios-audiod: stats render_calls=%llu render_frames=%llu (~%.2fs) clients=%d\n",
+            "xios-audiod: stats render_calls=%llu render_frames=%llu (~%.2fs) clients=%d unit=%s\n",
             (unsigned long long)calls, (unsigned long long)frames,
-            (double)frames / (double)XIOS_AUDIO_DEFAULT_RATE, clients);
+            (double)frames / (double)XIOS_AUDIO_DEFAULT_RATE, clients,
+            running ? "running" : "stopped");
 }
 
 static int read_all(int fd, void *buf, size_t len) {
@@ -131,6 +171,18 @@ static int ring_pop_stereo(client *c, float *left, float *right) {
     return 1;
 }
 
+/* Drop the oldest frames of every client ring so at most max_frames remain.
+ * max_frames == 0 empties them. Caller holds g_lock. */
+static void rings_trim_locked(size_t max_frames) {
+    for (client *c = g_clients; c; c = c->next) {
+        if (c->frames > max_frames) {
+            size_t drop = c->frames - max_frames;
+            c->read_frame = (c->read_frame + drop) % RING_FRAMES;
+            c->frames = max_frames;
+        }
+    }
+}
+
 static float clamp1(float v) {
     if (v > 1.0f) return 1.0f;
     if (v < -1.0f) return -1.0f;
@@ -177,18 +229,35 @@ static void ingest_f32(client *c, const float *samples, size_t frames) {
 
 static int ingest_payload(client *c, const void *payload, size_t size) {
     if (!c->rate || !c->channels || c->channels > 8) return -1;
-    pthread_mutex_lock(&g_lock);
+    size_t frame_bytes;
     if (c->format == XIOS_AUDIO_FMT_S16LE) {
-        size_t frame_bytes = sizeof(int16_t) * c->channels;
-        ingest_s16(c, (const int16_t *)payload, size / frame_bytes);
+        frame_bytes = sizeof(int16_t) * c->channels;
     } else if (c->format == XIOS_AUDIO_FMT_F32LE) {
-        size_t frame_bytes = sizeof(float) * c->channels;
-        ingest_f32(c, (const float *)payload, size / frame_bytes);
+        frame_bytes = sizeof(float) * c->channels;
     } else {
-        pthread_mutex_unlock(&g_lock);
         return -1;
     }
+    size_t frames = size / frame_bytes;
+    if (!frames) return 0; /* nothing playable: not activity */
+
+    int wake = 0;
+    pthread_mutex_lock(&g_lock);
+    g_last_data_ns = now_ns();
+    if (!g_unit_running && !g_unit_wanted) {
+        /* First audio after idle. Whatever is still queued in the rings was
+         * left over from before the unit stopped; drop it so the restart can't
+         * open with a burst of stale audio, then ask unit_thread to start. */
+        rings_trim_locked(0);
+        g_unit_wanted = 1;
+        wake = 1;
+    }
+    if (c->format == XIOS_AUDIO_FMT_S16LE) {
+        ingest_s16(c, (const int16_t *)payload, frames);
+    } else {
+        ingest_f32(c, (const float *)payload, frames);
+    }
     pthread_mutex_unlock(&g_lock);
+    if (wake) pthread_cond_signal(&g_unit_cond);
     return 0;
 }
 
@@ -365,6 +434,129 @@ static void stop_audio_unit(void) {
     g_unit = NULL;
 }
 
+/* Session first (Playback, so neither the mute switch nor the screen lock
+ * silences desktop audio), then RemoteIO. unit_thread only, without g_lock:
+ * the render callback takes g_lock. Returns 0 once the unit is running. */
+static int output_start(char *route, size_t route_len) {
+    /* Best effort, as before: a failed activation is not fatal, since the
+     * default category can still produce sound; we only lose mute-switch and
+     * lock-screen robustness. The helper logs the failure. */
+    int session_ok = xios_audio_session_activate(route, route_len) == 0;
+    if (!session_ok) snprintf(route, route_len, "n/a, session inactive");
+    if (start_audio_unit() < 0) {
+        stop_audio_unit(); /* dispose whatever got created */
+        if (session_ok) xios_audio_session_deactivate();
+        return -1;
+    }
+    return 0;
+}
+
+/* Stop the IO before deactivating: setActive:NO fails as busy while IO runs. */
+static void output_stop(void) {
+    stop_audio_unit();
+    xios_audio_session_deactivate();
+}
+
+static void unit_wait_locked(uint64_t ns) {
+    struct timespec rel;
+    rel.tv_sec = (time_t)(ns / 1000000000ull);
+    rel.tv_nsec = (long)(ns % 1000000000ull);
+    pthread_cond_timedwait_relative_np(&g_unit_cond, &g_lock, &rel);
+}
+
+/* The one thread that starts and stops the output. Holds g_lock only while
+ * deciding, never across a CoreAudio/AVAudioSession call. */
+static void *unit_thread(void *arg) {
+    (void)arg;
+    sigset_t block;
+    sigemptyset(&block);
+    sigaddset(&block, SIGINT);
+    sigaddset(&block, SIGTERM);
+    sigaddset(&block, SIGUSR1);
+    pthread_sigmask(SIG_BLOCK, &block, NULL);
+
+    unsigned retry_ms = 0;
+    uint64_t retry_at = 0;
+
+    pthread_mutex_lock(&g_lock);
+    while (!g_unit_quit) {
+        uint64_t now = now_ns();
+
+        if (g_unit_running) {
+            uint64_t idle_at = g_last_data_ns + IDLE_STOP_NS;
+            if (now < idle_at) {
+                unit_wait_locked(idle_at - now);
+                continue;
+            }
+            uint64_t last = g_last_data_ns;
+            pthread_mutex_unlock(&g_lock);
+            output_stop();
+            pthread_mutex_lock(&g_lock);
+            g_unit_running = 0;
+            if (g_last_data_ns != last) {
+                /* Audio arrived while the unit was stopping. It is fresh, so
+                 * keep it and go straight back up. */
+                g_unit_wanted = 1;
+            } else {
+                rings_trim_locked(0);
+            }
+            pthread_mutex_unlock(&g_lock);
+            fprintf(stderr,
+                    "xios-audiod: unit stopped: no client audio for %u s, session deactivated\n",
+                    IDLE_STOP_SEC);
+            pthread_mutex_lock(&g_lock);
+            continue;
+        }
+
+        if (!g_unit_wanted) {
+            pthread_cond_wait(&g_unit_cond, &g_lock);
+            continue;
+        }
+        if (now - g_last_data_ns >= IDLE_STOP_NS) {
+            /* Only reachable after failed starts: the audio that asked for the
+             * unit has gone quiet, so wait for the next audio to try again. */
+            g_unit_wanted = 0;
+            retry_ms = 0;
+            retry_at = 0;
+            continue;
+        }
+        if (now < retry_at) {
+            unit_wait_locked(retry_at - now);
+            continue;
+        }
+
+        pthread_mutex_unlock(&g_lock);
+        char route[64] = "unknown";
+        uint64_t t0 = now_ns();
+        int ok = output_start(route, sizeof(route)) == 0;
+        unsigned long long took_ms = (unsigned long long)((now_ns() - t0) / 1000000ull);
+        pthread_mutex_lock(&g_lock);
+        if (ok) {
+            g_unit_running = 1;
+            g_unit_wanted = 0;
+            retry_ms = 0;
+            retry_at = 0;
+            /* Keep the audio that queued up during the start, minus any
+             * excess a slow or retried start piled up. */
+            rings_trim_locked(START_BACKLOG_FRAMES);
+        } else {
+            retry_ms = retry_ms ? retry_ms * 2 : START_RETRY_MIN_MS;
+            if (retry_ms > START_RETRY_MAX_MS) retry_ms = START_RETRY_MAX_MS;
+            retry_at = now_ns() + (uint64_t)retry_ms * 1000000ull;
+        }
+        pthread_mutex_unlock(&g_lock);
+        if (ok) {
+            fprintf(stderr, "xios-audiod: unit started in %llu ms (route=%s)\n", took_ms, route);
+        } else {
+            fprintf(stderr, "xios-audiod: unit start failed, retrying in %u ms while audio arrives\n",
+                    retry_ms);
+        }
+        pthread_mutex_lock(&g_lock);
+    }
+    pthread_mutex_unlock(&g_lock);
+    return NULL;
+}
+
 static int make_listener(const char *path) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) return -1;
@@ -433,16 +625,17 @@ int main(int argc, char **argv) {
         perror("xios-audiod: listen");
         return 1;
     }
-    /* Best effort: a failed session activation should not be fatal, since the
-     * default category can still produce sound; we just lose mute-switch and
-     * lock-screen robustness. Log and continue. */
-    xios_audio_session_activate();
-    if (start_audio_unit() < 0) {
+    /* No session and no RemoteIO yet: unit_thread brings them up on the first
+     * client audio and takes them down again after IDLE_STOP_SEC without any. */
+    pthread_t unit_th;
+    if (pthread_create(&unit_th, NULL, unit_thread, NULL) != 0) {
+        fprintf(stderr, "xios-audiod: cannot create unit thread\n");
         close(listen_fd);
         unlink(sock);
         return 1;
     }
-    fprintf(stderr, "xios-audiod: listening on %s\n", sock);
+    fprintf(stderr, "xios-audiod: listening on %s (output idle until a client sends audio, "
+                    "stops after %u s without any)\n", sock, IDLE_STOP_SEC);
 
     while (!g_stop) {
         int fd = accept(listen_fd, NULL, NULL);
@@ -470,7 +663,17 @@ int main(int argc, char **argv) {
 
     close(listen_fd);
     unlink(sock);
-    stop_audio_unit();
+
+    pthread_mutex_lock(&g_lock);
+    g_unit_quit = 1;
+    pthread_cond_signal(&g_unit_cond);
+    pthread_mutex_unlock(&g_lock);
+    pthread_join(unit_th, NULL);
+    if (g_unit_running) {
+        output_stop();
+        g_unit_running = 0;
+        fprintf(stderr, "xios-audiod: unit stopped: shutting down, session deactivated\n");
+    }
     return 0;
 }
 
