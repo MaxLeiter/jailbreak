@@ -3,18 +3,80 @@
 ## Ownership
 The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the iPad via Metal, streams UIKit touch/keyboard back over a unix socket, and hosts the in-app session picker. This is the MOST ACTIVE bug area.
 
-## Key files
-- `x11/apps/Xios/Sources/XScreen.swift` — the main view: present (`render()`), input/touch mapping (`fitTransform()`/`contentRect()`/`framebufferFloatPoint()`), surface adopt (`adoptIOSurface()`), config (`loadConfig()`), the ~1.5s watchdog (`ddxConfigChanged()` in `tick()`), gesture-only session picker.
-- `x11/apps/Xios/Sources/XSurface.c` — the DDX client: IOSurface mach-port handoff, typed HELLO/DIRTY framing, `drain_typed`.
-- `x11/apps/Xios/Sources/IoscInput.c` — input wire sender (fb-pixel coords).
-- `x11/apps/Xios/Sources/Shaders.metal`, `NativeClient.c` (native-flavor).
-- Wire contract: `x11/wayland/xios_input_socket.h` (24-byte record; MOTION/TOUCH x,y = absolute OUTPUT-pixel position 0..fbW × 0..fbH).
-- Build → `x11/apps/Xios/build/Build/Products/Release-iphoneos/Xios.app`.
+## Key files (v2 layout, `x11/apps/Xios/Sources/`)
+The app was rewritten for Xios v2 (see `x11/docs/xios-v2-design.md`, `x11/apps/Xios/INVARIANTS.md`).
+`XScreen.swift` (5.3k lines) is gone; history below that mentions it describes the v1 app.
+- `App/` — `AppDelegate`, `RootViewController` (launcher <-> desktop; the desktop view only lives
+  in the hierarchy while a desktop is presented), `DesktopViewController` (holds the PresentView
+  and the switcher sheet).
+- `Core/` — `SessionRegistry` (discovers desktops: global `xios.json` + `xios-session-status.json`
+  as slot `main`, `xios-displays.d/*.json` as slots; kqueue vnode watches + 2 s fallback poll,
+  off main, torn reads retried), `FileWatcher`, `SessionParsing` (pure), `Models` (SessionInfo,
+  SessionState, presets), `IOSCDClient` + `IOSCDProtocol` (ioscd request lines, APPS_LIST),
+  `Paths`, `Socket`, `Concurrency` (Epoch tokens).
+- `Session/` — `SessionManager` (owns every connection, `present`/`goHome`, ioscd verbs),
+  `SessionConnection` (one per desktop; holds surface/input/clipboard/sysint ONLY while
+  presented; immediate reconnect on stream loss), `SurfaceLink` (XSurface wrapper, fences, one
+  texture per IOSurface id, thumbnails), `InputLink`, `ClipboardLink`, `SysIntLink` (handle
+  wrappers over the C clients).
+- `Present/` — `PresentView` (CAMetalLayer, tick, status pill, owns input), `Renderer` (Metal
+  pipeline, MetalFX, thumbnail pass), `FitTransform` (+ `ViewportState`, pure), `CursorPlane`,
+  `FrameClock` (the one `setRange` pacing seam), `XiosUpscale`, `Shaders.metal`.
+- `Input/` — `TouchRouter` (touches, Pencil, mouse buttons), `LaneTracker` (pure, per-gesture lane),
+  `Gestures` (all recognizers), `KeyboardInput` (OSK policy, modifier row).
+- `Integration/` — `SystemIntegration` (volume, brightness, appearance, rotation, haptics; one
+  process-wide observer set, per-desktop wire), `A11yBridge`, `CameraBroker` (off unless flagged).
+- `UI/` — `LauncherViewController` (card grid), `NewDesktopViewController` (+ change size),
+  `SwitcherViewController`, `AppPickerViewController` (ioscd APPS_LIST only), `KeyPadViewController`,
+  `SettingsViewController` (render scale, diagnostics, home screen apps, wallpaper, developer
+  presets), `StatusPill`, `Form`.
+- `Diagnostics/` — `StatusWriter` (every file write, background queue, on change only),
+  `DebugReport`.
+- `C/` — `XSurface.c` (DDX client, unchanged apart from `xsurface_surface_known`), `IoscInput.c`
+  (the iosc-host handle version), `IoscClipboard.c`, `SysIntClient.c` (handle-based).
+- `x11/apps/Xios/Tests/run.sh` — host-side checks (FitTransform, lane tracker, parsing, ioscd line
+  formats, the real file registry with kqueue). `swiftc` only, no Xcode project.
+- Wire contract: `x11/apps/shared/XiosProtocol.h`, `x11/wayland/xios_input_socket.h`.
+- Build -> `x11/apps/Xios/build/Build/Products/Release-iphoneos/Xios.app`.
 - Ships as a package, not a sideloaded app: `bin/package-app.sh x11/apps/Xios` wraps that
   bundle as `com.max.xios` (control at `x11/apps/Xios/packaging/control`, version from
   `project.yml`'s `MARKETING_VERSION`). `xios-core` depends on it, so the GNOME,
   KDE, and X11 fullscreen flavors pull it in. Native mode depends on
   `xios-runtime` and does not install this app.
+
+## v2 M1 status (2026-10-06): built, NOT yet device-tested
+Branch `claude/xios-v2-app`, `com.max.xios 0.2.0`. Builds Release-iphoneos clean; host checks pass.
+Waiting on the iPad (M0 owns it): the device plan below. Known follow-ups for M2:
+- ioscd `app` with a slot is accepted, but `xios-session app` picks the compositor from the GLOBAL
+  `xios-active-session` marker, so an app opened into a slot whose preset differs from the global
+  owner can land in the wrong compositor. Needs a slot-scoped marker.
+- APPS_LIST ids are `app_id` (StartupWMClass when set), while the `app` verb takes the desktop-FILE
+  id. They match for most entries; ioscd should accept the app id or list the file id.
+- "Change size" restarts the slot's preset at the new size (`SESSION <preset> ... <slot>`); the
+  `resize` verb restarts whatever owns the global marker, which is wrong for a slot.
+- Hidden desktops are not paused yet (M2): switching away detaches the app, but the compositor
+  keeps rendering.
+
+Device test plan (run when the iPad is handed over; home-screen tap, not `uiopen`):
+1. Launch: launcher shows Main (if a legacy session runs) plus any slots; thumbnails absent until
+   a desktop has been left once. `xios-status.txt` has a `session slot=...` line.
+2. Start KDE (+ card), watch the pill, tap in. Then start GNOME. Switch KDE <-> GNOME ten times via
+   the three-finger tap and via the launcher; no black flash beyond a repaint; `footprint -p`
+   Xios stays near 60 MB, no jetsam report.
+3. Rotate 10 times in each desktop: the last frame holds, no black, reconnect within ~0.3 s
+   (`iosc.log`: app client attached/dropped pairs, no dangling), taps still land after.
+4. Touch matrix on KDE: single tap, drag, still hold = right click (no context menu), two-finger
+   scroll/tap, pinch zoom, three-finger tap = switcher, top-edge pull = switcher; land a SECOND
+   finger mid-drag and confirm the drag continues (the lane-flip fix, `xios-touch.log`).
+5. Keyboard: swipe up from the bottom, OSK in a text field, Return/Tab, modifiers row; hardware
+   keyboard chords; mouse/trackpad hover, buttons, scroll, pinch.
+6. Clipboard both ways in each desktop after a switch (desktop wins if it replays).
+7. Open an app into the hidden desktop from the launcher card menu (slot path), and from the
+   switcher into the presented one.
+8. Kill one desktop out of band over SSH: its card turns "Stopped unexpectedly" within ~4 s with
+   Restart; killing the presented one returns home after ~3 s.
+9. Background and foreground the app in a desktop and at the launcher; reconnects, no stale frame.
+10. Settings: render scale chips, Debug copy/save, Home Screen Apps list + dry run, Shell wallpaper.
 
 ## Recent commits / status notes
 - 2026-07-29 display pacing + present-side MetalFX (device-tested; closes perf P0.4).

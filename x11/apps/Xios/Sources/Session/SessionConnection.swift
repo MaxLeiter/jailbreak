@@ -323,6 +323,9 @@ final class SessionConnection {
         manager.connectionWillRelease(self)
         input?.close()
         input = nil
+        // Redial now rather than on the 30-tick poll: iosc drops its clients on a
+        // rotation and the keyboard and pointer should not wait half a second.
+        connectInputIfNeeded()
         manager.connectionDidChange(self)
     }
 

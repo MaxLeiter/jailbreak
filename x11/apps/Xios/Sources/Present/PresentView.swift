@@ -192,6 +192,9 @@ final class PresentView: UIView {
 
     // MARK: status
 
+    /// One-off feedback while a desktop is on screen (the launcher's toast is hidden).
+    func showMessage(_ text: String) { pill.show(text, sticky: false, for: 4) }
+
     private func refreshStatus() {
         guard let conn = connection else { return }
         let surface = conn.surface

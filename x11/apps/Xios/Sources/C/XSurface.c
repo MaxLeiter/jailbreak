@@ -367,6 +367,11 @@ IOSurfaceRef xsurface_get(XSurfaceConn *c)
     struct xsurface_item *item = find_surface(c, c ? c->current_surface_id : 0);
     return item ? item->surface : NULL;
 }
+int xsurface_surface_known(XSurfaceConn *c, uint32_t id)
+{
+    return find_surface(c, id) != NULL;
+}
+
 uint32_t xsurface_surface_id(XSurfaceConn *c)
 {
     return c ? c->current_surface_id : 0;

@@ -59,8 +59,13 @@ final class LauncherViewController: UIViewController, UICollectionViewDelegate {
 
         manager.onSessionsChanged = { [weak self] in self?.scheduleRefresh() }
         manager.onMessage = { [weak self] text in
-            guard let self, self.view.window != nil else { return }
-            Toast.show(text, in: self.view)
+            guard let self else { return }
+            if self.manager.presented != nil {
+                // The launcher is hidden under a desktop: speak through its pill.
+                (self.manager.presenter as? PresentView)?.showMessage(text)
+            } else if self.view.window != nil {
+                Toast.show(text, in: self.view)
+            }
         }
         refresh()
     }

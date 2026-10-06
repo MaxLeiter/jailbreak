@@ -24,6 +24,10 @@ XSurfaceConn *xsurface_connect(const char *sock_path);
  * record (the primary output before the first DIRTY). */
 IOSurfaceRef xsurface_get(XSurfaceConn *c);
 uint32_t xsurface_surface_id(XSurfaceConn *c);
+/* Whether `id` still names a surface this connection holds (a dynamic surface
+ * disappears after its SURFACE_DROP). The app prunes its per-surface texture cache
+ * with this so a retired allocation is not pinned in memory. */
+int xsurface_surface_known(XSurfaceConn *c, uint32_t id);
 uint32_t xsurface_surface_flags(XSurfaceConn *c);
 int xsurface_surface_width(XSurfaceConn *c);
 int xsurface_surface_height(XSurfaceConn *c);

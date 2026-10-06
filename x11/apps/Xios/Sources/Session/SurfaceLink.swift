@@ -155,6 +155,8 @@ final class SurfaceLink {
         currentTexture = tex
         surfaceID = id
         surfaceFlags = flags
+        // A dropped dynamic surface must not stay pinned by a cached texture.
+        textureCache.removeAll { xsurface_surface_known(conn, $0.id) == 0 }
         if geometryChanged {
             // Buffers of another size can never be shown again: drop their textures
             // so a retired allocation is not pinned in memory by our cache.

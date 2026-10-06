@@ -16,6 +16,9 @@ final class RootViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
+        // Process-wide observers (volume, appearance, orientation) live on a view
+        // that is always in the window; the wire to each desktop is per session.
+        SystemIntegration.shared.install(on: view)
         launcher.navigationBar.prefersLargeTitles = true
         launcher.overrideUserInterfaceStyle = .dark
         let appearance = UINavigationBarAppearance()
@@ -49,6 +52,7 @@ final class RootViewController: UIViewController {
         addChild(controller)
         controller.didMove(toParent: self)
         manager.presenter = controller.presentView
+        A11yBridge.shared.startup(view: controller.presentView)
         return controller
     }
 
