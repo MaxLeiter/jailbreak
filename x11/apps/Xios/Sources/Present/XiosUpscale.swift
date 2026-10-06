@@ -77,7 +77,7 @@ enum XiosUpscaleMode: Equatable {
 }
 
 /// Owns the intermediate render target and the scaler, and rebuilds both when the
-/// geometry changes. One instance per XScreenView; `nil` plan means present directly.
+/// geometry changes. One instance per Renderer; `nil` plan means present directly.
 final class XiosUpscaler {
     /// Where the desktop is composited, and where MetalFX puts the result.
     struct Plan {

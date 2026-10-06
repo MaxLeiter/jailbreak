@@ -2,25 +2,25 @@ import UIKit
 import AVFoundation
 import MediaPlayer
 
-// Native-feel bundle: rotation, hardware volume, light/dark match, haptics.
-// Everything here observes iOS state and forwards it over SysIntClient.c's
-// config-bound sockets, so the view-side integration point is one line:
-//
-//     SystemIntegration.shared.install(on: self)      // in XScreenView.start()
-
+/// Native-feel bundle: rotation, hardware volume, light/dark match, haptics,
+/// desktop-driven volume and brightness.
+///
+/// The observers are process-wide (there is one iPad), but the wire is per desktop:
+/// everything is sent to the presented session's SysIntLink and re-sent whole when
+/// a different desktop takes over, so volume, dark mode and orientation apply to
+/// whichever desktop is on glass (design decision 3).
 final class SystemIntegration {
     static let shared = SystemIntegration()
-    private static let maxNativeEventsPerTick = 4
 
     private weak var hostView: UIView?
     private var installed = false
-    private var pump: Timer?
-    private var pumpTicks = 0
+    private var link: SysIntLink?
+    private var orientationTimer: Timer?
     private var volumeObservation: NSKeyValueObservation?
     private var volumeView: MPVolumeView?
     private weak var volumeSlider: UISlider?
     // A desktop volume request waiting for MPVolumeView to grow its slider: only
-    // the newest is kept, with one retry pending at a time.
+    // the newest is kept, with one retry pending at a time (invariant 52).
     private var pendingVolume: UInt32?
     private var volumeRetryScheduled = false
     private var volumeRetries = 0
@@ -33,8 +33,8 @@ final class SystemIntegration {
     private let impactHeavy = UIImpactFeedbackGenerator(style: .heavy)
     private let selectionTick = UISelectionFeedbackGenerator()
 
-    /// Invisible hierarchy member whose only job is to hear trait changes for
-    /// the light/dark mirror (registerForTraitChanges needs iOS 17; we target 16).
+    /// Invisible hierarchy member whose only job is to hear trait changes for the
+    /// light/dark mirror (registerForTraitChanges needs iOS 17; we target 16).
     private final class TraitSpyView: UIView {
         var onStyleChange: (() -> Void)?
         override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -51,34 +51,30 @@ final class SystemIntegration {
         installed = true
         hostView = view
 
-        // Appearance: spy view hears style flips; seed the current state now.
         let spy = TraitSpyView(frame: .zero)
         spy.isHidden = true
         spy.isUserInteractionEnabled = false
         spy.onStyleChange = { [weak self] in self?.sendAppearance() }
         view.addSubview(spy)
         traitSpy = spy
-        sendAppearance()
         installVolumeSetter(on: view)
 
-        // Volume: an active (ambient, mixing) session makes outputVolume KVO
-        // track the hardware buttons. .mixWithOthers so the PulseAudio daemon's
-        // playback in the other process is never interrupted.
+        // Volume: an active (ambient, mixing) session makes outputVolume KVO track
+        // the hardware buttons. .mixWithOthers so PulseAudio's playback in the
+        // other process is never interrupted (invariant 56).
         activateAudioSession()
         volumeObservation = AVAudioSession.sharedInstance().observe(
             \.outputVolume, options: [.initial, .new]
-        ) { session, _ in
-            // KVO runs on whichever thread AVAudioSession updated outputVolume
-            // from, which is not guaranteed to be main. SysIntClient.c's links
-            // are unsynchronized and the 20 Hz pump below closes and reopens
-            // them on main, so a send from here could write to a closed (or
-            // reused) fd. Hop to main like everything else that touches them.
+        ) { [weak self] session, _ in
+            // KVO runs on whichever thread AVAudioSession updated from. The link
+            // reference is main-owned, so hop to main (invariant 51); the link
+            // itself then serializes the send on its own queue.
             let v16 = UInt32((session.outputVolume * 65535).rounded())
-            DispatchQueue.main.async { sysint_send_volume(v16) }
+            DispatchQueue.main.async { self?.link?.sendVolume(v16) }
         }
 
         // Rotation: UIKit rotates the scene, we mirror the new interface
-        // orientation to iosc (which re-lays-out + reallocates the output).
+        // orientation to iosc (which re-lays-out and reallocates the output).
         UIDevice.current.beginGeneratingDeviceOrientationNotifications()
         NotificationCenter.default.addObserver(
             self, selector: #selector(orientationMayHaveChanged),
@@ -87,21 +83,44 @@ final class SystemIntegration {
             self, selector: #selector(becameActive),
             name: UIApplication.didBecomeActiveNotification, object: nil)
 
-        // Haptic pump + a 1 Hz orientation safety net (catches the initial
-        // orientation before the first notification and any missed transition).
-        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
-            self?.tick()
+        // A 1 Hz orientation safety net: catches the initial orientation before the
+        // first notification and any missed transition. No I/O: a scene read.
+        let t = Timer(timeInterval: 1.0, repeats: true) { [weak self] _ in
+            self?.syncOrientation()
         }
         RunLoop.main.add(t, forMode: .common)
-        pump = t
+        orientationTimer = t
+    }
+
+    // MARK: per-desktop link
+
+    /// A different desktop is now presented: send it everything it should mirror.
+    func attach(link: SysIntLink) {
+        self.link = link
+        lastDark = -1
+        sendAppearance()
+        link.sendVolume(UInt32((AVAudioSession.sharedInstance().outputVolume * 65535).rounded()))
+        syncOutputNow()
+    }
+
+    func detach(link: SysIntLink) {
+        if self.link === link { self.link = nil }
+    }
+
+    func handle(_ event: SysIntLink.Event) {
+        switch event {
+        case .haptic(let style): fire(style: style)
+        case .volume(let v16): setDeviceVolume(v16)
+        case .brightness(let v16): setDeviceBrightness(v16)
+        }
     }
 
     // MARK: rotation
 
     /// wl_output transform for the current interface orientation. The desktop's
     /// natural shape is landscape, so both landscapes are "normal"; portrait is a
-    /// quarter turn. UIKit keeps the drawable upright either way — the transform
-    /// is metadata plus the width/height swap trigger.
+    /// quarter turn. UIKit keeps the drawable upright either way: the transform is
+    /// metadata plus the width/height swap trigger.
     private func currentTransform() -> Int32? {
         guard let scene = hostView?.window?.windowScene else { return nil }
         switch scene.interfaceOrientation {
@@ -119,14 +138,14 @@ final class SystemIntegration {
         }
     }
 
-    func syncOutputNow() {
-        syncOrientation(force: true)
-    }
+    /// Force-resend the current orientation: after every adopt and layout, because
+    /// a compositor restarted in the same orientation has forgotten it (invariant 55).
+    func syncOutputNow() { syncOrientation(force: true) }
 
     private func syncOrientation(force: Bool = false) {
         guard let t = currentTransform(), force || t != lastTransform else { return }
         lastTransform = t
-        sysint_send_output(t, 0, 0)   // 0,0 = iosc derives the size by swapping
+        link?.sendOutput(transform: t)   // logical size 0,0: iosc swaps by itself
     }
 
     @objc private func becameActive() {
@@ -142,6 +161,8 @@ final class SystemIntegration {
         try? session.setActive(true)
     }
 
+    // MARK: volume
+
     private func installVolumeSetter(on view: UIView) {
         let vv = MPVolumeView(frame: CGRect(x: -1000, y: -1000, width: 1, height: 1))
         vv.showsVolumeSlider = true
@@ -149,9 +170,7 @@ final class SystemIntegration {
         vv.isUserInteractionEnabled = false
         view.addSubview(vv)
         volumeView = vv
-        DispatchQueue.main.async { [weak self] in
-            self?.refreshVolumeSlider()
-        }
+        DispatchQueue.main.async { [weak self] in self?.refreshVolumeSlider() }
     }
 
     private func refreshVolumeSlider() {
@@ -159,14 +178,9 @@ final class SystemIntegration {
     }
 
     private func setDeviceVolume(_ v16: UInt32) {
-        if volumeSlider == nil {
-            refreshVolumeSlider()
-        }
+        if volumeSlider == nil { refreshVolumeSlider() }
         guard let slider = volumeSlider else {
-            // Each request used to start its own 10 Hz retry that never ended
-            // while the slider was missing, and once it appeared the stacked
-            // retries applied old values in no particular order. Now the newest
-            // request waits alone, and is dropped after maxVolumeRetries.
+            // The newest request waits alone, and is dropped after maxVolumeRetries.
             pendingVolume = v16
             scheduleVolumeRetry()
             return
@@ -174,8 +188,7 @@ final class SystemIntegration {
         pendingVolume = nil
         volumeRetries = 0
 
-        let clamped = min(v16, 65535)
-        let value = Float(clamped) / 65535.0
+        let value = Float(min(v16, 65535)) / 65535.0
         if abs(slider.value - value) < 0.002 { return }
         slider.setValue(value, animated: false)
         slider.sendActions(for: .valueChanged)
@@ -200,23 +213,16 @@ final class SystemIntegration {
 
     // MARK: brightness
 
-    /// Apply a desktop brightness request to the panel.
-    ///
-    /// This lives in the app rather than in xios-hwbridged because
-    /// BKSDisplayBrightnessSet is inert on iPadOS 17.6.1 outside SpringBoard: the
-    /// symbols resolve, the brightness transaction creates, the entitlement is
-    /// present, and BKSDisplayBrightnessGetCurrent never moves. UIScreen.brightness
-    /// does work, but only from a real app process, so the daemon relays the value
-    /// here through xios-sysintd.
+    /// Apply a desktop brightness request to the panel. This lives in the app
+    /// rather than in xios-hwbridged because BKSDisplayBrightnessSet is inert on
+    /// iPadOS 17.6.1 outside SpringBoard; UIScreen.brightness works from a real app
+    /// process, so the daemon relays the value here through xios-sysintd (invariant 54).
     private func setDeviceBrightness(_ v16: UInt32) {
-        let clamped = min(v16, 65535)
-        let value = CGFloat(clamped) / 65535.0
-        // Reached via an already-installed subview so this follows the scene Xios is
-        // actually presenting on, rather than assuming the built-in panel.
+        let value = CGFloat(min(v16, 65535)) / 65535.0
         let screen = (traitSpy ?? volumeView)?.window?.windowScene?.screen ?? UIScreen.main
-        // The daemon re-sends on every 2 Hz tick while a request is outstanding, and
-        // assigning brightness is not free (it animates and notifies observers), so
-        // ignore anything under one 0..255 step of what the panel already shows.
+        // The daemon re-sends while a request is outstanding, and assigning
+        // brightness animates and notifies observers, so ignore anything under one
+        // 0..255 step of what the panel already shows.
         if abs(screen.brightness - value) < (1.0 / 255.0) { return }
         screen.brightness = value
     }
@@ -229,32 +235,11 @@ final class SystemIntegration {
         let dark: Int32 = style == .dark ? 1 : 0
         if dark != lastDark {
             lastDark = dark
-            sysint_send_appearance(dark)
+            link?.sendAppearance(dark: dark == 1)
         }
     }
 
     // MARK: haptics
-
-    private func drainNativeEvents(poll: (UnsafeMutablePointer<UInt32>?) -> Int32,
-                                   handle: (UInt32) -> Void) {
-        var value: UInt32 = 0
-        var drained = 0
-        while poll(&value) == 1 && drained < Self.maxNativeEventsPerTick {
-            handle(value)
-            drained += 1
-        }
-    }
-
-    private func tick() {
-        drainNativeEvents(poll: sysint_poll_haptic) { fire(style: $0) }
-        drainNativeEvents(poll: sysint_poll_volume_set) { setDeviceVolume($0) }
-        // Must run every tick, not conditionally: this and the volume drain share one
-        // socket, and each stashes only ONE of the other's records. Skipping this
-        // would let a second brightness request overwrite the stashed first one.
-        drainNativeEvents(poll: sysint_poll_brightness_set) { setDeviceBrightness($0) }
-        pumpTicks += 1
-        if pumpTicks % 20 == 0 { syncOrientation() }   // 1 Hz safety net
-    }
 
     private func fire(style: UInt32) {
         switch style {
@@ -265,9 +250,7 @@ final class SystemIntegration {
         }
     }
 
-    /// App-local haptic for the long-press right-click (gesture track calls this
-    /// when its deferred press fires — no compositor round-trip).
-    func rightClickHaptic() {
-        impactMedium.impactOccurred()
-    }
+    /// App-local haptic for the long-press right click (no compositor round trip;
+    /// a no-op without a Taptic Engine, e.g. iPad 7).
+    func rightClickHaptic() { impactMedium.impactOccurred() }
 }

@@ -5,14 +5,23 @@ import UIKit
 /// client described in docs/a11y-plan.md: xios-a11yd sends desktop-pixel frames
 /// for every visible AT-SPI node, and the app publishes them as
 /// UIAccessibilityElements on the single Metal framebuffer view.
-final class XiosA11yClient {
-    static let shared = XiosA11yClient()
+///
+/// One reader for the PRESENTED desktop: `setSocket` points it at that desktop's
+/// helper socket (the config's `a11y_socket`, or the global one) and restarts it
+/// when the desktop changes.
+final class A11yBridge {
+    static let shared = A11yBridge()
 
-    private var sockPath: String { XiosRuntimePaths.firstExisting("xios-a11y.sock") }
-    private var ioscdSocketPath: String { XiosRuntimePaths.firstExisting("ioscd.sock") }
+    /// The presented desktop's a11y helper socket; read by the reader on every
+    /// connect attempt, under `lock`.
+    private var socketPath: String?
+    private var sockPath: String {
+        lock.lock(); defer { lock.unlock() }
+        return socketPath ?? XiosRuntimePaths.firstExisting("xios-a11y.sock")
+    }
     private var logPath: String { XiosRuntimePaths.tmp("xios-a11y-app.log") }
 
-    private weak var view: XScreenView?
+    private weak var view: PresentView?
     // One reader per start(). stop() bumps the generation, so a reader from an
     // older start exits instead of looping beside the new one, and its late
     // messages and unpublish are dropped. `fd` is the live connection, kept for
@@ -23,6 +32,7 @@ final class XiosA11yClient {
     private var fd: Int32 = -1
     private var reader: Thread?
     private var observerInstalled = false
+    private var installedOnce: Bool { observerInstalled }
     private var lastSentVoiceOverState: Bool?
     private let writeQueue = DispatchQueue(label: "xios-a11y-write")
     private let store = XiosA11yStore()
@@ -31,7 +41,7 @@ final class XiosA11yClient {
         store.client = self
     }
 
-    func startup(view: XScreenView) {
+    func startup(view: PresentView) {
         self.view = view
         store.view = view
         if !observerInstalled {
@@ -41,6 +51,19 @@ final class XiosA11yClient {
                 name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         }
         syncVoiceOver()
+    }
+
+    /// Point the bridge at another desktop's helper. A no-op when unchanged.
+    func setSocket(_ path: String?) {
+        lock.lock()
+        let changed = socketPath != path
+        socketPath = path
+        lock.unlock()
+        guard changed, installedOnce else { return }
+        if UIAccessibility.isVoiceOverRunning {
+            stop()
+            start()
+        }
     }
 
     @objc private func syncVoiceOver() {
@@ -57,26 +80,13 @@ final class XiosA11yClient {
 
     private func sendVoiceOverState(_ enabled: Bool) {
         guard lastSentVoiceOverState != enabled else { return }
-        writeQueue.async { [weak self] in
+        IOSCDClient.shared.sendA11yState(enabled) { [weak self] ok in
             guard let self else { return }
-            let fd = xiosConnectUnixSocket(self.ioscdSocketPath)
-            guard fd >= 0 else {
-                self.log("ioscd a11y state pending enabled=\(enabled)")
-                return
-            }
-            defer { close(fd) }
-
-            let line = "A11Y_STATE\t\(enabled ? 1 : 0)\n"
-            let ok = line.data(using: .utf8)?.withUnsafeBytes {
-                xiosWriteAll(fd, bytes: $0)
-            } ?? false
             if ok {
-                DispatchQueue.main.async { [weak self] in
-                    self?.lastSentVoiceOverState = enabled
-                }
+                self.lastSentVoiceOverState = enabled
                 self.log("ioscd a11y state sent enabled=\(enabled)")
             } else {
-                self.log("ioscd a11y state write failed enabled=\(enabled)")
+                self.log("ioscd a11y state pending enabled=\(enabled)")
             }
         }
     }
@@ -188,16 +198,20 @@ final class XiosA11yClient {
         }
     }
 
+    /// Appends to xios-a11y-app.log on the write queue: never on main.
     fileprivate func log(_ message: String) {
         let line = "XiosA11y \(Date()) \(message)\n"
-        guard let data = line.data(using: .utf8) else { return }
-        if FileManager.default.fileExists(atPath: logPath),
-           let fh = try? FileHandle(forWritingTo: URL(fileURLWithPath: logPath)) {
-            defer { try? fh.close() }
-            _ = try? fh.seekToEnd()
-            try? fh.write(contentsOf: data)
-        } else {
-            try? data.write(to: URL(fileURLWithPath: logPath), options: .atomic)
+        let path = logPath
+        writeQueue.async {
+            guard let data = line.data(using: .utf8) else { return }
+            if FileManager.default.fileExists(atPath: path),
+               let fh = try? FileHandle(forWritingTo: URL(fileURLWithPath: path)) {
+                defer { try? fh.close() }
+                _ = try? fh.seekToEnd()
+                try? fh.write(contentsOf: data)
+            } else {
+                try? data.write(to: URL(fileURLWithPath: path), options: .atomic)
+            }
         }
     }
 
@@ -263,8 +277,8 @@ private struct XiosA11yMsg: Decodable {
 }
 
 final class XiosA11yStore {
-    weak var view: XScreenView?
-    weak var client: XiosA11yClient?
+    weak var view: PresentView?
+    weak var client: A11yBridge?
 
     private struct Window {
         var idx: Int
@@ -402,9 +416,9 @@ final class XiosA11yStore {
 final class XiosA11yElement: UIAccessibilityElement {
     let nodeID: Int
     var framebufferFrame = CGRect.zero
-    private unowned let client: XiosA11yClient
+    private unowned let client: A11yBridge
 
-    init(nodeID: Int, client: XiosA11yClient, container: Any) {
+    init(nodeID: Int, client: A11yBridge, container: Any) {
         self.nodeID = nodeID
         self.client = client
         super.init(accessibilityContainer: container)
@@ -412,7 +426,7 @@ final class XiosA11yElement: UIAccessibilityElement {
 
     override var accessibilityFrame: CGRect {
         get {
-            guard let view = accessibilityContainer as? XScreenView else { return .zero }
+            guard let view = accessibilityContainer as? PresentView else { return .zero }
             return UIAccessibility.convertToScreenCoordinates(
                 view.viewRect(fromFramebuffer: framebufferFrame), in: view)
         }
@@ -428,7 +442,7 @@ final class XiosA11yElement: UIAccessibilityElement {
     override func accessibilityDecrement() { client.adjust(nodeID, dir: -1) }
 
     override func accessibilityPerformEscape() -> Bool {
-        guard let view = accessibilityContainer as? XScreenView else { return false }
+        guard let view = accessibilityContainer as? PresentView else { return false }
         view.a11yEscape()
         return true
     }
