@@ -10,6 +10,13 @@ set -u
 # deb stages it under the prefix -- but fall back to probing, because the
 # documented way to run this is `ssh root@ipad 'bash -s' < run-iosc.sh`, where
 # the script has no path on disk at all. Set XS_JB= to force rootful.
+#
+# Slot-aware: with XIOS_SESSION_SLOT=<name> (or WAYLAND_DISPLAY=wayland-<name>) it
+# brings up, and only ever restarts, that slot's compositor; every rendezvous
+# path carries the slot name, exactly as xios-session lays them out. It no longer
+# kills the Xios app or any other iosc on the device. Prefer
+# `xios-session [--slot NAME] iosc` for real use: this is the dependency-free
+# paint self-test.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" 2>/dev/null && pwd)"
 if [ "${XS_JB+x}" != x ]; then
   case "${SCRIPT_DIR:-}/" in
@@ -21,20 +28,52 @@ XS_TMP="${XS_TMP:-${XS_JB:-/var}/tmp}"
 export PATH=$XS_JB/usr/bin:$XS_JB/usr/sbin:$XS_JB/bin:$XS_JB/sbin:$PATH
 export XDG_RUNTIME_DIR=$XS_TMP
 TMP=$XS_TMP
-WSOCK="$XDG_RUNTIME_DIR/wayland-0"
 BIN=$XS_JB/usr/local/bin
 
-echo "==> stop any Xios X server, app, prior iosc, and test clients"
-# Anchor iosc to binary paths (plain "iosc" matches this script's own path when
-# run over SSH) and never kill our own shell or parent.
-ps ax | grep -v grep | grep -E "/Xios\.app/Xios|(^|[ /])iosc( |$)|(^|[ /])iosc-client( |$)" \
-  | awk '{print $1}' | while read -r pid; do
-      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
+# Names for this slot (or the default session). The default session keeps the
+# unsuffixed legacy names.
+SLOT="${XIOS_SESSION_SLOT:-}"
+if [ -z "$SLOT" ]; then
+  case "${WAYLAND_DISPLAY:-wayland-0}" in
+    wayland-0) ;;
+    wayland-*) SLOT="${WAYLAND_DISPLAY#wayland-}" ;;
+  esac
+fi
+if [ -n "$SLOT" ]; then
+  WNAME="wayland-$SLOT"; SUF="-$SLOT"
+else
+  WNAME="wayland-0"; SUF=""
+fi
+WSOCK="$XDG_RUNTIME_DIR/$WNAME"
+DDX="$TMP/iosc$SUF-ddx.sock"
+JSON="$TMP/xios$SUF.json"
+INPUT="$TMP/iosc$SUF-input.sock"
+CLIP="$TMP/iosc$SUF-clipboard.sock"
+WMS="$TMP/iosc$SUF-wm.sock"
+ILOG="$TMP/iosc$SUF.log"
+CLOG="$TMP/iosc-client$SUF.log"
+
+echo "==> stop the previous iosc and test client of $WNAME (nothing else)"
+# Only a compositor that carries THIS socket name is stopped, so a restart never
+# touches another desktop or the Xios app. The test client has no argv to match,
+# so it is found through its pid file.
+ps axww -o pid=,command= | grep -v grep | grep -E "(^|[ /])iosc( |$)" \
+  | while read -r pid rest; do
+      [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] && continue
+      case "$rest" in
+        *" -s $WNAME"|*" -s $WNAME "*) ;;
+        *" -s "*) continue ;;
+        *) [ "$WNAME" = wayland-0 ] || continue ;;
+      esac
+      kill -9 "$pid" 2>/dev/null
   done
+if [ -f "$CLOG.pid" ]; then
+  kill -9 "$(cat "$CLOG.pid")" 2>/dev/null
+  rm -f "$CLOG.pid"
+fi
 sleep 1
-rm -f "$WSOCK" "$WSOCK.lock" "$TMP/iosc-ddx.sock" "$TMP/iosc-native-ddx.sock" \
-      "$TMP/iosc-native.sock" "$TMP/xios.json" "$TMP/xios-native.json" \
-      "$TMP/iosc.log" "$TMP/iosc-client.log" "$TMP/iosc-shm-"* 2>/dev/null
+rm -f "$WSOCK" "$WSOCK.lock" "$DDX" "$JSON" "$INPUT" "$CLIP" "$WMS" \
+      "$ILOG" "$CLOG" "$TMP/iosc-shm-"* 2>/dev/null
 
 # Logical desktop; iosc renders a 2x-oversized IOSurface the app supersamples down
 # to the panel for the ~1.5 effective scale (Max-approved). Override via IOSC_LOGICAL.
@@ -44,25 +83,33 @@ IOSC_LOGICAL="${IOSC_LOGICAL:-1440x1080}"
 # before the compositor so Wayland clients find a live PA socket. Idempotent.
 [ -r $XS_JB/etc/profile.d/xios-pulse.sh ] && . $XS_JB/etc/profile.d/xios-pulse.sh && xios_pulse_start
 
-echo "==> start iosc (compositor, logical $IOSC_LOGICAL) -> $TMP/iosc.log"
-nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR "$BIN/iosc" -logical "$IOSC_LOGICAL" >"$TMP/iosc.log" 2>&1 &
+echo "==> start iosc (compositor, logical $IOSC_LOGICAL) -> $ILOG"
+# Every path is explicit so the argv names this compositor (the stop above and
+# xios-session's slot ownership both key off it). A slot compositor never
+# refuses on another session's active marker.
+nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+  XIOS_SESSION_SLOT="$SLOT" \
+  ${SLOT:+IOSC_IGNORE_ACTIVE_SESSION=1} \
+  "$BIN/iosc" -logical "$IOSC_LOGICAL" -s "$WNAME" \
+    -ddx-sock "$DDX" -json "$JSON" -input-sock "$INPUT" \
+    -clipboard-sock "$CLIP" -wm-sock "$WMS" >"$ILOG" 2>&1 &
 ICPID=$!
 # wait for the wayland socket + the app handshake json
-for _ in $(seq 1 30); do [ -S "$WSOCK" ] && [ -f "$TMP/xios.json" ] && break; sleep 0.2; done
-if ! kill -0 "$ICPID" 2>/dev/null; then echo "!! iosc died:"; cat "$TMP/iosc.log"; exit 1; fi
+for _ in $(seq 1 30); do [ -S "$WSOCK" ] && [ -f "$JSON" ] && break; sleep 0.2; done
+if ! kill -0 "$ICPID" 2>/dev/null; then echo "!! iosc died:"; cat "$ILOG"; exit 1; fi
 # the app runs as mobile; let it connect to the (root) rendezvous socket
-if chown mobile:mobile "$TMP/iosc-ddx.sock" 2>/dev/null || chown 501:501 "$TMP/iosc-ddx.sock" 2>/dev/null; then
-  chmod 0660 "$TMP/iosc-ddx.sock" 2>/dev/null
+if chown mobile:mobile "$DDX" 2>/dev/null || chown 501:501 "$DDX" 2>/dev/null; then
+  chmod 0660 "$DDX" 2>/dev/null
 else
-  chmod 0600 "$TMP/iosc-ddx.sock" 2>/dev/null
-  echo "!! could not hand $TMP/iosc-ddx.sock to mobile; keeping it owner-only"
+  chmod 0600 "$DDX" 2>/dev/null
+  echo "!! could not hand $DDX to mobile; keeping it owner-only"
 fi
 echo "   wayland socket: $([ -S "$WSOCK" ] && echo up || echo MISSING)"
-echo "   xios.json: $(cat "$TMP/xios.json" 2>/dev/null)"
+echo "   json: $(cat "$JSON" 2>/dev/null)"
 
 echo "==> relaunch the Xios app (adopts iosc's IOSurface)"
 uiopen -b com.max.xios 2>/dev/null || uiopen com.max.xios 2>/dev/null
-J="$(cat "$TMP/xios.json" 2>/dev/null)"
+J="$(cat "$JSON" 2>/dev/null)"
 JW="$(printf '%s' "$J" | sed -n 's/.*"width":\([0-9][0-9]*\).*/\1/p')"
 JH="$(printf '%s' "$J" | sed -n 's/.*"height":\([0-9][0-9]*\).*/\1/p')"
 for _ in $(seq 1 20); do
@@ -70,13 +117,14 @@ for _ in $(seq 1 20); do
   sleep 0.5
 done
 
-echo "==> run iosc-client (paints a wl_shm frame) -> $TMP/iosc-client.log"
-nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY=wayland-0 \
-  "$BIN/iosc-client" >"$TMP/iosc-client.log" 2>&1 &
+echo "==> run iosc-client (paints a wl_shm frame) -> $CLOG"
+nohup env XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR WAYLAND_DISPLAY="$WNAME" \
+  "$BIN/iosc-client" >"$CLOG" 2>&1 &
+echo $! >"$CLOG.pid"
 sleep 2
 
-echo "==> iosc log:";        sed 's/^/   /' "$TMP/iosc.log"
-echo "==> client log:";      sed 's/^/   /' "$TMP/iosc-client.log"
+echo "==> iosc log:";        sed 's/^/   /' "$ILOG"
+echo "==> client log:";      sed 's/^/   /' "$CLOG"
 echo "==> app status:";      sed 's/^/   /' "$TMP/xios-status.txt" 2>/dev/null
 echo "==> app geom:";        sed 's/^/   /' "$TMP/xios-geom.txt" 2>/dev/null
 echo "==> iosc still running: $(kill -0 "$ICPID" 2>/dev/null && echo yes || echo NO)"

@@ -43,20 +43,21 @@ WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 XIOS_JSON_PATH="${XIOS_JSON_PATH:-$TMP/xios.json}"
 XIOS_DDX_SOCKET="${XIOS_DDX_SOCKET:-$TMP/mutter-ddx.sock}"
 XIOS_INPUT_SOCKET="${XIOS_INPUT_SOCKET:-$TMP/mutter-input.sock}"
+XIOS_CLIPBOARD_SOCKET="${XIOS_CLIPBOARD_SOCKET:-$TMP/mutter-clipboard.sock}"
 MUTTER_LOG="${MUTTER_LOG:-$TMP/mutter.log}"
 
 [ -x "$MUTTER" ] || { echo "!! $MUTTER missing/not executable — scp out/mutter there first"; exit 1; }
 
-if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
-  echo "==> stop the iosc demo (iosc + shell + clients; keep the Xios display app)"
-  ps ax | grep -v grep | grep -E "/bin/iosc( |$)|/bin/iosc-|ioscbg|ioscbar|ioscdock|ioscoverview|/usr/bin/mutter" \
-    | awk '{print $1}' | while read -r pid; do
-        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
-    done
-  sleep 1
+# No teardown here. This used to kill every iosc, iosc shell client and mutter on
+# the device whenever it ran outside a slot, taking any other running desktop
+# with it. xios-session stops the previous session of this name (by recorded
+# process group) before calling us; a hand run must `xios-session stop` first.
+if ps axww 2>/dev/null | grep -v grep | grep -E "/usr/bin/mutter .*--wayland-display $WAYLAND_DISPLAY( |$)" >/dev/null 2>&1; then
+  echo "!! a mutter already serves $WAYLAND_DISPLAY; stop it first (xios-session ${XIOS_SESSION_SLOT:+--slot $XIOS_SESSION_SLOT }stop)"
+  exit 3
 fi
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
-      "$XIOS_INPUT_SOCKET" "$MUTTER_LOG" 2>/dev/null
+      "$XIOS_INPUT_SOCKET" "$XIOS_CLIPBOARD_SOCKET" "$MUTTER_LOG" 2>/dev/null
 
 echo "==> validate package-owned ANGLE aliases, Mutter plugins, and schemas"
 for f in libGLESv2.so.2 libGLESv2.so libEGL.so.1 libEGL.so; do
@@ -88,6 +89,7 @@ nohup env \
   XIOS_DDX_SOCKET="$XIOS_DDX_SOCKET" \
   XIOS_JSON_PATH="$XIOS_JSON_PATH" \
   XIOS_INPUT_SOCKET="$XIOS_INPUT_SOCKET" \
+  XIOS_CLIPBOARD_SOCKET="$XIOS_CLIPBOARD_SOCKET" \
   DYLD_LIBRARY_PATH="$XS_PREFIX/lib:$XS_PREFIX/lib/mutter-14:$ANGLE" \
   XDG_DATA_DIRS="$XS_PREFIX/share" \
   GSETTINGS_SCHEMA_DIR="$XS_PREFIX/share/glib-2.0/schemas" \
