@@ -99,6 +99,13 @@ files while the non-slot KDE stayed up; `stop all` left no session process. Thre
 independently. Footprints are in `docs/xios-v2-notes.md`.
 Regression test: `apps/iosc-desktop/test-session-slots.sh` (fake processes, scratch `XS_TMP`).
 
+**Status.** The five packages are on staging (dev.repo.maxleiter.com) and in `repo/Packages` on the
+`claude/xios-v2-m0` branch; production is not published. Publish with `bin/publish-repo.sh --only
+xios-session,xios-session-stubs,xios-a11y-tools,iosc,iosc-shell` once the PR merges (the committed
+index is what ships). Install the five together: `xios-session 1.0.81` Breaks `xios-session-stubs`
+older than 0.2.12 (the old GNOME launcher writes no pgid file, so the new sweep could not see a live
+GNOME slot). `xios-a11y-tools` older than 0.2.17 ignores `XIOS_A11Y_SOCK` and binds the global path.
+
 ## Current state — package-installed 2026-07-29, CLI/daemon works
 
 - `xios-session 1.0.72` removes a process-substitution deadlock from capability
