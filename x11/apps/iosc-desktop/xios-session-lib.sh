@@ -391,7 +391,7 @@ xs_session_bus_address() {  # xs_session_bus_address <busdir>
     # --fork detaches the daemon into its own session, so no recorded process
     # group will ever contain it. Keep its pid beside the socket: that is what
     # lets `--slot X stop` (and only that) take the bus down again.
-    out="$("$XS_DBUS_DAEMON" --session --fork --address="$addr" --print-address --print-pid 2>/dev/null)" || return 1
+    out="$("$XS_DBUS_DAEMON" --session --fork --address="$addr" --print-address=1 --print-pid=1 2>/dev/null)" || return 1
     pid="$(printf '%s\n' "$out" | sed -n '2p' | tr -cd '0-9')"
     [ -n "$pid" ] && printf '%s\n' "$pid" >"$busdir/bus.pid" 2>/dev/null
     if [ -S "$sock" ]; then
