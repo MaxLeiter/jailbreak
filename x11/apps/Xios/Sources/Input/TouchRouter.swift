@@ -98,6 +98,9 @@ final class TouchRouter {
         for slot in touchSlots.values { host.inputLink?.touch(slot: slot, phase: 3, 0, 0) }
         touchSlots.removeAll()
         lanes.reset()
+        // A reset mid three-finger gesture must not leave touches ignored until a
+        // later lift: the fingers' own up events belong to the old connection.
+        appGestureSuppression = false
     }
 
     // MARK: touches

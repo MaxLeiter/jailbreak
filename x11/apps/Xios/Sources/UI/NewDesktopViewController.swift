@@ -22,9 +22,10 @@ final class NewDesktopViewController: FormViewController {
         section("Desktop")
         for p in DesktopCatalog.primary {
             let live = manager.liveSession(preset: p.preset)
+            let starting = live == nil && manager.isStarting(preset: p.preset)
             let memory = p.memory.map { "Memory: \($0)" } ?? "Memory: not measured yet"
             let detail = live != nil ? "Already running. Opening it instead of starting another."
-                                     : "\(p.detail). \(memory)"
+                : (starting ? "Starting now..." : "\(p.detail). \(memory)")
             _ = row(title: p.title, detail: detail, symbol: p.symbol,
                     selected: p.preset == preset.preset) { [weak self] in
                 self?.preset = p
@@ -50,6 +51,7 @@ final class NewDesktopViewController: FormViewController {
         let title = existing != nil ? "Open \(preset.title)" : "Start \(preset.title)"
         let go = pill(title, selected: true) { [weak self] in self?.go() }
         start = go
+        if existing == nil, manager.isStarting(preset: preset.preset) { go.isEnabled = false }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last ?? go)
         stack.addArrangedSubview(go)
     }

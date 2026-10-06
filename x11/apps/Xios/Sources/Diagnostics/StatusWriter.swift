@@ -61,5 +61,19 @@ final class StatusWriter {
 
     func touchLog(_ text: String) { overwrite("xios-touch.log", text) }
     func geometry(_ text: String) { write("xios-geom.txt", text) }
+    /// Metal setup stages only (start/ok/no-device...). Runtime events must not
+    /// overwrite the answer to "did Metal come up".
     func metal(_ stage: String) { write("xios-metal.txt", stage) }
+
+    /// Runtime events (fence failures, adopt failures): the latest few, their own file.
+    private var recentEvents: [String] = []
+    func event(_ text: String) {
+        queue.async { [self] in
+            recentEvents.append("\(Date()) \(text)")
+            if recentEvents.count > 20 { recentEvents.removeFirst(recentEvents.count - 20) }
+            let body = recentEvents.joined(separator: "\n") + "\n"
+            try? body.write(toFile: XiosRuntimePaths.tmp("xios-events.txt"), atomically: true,
+                            encoding: .utf8)
+        }
+    }
 }

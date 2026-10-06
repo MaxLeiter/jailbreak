@@ -43,12 +43,18 @@ final class SessionManager {
 
     private var requestInFlight = false
     private var pendingPresent: (slot: String, until: Date)?
+    /// Presets whose start request was accepted but whose registry entry has not
+    /// shown up yet. Closes the window in which a second tap on the same preset
+    /// would start a second desktop (decision 1: one per preset).
+    private var startingPresets: [String: Date] = [:]
+    private static let startingWindow: TimeInterval = 60
     private var endedWork: DispatchWorkItem?
     private static let autoHomeDelay: TimeInterval = 3.0
 
     // MARK: lifecycle
 
     func start() {
+        writeLauncherStatus()
         renderer = Renderer.make()
         registry.onChange = { [weak self] infos in self?.registryUpdated(infos) }
         registry.start()
@@ -64,10 +70,21 @@ final class SessionManager {
     func session(slot: String) -> SessionConnection? { connections[slot] }
 
     /// A desktop of this preset that is up or on its way (decision 1: one per preset).
+    /// A state we cannot read counts as live while the preset is still starting.
     func liveSession(preset: String) -> SessionConnection? {
-        sessions.first {
-            $0.info.preset == preset && ($0.info.state == .running || $0.info.state == .starting)
+        let starting = isStarting(preset: preset)
+        return sessions.first {
+            $0.info.preset == preset
+                && ($0.info.state == .running || $0.info.state == .starting
+                    || ($0.info.state == .unknown && starting))
         }
+    }
+
+    /// A start for `preset` was accepted and is still within its window.
+    func isStarting(preset: String) -> Bool {
+        guard let until = startingPresets[preset] else { return false }
+        if Date() > until { startingPresets[preset] = nil; return false }
+        return true
     }
 
     /// Whether the first registry scan has landed (the launcher shows "Looking for
@@ -100,21 +117,60 @@ final class SessionManager {
             }
         }
         if let pending = pendingPresent {
-            if let target = connections[pending.slot], target.info.state != .stopped {
+            let target = connections[pending.slot]
+            if Date() > pending.until {
+                pendingPresent = nil
+            } else if let target, target !== presented,
+                      target.info.state == .starting || target.info.state == .running {
                 pendingPresent = nil
                 present(target)
-            } else if Date() > pending.until {
-                pendingPresent = nil
             }
+            // When the target is already presented the entry stays until it
+            // expires: it is what keeps a restart or resize from sending us home.
+        }
+        // Once a preset is visibly coming up the registry entry carries the truth.
+        for (preset, _) in startingPresets where connections.values.contains(where: {
+            $0.info.preset == preset && ($0.info.state == .starting || $0.info.state == .running) }) {
+            startingPresets[preset] = nil
         }
         reviewPresentedEnd()
+        syncAppearanceTargets()
+        writeLauncherStatus()
         onSessionsChanged?()
+    }
+
+    /// Dark mode is applied per session bus by that session's sysintd, so every
+    /// running desktop's sysint socket gets the appearance, not just the presented one
+    /// (decision 3). The presented desktop has its own full link already.
+    private func syncAppearanceTargets() {
+        guard !isBackgrounded else { SystemIntegration.shared.setAppearanceTargets([]); return }
+        var paths = Set<String>()
+        for c in connections.values where c !== presented && c.info.state == .running {
+            if let path = c.info.endpoints.sysint { paths.insert(path) }
+        }
+        if let own = presented?.info.endpoints.sysint { paths.remove(own) }
+        SystemIntegration.shared.setAppearanceTargets(paths)
+    }
+
+    /// While nothing is presented the app still says what it knows: xios-status.txt
+    /// (so a stale "presented desktop" line never outlives the desktop) and the
+    /// per-desktop summary. Presented desktops write xios-status.txt themselves.
+    func writeLauncherStatus() {
+        StatusWriter.shared.write("xios-app-sessions.txt", DebugReport.sessionsSummary(manager: self))
+        guard presented == nil else { return }
+        StatusWriter.shared.write("xios-status.txt",
+            "home\npresented=(home)\n" + DebugReport.sessionsSummary(manager: self))
     }
 
     /// A presented desktop that has ended goes back to the launcher, where its
     /// card says why and offers Restart. Debounced: a restart (resize) passes
     /// through a stopped state on its way back up.
     private func reviewPresentedEnd() {
+        // A restart or resize we asked for passes through a stopped state: stay put.
+        if let pending = pendingPresent, pending.slot == presented?.slot, Date() < pending.until {
+            endedWork?.cancel(); endedWork = nil
+            return
+        }
         guard let presented, presented.info.state.isTerminal, !presented.isLive else {
             endedWork?.cancel(); endedWork = nil
             return
@@ -151,6 +207,7 @@ final class SessionManager {
         presented = target
         presenter?.presenterDidPresent(target)
         if !isBackgrounded { target.attach() }
+        syncAppearanceTargets()
         onPresentedChanged?(target)
     }
 
@@ -160,6 +217,8 @@ final class SessionManager {
         old.detach(captureThumbnail: true)
         presented = nil
         onPresentedChanged?(nil)
+        syncAppearanceTargets()
+        writeLauncherStatus()
         onSessionsChanged?()
     }
 
@@ -176,6 +235,7 @@ final class SessionManager {
         isBackgrounded = true
         registry.stop()
         presented?.detach(captureThumbnail: false)
+        SystemIntegration.shared.setAppearanceTargets([])
         renderer?.releaseUpscalerResources()
     }
 
@@ -189,7 +249,13 @@ final class SessionManager {
         }
         renderer?.syncUpscaler()      // rebuild the pass backgrounding released
         if wasBackgrounded || !hasSnapshot { registry.start() }
-        if let presented, !presented.isAttached { presented.attach() }
+        if let presented, !presented.isAttached {
+            // Black first: the layer still holds the last frame from before the
+            // background, and the desktop may have changed since.
+            presenter?.presenterDidPresent(presented)
+            presented.attach()
+        }
+        syncAppearanceTargets()
     }
 
     // MARK: SessionConnection callbacks
@@ -270,19 +336,30 @@ final class SessionManager {
         let reusable = sessions.first {
             $0.info.preset == preset && !$0.info.isLegacyMain && $0.info.state.isTerminal
         }
+        guard !isStarting(preset: preset) else {
+            onMessage?("\(DesktopCatalog.label(for: preset)) is already starting.")
+            return
+        }
         let slot = reusable?.slot ?? DesktopCatalog.newSlot(for: preset, taken: Set(connections.keys))
         perform("Starting \(DesktopCatalog.label(for: preset))...", preset: preset,
                 display: display, slot: slot) { [weak self] in
             self?.pendingPresent = (slot, Date().addingTimeInterval(30))
+            self?.startingPresets[preset] = Date().addingTimeInterval(Self.startingWindow)
         }
     }
 
     /// Restart a failed or killed desktop with the size it last had.
     func restart(_ c: SessionConnection) {
-        let preset = c.info.preset.isEmpty ? "iosc" : c.info.preset
+        // Never guess the preset: restarting the wrong flavor tears down a desktop.
+        guard !c.info.preset.isEmpty else {
+            onMessage?("\(c.info.title) has no recorded desktop type, so it cannot be restarted from here.")
+            return
+        }
+        let preset = c.info.preset
         perform("Restarting \(c.info.title)...", preset: preset,
                 display: c.info.requestedProfile, slot: c.info.ioscdSlot) { [weak self] in
-            if !c.info.isLegacyMain { self?.pendingPresent = (c.slot, Date().addingTimeInterval(30)) }
+            self?.pendingPresent = (c.slot, Date().addingTimeInterval(30))
+            self?.startingPresets[preset] = Date().addingTimeInterval(Self.startingWindow)
         }
     }
 
@@ -290,13 +367,26 @@ final class SessionManager {
     /// `resize` verb restarts whatever owns the GLOBAL active marker, which is the
     /// wrong desktop for a slot.)
     func resize(_ c: SessionConnection, to display: DisplayProfile) {
-        let preset = c.info.preset.isEmpty ? "iosc" : c.info.preset
+        guard !c.info.preset.isEmpty else {
+            onMessage?("\(c.info.title) has no recorded desktop type, so it cannot be resized from here.")
+            return
+        }
+        let preset = c.info.preset
         perform("Resizing \(c.info.title) to \(display.detail)...", preset: preset,
-                display: display, slot: c.info.ioscdSlot)
+                display: display, slot: c.info.ioscdSlot) { [weak self] in
+            // The desktop passes through a stopped state on its way back: keep it
+            // presented (and re-present it if the debounce still sent us home).
+            self?.pendingPresent = (c.slot, Date().addingTimeInterval(45))
+            self?.startingPresets[preset] = Date().addingTimeInterval(Self.startingWindow)
+        }
     }
 
+    /// Whether Restart / Change size can be offered for this desktop.
+    func canRestart(_ c: SessionConnection) -> Bool { !c.info.preset.isEmpty }
+
     /// Stop one desktop. A slot stops on its own; the legacy Main desktop has no
-    /// slot, and an unqualified stop stops everything (invariant 58).
+    /// slot, and an unqualified stop means the non-slot session (M0: the Xios app
+    /// and the shared services go with it only when no slot is alive).
     func stop(_ c: SessionConnection) {
         perform("Stopping \(c.info.title)...", preset: "stop", slot: c.info.ioscdSlot) {
             [weak self] in

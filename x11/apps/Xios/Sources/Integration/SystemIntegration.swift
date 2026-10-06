@@ -15,6 +15,10 @@ final class SystemIntegration {
     private weak var hostView: UIView?
     private var installed = false
     private var link: SysIntLink?
+    /// Appearance-only links to the OTHER running desktops' sysintds, keyed by socket
+    /// path. Light/dark is applied per session bus by that session's sysintd, so
+    /// every running desktop must hear it, not just the presented one.
+    private var appearanceLinks: [String: SysIntLink] = [:]
     private var orientationTimer: Timer?
     private var volumeObservation: NSKeyValueObservation?
     private var volumeView: MPVolumeView?
@@ -101,6 +105,22 @@ final class SystemIntegration {
         sendAppearance()
         link.sendVolume(UInt32((AVAudioSession.sharedInstance().outputVolume * 65535).rounded()))
         syncOutputNow()
+    }
+
+    /// Reconcile the appearance-only links with the desktops that should get dark
+    /// mode (everything running except the presented one, which has a full link).
+    /// A link that cannot connect yet (its sysintd starts lazily) retries by itself
+    /// and replays the last appearance when it does.
+    func setAppearanceTargets(_ paths: Set<String>) {
+        for (path, l) in appearanceLinks where !paths.contains(path) {
+            l.close()
+            appearanceLinks[path] = nil
+        }
+        for path in paths where appearanceLinks[path] == nil {
+            let l = SysIntLink(sysint: path, iosc: nil) { _ in }   // hidden desktops' requests are ignored
+            appearanceLinks[path] = l
+            if lastDark >= 0 { l.sendAppearance(dark: lastDark == 1) }
+        }
     }
 
     func detach(link: SysIntLink) {
@@ -236,6 +256,7 @@ final class SystemIntegration {
         if dark != lastDark {
             lastDark = dark
             link?.sendAppearance(dark: dark == 1)
+            for l in appearanceLinks.values { l.sendAppearance(dark: dark == 1) }
         }
     }
 

@@ -163,7 +163,8 @@ final class LauncherViewController: UIViewController, UICollectionViewDelegate {
         var actions: [UIMenuElement] = []
         let state = conn.info.state
         if state.isTerminal {
-            actions.append(UIAction(title: "Restart", image: UIImage(systemName: "arrow.clockwise")) {
+            actions.append(UIAction(title: "Restart", image: UIImage(systemName: "arrow.clockwise"),
+                                    attributes: manager.canRestart(conn) ? [] : [.disabled]) {
                 [manager] _ in manager.restart(conn)
             })
             actions.append(UIAction(title: "Dismiss", image: UIImage(systemName: "xmark.circle"),
@@ -183,9 +184,16 @@ final class LauncherViewController: UIViewController, UICollectionViewDelegate {
                 manager.resize(conn, to: profile)
             }
         } + [UIAction(title: "Custom...") { [weak self] _ in self?.presentChangeSize(for: conn) }]
-        actions.append(UIMenu(title: "Change Size", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right"),
-                              children: sizes))
-        let stopTitle = conn.info.isLegacyMain ? "Stop All Desktops" : "Stop"
+        let sizeMenu = UIMenu(title: "Change Size", image: UIImage(systemName: "arrow.up.left.and.arrow.down.right"),
+                              children: sizes)
+        // An unknown desktop type cannot be restarted safely, so no size change either.
+        if manager.canRestart(conn) {
+            actions.append(sizeMenu)
+        } else {
+            actions.append(UIAction(title: "Change Size", image: sizeMenu.image,
+                                    attributes: [.disabled]) { _ in })
+        }
+        let stopTitle = conn.info.isLegacyMain ? "Stop Main" : "Stop"
         actions.append(UIAction(title: stopTitle, image: UIImage(systemName: "stop.circle"),
                                 attributes: [.destructive]) { [weak self] _ in self?.confirmStop(conn) })
         return UIMenu(children: actions)
@@ -204,19 +212,31 @@ final class LauncherViewController: UIViewController, UICollectionViewDelegate {
     }
 
     private func confirmStop(_ conn: SessionConnection) {
-        // Stopping the legacy Main desktop is an unqualified stop, which tears down
-        // every desktop (invariant 58): say so before doing it.
+        StopConfirmation.present(for: conn, from: self)
+    }
+}
+
+/// The one confirmation every Stop goes through (launcher menu and switcher).
+enum StopConfirmation {
+    static func title(for conn: SessionConnection) -> String {
+        conn.info.isLegacyMain ? "Stop Main" : "Stop \(conn.info.title)"
+    }
+
+    static func present(for conn: SessionConnection, from vc: UIViewController) {
+        let manager = SessionManager.shared
+        // Main has no slot: an unqualified stop ends the non-slot session. Since M0
+        // the desktops in their own slots keep running, and the Xios app and shared
+        // services only go with it when no slot is alive.
         let others = manager.sessions.filter { $0 !== conn && $0.info.state != .stopped }.count
-        let message = conn.info.isLegacyMain && others > 0
-            ? "Main has no slot of its own, so this stops every desktop."
+        let message = conn.info.isLegacyMain
+            ? (others > 0 ? "Desktops in their own slots keep running. Open windows in Main are lost."
+                          : "Nothing else is running, so the shared desktop services stop too. Open windows are lost.")
             : "Open windows in it are lost."
-        let alert = UIAlertController(title: conn.info.isLegacyMain ? "Stop all desktops?" : "Stop \(conn.info.title)?",
-                                      message: message, preferredStyle: .alert)
+        let alert = UIAlertController(title: "\(title(for: conn))?", message: message,
+                                      preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Stop", style: .destructive) { [manager] _ in
-            manager.stop(conn)
-        })
-        present(alert, animated: true)
+        alert.addAction(UIAlertAction(title: "Stop", style: .destructive) { _ in manager.stop(conn) })
+        vc.present(alert, animated: true)
     }
 }
 

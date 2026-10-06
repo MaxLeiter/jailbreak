@@ -48,6 +48,13 @@ final class SessionConnection {
     private let ddxPath = Locked<String?>(nil)
     private var connectInFlight = false
     private var inputInFlight = false
+    /// A compositor that accepts the input socket and then drops it must not be
+    /// redialled in a tight loop: a drop soon after an open backs off 250 ms,
+    /// doubling to 2 s; a connection that lived a while resets it.
+    private var inputOpenedAt: Date?
+    private var inputBackoff: TimeInterval = 0
+    private var inputRetryAt: Date?
+    private static let inputStableAfter: TimeInterval = 1.0
     private var retryAt: Date?
     /// The consumer-release event, cached across reconnects by token (invariant 11).
     private var releaseCache: (token: Data?, event: MTLSharedEvent?) = (nil, nil)
@@ -84,6 +91,9 @@ final class SessionConnection {
         inputGen.bump()
         lostAt = nil
         retryAt = nil
+        inputBackoff = 0
+        inputRetryAt = nil
+        inputOpenedAt = nil
         phase = .connecting
         openClipboard()
         openSysInt()
@@ -147,8 +157,14 @@ final class SessionConnection {
         if oldEP.ddx != newEP.ddx || oldEP.isIOSurface != newEP.isIOSurface {
             // The compositor restarted somewhere else (or a different one took
             // over): the old connection is of no further use.
+            let hadSurface = surface != nil
             dropSurface()
             cancelConnect()
+            if hadSurface {
+                phase = .reconnecting
+                lostAt = Date()
+                manager.connectionLostSurface(self)
+            }
             startConnect()
         }
         if oldEP.input != newEP.input {
@@ -253,9 +269,9 @@ final class SessionConnection {
 
     private func adopt(_ conn: OpaquePointer, release: SurfaceLink.ReleaseFenceImport) {
         guard let renderer = manager.renderer, isAttached else { xsurface_close(conn); return }
-        if let failure = release.failure { StatusWriter.shared.metal(failure) }
+        if let failure = release.failure { StatusWriter.shared.event(failure) }
         guard let link = SurfaceLink.adopt(conn: conn, release: release, renderer: renderer) else {
-            StatusWriter.shared.metal("iosurface-texture-fail")
+            StatusWriter.shared.event("iosurface-texture-fail")
             retryAt = Date().addingTimeInterval(0.5)   // the tick retries the connect
             return
         }
@@ -296,6 +312,7 @@ final class SessionConnection {
     private func connectInputIfNeeded() {
         guard isAttached, input == nil, !inputInFlight,
               let path = info.endpoints.input else { return }
+        if let at = inputRetryAt, Date() < at { return }
         inputInFlight = true
         let attach = attachGen.value, gen = inputGen.value
         let attachEpoch = attachGen, inputEpoch = inputGen
@@ -311,6 +328,7 @@ final class SessionConnection {
                 // A new connection starts with nothing held.
                 self.manager.connectionWillRelease(self)
                 self.input = link
+                self.inputOpenedAt = Date()
                 self.manager.connectionDidOpenInput(self)
                 self.manager.connectionDidChange(self)
             }
@@ -323,8 +341,17 @@ final class SessionConnection {
         manager.connectionWillRelease(self)
         input?.close()
         input = nil
-        // Redial now rather than on the 30-tick poll: iosc drops its clients on a
-        // rotation and the keyboard and pointer should not wait half a second.
+        if let opened = inputOpenedAt, Date().timeIntervalSince(opened) < Self.inputStableAfter {
+            inputBackoff = min(max(0.25, inputBackoff * 2), 2.0)
+            inputRetryAt = Date().addingTimeInterval(inputBackoff)
+        } else {
+            inputBackoff = 0
+            inputRetryAt = nil
+        }
+        inputOpenedAt = nil
+        // Redial now (no backoff for a connection that lived): iosc drops its clients
+        // on a rotation and the keyboard and pointer should not wait half a second.
+        // With a backoff armed, the 30-tick poll in `serviceInput` retries.
         connectInputIfNeeded()
         manager.connectionDidChange(self)
     }

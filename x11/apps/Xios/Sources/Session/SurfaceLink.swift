@@ -264,7 +264,7 @@ final class SurfaceLink {
         var length = 0
         var value: UInt64 = 0
         guard xsurface_gpu_fence_token(conn, &bytes, &length, &value) != 0 else {
-            StatusWriter.shared.metal("gpu-fence-missing-for-frame")
+            StatusWriter.shared.event("gpu-fence-missing-for-frame")
             presentFenceDecodeFailed = true
             return nil
         }
@@ -276,7 +276,7 @@ final class SurfaceLink {
         if token != presentFenceToken {
             if token == presentFenceImportFailedToken {
                 presentFenceImportFailedToken = nil
-                StatusWriter.shared.metal("gpu-fence-broker-import-failed")
+                StatusWriter.shared.event("gpu-fence-broker-import-failed")
                 presentFenceDecodeFailed = true
                 return nil
             }
@@ -320,7 +320,7 @@ final class SurfaceLink {
     /// Signal the consumer-release timeline for the held frame and tell the
     /// compositor. An empty command buffer on the same queue is ordered after every
     /// sample; no CPU wait (invariant 6).
-    private func submitHeldRelease() -> Bool {
+    private func submitHeldRelease(quiet: Bool = false) -> Bool {
         guard let held = heldStreamFrame else { return true }
         guard let event = releaseFenceEvent else {
             heldStreamFrame = nil       // legacy fixed-output connection
@@ -331,7 +331,8 @@ final class SurfaceLink {
         cb.encodeSignalEvent(event, value: held.seq)
         cb.commit()
         guard xsurface_released(conn, held.surfaceID, held.seq) == 0 else {
-            StatusWriter.shared.metal("release-fence-submit-send-failed")
+            // On close after an EOF the peer is already gone: not an event.
+            if !quiet { StatusWriter.shared.event("release-fence-submit-send-failed") }
             return false
         }
         heldStreamFrame = nil
@@ -343,7 +344,11 @@ final class SurfaceLink {
     /// Capture the last presented frame as a small image. Must be called before
     /// `close()`: it encodes ahead of the release fence on the shared queue.
     func captureThumbnail(completion: @escaping (UIImage?) -> Void) {
-        guard !isClosed, let last = lastPresented else { completion(nil); return }
+        // While a drained frame is pending, the held one is about to be replaced and
+        // the connection is mid-transition: keep the previous thumbnail.
+        guard !isClosed, !pendingStreamFrame, let last = lastPresented else {
+            completion(nil); return
+        }
         renderer.thumbnail(of: last.texture, flipY: last.flipY, completion: completion)
     }
 
@@ -352,7 +357,7 @@ final class SurfaceLink {
     /// (invariant 20).
     func close() {
         guard !isClosed else { return }
-        _ = submitHeldRelease()
+        _ = submitHeldRelease(quiet: true)
         isClosed = true
         xsurface_close(conn)
         currentTexture = nil

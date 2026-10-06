@@ -434,6 +434,8 @@ extension PresentView: SessionPresenter {
         blackPending = false
         blackAfter = nil
         needsPresent = true
+        // The first live tick must not still carry the holding range.
+        clock.setRange(FrameClock.live)
         renderer?.setCompositorUpscaleHint(connection.info.config.upscaleHint)
         // OUTPUT after every adopt: a compositor restarted in the same orientation
         // has forgotten it (invariant 55).

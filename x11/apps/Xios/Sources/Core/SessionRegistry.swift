@@ -130,9 +130,11 @@ final class SessionRegistry {
             sysint: XiosRuntimePaths.firstExisting("xios-sysint.sock"),
             a11y: XiosRuntimePaths.firstExisting("xios-a11y.sock"))
 
+        // The specific files and the displays directory only: the tmp dir itself is
+        // busy with unrelated files. A global file that does not exist yet is picked
+        // up by the fallback poll.
         var watchPaths: Set<String> = [
-            XiosRuntimePaths.runtimeTmp, globalConfigPath, statusPath,
-            XiosRuntimePaths.displaysDir,
+            globalConfigPath, statusPath, XiosRuntimePaths.displaysDir,
         ]
         var infos: [SessionInfo] = []
 

@@ -68,9 +68,12 @@ final class SwitcherViewController: FormViewController {
 
         if let conn = manager.presented {
             section("Danger")
-            let name = conn.info.isLegacyMain ? "Stop All Desktops" : "Stop \(conn.info.title)"
-            _ = row(title: name, symbol: "stop.circle", destructive: true) { [weak self] in
-                self?.dismiss(animated: true) { SessionManager.shared.stop(conn) }
+            _ = row(title: StopConfirmation.title(for: conn), symbol: "stop.circle",
+                    destructive: true) { [weak self] in
+                guard let self else { return }
+                // Same confirmation as the launcher's: a stray tap here would end
+                // the desktop you are looking at.
+                StopConfirmation.present(for: conn, from: self)
             }
         }
     }
