@@ -303,8 +303,24 @@ Neither is caused by any of the above; both block launching a freshly built
    The `.app` flavor is unaffected: it links `@executable_path/lib/libcrypto.3.dylib` by
    path and bundles OpenSSL 3.5.3 inside the bundle, so no rpath search happens.
 
+   Narrowed 2026-10-01 by an on-device A/B (iPad7,12, wl4's WebContent and RequestServer run
+   from a scratch prefix in `/var/jb/tmp`): "every helper dies" overstates it. Only
+   `WebContent` and `WebWorker` import a symbol base 3.2.1 lacks
+   (`_EVP_PKEY_sign_message_init`, `_EVP_PKEY_verify_message_init`); `ladybird`,
+   `Compositor`, `ImageDecoder` and `RequestServer` load the base libcrypto and run. And
+   wl4's own `ladybird-wayland` launcher exports
+   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:...`, which wins over
+   `@rpath` by leaf name, so a launch from the desktop entry gets WebContent past dyld on
+   the private 3.5. Run directly, WebContent aborts (exit 134). So wl4 renders only through
+   the workaround below, shipped on the launcher path, which hands OpenSSL 3.5 to every
+   process the browser spawns. The gate is still right to fail it.
+
    Remedy is a rebuild + republish as `wl5` -- the packaging script needs no change. Do not
-   hand-patch the deb. Testing-only workaround meanwhile:
+   hand-patch the deb. **Status 2026-10-01:** wl5 (sha256 `264c4b75...`, the 2026-08-02
+   build; a fresh rebuild from the same install root is identical file-for-file) is on
+   dev.repo, prod still serves wl4. Rebuild from the Jul 29 install root whose linker UUIDs
+   match wl4, not the main checkout's `out/ladybird-wayland-install` (Jul 6), which is an
+   older engine. Testing-only workaround meanwhile:
    `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:/var/jb/lib/angle`;
    do not put that on a global launcher path, since the whole point of ladybird-tls is that
    the private OpenSSL 3.5 shadows nothing.
