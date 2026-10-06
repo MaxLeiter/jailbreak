@@ -278,7 +278,19 @@ final class DesktopCardCell: UICollectionViewCell {
         text.spacing = 4
         text.alignment = .leading
         text.setCustomSpacing(8, after: reason)
-        let stateRow = UIStackView(arrangedSubviews: [dot, text])
+        // The dot sits in a box as tall as the title line so the stack can align it.
+        let dotBox = UIView()
+        dotBox.addSubview(dot)
+        dot.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            dotBox.widthAnchor.constraint(equalToConstant: 10),
+            dotBox.heightAnchor.constraint(equalToConstant: 22),
+            dot.widthAnchor.constraint(equalToConstant: 10),
+            dot.heightAnchor.constraint(equalToConstant: 10),
+            dot.leadingAnchor.constraint(equalTo: dotBox.leadingAnchor),
+            dot.centerYAnchor.constraint(equalTo: dotBox.centerYAnchor),
+        ])
+        let stateRow = UIStackView(arrangedSubviews: [dotBox, text])
         stateRow.axis = .horizontal
         stateRow.alignment = .top
         stateRow.spacing = 10
@@ -287,7 +299,6 @@ final class DesktopCardCell: UICollectionViewCell {
             v.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(v)
         }
-        dot.translatesAutoresizingMaskIntoConstraints = false
         let aspect = thumb.heightAnchor.constraint(equalTo: thumb.widthAnchor, multiplier: 0.625)
         aspect.priority = .required
         NSLayoutConstraint.activate([
@@ -304,9 +315,6 @@ final class DesktopCardCell: UICollectionViewCell {
             badge.topAnchor.constraint(equalTo: thumb.topAnchor, constant: 10),
             badge.trailingAnchor.constraint(equalTo: thumb.trailingAnchor, constant: -10),
             badge.heightAnchor.constraint(equalToConstant: 18),
-            dot.widthAnchor.constraint(equalToConstant: 10),
-            dot.heightAnchor.constraint(equalToConstant: 10),
-            dot.topAnchor.constraint(equalTo: title.topAnchor, constant: 7),
             stateRow.topAnchor.constraint(equalTo: thumb.bottomAnchor, constant: 12),
             stateRow.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
             stateRow.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
