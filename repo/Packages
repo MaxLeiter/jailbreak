@@ -1478,7 +1478,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.48
+Version: 0.9.49
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1488,11 +1488,11 @@ Section: X11
 Priority: optional
 Installed-Size: 736
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.48_iphoneos-arm64.deb
-Size: 176630
-MD5sum: bc89198d338ef4d4a46ac9181d494605
-SHA1: 6a086208d2b91f9ddcecec8e00dd065aa03c77d0
-SHA256: 864c5434b5e6f703fbc6e524f74850849ea6a34208e9a49a6b45e8587ae32b9d
+Filename: debs/iosc_0.9.49_iphoneos-arm64.deb
+Size: 178062
+MD5sum: ea75d00023393ccccdd6cd8069a13c07
+SHA1: 63b2a017a321ab77d1cbf7ae9237c42bbc4633ef
+SHA256: f08883683dcb66598fff0513e38dc8dfc936dde070286c822d4c2239776f6b6a
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -1501,7 +1501,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: iosc-shell
 Name: iosc desktop shell
-Version: 0.9.13
+Version: 0.9.14
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1511,11 +1511,11 @@ Section: X11
 Priority: optional
 Installed-Size: 476
 Description: lightweight desktop shell for the iosc compositor
-Filename: debs/iosc-shell_0.9.13_iphoneos-arm64.deb
-Size: 80714
-MD5sum: f9a8fa45d908f79652d77b8e42730039
-SHA1: 2e2e42345da2ee74d655bbb216566cbd51b9adc3
-SHA256: 22f76e7105d879d0255efd885a0b42e5ce06f62bd972def99510f660a1ba1e1c
+Filename: debs/iosc-shell_0.9.14_iphoneos-arm64.deb
+Size: 81058
+MD5sum: 308ddb4be7ca92ef02a24764a65ff719
+SHA1: 666698e21401652ac7756926196a2d28820176d4
+SHA256: 806c62fbada48dc668891ca678d4a51f76014cfed9923f05f1bc58e73e8c2c7e
 Icon: https://repo.maxleiter.com/icons/iosc-shell.png
 Depiction: https://repo.maxleiter.com/depictions/iosc-shell.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc-shell.json
@@ -12703,7 +12703,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/xfconf.json
 
 Package: xios-a11y-tools
 Name: Xios accessibility tools
-Version: 0.2.16
+Version: 0.2.17
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -12712,11 +12712,11 @@ Section: X11
 Priority: optional
 Installed-Size: 144
 Description: accessibility smoke tools for Xios
-Filename: debs/xios-a11y-tools_0.2.16_iphoneos-arm64.deb
-Size: 17440
-MD5sum: 3fcf8557e490b071ee3d71823416cd95
-SHA1: 8a257f59900f1af2830f0d154be8168a74184def
-SHA256: 8ee640068dedee2f8176295c3f19abf360363667ea619f944e033cd7296f7bf3
+Filename: debs/xios-a11y-tools_0.2.17_iphoneos-arm64.deb
+Size: 17720
+MD5sum: 85d8377bf7c67eb467d11128ddd6a3b2
+SHA1: ca922e470b3e6bf97aed86af43c1d7b67392694f
+SHA256: 3e1bbb03ebb016dd0dbb3aa89aab3fa12b57d5fd7a25c36a5f9da7ad7dfea28e
 Icon: https://repo.maxleiter.com/icons/xios-a11y-tools.png
 Depiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-a11y-tools.json
@@ -13029,23 +13029,24 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-session
 Name: Xios session launcher
-Version: 1.0.80
+Version: 1.0.81
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: iosc (>= 0.9.34), uikittools
 Recommends: iosc-shell, xios
+Breaks: xios-session-stubs (<< 0.2.12)
 Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
 Priority: optional
-Installed-Size: 180
+Installed-Size: 196
 Description: pick-a-desktop session launcher for the Xios stack
-Filename: debs/xios-session_1.0.80_iphoneos-arm64.deb
-Size: 48680
-MD5sum: 13faa9f748f8a7571abd03451dacfe55
-SHA1: ee569e00d6665944eb89adb06979d5794b2fdb93
-SHA256: 8ae56ed43ff82b68e741f1c8e46e4d83228ce613a17a925a265494dbc19f8178
+Filename: debs/xios-session_1.0.81_iphoneos-arm64.deb
+Size: 55304
+MD5sum: 6c032c5d48be362904ac0a48184972d4
+SHA1: 8af304952ed651d20eca8bd94a005a4850583f7f
+SHA256: 22ce77045bce0dc9ee1eeef426f1c27bc1a3b56d031de22de025622b00bb7f24
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session.json
@@ -13054,7 +13055,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-session-stubs
 Name: Xios GNOME session bridges
-Version: 0.2.11
+Version: 0.2.12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -13063,11 +13064,11 @@ Recommends: pulseaudio-utils
 Section: X11
 Priority: optional
 Description: iOS-backed freedesktop D-Bus services for the Xios GNOME session
-Filename: debs/xios-session-stubs_0.2.11_iphoneos-arm64.deb
-Size: 40894
-MD5sum: ae3d1d3ab1673756ddc16aaf253b388e
-SHA1: 51a5a5fe200fb3f85299f41a98074fa4adf1c35b
-SHA256: 25ae07cd1aa59ddad6d2e36ec8d220d3e437fdc866d53ae757ac40f2edc1f19e
+Filename: debs/xios-session-stubs_0.2.12_iphoneos-arm64.deb
+Size: 41232
+MD5sum: c450333dd18e78dcb017fb4a66d922f7
+SHA1: aef2f577055fcc8cdbf17e5f4e32bb7e23571763
+SHA256: d199cbdde7a81f200eb1b1efdf56843d0c94f5f71c144e34d76da29a5f098ece
 Icon: https://repo.maxleiter.com/icons/xios-session-stubs.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session-stubs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session-stubs.json
