@@ -1,5 +1,8 @@
 import Foundation
 
+/// Where the runtime lives on this device. Environment overrides exist for a
+/// shell-launched debug run only: FrontBoard gives the app no environment, so
+/// production knobs come from config files (invariant 25).
 enum XiosRuntimePaths {
     static func trimTrailingSlash(_ path: String) -> String {
         var out = path
@@ -55,6 +58,10 @@ enum XiosRuntimePaths {
         paths.append("/var/tmp/" + name)
         return Array(NSOrderedSet(array: paths)) as? [String] ?? paths
     }
+
+    /// One JSON file per slot, written by xios-session: slot, preset, state,
+    /// message, and the path of that slot's xios-<slot>.json.
+    static var displaysDir: String { tmp("xios-displays.d") }
 
     static func firstExisting(_ name: String) -> String {
         tmpCandidates(name).first { FileManager.default.fileExists(atPath: $0) } ?? tmp(name)
