@@ -128,4 +128,23 @@ alive "$N" && fail "slot stop did not reap the GNOME-like slot's process group"
 alive "$A2" || fail "stopping the GNOME-like slot killed alpha-2"
 echo "ok: slot stop reaps a pgid-only slot"
 
+# ---- a process group shared by two slots is never signalled as a group ---------
+perl -e 'setpgrp(0,0); if (!fork) { exec { "sleep" } "XIOSFAKE-sa", 300 } exec { "sleep" } "XIOSFAKE-sb", 300' >/dev/null 2>&1 </dev/null &
+SH=$!; FAKE_PIDS+=("$SH")
+sleep 0.5
+SHPGID="$(ps -p "$SH" -o pgid= | tr -d ' ')"
+printf '%s\t%s\t%s\t%s\n' "$SHPGID" app slota 2026-10-06T00:00:00 "$SHPGID" app slotb 2026-10-06T00:00:00 >>"$XS_TMP/xios-session.pgids"
+mkdir -p "$XS_TMP/xios-displays.d"
+run_lib slota xios_session_stop >/dev/null 2>&1
+sleep 0.3
+alive "$SH" || fail "stopping slot slota signalled a process group shared with slotb"
+echo "ok: shared process groups are not signalled"
+
+# ---- dead slots lose their pgid rows -------------------------------------------
+printf '%s\t%s\t%s\t%s\n' 999999 gnome deadslot 2026-10-06T00:00:00 >>"$XS_TMP/xios-session.pgids"
+run_lib "" xs_sweep_stale_slot_registry >/dev/null 2>&1
+grep -q deadslot "$XS_TMP/xios-session.pgids" && fail "dead slot's pgid row survived the sweep"
+grep -q "$NPGID" "$XS_TMP/xios-session.pgids" || true
+echo "ok: sweep prunes dead slots' pgid rows"
+
 echo "PASS"
