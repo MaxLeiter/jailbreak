@@ -163,7 +163,10 @@ case "$PRESET" in
         if [ "${XIOS_SESSION_OWN_PGROUP:-}" != 1 ] \
             && [ "$(xs_current_pgid)" != "$$" ] \
             && [ -x "$XS_PREFIX/libexec/xios-setsid" ]; then
+            # Name the interpreter: xios-setsid execs argv[1] directly, and on a
+            # rootless device a bare `#!/usr/bin/env bash` has no /usr/bin/env.
             XIOS_SESSION_OWN_PGROUP=1 exec "$XS_PREFIX/libexec/xios-setsid" \
+                "$([ -x "$XS_BASH" ] && printf %s "$XS_BASH" || command -v bash)" \
                 "$0" "$PRESET" ${2:+"$2"}
         fi ;;
 esac
