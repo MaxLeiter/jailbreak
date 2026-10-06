@@ -1,0 +1,16 @@
+--- !tapi-tbd
+# Link stub for Procursus libiosexec (package libiosexec1, preinstalled on
+# every Procursus bootstrap; 1.3.1 on the device). Only the exec entry points
+# ioscd calls are listed, so nothing else can be linked from it by accident.
+# The install name matches the real dylib; ioscd adds an rpath to
+# <prefix>/usr/lib. See ../src/xios-iosexec.h.
+tbd-version:     4
+targets:         [ arm64-ios, arm64e-ios ]
+flags:           [ not_app_extension_safe ]
+install-name:    '@rpath/libiosexec.1.dylib'
+current-version: 0
+compatibility-version: 0
+exports:
+  - targets:         [ arm64-ios, arm64e-ios ]
+    symbols:         [ _ie_execl, _ie_execv, _ie_execvp ]
+...

@@ -22,14 +22,16 @@ asserts every `required-marker` shows up in `ldid -e` — the verification the ~
 inline `ldid -S` sites lacked. Fails loud so `set -e` aborts. Prints only to
 stderr (safe to call anywhere).
 
-### `xmkdeb <staging_dir> <out_dir> [--minos]`
+### `xmkdeb <staging_dir> <out_dir>`
 Assembles a root-owned, zstd `.deb` named from `DEBIAN/control`
 (`<Package>_<Version>_<Architecture>.deb`) into `<out_dir>`, and echoes its path
 (so `deb=$(xmkdeb ...)`). Builds directly when running as root inside the
 container, else shells out to the cross-build image for the `chown 0:0` +
-`dpkg-deb` (a macOS host has no `dpkg-deb`). Stamps MinimumOSVersion only with
-`--minos` (the catalog otherwise stamps in one final `tools/stamp-minos.py` sweep,
-done last because concurrent builds churn `out/`).
+`dpkg-deb` (a macOS host has no `dpkg-deb`). It never stamps MinimumOSVersion:
+`linux-build/tools/stamp-minos.py --apply` does that in one final sweep over
+`linux-build/out`, because each floor covers the package's in-repo dependency
+closure and concurrent builds churn `out/`. A trailing `--minos` is still
+accepted and only prints a note saying so.
 
 ### `xstage_lagom_fonts <share/Lagom/fonts dir> [cache dir]`
 Stages the Liberation text family (Sans/Serif/Mono × 4 styles) into a Ladybird

@@ -5,8 +5,9 @@
  *
  * The concrete keymaps (MetaKeymapNative/MetaKeymapX11) are compiled out with
  * native_backend=false / need an X display, so MetaSeatIOS supplies this one. ClutterKeymap
- * has a single vfunc (get_direction); the actual key translation is done by the compositor's
- * xkb state (iosc_input's "us" layout), so this only reports text direction. GPL-2.0+.
+ * has a single vfunc (get_direction); key translation uses MetaBackendIOS's xkb keymap
+ * (meta_backend_get_keymap: notify_keyval and Mutter's Wayland keyboard), so this only
+ * reports text direction. GPL-2.0+.
  */
 #pragma once
 

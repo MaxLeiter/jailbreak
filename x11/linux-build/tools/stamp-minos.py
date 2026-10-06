@@ -91,6 +91,10 @@ def macho_minos(data):
     if len(data)<8: return 0
     if struct.unpack_from(">I",data,0)[0] in FAT:
         nfat=struct.unpack_from(">I",data,4)[0]; p=8; best=0; f64=data[3]==0xbf
+        # A Java .class shares the CAFEBABE magic. There the next word is
+        # minor<<16|major, and every class-file major is >= 45 (JDK 1.1); a fat
+        # header's nfat_arch is a handful. Not a Mach-O, so no floor.
+        if nfat>=45: return 0
         for _ in range(nfat):
             if f64: off=struct.unpack_from(">Q",data,p+8)[0]; p+=32
             else:   off=struct.unpack_from(">I",data,p+8)[0]; p+=20

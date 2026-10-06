@@ -1,5 +1,5 @@
 Package: libmozjs-115-0
-Version: 115.12.0
+Version: @DEB_MOZJS_V@
 Architecture: iphoneos-arm64
 MinimumOSVersion: 14.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>

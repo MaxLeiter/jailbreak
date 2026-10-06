@@ -48,6 +48,13 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
     "$HERE/xios-output-queue-test.c" \
     -o "$IOSC_PLAN_TEST_DIR/xios-output-queue-test"
   "$IOSC_PLAN_TEST_DIR/xios-output-queue-test"
+  echo "==> testing xios input socket reader"
+  cc -std=c11 -Wall -Wextra -Werror \
+    -I"$HERE" -I"$X11_DIR/apps/shared" \
+    "$HERE/xios-input-socket-test.c" \
+    "$HERE/xios_input_socket.c" \
+    -o "$IOSC_PLAN_TEST_DIR/xios-input-socket-test"
+  "$IOSC_PLAN_TEST_DIR/xios-input-socket-test"
   rm -rf "$IOSC_PLAN_TEST_DIR"
   mkdir -p "$HERE/out"
 

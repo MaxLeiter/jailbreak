@@ -5,9 +5,9 @@
  *
  * Provides: jbroot path resolution, an anonymous wl_shm-pool fd, the shared
  * wl_buffer release listener, the cairo-wrapped wl_shm buffer (SD_CAIRO), the
- * .desktop launcher scan, and the fork+exec launch used by all clients. Actual
- * drawing lives in panel-render.h (cairo/pango); the original 5x7-bitmap
- * renderer that gave this header its name is gone.
+ * .desktop launcher scan, and the fork+exec launch (as mobile) used by all
+ * clients. Actual drawing lives in panel-render.h (cairo/pango); the original
+ * 5x7-bitmap renderer that gave this header its name is gone.
  */
 #ifndef SHELL_DRAW_H
 #define SHELL_DRAW_H
@@ -22,6 +22,9 @@
 #include <fcntl.h>
 #include <dirent.h>
 #include <errno.h>
+#include <grp.h>
+#include <pwd.h>
+#include <signal.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -71,12 +74,6 @@ static uint64_t sd_mono_ms(void)
     return (uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u;
 }
 
-static int sd_socket_exists(const char *path)
-{
-    struct stat st;
-    return path && stat(path, &st) == 0 && S_ISSOCK(st.st_mode);
-}
-
 /* A bus socket whose dbus-daemon died without its own cleanup (SIGKILL from
  * the session teardown's second pass, jetsam) still stat()s as a socket;
  * only a refused connect tells it apart from a live listener. */
@@ -94,17 +91,148 @@ static int sd_socket_dead(const char *path)
     return dead;
 }
 
+/* Apps launched from the shell run as mobile, the way ioscd's LAUNCH path
+ * (launch_client) runs them: the shell clients themselves run as root, and the
+ * desktop pins they launch from are written by the mobile Xios app. */
+struct sd_mobile {
+    uid_t uid;
+    gid_t gid;
+    char  name[64];
+    char  home[256];
+};
+
+static void sd_mobile_account(struct sd_mobile *m)
+{
+    struct passwd *pw = getpwnam("mobile");
+    m->uid = pw ? pw->pw_uid : 501;
+    m->gid = pw ? pw->pw_gid : 501;
+    snprintf(m->name, sizeof m->name, "%s",
+             (pw && pw->pw_name) ? pw->pw_name : "mobile");
+    snprintf(m->home, sizeof m->home, "%s",
+             (pw && pw->pw_dir && pw->pw_dir[0]) ? pw->pw_dir : "/var/mobile");
+}
+
+/* ioscd's drop_to_mobile, in the same order. */
+static int sd_drop_to_mobile(const struct sd_mobile *m)
+{
+    if (initgroups(m->name, (int)m->gid) != 0) return -1;
+    if (setgid(m->gid) != 0) return -1;
+    if (setuid(m->uid) != 0) return -1;
+    return 0;
+}
+
+/* ------------------------------------------ files in mobile's own dirs ---
+ * The clients run as root, but the shell's settings live in mobile's
+ * Preferences and the user's files in mobile's Documents, where any mobile
+ * process can plant a symlink, a hard link or a FIFO. So a file there is used
+ * only if it is a regular file with one link, owned by mobile or root, and
+ * never through a symlink (refused and logged); a whole file is replaced by
+ * an O_EXCL temp renamed into place; and whatever the shell creates there is
+ * handed to mobile, so the Xios app and mobile apps can still edit it. */
+
+static void sd_user_give(int fd)
+{
+    struct sd_mobile m;
+    if (geteuid() != 0) return;
+    sd_mobile_account(&m);
+    (void)fchown(fd, m.uid, m.gid);
+}
+
+static int sd_user_file_ok(int fd, const char *path)
+{
+    struct sd_mobile m;
+    struct stat st;
+    sd_mobile_account(&m);
+    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode) && st.st_nlink == 1 &&
+        (st.st_uid == 0 || st.st_uid == m.uid))
+        return 1;
+    fprintf(stderr, "iosc-shell: leaving %s alone: not a singly linked file of mobile or root\n",
+            path);
+    return 0;
+}
+
+static FILE *sd_user_fopen_read(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        if (errno == ELOOP)
+            fprintf(stderr, "iosc-shell: not reading %s: it is a symlink\n", path);
+        return NULL;
+    }
+    if (!sd_user_file_ok(fd, path)) { close(fd); return NULL; }
+    FILE *f = fdopen(fd, "r");
+    if (!f) close(fd);
+    return f;
+}
+
+#ifdef SD_USER_REPLACE
+/* Starts a whole-file replace of <path>: an O_EXCL temp beside it, mobile's.
+ * Refused (and logged) when <path> exists as anything but a regular file. */
+static FILE *sd_user_replace_begin(const char *path, char *tmp, size_t tmpn)
+{
+    struct stat st;
+    if (lstat(path, &st) == 0 && !S_ISREG(st.st_mode)) {
+        fprintf(stderr, "iosc-shell: not writing %s: it is %s\n", path,
+                S_ISLNK(st.st_mode) ? "a symlink" : "not a regular file");
+        return NULL;
+    }
+    if ((size_t)snprintf(tmp, tmpn, "%s.XXXXXX", path) >= tmpn) return NULL;
+    int fd = mkstemp(tmp);              /* O_CREAT|O_EXCL: never through a link */
+    if (fd < 0) return NULL;
+    (void)fchmod(fd, 0644);
+    sd_user_give(fd);
+    FILE *f = fdopen(fd, "w");
+    if (!f) { close(fd); unlink(tmp); }
+    return f;
+}
+
+/* Finishes it: renamed into place if everything was written (ok), else the
+ * temp is dropped. */
+static int sd_user_replace_end(FILE *f, const char *tmp, const char *path, int ok)
+{
+    ok = fflush(f) == 0 && ok;
+    ok = fclose(f) == 0 && ok;
+    if (ok && rename(tmp, path) == 0) return 1;
+    unlink(tmp);
+    fprintf(stderr, "iosc-shell: could not write %s\n", path);
+    return 0;
+}
+#endif /* SD_USER_REPLACE */
+
+/* A live listener from a dbus-daemon running as <uid>. dbus-daemon admits
+ * only its own uid by default, so a bus an older shell started as root still
+ * answers connect() but refuses every mobile app: replace it, don't reuse it. */
+static int sd_bus_socket_usable(const char *sock, uid_t uid)
+{
+    struct stat st;
+    return lstat(sock, &st) == 0 && S_ISSOCK(st.st_mode) && st.st_uid == uid &&
+           !sd_socket_dead(sock);
+}
+
 static int sd_shared_session_bus(const char *root, const char *busdir,
+                                 const struct sd_mobile *m,
                                  char *addr, size_t addr_n)
 {
     char sock[256], daemon[256], address_arg[320];
     if (!busdir || !*busdir || !addr || addr_n == 0) return 0;
     snprintf(sock, sizeof sock, "%s/session-bus", busdir);
     snprintf(addr, addr_n, "unix:path=%s", sock);
-    if (sd_socket_exists(sock) && !sd_socket_dead(sock)) return 1;
 
+    /* mobile-owned 0700 with a mobile daemon, like ioscd's ensure_session_bus.
+     * The dir sits in the world-writable <jbroot>/tmp, so it is taken over
+     * through an fd that refuses a planted symlink, and only from root or
+     * mobile. */
     mkdir(busdir, 0700);
-    chmod(busdir, 0700);
+    int dfd = open(busdir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+    if (dfd < 0) return 0;
+    struct stat st;
+    int owned = fstat(dfd, &st) == 0 && S_ISDIR(st.st_mode) &&
+                (st.st_uid == 0 || st.st_uid == m->uid) &&
+                fchown(dfd, m->uid, m->gid) == 0 && fchmod(dfd, 0700) == 0;
+    close(dfd);
+    if (!owned) return 0;
+    if (sd_bus_socket_usable(sock, m->uid)) return 1;
+
     unlink(sock);
     sd_join_path(daemon, sizeof daemon, root, "/usr/bin/dbus-daemon");
     snprintf(address_arg, sizeof address_arg, "--address=%s", addr);
@@ -119,6 +247,7 @@ static int sd_shared_session_bus(const char *root, const char *busdir,
             dup2(fd, 2);
             if (fd > 2) close(fd);
         }
+        if (geteuid() == 0 && sd_drop_to_mobile(m) != 0) _exit(126);
         execl(daemon, "dbus-daemon", "--session", "--fork",
               address_arg, "--print-address", (char*)NULL);
         _exit(127);
@@ -126,7 +255,7 @@ static int sd_shared_session_bus(const char *root, const char *busdir,
 
     int status = 0;
     waitpid(pid, &status, 0);
-    return sd_socket_exists(sock);
+    return sd_bus_socket_usable(sock, m->uid);
 }
 
 /* An anonymous, unlinked, sized fd for a wl_shm pool (backs the clients'
@@ -299,7 +428,9 @@ static void sd_cairo_pool_destroy(struct sd_cairo_pool *pool)
 /* ------------------------------------------------------- .desktop scan ---- */
 
 #if defined(SD_APP_SCAN) || defined(SD_DESKTOP_PINNING)
-struct sd_app { char name[64]; char exec[256]; char icon[128]; };
+/* exec is the whole Exec line (heap, kept for the life of the process): a
+ * fixed buffer cut long ones and the cut command is what got launched */
+struct sd_app { char name[64]; char *exec; char icon[128]; };
 #endif
 
 #ifdef SD_APP_SCAN
@@ -325,22 +456,24 @@ static int sd_scan_apps_dir(const char *dir, struct sd_app *apps, int n, int max
         if (len < 9 || strcmp(e->d_name + len - 8, ".desktop")) continue;
         char path[512]; snprintf(path, sizeof path, "%s/%s", dir, e->d_name);
         FILE *f = fopen(path, "r"); if (!f) continue;
-        char line[512], name[64] = {0}, exec[256] = {0}, icon[128] = {0};
+        char *line = NULL, name[64] = {0}, *exec = NULL, icon[128] = {0};
+        size_t cap = 0;
         int nodisplay = 0, in_entry = 0;
-        while (fgets(line, sizeof line, f)) {
+        while (getline(&line, &cap, f) > 0) {
             if (line[0] == '[') { in_entry = !strncmp(line, "[Desktop Entry]", 15); continue; }
             if (!in_entry) continue;
             if (!strncmp(line, "Name=", 5) && !name[0]) sscanf(line + 5, "%63[^\n]", name);
-            else if (!strncmp(line, "Exec=", 5) && !exec[0]) sscanf(line + 5, "%255[^\n]", exec);
+            else if (!strncmp(line, "Exec=", 5) && !exec) exec = strndup(line + 5, strcspn(line + 5, "\r\n"));
             else if (!strncmp(line, "Icon=", 5) && !icon[0]) sscanf(line + 5, "%127[^\n]", icon);
             else if (!strncmp(line, "NoDisplay=true", 14)) nodisplay = 1;
         }
+        free(line);
         fclose(f);
-        if (nodisplay || !exec[0]) continue;
-        sd_strip_field_codes(exec);
+        if (exec) sd_strip_field_codes(exec);
+        if (nodisplay || !exec || !exec[0]) { free(exec); continue; }
         if (!name[0]) snprintf(name, sizeof name, "%.*s", (int)(len-8), e->d_name);
         snprintf(apps[n].name, 64, "%s", name);
-        snprintf(apps[n].exec, 256, "%s", exec);
+        apps[n].exec = exec;
         snprintf(apps[n].icon, 128, "%s", icon);
         n++;
     }
@@ -374,15 +507,35 @@ static void sd_desktop_pins_path(char *out, size_t n)
 #endif
 
 #ifdef SD_DESKTOP_PINNING
+/* Appends to the pins file (the Xios app appends to it too), creating it
+ * mobile's if missing and handing an older root-made one back to mobile;
+ * same rules as the other files in mobile's dirs. */
+static FILE *sd_user_fopen_append(const char *path)
+{
+    int fd = open(path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC,
+                  0644);
+    if (fd < 0) {
+        if (errno == ELOOP)
+            fprintf(stderr, "iosc-shell: not writing %s: it is a symlink\n", path);
+        return NULL;
+    }
+    if (!sd_user_file_ok(fd, path)) { close(fd); return NULL; }
+    sd_user_give(fd);
+    FILE *f = fdopen(fd, "a");
+    if (!f) close(fd);
+    return f;
+}
+
 static int sd_desktop_pin_exists(const char *exec)
 {
     if (!exec || !*exec) return 1;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
-    FILE *f = fopen(path, "r");
+    FILE *f = sd_user_fopen_read(path);
     if (!f) return 0;
-    char line[768];
+    char *line = NULL;
+    size_t cap = 0;
     int found = 0;
-    while (fgets(line, sizeof line, f)) {
+    while (getline(&line, &cap, f) > 0) {
         /* positional tab fields; Icon may be empty, so no strtok (it would
          * merge the empty field and shift Exec into the icon slot) */
         line[strcspn(line, "\r\n")] = 0;
@@ -394,21 +547,24 @@ static int sd_desktop_pin_exists(const char *exec)
         (void)type; (void)name; (void)icon;
         if (target && !strcmp(target, exec)) { found = 1; break; }
     }
+    free(line);
     fclose(f);
     return found;
 }
 
 static void sd_pin_app_to_desktop(const struct sd_app *app)
 {
-    if (!app || !app->exec[0] || sd_desktop_pin_exists(app->exec)) return;
+    if (!app || !app->exec || !app->exec[0] || sd_desktop_pin_exists(app->exec)) return;
     char path[256]; sd_desktop_pins_path(path, sizeof path);
-    FILE *f = fopen(path, "a");
+    FILE *f = sd_user_fopen_append(path);
     if (!f) return;
     int slot = 0;
     {
-        FILE *r = fopen(path, "r");
-        char line[768];
-        while (r && fgets(line, sizeof line, r)) slot++;
+        FILE *r = sd_user_fopen_read(path);
+        char *line = NULL;
+        size_t cap = 0;
+        while (r && getline(&line, &cap, r) > 0) slot++;
+        free(line);
         if (r) fclose(r);
     }
     int x = 300 + (slot % 6) * 104;
@@ -418,63 +574,199 @@ static void sd_pin_app_to_desktop(const struct sd_app *app)
 }
 #endif /* SD_DESKTOP_PINNING */
 
-/* fork+exec a .desktop Exec under the same Wayland/dbus env run-kgx.sh proved
- * good. The shell clients run outside the iOS app sandbox (started by ioscd or a
- * run-script), so this is the direct path. */
+/* The compositor socket this client is connected to, as an absolute path, the
+ * way libwayland resolved it: WAYLAND_DISPLAY if absolute, else under
+ * XDG_RUNTIME_DIR. A launched app gets the bus dir as XDG_RUNTIME_DIR, so the
+ * bare name run-shell.sh exports ("wayland-0") would point inside that. */
+static void sd_wayland_socket_path(char *dst, size_t n, const char *root)
+{
+    const char *name = getenv("WAYLAND_DISPLAY");
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    if (!name || !*name) name = "wayland-0";
+    if (name[0] == '/') snprintf(dst, n, "%s", name);
+    else if (runtime && runtime[0] == '/') snprintf(dst, n, "%s/%s", runtime, name);
+    else {
+        char tmp[256];
+        sd_join_path(tmp, sizeof tmp, root, "/tmp");
+        snprintf(dst, n, "%s/%s", tmp, name);
+    }
+}
+
+/* ioscd hands the compositor socket to mobile before it launches anything
+ * (fix_ddx_perms): libwayland binds it under the compositor's umask, so a root
+ * compositor's socket is not writable, i.e. not connectable, for mobile. Same
+ * here, for this one socket only: a root socket under this one name (not a
+ * hard link planted to another), and without following a symlink. */
+static void sd_mobile_socket(const char *path, const struct sd_mobile *m)
+{
+    struct stat st;
+    if (lstat(path, &st) != 0 || !S_ISSOCK(st.st_mode) || st.st_uid != 0 ||
+        st.st_nlink != 1)
+        return;
+    if (lchown(path, m->uid, m->gid) == 0)
+        (void)fchmodat(AT_FDCWD, path, 0660, AT_SYMLINK_NOFOLLOW);
+}
+
+/* None of the launching client's own fds (its compositor connection, shm
+ * pools, keymap) may reach the app. */
+static void sd_close_fds_from(int lowfd)
+{
+    int max = getdtablesize();
+    if (max <= 0 || max > 65536) max = 65536;
+    for (int fd = lowfd; fd < max; fd++) close(fd);
+}
+
+/* The environment ioscd's set_wayland_client_env gives every app it launches
+ * on the classic desktop, so a dock launch and a Home Screen launch see the
+ * same thing. Keep the two in step. */
+static void sd_client_env(const char *root, const char *tmp, const char *wayland,
+                          const char *runtime, int have_bus, const char *bus_addr,
+                          const struct sd_mobile *m, int enable_a11y)
+{
+    char prefix[256], angle[256], angle_egl[300], config_dirs[300], shell[256];
+    char data_dirs[600], config_home[300], cache_home[300], schemas[300];
+    char compose[320], dyld[600], pulse[300], pulse_runtime[300];
+    char qt_plugins[300], qt_qml[300], path[600];
+    sd_join_path(prefix, sizeof prefix, root, "/usr");
+    sd_join_path(angle, sizeof angle, root, "/lib/angle");
+    sd_join_path(angle_egl, sizeof angle_egl, root, "/lib/angle/libEGL.angle.dylib");
+    sd_join_path(config_dirs, sizeof config_dirs, root, "/etc/xdg");
+    sd_join_path(shell, sizeof shell, root, "/bin/sh");
+    snprintf(data_dirs, sizeof data_dirs, "%s/share:%s/local/share", prefix, prefix);
+    snprintf(config_home, sizeof config_home, "%s/.config", m->home);
+    snprintf(cache_home, sizeof cache_home, "%s/.cache", m->home);
+    snprintf(schemas, sizeof schemas, "%s/share/glib-2.0/schemas", prefix);
+    snprintf(compose, sizeof compose, "%s/share/X11/locale/en_US.UTF-8/Compose", prefix);
+    snprintf(dyld, sizeof dyld, "%s/lib:%s", prefix, angle);
+    snprintf(pulse, sizeof pulse, "unix:%s/pulse/native", tmp);
+    snprintf(pulse_runtime, sizeof pulse_runtime, "%s/pulse-daemon", tmp);
+    snprintf(qt_plugins, sizeof qt_plugins, "%s/lib/qt6/plugins", prefix);
+    snprintf(qt_qml, sizeof qt_qml, "%s/lib/qt6/qml", prefix);
+    if (!root || !*root || !strcmp(root, "/"))
+        snprintf(path, sizeof path, "/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin");
+    else
+        snprintf(path, sizeof path,
+                 "%s/usr/local/bin:%s/usr/bin:%s/usr/sbin:%s/bin:%s/sbin:/usr/bin:/bin",
+                 root, root, root, root, root);
+
+    setenv("XDG_RUNTIME_DIR", runtime, 1);
+    setenv("XDG_DATA_DIRS", data_dirs, 1);
+    setenv("XDG_CONFIG_DIRS", config_dirs, 1);
+    setenv("XDG_CONFIG_HOME", config_home, 1);
+    setenv("XDG_CACHE_HOME", cache_home, 1);
+    setenv("GSETTINGS_SCHEMA_DIR", schemas, 1);
+    setenv("WAYLAND_DISPLAY", wayland, 1);
+    setenv("XIOS_CAPABILITY_PROFILE", "iosc-client-gpu", 1);
+    setenv("GDK_BACKEND", "wayland", 1);
+    setenv("GSK_RENDERER", "ngl", 1);
+    setenv("QT_QPA_PLATFORM", "wayland", 1);
+    setenv("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1", 1);
+    setenv("QT_PLUGIN_PATH", qt_plugins, 1);
+    setenv("QML2_IMPORT_PATH", qt_qml, 1);
+    setenv("QML_IMPORT_PATH", qt_qml, 1);
+    setenv("ANGLE_REAL_LIBEGL", angle_egl, 1);
+    setenv("DYLD_LIBRARY_PATH", dyld, 1);
+    setenv("GSETTINGS_BACKEND", "memory", 1);
+    setenv("PULSE_SERVER", pulse, 1);
+    setenv("PULSE_RUNTIME_PATH", pulse_runtime, 1);
+    if (have_bus) {
+        setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
+        setenv("DBUS_SYSTEM_BUS_ADDRESS", bus_addr, 1);
+    }
+    if (enable_a11y) {
+        unsetenv("GTK_A11Y");
+        unsetenv("NO_AT_BRIDGE");
+    } else {
+        setenv("GTK_A11Y", "none", 1);
+        setenv("NO_AT_BRIDGE", "1", 1);
+    }
+    setenv("HOME", m->home, 1);
+    setenv("USER", m->name, 1);
+    setenv("LOGNAME", m->name, 1);
+    setenv("SHELL", shell, 1);
+    setenv("TERM", "xterm-256color", 1);
+    setenv("LANG", "C", 1);
+    setenv("LC_CTYPE", "UTF-8", 1);
+    setenv("FC_LANG", "en", 1);
+    setenv("XCOMPOSEFILE", compose, 1);
+    setenv("XDG_SESSION_TYPE", "wayland", 1);
+    setenv("XDG_CURRENT_DESKTOP", "Xios", 1);
+    setenv("TMPDIR", tmp, 1);
+    setenv("PATH", path, 1);
+}
+
+/* fork+exec a .desktop Exec (or a desktop pin's command) as mobile, the way
+ * ioscd's launch_client starts a Home Screen app: mobile-owned session bus,
+ * ioscd's client environment, stdin from /dev/null, no inherited fds, then
+ * initgroups/setgid/setuid before exec. The text still goes through
+ * `sh -lc`: Exec lines and pins are command lines, and they now run with
+ * mobile's rights, the same account that can write the pins file. */
 static void sd_launch(const char *exec)
 {
     pid_t pid = fork();
     if (pid != 0) return;
+    /* the clients ignore SIGCHLD; the bus start below waits for its child,
+     * and the app starts with the default disposition, as from ioscd */
+    signal(SIGCHLD, SIG_DFL);
     setsid();
     const char *root = sd_jbroot();
-    char tmp[256], wayland[256], home[256], path[512], busdir[256], bus_addr[320];
-    char dbus_run[256], sh_bin[256], usr_sh[256], angle[256];
-    char a11y_enabled[256], a11y_force[256];
+    struct sd_mobile m;
+    sd_mobile_account(&m);
+    int as_root = geteuid() == 0;
+    char tmp[256], wayland[512], busdir[256], bus_addr[320], runtime[512];
+    char dbus_run[256], sh_bin[256], usr_sh[256];
+    char a11y_enabled[256], a11y_force[256], atspi_log[300], a11yd_log[300];
     sd_join_path(tmp, sizeof tmp, root, "/tmp");
-    sd_join_path(angle, sizeof angle, root, "/lib/angle/libEGL.angle.dylib");
     sd_join_path(a11y_enabled, sizeof a11y_enabled, root, "/tmp/xios-a11y-enabled");
     sd_join_path(a11y_force, sizeof a11y_force, root, "/tmp/xios-a11y-force");
-    sd_join_path(wayland, sizeof wayland, root, "/tmp/wayland-0");
-    sd_join_path(home, sizeof home, root, "/var/root");
+    sd_wayland_socket_path(wayland, sizeof wayland, root);
     sd_join_path(busdir, sizeof busdir, root, "/tmp/iosc-shell-bus");
     sd_join_path(dbus_run, sizeof dbus_run, root, "/usr/bin/dbus-run-session");
     sd_join_path(sh_bin, sizeof sh_bin, root, "/bin/sh");
     sd_join_path(usr_sh, sizeof usr_sh, root, "/usr/bin/sh");
-    if (!root || !*root || !strcmp(root, "/"))
-        snprintf(path, sizeof path, "/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
-    else
-        snprintf(path, sizeof path,
-                 "%s/usr/local/bin:%s/usr/bin:%s/usr/sbin:%s/bin:%s/sbin:/usr/bin:/bin:/usr/sbin:/sbin",
-                 root, root, root, root, root);
-    const char *env_wayland = getenv("WAYLAND_DISPLAY");
     const char *env_runtime = getenv("XDG_RUNTIME_DIR");
-    setenv("WAYLAND_DISPLAY", (env_wayland && *env_wayland) ? env_wayland : wayland, 1);
-    int have_bus = sd_shared_session_bus(root, busdir, bus_addr, sizeof bus_addr);
-    setenv("XDG_RUNTIME_DIR", have_bus ? busdir : ((env_runtime && *env_runtime) ? env_runtime : tmp), 1);
-    if (have_bus) setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
-    setenv("GDK_BACKEND", "wayland", 1);
-    setenv("GSK_RENDERER", "ngl", 1);
-    setenv("ANGLE_REAL_LIBEGL", angle, 1);
-    setenv("GSETTINGS_BACKEND", "memory", 1);
-    setenv("LC_CTYPE", "UTF-8", 0);
+    snprintf(runtime, sizeof runtime, "%s",
+             (env_runtime && *env_runtime) ? env_runtime : tmp);
+
+    if (as_root) sd_mobile_socket(wayland, &m);
+    int have_bus = sd_shared_session_bus(root, busdir, &m, bus_addr, sizeof bus_addr);
+    if (have_bus) snprintf(runtime, sizeof runtime, "%s", busdir);
     /* same gate as ioscd and xios-session: the VoiceOver state file ioscd
      * maintains, the smoke-test force file, or XIOS_ENABLE_A11Y */
     int enable_a11y = sd_env_truthy("XIOS_ENABLE_A11Y") ||
                       access(a11y_enabled, F_OK) == 0 ||
                       access(a11y_force, F_OK) == 0;
-    if (enable_a11y) unsetenv("GTK_A11Y");
-    else setenv("GTK_A11Y", "none", 1);
-    setenv("SHELL", sh_bin, 1);
-    setenv("PATH", path, 1);
-    if (!getenv("HOME")) setenv("HOME", home, 1);
-    const char *cmd = exec;
-    char a11y_cmd[4096];
-    if (enable_a11y) {
-        int n = snprintf(a11y_cmd, sizeof(a11y_cmd),
-                         "if command -v xios-start-a11y >/dev/null 2>&1; then "
-                         "xios-start-a11y; fi; exec %s", exec);
-        if (n > 0 && (size_t)n < sizeof(a11y_cmd)) cmd = a11y_cmd;
+
+    int null = open("/dev/null", O_RDONLY);
+    if (null >= 0) {
+        dup2(null, 0);
+        if (null > 0) close(null);
     }
+    sd_close_fds_from(3);
+    sd_client_env(root, tmp, wayland, runtime, have_bus, bus_addr, &m, enable_a11y);
+    if (enable_a11y && have_bus) {
+        /* the bridge starts below as mobile, to join the mobile bus (a root
+         * one would be refused), so its logs go to that bus's mobile-owned
+         * dir: root may already own the defaults in <jbroot>/tmp */
+        snprintf(atspi_log, sizeof atspi_log, "%s/xios-atspi.log", busdir);
+        snprintf(a11yd_log, sizeof a11yd_log, "%s/xios-a11yd.log", busdir);
+        setenv("XIOS_ATSPI_LOG", atspi_log, 1);
+        setenv("XIOS_A11YD_LOG", a11yd_log, 1);
+    }
+    if (as_root && sd_drop_to_mobile(&m) != 0) {
+        fprintf(stderr, "iosc-shell: cannot switch to %s (%s); not launching: %.200s\n",
+                m.name, strerror(errno), exec);
+        _exit(126);
+    }
+
+    const char *cmd = exec;
+    char *a11y_cmd = NULL;
+    /* `sh -l` reads profile.d/xios.sh, which sets NO_AT_BRIDGE=1 when unset */
+    if (enable_a11y &&
+        asprintf(&a11y_cmd, "unset NO_AT_BRIDGE; "
+                            "if command -v xios-start-a11y >/dev/null 2>&1; then "
+                            "xios-start-a11y; fi; exec %s", exec) > 0)
+        cmd = a11y_cmd;
     if (!have_bus)
         execl(dbus_run, "dbus-run-session", "--", sh_bin, "-lc", cmd, (char*)NULL);
     execl(sh_bin, "sh", "-lc", cmd, (char*)NULL);

@@ -465,8 +465,8 @@ static void surface_display_size(struct iosc_surface *s, int *w, int *h)
         *w = s->viewport->dst_w;
         *h = s->viewport->dst_h;
     } else if (s->viewport && s->viewport->has_src) {
-        *w = buffer_to_logical(s->viewport->src_w, scale);
-        *h = buffer_to_logical(s->viewport->src_h, scale);
+        *w = s->viewport->src_w;   /* already surface-local */
+        *h = s->viewport->src_h;
     } else {
         *w = buffer_to_logical(s->sw, scale);
         *h = buffer_to_logical(s->sh, scale);
@@ -517,13 +517,33 @@ void surface_output_size(struct iosc_surface *s, int *w, int *h)
     surface_display_size(s, w, h);
 }
 
+/* A wp_viewport source coordinate (wl_fixed, surface-local) in whole buffer
+ * pixels: times buffer_scale, rounded to nearest, saturated at `lim`. Checked
+ * against lim first so a huge client-set scale cannot overflow the multiply. */
+static int64_t viewport_to_buffer_px(int64_t v, int64_t scale, int64_t lim)
+{
+    if (v > lim * 256 / scale) return lim;
+    int64_t px = (v * scale + 128) / 256;
+    return px < lim ? px : lim;
+}
+
+/* The buffer region a surface samples, in buffer pixels. A viewport source is
+ * in surface-local units, i.e. buffer pixels / buffer_scale after the buffer
+ * transform; iosc ignores wl_surface.set_buffer_transform and draws every
+ * buffer untransformed, so only the scale applies here. */
 static void surface_source_rect(struct iosc_surface *s, int *x, int *y, int *w, int *h)
 {
     if (s->viewport && s->viewport->has_src) {
-        *x = s->viewport->src_x;
-        *y = s->viewport->src_y;
-        *w = s->viewport->src_w;
-        *h = s->viewport->src_h;
+        const struct iosc_viewport *vp = s->viewport;
+        int64_t sc = s->current_buffer_scale > 0 ? s->current_buffer_scale : 1;
+        int64_t x0 = viewport_to_buffer_px(vp->src_fx, sc, s->sw);
+        int64_t y0 = viewport_to_buffer_px(vp->src_fy, sc, s->sh);
+        int64_t x1 = viewport_to_buffer_px((int64_t)vp->src_fx + vp->src_fw, sc, s->sw);
+        int64_t y1 = viewport_to_buffer_px((int64_t)vp->src_fy + vp->src_fh, sc, s->sh);
+        *x = (int)x0;
+        *y = (int)y0;
+        *w = (int)(x1 - x0);
+        *h = (int)(y1 - y0);
     } else {
         *x = 0;
         *y = 0;
@@ -1410,9 +1430,13 @@ static uint32_t native_window_flags(struct iosc_surface *s)
     return flags;
 }
 
+/* Window titles and app ids reach the iPad's own UI (iosc-host makes them
+ * scene titles, shown in the app switcher), so none are sent while the session
+ * is locked: a terminal's title would show what is running under the lock.
+ * native_recomposite_now() re-announces every window on unlock. */
 static void native_update_window_metadata(struct iosc_surface *s)
 {
-    if (!g_native_mode || !native_toplevel_canvas_live(s))
+    if (!g_native_mode || g_slock.locked || !native_toplevel_canvas_live(s))
         return;
     xios_canvas_announce(s->window_id, s->app_id, s->title, native_window_flags(s));
 }
@@ -1422,11 +1446,18 @@ static int native_canvas_size_for_surface(struct iosc_surface *s, int *w, int *h
     int lw = 0, lh = 0;
     surface_display_size(s, &lw, &lh);
     int os = output_scale();
-    int pw = (lw > 0 ? lw : 1) * os;
-    int ph = (lh > 0 ? lh : 1) * os;
+    /* The display size can be any positive wp_viewport destination, so multiply
+     * in 64 bits and clamp to the largest target the GPU binds (a bigger canvas
+     * could not be bound anyway); the int size handed to xios_canvas_create()
+     * and iosc_gl_bind_target() then cannot wrap negative. */
+    int64_t max = iosc_gl_max_target_size() > 0 ? iosc_gl_max_target_size() : INT32_MAX;
+    int64_t pw = (int64_t)(lw > 0 ? lw : 1) * os;
+    int64_t ph = (int64_t)(lh > 0 ? lh : 1) * os;
+    if (pw > max) pw = max;
+    if (ph > max) ph = max;
     if (pw <= 0 || ph <= 0) return -1;
-    if (w) *w = pw;
-    if (h) *h = ph;
+    if (w) *w = (int)pw;
+    if (h) *h = (int)ph;
     return 0;
 }
 
@@ -1513,21 +1544,58 @@ static int native_composite_toplevel(struct iosc_surface *s)
     return 1;
 }
 
+/* Paint a live canvas plain black (the session-lock state of a native window). */
+static int native_blank_toplevel(struct iosc_surface *s)
+{
+    void *canvas = xios_canvas_surface(s->window_id);
+    if (!canvas) return 0;
+    if (iosc_gl_bind_target(canvas, s->native_canvas_w, s->native_canvas_h) != 0)
+        return 0;
+    iosc_gl_begin();   /* clears to black */
+    iosc_gl_end();
+    if (notify_native_gpu_frame(s->window_id) != 0)
+        return 0;
+    s->native_canvas_dirty = 0;
+    return 1;
+}
+
 static void native_recomposite_now(void)
 {
     if (!iosc_gl_ok()) return;
     int painted = 0;
     int skipped = 0;
+    /* Session lock. The classic output shows nothing but the lock surface while
+     * locked (recomposite_now); native windows each have their own canvas, so
+     * blank every live one once when the lock lands, create no new ones, and
+     * repaint them all for real once it lifts. */
+    static int painted_locked;
+    int locked = g_slock.locked != 0;
+    int lock_changed = locked != painted_locked;
+    painted_locked = locked;
     for (int i = 0; i < g_nmapped; i++) {
         struct iosc_surface *s = g_mapped[i];
         if (s->role != IOSC_ROLE_TOPLEVEL)
             continue;
+        if (locked) {
+            if (s->native_canvas_live && lock_changed)
+                painted += native_blank_toplevel(s);
+            else
+                skipped++;
+            s->native_canvas_dirty = 0;
+            continue;
+        }
+        if (lock_changed)
+            s->native_canvas_dirty = 1;
         if (!s->native_canvas_dirty && s->native_canvas_live) {
             skipped++;
             continue;
         }
         painted += native_composite_toplevel(s);
     }
+    if (lock_changed && !locked)
+        for (int i = 0; i < g_nmapped; i++)
+            if (g_mapped[i]->role == IOSC_ROLE_TOPLEVEL)
+                native_update_window_metadata(g_mapped[i]);   /* titles held back */
     if (iosc_env_truthy(getenv("IOSC_NATIVE_STATS"))) {
         static uint64_t cycles;
         static uint64_t canvases;
@@ -2879,7 +2947,9 @@ static void surface_map(struct iosc_surface *s)
     g_nmapped++;
     s->mapped = 1;
     if (s->role == IOSC_ROLE_LAYER) work_area_recompute();
-    if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL) {
+    /* Locked: no new iPad window (it would carry the app id and title); the
+     * canvas is created and announced on unlock by native_recomposite_now(). */
+    if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && !g_slock.locked) {
         int cw = 0, ch = 0;
         if (native_canvas_size_for_surface(s, &cw, &ch) == 0 &&
             native_ensure_canvas(s, cw, ch, 0) == 0) {
@@ -3222,6 +3292,11 @@ static void surface_commit_apply(struct iosc_surface *s)
         }
         need_recomposite = 1;
     }
+
+    /* The buffer and scale this commit applies are in: the wp_viewport checks
+     * that depend on them. An error disconnects the client; stop here. */
+    if (viewport_validate_commit(s) != 0)
+        return;
 
     /* Damage-only commit (in-place redraw into the already-attached buffer, no
      * re-attach): the content changed, so it must repaint like an attach does.
@@ -3973,6 +4048,15 @@ int output_reconfigure_px(int pw, int ph, int transform, int scale)
 {
     if (pw <= 0 || ph <= 0)
         return -1;
+    /* XIOS_IN_OUTPUT sizes come from any input-socket peer. Past the GPU's
+     * largest render target the iosc_gl_resize() below fails, and that is
+     * fatal, so refuse such a size here and keep the current output. */
+    int max_px = iosc_gl_max_target_size();
+    if (max_px > 0 && (pw > max_px || ph > max_px)) {
+        fprintf(stderr, "iosc: output %dx%d px exceeds the GPU's %d px target limit; "
+                        "keeping %dx%d\n", pw, ph, max_px, g_width, g_height);
+        return -1;
+    }
     if (scale < 1) scale = 1;
     int old_scale = output_scale();
     if (scale == old_scale && pw == g_width && ph == g_height &&
@@ -4069,7 +4153,13 @@ static void output_reconfigure(int lw, int lh, int transform)
 {
     if (lw <= 0 || lh <= 0) return;
     int s = output_scale();
-    (void)output_reconfigure_px(lw * s, lh * s, transform, s);
+    int64_t pw = (int64_t)lw * s, ph = (int64_t)lh * s;
+    if (pw > INT32_MAX || ph > INT32_MAX) {
+        fprintf(stderr, "iosc: XIOS_IN_OUTPUT %dx%d at scale %d overflows; ignored\n",
+                lw, lh, s);
+        return;
+    }
+    (void)output_reconfigure_px((int)pw, (int)ph, transform, s);
 }
 
 static int resize_has_left(uint32_t edges)
@@ -4207,8 +4297,8 @@ static void xt_set_title(struct wl_client *c, struct wl_resource *r, const char 
   if (s) {
       snprintf(s->title, sizeof(s->title), "%s", t ? t : "");
       ftl_broadcast_title(s);
-      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped)
-          xios_canvas_title(s->window_id, s->title);
+      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && !g_slock.locked)
+          xios_canvas_title(s->window_id, s->title);   /* else sent on unlock */
   }
   if (iosc_debug()) fprintf(stderr, "iosc: toplevel title=\"%s\"\n", t ? t : ""); }
 static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char *a)
@@ -4216,8 +4306,7 @@ static void xt_set_app_id(struct wl_client *c, struct wl_resource *r, const char
   if (s) {
       snprintf(s->app_id, sizeof(s->app_id), "%s", a ? a : "");
       ftl_broadcast_app_id(s);
-      if (g_native_mode && s->role == IOSC_ROLE_TOPLEVEL && s->mapped && s->native_canvas_live)
-          xios_canvas_announce(s->window_id, s->app_id, s->title, native_window_flags(s));
+      native_update_window_metadata(s);   /* native: checks mapped, canvas, lock */
   }
   if (iosc_debug()) fprintf(stderr, "iosc: toplevel app_id=\"%s\"\n", a ? a : ""); }
 static void xt_show_window_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y){ (void)c;(void)r;(void)seat;(void)serial;(void)x;(void)y; }
@@ -4962,16 +5051,22 @@ void press_focus(struct iosc_surface *hit)
 
 static void input_clients_send_haptic(uint32_t style);
 
+/* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
+ * >= BTN_LEFT pass through). */
+static uint32_t wire_button_code(int btn)
+{
+    return btn == 2 ? BTN_MIDDLE
+         : btn == 3 ? BTN_RIGHT
+         : btn >= BTN_LEFT ? (uint32_t)btn : BTN_LEFT;
+}
+
 static void handle_button(int btn, int down)
 {
-    /* Wire buttons are X-style (1 left, 2 middle, 3 right; raw evdev codes
-     * >= BTN_LEFT pass through). Previously this hardcoded BTN_LEFT, so the
-     * app's two-finger-tap right-click and long-press right-click all arrived
-     * as LEFT. Everything below the send is button-agnostic: focus/raise on any
-     * press, and the single-pointer app never chords. */
-    uint32_t code = btn == 2 ? BTN_MIDDLE
-                  : btn == 3 ? BTN_RIGHT
-                  : btn >= BTN_LEFT ? (uint32_t)btn : BTN_LEFT;
+    /* The code used to be hardcoded to BTN_LEFT, so the app's two-finger-tap
+     * right-click and long-press right-click all arrived as LEFT. Everything
+     * below the send is button-agnostic: focus/raise on any press, and the
+     * single-pointer app never chords. */
+    uint32_t code = wire_button_code(btn);
     idle_note_activity();
     if (down)
         g_button_down++;
@@ -5073,6 +5168,7 @@ struct iosc_touch_point {
     int active;
     int id;                        /* touch id from the app (UITouch slot) */
     struct iosc_surface *surface;  /* implicit grab: the surface that got down */
+    uint32_t input_client;         /* input-socket client that sent the down */
 };
 static struct iosc_touch_point g_touch_points[IOSC_MAX_TOUCH_POINTS];
 
@@ -5410,6 +5506,7 @@ struct iosc_source_read {
     size_t len;
     size_t cap;
     char *mime;
+    struct iosc_source_read *next;   /* g_clip_readers */
 };
 
 static struct iosc_data_device *g_data_devices[IOSC_MAX_DATA_DEVICES];
@@ -5492,8 +5589,19 @@ static void mime_data_clear(struct iosc_mime_data *m)
     memset(m, 0, sizeof(*m));
 }
 
+/* Pipe readers still filling the store from the current Linux selection. */
+static struct iosc_source_read *g_clip_readers;
+static void source_read_done(struct iosc_source_read *rd, int publish);
+
+/* Starting the store over (a new selection from either side, or a clear) also
+ * abandons the readers of the selection it replaces. Left running, a slow one
+ * finished later, wrote its bytes into the NEW store and published them to iOS
+ * under the new generation; one whose source never closed the pipe kept its fd
+ * and buffer forever. */
 static void clip_clear_items(void)
 {
+    while (g_clip_readers)
+        source_read_done(g_clip_readers, 0);
     for (int i = 0; i < g_nclip_items; i++)
         mime_data_clear(&g_clip_items[i]);
     g_nclip_items = 0;
@@ -5783,6 +5891,8 @@ static void data_source_resource_destroy(struct wl_resource *r)
 
 static void source_read_done(struct iosc_source_read *rd, int publish)
 {
+    for (struct iosc_source_read **pp = &g_clip_readers; *pp; pp = &(*pp)->next)
+        if (*pp == rd) { *pp = rd->next; break; }
     if (publish && rd->mime && clip_item_set(rd->mime, rd->buf ? rd->buf : "", rd->len) == 0) {
         uint32_t k = ioscclip_kind_for_mime(rd->mime);
         if (k != XIOS_CLIP_KIND_NONE)
@@ -6039,12 +6149,15 @@ static void dnd_drop(void)
     dnd_end();
 }
 
-/* Cancel any in-flight drag, telling the source it was cancelled first. The
- * session-lock path uses this: a drag cannot survive the screen locking, and
- * the source needs to hear about it rather than just having the grab vanish. */
+/* Cancel any in-flight drag: the destination under it gets its leave (or it
+ * would keep the offer and its drop highlight), then the source hears it was
+ * cancelled rather than just having the grab vanish. The session-lock path
+ * uses this (a drag cannot survive the screen locking), and so does an input
+ * client that disconnects mid-drag. */
 void dnd_cancel_active(void)
 {
     if (!g_dnd.active) return;
+    dnd_focus_leave();
     if (g_dnd.source) wl_data_source_send_cancelled(g_dnd.source);
     dnd_end();
 }
@@ -6144,6 +6257,9 @@ static void clip_ingest_source(struct wl_resource *src, char *const *mimes, int 
         if (!rd->mime) { close(fds[0]); close(fds[1]); free(rd); continue; }
         rd->src = wl_event_loop_add_fd(wl_display_get_event_loop(g_display), fds[0],
                                        WL_EVENT_READABLE, source_readable, rd);
+        if (!rd->src) { close(fds[1]); source_read_done(rd, 0); continue; }
+        rd->next = g_clip_readers;
+        g_clip_readers = rd;
         send_fn(src, mimes[i], fds[1]);
         close(fds[1]);
     }
@@ -6315,6 +6431,108 @@ static void in_dispatch_text(const char *text, size_t len)
     }
 }
 
+/* Input held per input-socket client. A button, key, touch point or pencil
+ * stroke stays down until the client that pressed it sends the release; one
+ * that disconnects (the app is killed, or its socket dropped) never will, so a
+ * held button turned every later motion into a drag and a held key repeated
+ * forever in the focused client. Remember who holds what, by the reader's
+ * client id, and release it in input_client_dropped(). */
+#define IOSC_MAX_HELD_BUTTONS 16
+#define IOSC_MAX_HELD_KEYS    32
+struct iosc_held_button { uint32_t client; uint32_t code; };
+struct iosc_held_key    { uint32_t client; uint32_t keysym; uint32_t evdev; };
+static struct iosc_held_button g_held_buttons[IOSC_MAX_HELD_BUTTONS];
+static int g_nheld_buttons;
+static struct iosc_held_key g_held_keys[IOSC_MAX_HELD_KEYS];
+static int g_nheld_keys;
+static uint32_t g_kbd_mods_client;  /* input client whose KEY last set the modifiers */
+static uint32_t g_pen_client;       /* input client that put the pencil down */
+
+static void held_button_note(uint32_t client, int btn, int down)
+{
+    uint32_t code = wire_button_code(btn);
+    for (int i = 0; i < g_nheld_buttons; i++)
+        if (g_held_buttons[i].client == client && g_held_buttons[i].code == code) {
+            if (!down) g_held_buttons[i] = g_held_buttons[--g_nheld_buttons];
+            return;
+        }
+    if (down && g_nheld_buttons < IOSC_MAX_HELD_BUTTONS)
+        g_held_buttons[g_nheld_buttons++] = (struct iosc_held_button){ client, code };
+}
+
+/* Keyed by evdev code: a release may name the other case of the same key. The
+ * keysym of the newest press is kept so a release replays its synthetic Shift. */
+static void held_key_note(uint32_t client, uint32_t keysym, int down)
+{
+    uint32_t evdev = 0; int needs_shift = 0;
+    if (iosc_input_lookup(keysym, &evdev, &needs_shift) != 0) return;
+    for (int i = 0; i < g_nheld_keys; i++)
+        if (g_held_keys[i].client == client && g_held_keys[i].evdev == evdev) {
+            if (down) g_held_keys[i].keysym = keysym;
+            else g_held_keys[i] = g_held_keys[--g_nheld_keys];
+            return;
+        }
+    if (down && g_nheld_keys < IOSC_MAX_HELD_KEYS)
+        g_held_keys[g_nheld_keys++] = (struct iosc_held_key){ client, keysym, evdev };
+}
+
+/* The reader dropped an input client: send the releases it never will, through
+ * the same handlers a real release takes, so focus, grabs and seat state end up
+ * exactly as if it had let go. Caps/Num lock are latched state, not held keys,
+ * and are kept. */
+static void input_client_dropped(uint32_t client, void *user)
+{
+    (void)user;
+    int released = 0;
+    /* A drag riding a held button is cancelled, not dropped: nobody let go. */
+    for (int i = 0; i < g_nheld_buttons && g_dnd.active; i++)
+        if (g_held_buttons[i].client == client && g_held_buttons[i].code == g_dnd.button)
+            dnd_cancel_active();
+    for (int i = 0; i < g_nheld_buttons; ) {
+        if (g_held_buttons[i].client != client) { i++; continue; }
+        uint32_t code = g_held_buttons[i].code;
+        g_held_buttons[i] = g_held_buttons[--g_nheld_buttons];
+        handle_button((int)code, 0);   /* evdev codes pass through unchanged */
+        released++;
+    }
+    uint32_t locked = ((g_kbd_mods_locked & iosc_input_mod_caps()) ? 16u : 0u) |
+                      ((g_kbd_mods_locked & iosc_input_mod_num())  ? 32u : 0u);
+    for (int i = 0; i < g_nheld_keys; ) {
+        if (g_held_keys[i].client != client) { i++; continue; }
+        uint32_t keysym = g_held_keys[i].keysym;
+        g_held_keys[i] = g_held_keys[--g_nheld_keys];
+        handle_key(keysym, 0, locked);
+        released++;
+    }
+    if (g_kbd_mods_client == client) {
+        keyboard_send_mods(0, g_kbd_mods_locked);
+        g_kbd_mods_client = 0;
+    }
+    /* wl_touch.cancel ends every sequence of the client that receives it, so
+     * cancel each Wayland client this input client was touching once, like
+     * touch_surface_gone() does per surface. */
+    for (int i = 0; i < IOSC_MAX_TOUCH_POINTS; i++) {
+        struct iosc_touch_point *p = &g_touch_points[i];
+        if (!p->active || p->input_client != client) continue;
+        released++;
+        if (!p->surface) { p->active = 0; continue; }
+        struct wl_client *cl = wl_resource_get_client(p->surface->resource);
+        touch_cancel_client(cl);
+        for (int j = 0; j < IOSC_MAX_TOUCH_POINTS; j++)
+            if (g_touch_points[j].active && g_touch_points[j].surface &&
+                wl_resource_get_client(g_touch_points[j].surface->resource) == cl)
+                g_touch_points[j].active = 0;
+    }
+    if (g_pen_client == client) {
+        pen_leave(now_ms());           /* no-op unless a stroke is still down */
+        g_pen_client = 0;
+    }
+    g_input_wayland_dirty = 1;
+    if (released)
+        fprintf(stderr, "iosc: input client %u went away holding input; released %d\n",
+                client, released);
+}
+
 /* One complete input record from the shared reader -> the compositor's handlers.
  * Runs on the compositor thread (the reader's kqueue fd is on the wl event loop),
  * so no locking. Same routing the inline reader did; unknown types are ignored. */
@@ -6322,6 +6540,7 @@ static void iosc_input_record(const xios_msg *m, const char *text,
                               size_t text_len, uint32_t bound_window, void *user)
 {
     (void)user;
+    uint32_t client = xios_input_socket_current_client(g_input_sock);
     struct iosc_surface *bound = surface_by_window_id(bound_window);
     if (bound && (m->type == XIOS_IN_KEY || m->type == XIOS_IN_TEXT))
         keyboard_set_focus(bound);
@@ -6353,26 +6572,39 @@ static void iosc_input_record(const xios_msg *m, const char *text,
         case XIOS_IN_MOTION: handle_motion(x, y); break;
         case XIOS_IN_BUTTON: handle_motion(x, y);
                              handle_button((int)XIOS_INPUT_CODE(m),
-                                           (int)XIOS_INPUT_STATE(m)); break;
+                                           (int)XIOS_INPUT_STATE(m));
+                             held_button_note(client, (int)XIOS_INPUT_CODE(m),
+                                              XIOS_INPUT_STATE(m) != 0); break;
         case XIOS_IN_KEY:    handle_key(XIOS_INPUT_CODE(m), XIOS_INPUT_STATE(m),
-                                       XIOS_INPUT_MODS(m)); break;
+                                       XIOS_INPUT_MODS(m));
+                             held_key_note(client, XIOS_INPUT_CODE(m),
+                                           XIOS_INPUT_STATE(m) != 0);
+                             g_kbd_mods_client = client; break;
         case XIOS_IN_TOUCH:  handle_touch((int)XIOS_INPUT_CODE(m),
-                                         (int)XIOS_INPUT_STATE(m), x, y); break;
+                                         (int)XIOS_INPUT_STATE(m), x, y);
+                             if ((int)XIOS_INPUT_STATE(m) == IOSC_TOUCH_DOWN) {
+                                 struct iosc_touch_point *p =
+                                     touch_point_by_id((int)XIOS_INPUT_CODE(m));
+                                 if (p) p->input_client = client;
+                             } break;
         case XIOS_IN_TABLET: handle_pencil((int)XIOS_INPUT_STATE(m), x, y,
                                            XIOS_INPUT_CODE(m),
                                            (int)(XIOS_INPUT_MODS(m) & 0xffu) - 90,
-                                           (int)((XIOS_INPUT_MODS(m) >> 8) & 0xffu) - 90); break;
+                                           (int)((XIOS_INPUT_MODS(m) >> 8) & 0xffu) - 90);
+                             if (XIOS_INPUT_STATE(m) == 1)   /* IOSC_PEN_DOWN, iosc_tablet.c */
+                                 g_pen_client = client;
+                             break;
         /* AXIS x,y are fixed-point scroll DELTAS, not positions — pass raw
          * (handle_axis does its own /output_scale), NOT the physical_to_logical'd
          * locals. */
-        case XIOS_IN_AXIS:   if (bound) g_ptr_focus = bound;
+        case XIOS_IN_AXIS:   if (bound && !g_slock.locked) g_ptr_focus = bound;
                              handle_axis(XIOS_INPUT_X(m), XIOS_INPUT_Y(m),
                                          XIOS_INPUT_CODE(m),
                                          (int)(XIOS_INPUT_STATE(m) & 1u),
                                          XIOS_INPUT_MODS(m)); break;
         /* GESTURE x,y are fixed-point translation DELTAS like AXIS, so pass the
          * raw wire values, not the physical_to_logical'd locals. */
-        case XIOS_IN_GESTURE: if (bound) g_ptr_focus = bound;
+        case XIOS_IN_GESTURE: if (bound && !g_slock.locked) g_ptr_focus = bound;
                              handle_gesture(XIOS_INPUT_CODE(m), XIOS_INPUT_X(m),
                                             XIOS_INPUT_Y(m), XIOS_INPUT_STATE(m),
                                             XIOS_INPUT_MODS(m)); break;
@@ -6464,6 +6696,7 @@ static int input_socket_start(struct wl_event_loop *loop, const char *path)
 {
     g_input_sock = xios_input_socket_new(path);
     if (!g_input_sock) return -1;
+    xios_input_socket_set_drop_cb(g_input_sock, input_client_dropped, NULL);
     g_input_src = wl_event_loop_add_fd(loop, xios_input_socket_fd(g_input_sock),
                                        WL_EVENT_READABLE, input_sock_readable, NULL);
     if (!g_input_src) { xios_input_socket_free(g_input_sock); g_input_sock = NULL; return -1; }
@@ -7247,9 +7480,15 @@ int main(int argc, char **argv)
     /* 3) Run the event loop forever. */
     wl_display_run(g_display);
 
+    /* Tear down in reverse start order, so nothing that can still run outlives
+     * the display it feeds. The canvas server's reader thread calls the
+     * native_host_*() handlers until xios_canvas_server_stop() has joined it,
+     * and they queue commands for native_cmd_readable() on this display's
+     * loop. xios_server_stop() can follow: its threads only touch xios_surface
+     * state, never the display. */
     iosc_xwm_shutdown();
-    wl_display_destroy(g_display);
     if (g_native_mode) xios_canvas_server_stop();
+    wl_display_destroy(g_display);
     xios_server_stop();
     /* A latched table that outlives its producer reads as live state. */
     iosc_status_clear();

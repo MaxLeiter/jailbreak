@@ -11,7 +11,7 @@
 #
 # Provides:
 #   xsign   <bin> [ents] [required-marker...]   ldid-sign + verify entitlements
-#   xmkdeb  <staging_dir> <out_dir> [--minos]     build a .deb
+#   xmkdeb  <staging_dir> <out_dir>               build a .deb
 #   xstage_lagom_fonts <fonts_dir> [cache_dir]    stage Ladybird's text fonts
 #   xdeb_find    <stem> <dir>...                  newest matching iphoneos deb path
 #   xdeb_extract <sysroot> <deb-dir-list> <pkg>... extract dev debs into a sysroot
@@ -79,7 +79,7 @@ xsign() {
 }
 
 # ---- packaging ------------------------------------------------------------
-# xmkdeb <staging_dir> <out_dir> [--minos]
+# xmkdeb <staging_dir> <out_dir>
 #   Assembles <staging_dir> (must hold DEBIAN/control) into a root-owned, zstd .deb
 #   named <Package>_<Version>_<Architecture>.deb (read from control) in <out_dir>.
 #   Echoes the resulting .deb path.
@@ -90,12 +90,15 @@ xsign() {
 #   exactly as the hand-rolled packagers did. Override the image with
 #   XLIB_XBUILD_IMAGE.
 #
-#   MinimumOSVersion stamping is a deliberate SEPARATE final sweep in this repo
-#   (tools/stamp-minos.py over out/, done last because concurrent builds churn
-#   out/), so xmkdeb does NOT stamp unless you pass --minos.
+#   xmkdeb never stamps MinimumOSVersion. linux-build/tools/stamp-minos.py takes
+#   each package's floor over its in-repo dependency closure, so it runs once over
+#   all of linux-build/out as the final `stamp-minos.py --apply` sweep (last,
+#   because concurrent builds churn out/). A trailing --minos used to promise a
+#   per-deb stamp but never ran one; it is still accepted and only says so.
 xmkdeb() {
-    local stage="$1" out="$2" minos=0
-    [ "${3:-}" = "--minos" ] && minos=1
+    local stage="$1" out="$2"
+    [ "${3:-}" = "--minos" ] &&
+        echo "xmkdeb: note: --minos does not stamp; MinimumOSVersion comes from the final linux-build/tools/stamp-minos.py --apply sweep over linux-build/out" >&2
     local ctrl="$stage/DEBIAN/control"
     [ -f "$ctrl" ] || { echo "xmkdeb: ERROR no DEBIAN/control in $stage" >&2; return 1; }
 
@@ -130,10 +133,6 @@ xmkdeb() {
         return 1
     fi
 
-    if [ "$minos" = 1 ] && [ -f "$XLIB_ROOT/tools/stamp-minos.py" ]; then
-        python3 "$XLIB_ROOT/tools/stamp-minos.py" "$deb" >/dev/null 2>&1 ||
-          echo "xmkdeb: WARNING minos stamp failed for $deb (continuing)" >&2
-    fi
     echo "$deb"
 }
 

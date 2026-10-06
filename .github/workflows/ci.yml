@@ -43,6 +43,16 @@ jobs:
         run: |
           git ls-files '*.sh' -z | xargs -r -0 -n1 bash -n
 
+      # Each packages/templates/<pkg> renders its DEBIAN/ for rootless into a temp
+      # dir and is compared with the package dir it mirrors (check-template-drift.py).
+      # Tracked files only: no payload is staged and no deb is built.
+      - name: Package templates match their package dirs
+        run: |
+          set -euo pipefail
+          for t in x11/packages/templates/*/; do
+            bash x11/packages/build-template-package.sh "$(basename "$t")" --check-drift
+          done
+
       - name: Repo-ops guard hook
         run: python bin/lib/guard-repo-ops.test.py
 

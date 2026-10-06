@@ -194,44 +194,49 @@ void *xios_metal_sync_import_event(const void *token, size_t token_size)
         return NULL;
 
     /* One producer token is reused by all of its swapchain buffers. Fetch the
-     * XPC handle once, then retain the recreated event in this consumer. */
+     * XPC handle once, then retain the recreated event in this consumer.
+     * Callers are C compositor threads (iosc, KWin, Mutter) with no autorelease
+     * pool of their own, so the autoreleased cache key would never be freed:
+     * drain one per call. */
     static NSMutableDictionary *events;
-    NSData *key = [NSData dataWithBytes:token length:token_size];
-    pthread_mutex_lock(&s_lock);
-    id<MTLSharedEvent> event = [events objectForKey:key];
-    if (event) {
-        [event retain];
-        pthread_mutex_unlock(&s_lock);
-        return event;
-    }
-    if (events.count >= 256) {
-        /* Producers come and go for the consumer's whole lifetime, and an
-         * entry is never removed when its producer exits, so refusing here
-         * would reject every GPU client after the 256th. Each caller holds
-         * its own +1, so dropping the cache's references only costs a
-         * re-fetch for producers that are still alive. */
-        fprintf(stderr,
-                "xios_metal_sync: imported-event cache full; evicting\n");
-        [events removeAllObjects];
-    }
+    @autoreleasepool {
+        NSData *key = [NSData dataWithBytes:token length:token_size];
+        pthread_mutex_lock(&s_lock);
+        id<MTLSharedEvent> event = [events objectForKey:key];
+        if (event) {
+            [event retain];
+            pthread_mutex_unlock(&s_lock);
+            return event;
+        }
+        if (events.count >= 256) {
+            /* Producers come and go for the consumer's whole lifetime, and an
+             * entry is never removed when its producer exits, so refusing here
+             * would reject every GPU client after the 256th. Each caller holds
+             * its own +1, so dropping the cache's references only costs a
+             * re-fetch for producers that are still alive. */
+            fprintf(stderr,
+                    "xios_metal_sync: imported-event cache full; evicting\n");
+            [events removeAllObjects];
+        }
 
-    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
-    if (!device) {
+        id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+        if (!device) {
+            pthread_mutex_unlock(&s_lock);
+            return NULL;
+        }
+        event = xios_metal_event_broker_copy_event(device, token, token_size);
+        [device release];
+        if (!event) {
+            fprintf(stderr, "xios_metal_sync: broker token fetch/import failed\n");
+            pthread_mutex_unlock(&s_lock);
+            return NULL;
+        }
+        if (!events)
+            events = [[NSMutableDictionary alloc] init];
+        [events setObject:event forKey:key];
         pthread_mutex_unlock(&s_lock);
-        return NULL;
+        return event; /* +1; caller balances via xios_metal_sync_release_event */
     }
-    event = xios_metal_event_broker_copy_event(device, token, token_size);
-    [device release];
-    if (!event) {
-        fprintf(stderr, "xios_metal_sync: broker token fetch/import failed\n");
-        pthread_mutex_unlock(&s_lock);
-        return NULL;
-    }
-    if (!events)
-        events = [[NSMutableDictionary alloc] init];
-    [events setObject:event forKey:key];
-    pthread_mutex_unlock(&s_lock);
-    return event; /* +1; caller balances via xios_metal_sync_release_event */
 }
 
 void xios_metal_sync_release_event(void *event)

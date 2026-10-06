@@ -82,6 +82,8 @@ if input_path.exists():
         "xios_input_socket_dispatch",
         "xios_input_socket_broadcast",
         "xios_input_socket_client_count",
+        "xios_input_socket_current_client",
+        "xios_input_socket_set_drop_cb",
         "xios_input_socket_free",
     ]
     if prototype_map(stub, names) != prototype_map(input_text, names):

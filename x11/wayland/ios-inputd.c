@@ -407,6 +407,35 @@ static void dispatch_text(struct app_state *s, const char *text, size_t len)
     wl_display_flush(s->display);
 }
 
+/* What ROOT mode accepts from the app. It stands in for iosc, so the app sends
+ * it everything it sends iosc (touch, scroll, pencil, gestures and output
+ * changes arrive constantly) and the known types have to be read and ignored,
+ * not treated as a protocol violation that drops the connection. TRAITS is the
+ * exception, as in iosc's reader: only a registered input-method proxy may send
+ * it, and there is no such role here. */
+static int root_accepts(uint32_t type)
+{
+    switch (type) {
+    case XIOS_IN_MOTION:
+    case XIOS_IN_BUTTON:
+    case XIOS_IN_KEY:
+    case XIOS_IN_TEXT:
+    case XIOS_IN_TOUCH:
+    case XIOS_IN_TABLET:
+    case XIOS_IN_BIND:
+    case XIOS_IN_AXIS:
+    case XIOS_IN_OUTPUT:
+    case XIOS_IN_GESTURE:
+    case XIOS_IN_IMPROXY:
+    case XIOS_IN_VOLUME:
+    case XIOS_IN_APPEARANCE:
+    case XIOS_IN_BRIGHTNESS:
+        return 1;
+    default:
+        return 0;
+    }
+}
+
 static void service_app_client(struct app_state *s)
 {
     if (s->client_fd < 0) return;
@@ -432,10 +461,7 @@ static void service_app_client(struct app_state *s)
                     return;
                 }
                 if (s->proxy ? s->msg.type != XIOS_IN_TEXT
-                             : (s->msg.type != XIOS_IN_TEXT &&
-                                s->msg.type != XIOS_IN_KEY &&
-                                s->msg.type != XIOS_IN_MOTION &&
-                                s->msg.type != XIOS_IN_BUTTON)) {
+                             : !root_accepts(s->msg.type)) {
                     app_client_drop(s);
                     return;
                 }

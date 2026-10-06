@@ -61,6 +61,10 @@ xios_cache_inputs_for() {
     [ -f "$input" ] && printf '%s\n' "$input"
   done
 
+  # `|| true`: grep exits 1 when the recipe names no /work/recipes path. Under
+  # the drivers' set -euo pipefail, the process substitution in
+  # xios_cache_inputs_newer_than keeps errexit, so that would end the listing
+  # here and drop every input below.
   if [ -f "$recipe" ]; then
     grep -Eoh '/work/recipes/[A-Za-z0-9._+/=-]+' "$recipe" 2>/dev/null \
       | while IFS= read -r input; do
@@ -70,8 +74,26 @@ xios_cache_inputs_for() {
               ;;
           esac
           [ -f "$input" ] && printf '%s\n' "$input"
-        done
+        done || true
   fi
+
+  # Helpers a recipe reaches only through another script (a fixes script runs
+  # them from its own directory, or the recipe calls a sibling's fixes script
+  # out of build_info), so neither the globs nor the recipe grep above see them.
+  case "$name" in
+    kwin)
+      [ -f /work/recipes/kwin-ios-gpu-backend.sh ] && printf '%s\n' /work/recipes/kwin-ios-gpu-backend.sh
+      [ -d /work/recipes/kwin-ios-gpu ] && find /work/recipes/kwin-ios-gpu -type f -print
+      ;;
+    powerdevil)
+      for input in /work/recipes/powerdevil-xiosbacklight*.h /work/recipes/powerdevil-xiosbacklight*.cpp; do
+        [ -f "$input" ] && printf '%s\n' "$input"
+      done
+      ;;
+    kwrite)
+      [ -f /work/recipes/kate-ios-fixes.sh ] && printf '%s\n' /work/recipes/kate-ios-fixes.sh
+      ;;
+  esac
 
   if [ -d "/work/ports/${name}/patches" ]; then
     find "/work/ports/${name}/patches" -type f -print

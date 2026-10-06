@@ -294,6 +294,86 @@ int xios_desktop_entry_resolve(const char *app_id, const char *jbroot,
     return 1;
 }
 
+int xios_desktop_file_id_valid(const char *file_id)
+{
+    size_t n = file_id ? strlen(file_id) : 0;
+    if (n == 0 || n > 200) return 0;
+    if (file_id[0] == '.' || file_id[0] == '-' || strstr(file_id, "..")) return 0;
+    for (const unsigned char *p = (const unsigned char *)file_id; *p; p++) {
+        if (!((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+              (*p >= '0' && *p <= '9') || *p == '.' || *p == '-' ||
+              *p == '_' || *p == '+'))
+            return 0;
+    }
+    return 1;
+}
+
+int xios_desktop_entry_lookup_file_id(const char *file_id, const char *jbroot,
+                                      int require_trusted,
+                                      struct xios_desktop_entry *entry,
+                                      char *error, size_t error_len)
+{
+    if (!xios_desktop_file_id_valid(file_id)) {
+        set_error(error, error_len, "invalid desktop-file id");
+        return 0;
+    }
+
+    char roots[2][PATH_MAX];
+    application_root(roots[0], sizeof(roots[0]), jbroot,
+                     "/usr/local/share/applications");
+    application_root(roots[1], sizeof(roots[1]), jbroot,
+                     "/usr/share/applications");
+
+    /* Same order and fallthrough as the direct match in resolve, minus its
+     * app-id comparison. */
+    set_error(error, error_len, "no desktop entry for desktop-file id");
+    for (size_t i = 0; i < 2; i++) {
+        char path[PATH_MAX];
+        struct stat st;
+        if (snprintf(path, sizeof(path), "%s/%s.desktop", roots[i], file_id) >=
+            (int)sizeof(path))
+            continue;
+        if (lstat(path, &st) != 0) continue;
+        if (xios_desktop_entry_parse(path, roots[i], require_trusted, entry,
+                                     error, error_len))
+            return 1;
+    }
+    return 0;
+}
+
+int xios_desktop_argv_shell_text(char *const argv[], char *dst, size_t dst_len)
+{
+    size_t used = 0;
+    if (!argv || !argv[0] || !dst || dst_len == 0) return 0;
+    for (size_t i = 0; argv[i]; i++) {
+        const char *a = argv[i];
+        int bare = a[0] != 0;
+        for (const char *p = a; *p && bare; p++)
+            bare = (*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') ||
+                   (*p >= '0' && *p <= '9') || strchr("@%+=:,./_-", *p) != NULL;
+        /* worst case per byte is a quote's four, plus space and both quotes */
+        if (used + strlen(a) * 4 + 3 >= dst_len) return 0;
+        if (i > 0) dst[used++] = ' ';
+        if (bare) {
+            memcpy(dst + used, a, strlen(a));
+            used += strlen(a);
+            continue;
+        }
+        dst[used++] = '\'';
+        for (const char *p = a; *p; p++) {
+            if (*p == '\'') {
+                memcpy(dst + used, "'\\''", 4);
+                used += 4;
+            } else {
+                dst[used++] = *p;
+            }
+        }
+        dst[used++] = '\'';
+    }
+    dst[used] = 0;
+    return 1;
+}
+
 static int append_char(char *dst, size_t dst_len, size_t *used, char c)
 {
     if (*used + 1 >= dst_len) return 0;

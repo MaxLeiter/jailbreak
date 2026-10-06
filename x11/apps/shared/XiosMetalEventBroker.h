@@ -45,6 +45,17 @@ int xios_metal_event_broker_publish(MTLSharedEventHandle *handle,
 id<MTLSharedEvent> xios_metal_event_broker_copy_event(
     id<MTLDevice> device, const void *token, size_t token_size)
     NS_RETURNS_RETAINED;
+
+/* Same import, but gives up when the broker has not replied within
+ * `timeout_seconds` (the synchronous NSXPC proxy above has no timeout, so a
+ * wedged broker blocks its caller forever) and returns nil. Still blocking:
+ * the app callers run it off the main thread. A reply that arrives after the
+ * deadline is released, not leaked. */
+#define XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC 2.0
+id<MTLSharedEvent> xios_metal_event_broker_copy_event_timeout(
+    id<MTLDevice> device, const void *token, size_t token_size,
+    double timeout_seconds)
+    NS_RETURNS_RETAINED;
 #endif
 
 #endif

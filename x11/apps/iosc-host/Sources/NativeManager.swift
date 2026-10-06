@@ -141,15 +141,21 @@ final class NativeManager: NSObject {
         // not poll at 2Hz forever (see the 2026-07-08 stale-wrapper incident —
         // leftover GNOME hosts hammering the desktop stack from the background).
         var retryDelay = 0.5
-        while running && client == nil {
+        var connected: OpaquePointer?
+        while running && connected == nil {
             let (w, h, scale) = sceneSizePx()
-            client = appID.withCString { iosc_native_connect(nil, $0, Int32(w), Int32(h), Int32(scale)) }
-            if client == nil {
+            connected = appID.withCString { iosc_native_connect(nil, $0, Int32(w), Int32(h), Int32(scale)) }
+            if connected == nil {
                 Thread.sleep(forTimeInterval: retryDelay)
                 retryDelay = min(retryDelay * 2, 8.0)
             }
         }
-        guard let c = client else { return }
+        guard let c = connected else { return }
+        // `client` is main-actor state (sceneBecameKey, sceneResized and
+        // sessionsDiscarded read it there), so publish it from main. This hop is
+        // queued ahead of every event and of handleDisconnect, so each of them
+        // already sees it.
+        DispatchQueue.main.async { [weak self] in self?.client = c }
 
         var ev = iosc_native_event()
         while running {

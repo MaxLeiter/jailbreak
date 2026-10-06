@@ -154,6 +154,13 @@ final class XScreenView: UIView {
     private var presentFenceToken: Data?
     private var presentFenceEvent: MTLSharedEvent?
     private var presentFenceDecodeFailed = false
+    // Broker imports run off the main thread (a blocking XPC round trip). While
+    // one is out the frame that needs it stays pending; a failed one is
+    // remembered so the next tick fails that frame exactly as a synchronous
+    // failure used to.
+    private var presentFenceImportPending = false
+    private var presentFenceImportToken: Data?
+    private var presentFenceImportFailedToken: Data?
     private var releaseFenceToken: Data?
     private var releaseFenceEvent: MTLSharedEvent?
     private var pendingStreamFrame = false
@@ -249,8 +256,23 @@ final class XScreenView: UIView {
     private var clipRxGen: UInt32 = 0
     private var clipRxItems: [UInt32: Data] = [:]
     private var clipDeferredPushTicks = 0   // connect grace: desktop wins if it speaks
-    private var clipSuppressText: String?   // echo guards: what we last wrote/read
-    private var clipSuppressPNG: Data?
+    // Echo guards: what we last wrote to or read from the desktop. Touched only
+    // on clipboardQueue, where every push is decided, so each push sees every
+    // earlier push and receive in order even though its PNG encode runs there.
+    private final class ClipboardEcho {
+        var text: String?
+        var png: Data?
+    }
+    private let clipEcho = ClipboardEcho()
+    // Clipboard socket work that can block (connect + HELLO, item writes) runs
+    // on this serial queue so the display-link tick never waits on it.
+    private let clipboardQueue = DispatchQueue(
+        label: "com.max.xios.clipboard", qos: .userInitiated)
+    private var clipConnectInFlight = false
+    // Bumped whenever this side adopts or closes the clipboard connection. Work
+    // sent off the main thread carries the value it started under, and its
+    // result is dropped if the connection changed in the meantime.
+    private var clipEpoch = 0
     private var usingIosc: Bool { ioscInputSock != nil }
     var allowsAllOrientations: Bool { usingIosc }
     // Last single-finger point in output px, so a touch-up (whose UIKit location we may
@@ -486,6 +508,8 @@ final class XScreenView: UIView {
         iosConnectStarted = true
         let path = ddxSockPath
         let gen = loadGeneration
+        let device = self.device
+        let cachedRelease = (token: releaseFenceToken, event: releaseFenceEvent)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             // Retry until the X server's socket is up (it may launch after the app),
             // but bail the moment a newer load() superseded this connect.
@@ -493,9 +517,13 @@ final class XScreenView: UIView {
                 guard let self, self.loadGeneration == gen,
                       !self.appIsBackgrounded else { return }
                 if let conn = xsurface_connect(path) {
+                    // The release-fence import is a broker round trip (blocking
+                    // XPC), so it happens here, before the hop, not on main.
+                    let release = Self.importReleaseFence(conn, device: device,
+                                                          cached: cachedRelease)
                     DispatchQueue.main.async {
                         if self.loadGeneration == gen, !self.appIsBackgrounded {
-                            self.adoptIOSurface(conn)
+                            self.adoptIOSurface(conn, releaseFence: release)
                         }
                         else { xsurface_close(conn) }   // user switched away mid-connect
                     }
@@ -509,7 +537,7 @@ final class XScreenView: UIView {
         }
     }
 
-    private func adoptIOSurface(_ conn: OpaquePointer) {
+    private func adoptIOSurface(_ conn: OpaquePointer, releaseFence: ReleaseFenceImport) {
         guard !appIsBackgrounded else {
             xsurface_close(conn)
             iosConnectStarted = false
@@ -517,7 +545,12 @@ final class XScreenView: UIView {
         }
         xconn = conn
         iosurfaceCompositorID = String(cString: xsurface_compositor_id(conn))
-        guard syncSurfaceGeometry(conn), importReleaseFence(conn) else {
+        if let failure = releaseFence.failure { dbg(failure) }
+        if releaseFence.ok {
+            releaseFenceToken = releaseFence.token
+            releaseFenceEvent = releaseFence.event
+        }
+        guard syncSurfaceGeometry(conn), releaseFence.ok else {
             dbg("iosurface-texture-fail"); xsurface_close(conn); xconn = nil
             iosurfaceCompositorID = ""
             iosTexture = nil
@@ -590,31 +623,40 @@ final class XScreenView: UIView {
         return true
     }
 
-    private func importReleaseFence(_ conn: OpaquePointer) -> Bool {
+    /// A connection's release-fence import, done on the connect thread and
+    /// applied by adoptIOSurface. ok == false fails the adopt.
+    private struct ReleaseFenceImport {
+        var ok: Bool
+        var token: Data? = nil
+        var event: MTLSharedEvent? = nil
+        var failure: String? = nil
+    }
+
+    /// Runs off the main thread, before the connection is handed to main, so it
+    /// reads only `conn` (not yet shared) and the values captured for it.
+    private static func importReleaseFence(
+        _ conn: OpaquePointer, device: MTLDevice?,
+        cached: (token: Data?, event: MTLSharedEvent?)
+    ) -> ReleaseFenceImport {
         var bytes: UnsafeRawPointer?
         var length = 0
         guard xsurface_release_fence_token(conn, &bytes, &length) != 0 else {
             /* Fixed one-surface producers (currently Mutter/Xorg) retain their
              * legacy contract. They never rotate an allocation, so no consumer
              * release timeline is required. */
-            releaseFenceToken = nil
-            releaseFenceEvent = nil
-            return true
+            return ReleaseFenceImport(ok: true)
         }
-        guard let bytes, length > 0 else { return false }
+        guard let bytes, length > 0, let device else { return ReleaseFenceImport(ok: false) }
         let token = Data(bytes: bytes, count: length)
-        if token == releaseFenceToken, releaseFenceEvent != nil {
-            return true
+        if token == cached.token, let event = cached.event {
+            return ReleaseFenceImport(ok: true, token: token, event: event)
         }
-        guard let event = xios_metal_event_broker_copy_event(
-            device, bytes, length
+        guard let event = xios_metal_event_broker_copy_event_timeout(
+            device, bytes, length, XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC
         ) else {
-            dbg("release-fence-broker-import-failed")
-            return false
+            return ReleaseFenceImport(ok: false, failure: "release-fence-broker-import-failed")
         }
-        releaseFenceToken = token
-        releaseFenceEvent = event
-        return true
+        return ReleaseFenceImport(ok: true, token: token, event: event)
     }
 
     private func submitHeldStreamRelease(_ conn: OpaquePointer) -> Bool {
@@ -1178,6 +1220,8 @@ final class XScreenView: UIView {
         iosSurfaceFlags = 0
         presentFenceToken = nil
         presentFenceEvent = nil
+        presentFenceImportToken = nil
+        presentFenceImportFailedToken = nil
         releaseFenceToken = nil
         releaseFenceEvent = nil
         pendingStreamFrame = false
@@ -1211,6 +1255,7 @@ final class XScreenView: UIView {
         serviceIoscInputTraits()
         if inputConnected && !iosc_input_is_open() {
             inputConnected = false
+            resetInputLatches()
             writeStatus()
         }
         if !inputConnected && tickCount % 30 == 0 {
@@ -1268,6 +1313,9 @@ final class XScreenView: UIView {
                     return
                 }
                 let fence = gpuFence(for: conn)
+                // Its broker import is still out: keep the frame pending (no
+                // drain, no RELEASE) and present it on a later tick.
+                if presentFenceImportPending { return }
                 if presentFenceDecodeFailed {
                     dbg("gpu-fence-decode-failed")
                     teardownIOSurface(lost: true)
@@ -1375,6 +1423,7 @@ final class XScreenView: UIView {
     /// Draw the texture using the current fit/zoom/pan transform.
     private func gpuFence(for conn: OpaquePointer) -> (MTLSharedEvent, UInt64)? {
         presentFenceDecodeFailed = false
+        presentFenceImportPending = false
         var bytes: UnsafeRawPointer?
         var length = 0
         var value: UInt64 = 0
@@ -1390,21 +1439,47 @@ final class XScreenView: UIView {
 
         let token = Data(bytes: bytes, count: length)
         if token != presentFenceToken {
-            guard let event = xios_metal_event_broker_copy_event(
-                device, bytes, length
-            ) else {
+            if token == presentFenceImportFailedToken {
+                presentFenceImportFailedToken = nil
                 dbg("gpu-fence-broker-import-failed")
                 presentFenceDecodeFailed = true
                 return nil
             }
-            presentFenceToken = token
-            presentFenceEvent = event
+            importPresentFence(token)
+            presentFenceImportPending = true
+            return nil
         }
         guard let event = presentFenceEvent else {
             presentFenceDecodeFailed = true
             return nil
         }
         return (event, value)
+    }
+
+    /// Import a present-fence token on a worker queue and hand the event back
+    /// to main; the tick that is holding the frame picks it up. A result for
+    /// a token nobody is waiting on any more (torn down, superseded) is dropped.
+    private func importPresentFence(_ token: Data) {
+        guard presentFenceImportToken != token else { return }   // already out
+        presentFenceImportToken = token
+        let device = self.device
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            let event: MTLSharedEvent? = token.withUnsafeBytes { raw in
+                guard let device, let base = raw.baseAddress else { return nil }
+                return xios_metal_event_broker_copy_event_timeout(
+                    device, base, raw.count, XIOS_METAL_EVENT_BROKER_TIMEOUT_SEC)
+            }
+            DispatchQueue.main.async {
+                guard let self, self.presentFenceImportToken == token else { return }
+                self.presentFenceImportToken = nil
+                if let event {
+                    self.presentFenceToken = token
+                    self.presentFenceEvent = event
+                } else {
+                    self.presentFenceImportFailedToken = token
+                }
+            }
+        }
     }
 
     @discardableResult
@@ -1652,9 +1727,12 @@ final class XScreenView: UIView {
 
     /// Pick a desktop flavor from the device through ioscd's request/reply socket.
     private func writeSessionRequest(_ preset: String, app: String? = nil,
+                                     appLabel: String? = nil,
                                      display: DisplayProfile? = nil,
                                      slot: String? = nil,
                                      completion: ((Bool) -> Void)? = nil) {
+        // What the status line calls the app; the wire field may be an id.
+        let appLabel = appLabel ?? app
         guard !sessionRequestInFlight else {
             lastToolMessage = "A desktop request is already being sent"
             toolMessageLabel?.text = lastToolMessage
@@ -1664,7 +1742,7 @@ final class XScreenView: UIView {
         sessionRequestInFlight = true
         let requestDescription: String
         switch preset {
-        case "app": requestDescription = "Opening \(app ?? "app")…"
+        case "app": requestDescription = "Opening \(appLabel ?? "app")…"
         case "stop": requestDescription = "Stopping desktop…"
         case "resize": requestDescription = "Resizing desktop…"
         default: requestDescription = "Starting \(desktopLabel(preset))…"
@@ -1683,7 +1761,7 @@ final class XScreenView: UIView {
             if response?.hasPrefix("SESSION_STARTED") == true ||
                 response?.hasPrefix("SESSION_ACTIVE") == true {
                 if preset == "app" {
-                    self.lastToolMessage = "Launch requested: \(app ?? "app")"
+                    self.lastToolMessage = "Launch requested: \(appLabel ?? "app")"
                 } else {
                     self.lastToolMessage = "Session: \(preset)"
                         + (slot.map { " slot=\($0)" } ?? "")
@@ -1725,10 +1803,9 @@ final class XScreenView: UIView {
 
     /// Tear down connections tied to the compositor input endpoint.
     private func closeInput() {
-        hardwareKeyboard.releasePressedKeys()
-        releaseHardwarePointerButtons()
+        resetInputLatches()       // releases still reach the outgoing compositor
         iosc_input_close()
-        iosc_clipboard_close()
+        closeClipboard()
         inputConnected = false
     }
 
@@ -1937,7 +2014,30 @@ final class XScreenView: UIView {
             return
         }
         if inputConnected && iosc_input_is_open() { return }
+        // A new connection starts with nothing held. Whatever the app still
+        // thinks is down (left by a drop the tick has not noticed yet, or
+        // pressed while disconnected) is cleared before it opens; the old
+        // connection is closed, so this sends nothing.
+        if !iosc_input_is_open() { resetInputLatches() }
         inputConnected = iosc_input_open(sock)
+    }
+
+    /// The input connection dropped, or is being closed or replaced: let go of
+    /// every key, button and touch the app still believes is held, so none of
+    /// it stays latched into the next connection. Releases go out only if the
+    /// current connection is still open (closeInput); after a drop this just
+    /// clears app-side state. A trackpad button still physically held presses
+    /// again on its next event, because the touch phase, not buttonMask,
+    /// decides it (hardwarePointerMask).
+    private func resetInputLatches() {
+        hardwareKeyboard.releasePressedKeys()
+        releaseHardwarePointerButtons()
+        cancelPendingPress()
+        longPressFired = false
+        releaseLeftPress()
+        leftPressSent = false
+        for slot in touchSlots.values { iosc_input_touch(slot, 3, 0, 0) }
+        touchSlots.removeAll()
     }
 
     private func serviceIoscInputTraits() {
@@ -1950,7 +2050,7 @@ final class XScreenView: UIView {
         while true {
             var hint: UInt32 = 0, purpose: UInt32 = 0, enabled: UInt32 = 0
             let r = iosc_input_poll_traits(&hint, &purpose, &enabled)
-            if r < 0 { inputConnected = false; writeStatus(); return }
+            if r < 0 { inputConnected = false; resetInputLatches(); writeStatus(); return }
             if r == 0 { return }
             applyIoscInputTraits(hint: hint, purpose: purpose, enabled: enabled)
         }
@@ -2056,17 +2156,12 @@ final class XScreenView: UIView {
 
     private func serviceIoscClipboard() {
         guard usingIosc, let sock = ioscClipboardSock else {
-            if iosc_clipboard_is_open() { iosc_clipboard_close() }
+            if iosc_clipboard_is_open() || clipConnectInFlight { closeClipboard() }
             return
         }
         if !iosc_clipboard_is_open() {
-            guard tickCount % 30 == 0, iosc_clipboard_open(sock) else { return }
-            pasteboardChangeCount = UIPasteboard.general.changeCount
-            // On (re)connect the compositor replays the session clipboard if it
-            // has one. Push ours only if it stays silent for ~0.5 s — so a fresh
-            // desktop inherits the iOS pasteboard, but an app relaunch mid-session
-            // doesn't clobber the desktop clipboard with a stale one.
-            clipDeferredPushTicks = 30
+            if tickCount % 30 == 0, !clipConnectInFlight { connectClipboard(sock) }
+            return
         }
         var gotAny = false
         while true {
@@ -2094,17 +2189,51 @@ final class XScreenView: UIView {
         }
     }
 
+    /// connect() plus the HELLO reply can take up to 2 s against a compositor
+    /// that accepted but is busy (KDE start-up), so it runs on the clipboard
+    /// queue and only the adopt happens here on main.
+    private func connectClipboard(_ sock: String) {
+        clipConnectInFlight = true
+        let epoch = clipEpoch
+        clipboardQueue.async { [weak self] in
+            let fd = iosc_clipboard_connect(sock)
+            DispatchQueue.main.async {
+                guard let self else { if fd >= 0 { close(fd) }; return }
+                self.clipConnectInFlight = false
+                guard fd >= 0 else { return }
+                guard epoch == self.clipEpoch, self.usingIosc,
+                      self.ioscClipboardSock == sock else { close(fd); return }
+                guard iosc_clipboard_adopt(fd) else { return }
+                self.clipEpoch += 1
+                self.pasteboardChangeCount = UIPasteboard.general.changeCount
+                // On (re)connect the compositor replays the session clipboard if
+                // it has one. Push ours only if it stays silent for ~0.5 s — so a
+                // fresh desktop inherits the iOS pasteboard, but an app relaunch
+                // mid-session doesn't clobber the desktop clipboard with a stale one.
+                self.clipDeferredPushTicks = 30
+            }
+        }
+    }
+
+    private func closeClipboard() {
+        clipEpoch += 1
+        iosc_clipboard_close()
+    }
+
     private func commitReceivedClipboard() {
         let pb = UIPasteboard.general
         var item: [String: Any] = [:]
+        var echoText: String?, echoPNG: Data?
         if let t = clipRxItems[kClipText], let s = String(data: t, encoding: .utf8) {
             item["public.utf8-plain-text"] = s
-            clipSuppressText = s
-        } else { clipSuppressText = nil }
+            echoText = s
+        }
         if let png = clipRxItems[kClipPNG] {
             item["public.png"] = png
-            clipSuppressPNG = png
-        } else { clipSuppressPNG = nil }
+            echoPNG = png
+        }
+        let echo = clipEcho
+        clipboardQueue.async { echo.text = echoText; echo.png = echoPNG }
         if let u = clipRxItems[kClipURI], let s = String(data: u, encoding: .utf8) {
             let uris = s.split(whereSeparator: { $0 == "\r" || $0 == "\n" })
                         .filter { !$0.hasPrefix("#") }
@@ -2125,41 +2254,75 @@ final class XScreenView: UIView {
         pasteboardChangeCount = pb.changeCount   // our own write, not an iOS copy
     }
 
+    /// Main only reads the pasteboard. Everything after that runs on the serial
+    /// clipboard queue, so pushes keep their order: re-encoding a non-PNG image
+    /// (a camera photo is real CPU), the echo check, and the writes.
     private func pushPasteboard(onConnect: Bool) {
         let pb = UIPasteboard.general
         pasteboardChangeCount = pb.changeCount
         let text = pb.hasStrings ? pb.string : nil
-        let png: Data? = pb.hasImages
-            ? (pb.data(forPasteboardType: "public.png") ?? pb.image?.pngData())
-            : nil
+        let rawPNG = pb.hasImages ? pb.data(forPasteboardType: "public.png") : nil
+        let image = pb.hasImages && rawPNG == nil ? pb.image : nil
         let urls = pb.hasURLs ? (pb.urls ?? []) : []
-        if text == nil && png == nil && urls.isEmpty {
-            // Empty pasteboard: on connect that's "nothing to contribute", not
-            // "clear the desktop clipboard".
-            if !onConnect { _ = iosc_clipboard_send_clear() }
-            clipSuppressText = nil; clipSuppressPNG = nil
-            return
+        let fd = iosc_clipboard_writer_fd()
+        let epoch = clipEpoch
+        let echo = clipEcho
+        let kText = kClipText, kPNG = kClipPNG, kURI = kClipURI
+        clipboardQueue.async { [weak self] in
+            let png = rawPNG ?? image?.pngData()
+            var items: [(kind: UInt32, data: Data)]?   // nil: nothing to send
+            if text == nil && png == nil && urls.isEmpty {
+                // Empty pasteboard: on connect that's "nothing to contribute",
+                // not "clear the desktop clipboard".
+                if !onConnect { items = [] }
+                echo.text = nil; echo.png = nil
+            } else if onConnect || text != echo.text || png != echo.png {
+                // (Otherwise it is an echo of our own commitReceivedClipboard write.)
+                // Text goes out as its C string did: the UTF-8 up to any NUL.
+                func cText(_ s: String) -> Data { Data(s.utf8.prefix { $0 != 0 }) }
+                var records: [(kind: UInt32, data: Data)] = []
+                if let t = text { records.append((kText, cText(t))) }
+                if let p = png { records.append((kPNG, p)) }
+                if !urls.isEmpty {
+                    let list = urls.map(\.absoluteString).joined(separator: "\r\n") + "\r\n"
+                    records.append((kURI, cText(list)))
+                    if text == nil { records.append((kText, cText(list))) }
+                }
+                items = records
+                echo.text = text; echo.png = png
+            }
+            guard fd >= 0 else { return }
+            guard let items else { close(fd); return }
+            Self.writeClipboard(fd: fd, items, generation: iosc_clipboard_send_begin(),
+                                epoch: epoch, owner: self)
         }
-        if !onConnect && text == clipSuppressText && png == clipSuppressPNG {
-            return   // echo of our own commitReceivedClipboard write
-        }
-        iosc_clipboard_send_begin()
-        if let t = text {
-            _ = t.withCString { iosc_clipboard_send_item(kClipText, $0, strlen($0)) }
-        }
-        if let p = png {
-            _ = p.withUnsafeBytes {
-                iosc_clipboard_send_item(kClipPNG, $0.baseAddress, p.count)
+    }
+
+    /// On the clipboard queue: write one copy event's records (no items: a
+    /// clear). A PNG can be 16 MB, and SO_SNDTIMEO bounds each write() call,
+    /// not the record, so this never runs on the display link. The writer uses
+    /// its own dup of the connection, so main keeps polling (or closes it)
+    /// meanwhile. A failed write may have cut a record short: shut that socket
+    /// down, so writes still queued for it fail instead of following a torn
+    /// record, and close it on main, which reconnects on the 30-tick poll.
+    /// iosc_clipboard_send_begin() is only ever called here, on this queue.
+    private static func writeClipboard(fd: Int32, _ items: [(kind: UInt32, data: Data)],
+                                       generation: UInt32, epoch: Int,
+                                       owner: XScreenView?) {
+        var failed = items.isEmpty && iosc_clipboard_write_clear(fd, generation) < 0
+        for item in items where !failed {
+            failed = item.data.withUnsafeBytes {
+                iosc_clipboard_write_item(fd, generation, item.kind,
+                                          $0.baseAddress, $0.count) < 0
             }
         }
-        if !urls.isEmpty {
-            let list = urls.map(\.absoluteString).joined(separator: "\r\n") + "\r\n"
-            _ = list.withCString { iosc_clipboard_send_item(kClipURI, $0, strlen($0)) }
-            if text == nil {
-                _ = list.withCString { iosc_clipboard_send_item(kClipText, $0, strlen($0)) }
-            }
+        if failed { Darwin.shutdown(fd, SHUT_RDWR) }
+        close(fd)
+        guard failed else { return }
+        DispatchQueue.main.async { [weak owner] in
+            guard let owner, owner.clipEpoch == epoch else { return }
+            owner.closeClipboard()
         }
-        clipSuppressText = text; clipSuppressPNG = png
     }
 
     private func sendMotion(_ x: Int32, _ y: Int32) {
@@ -2960,9 +3123,14 @@ final class XScreenView: UIView {
 
     private struct DesktopApp {
         let name: String    // display name (Name= or filename)
-        let exec: String    // cleaned Exec= (field codes stripped), what we launch
+        let exec: String    // cleaned Exec= (field codes stripped), shown and pinned
         let icon: String    // Icon= name/path, used by desktop pins
         let id: String      // .desktop basename, for stable identity / dedupe
+        // Desktop-file id (basename without ".desktop"): what the picker asks
+        // ioscd to launch. ioscd resolves it to the trusted, root-owned entry
+        // and runs that entry's own Exec, so no command text crosses the
+        // socket. nil when the basename is not an id ioscd accepts.
+        let desktopID: String?
     }
 
     private let applicationsDirs = [
@@ -2983,7 +3151,7 @@ final class XScreenView: UIView {
             return nil
         }
         var name = "", exec = "", icon = "", type = ""
-        var noDisplay = false, hidden = false
+        var noDisplay = false, hidden = false, terminal = false
         var inEntry = false
         for lineSub in raw.split(separator: "\n", omittingEmptySubsequences: false) {
             let line = lineSub.trimmingCharacters(in: .whitespaces)
@@ -3003,14 +3171,41 @@ final class XScreenView: UIView {
             case "Type":      type = val
             case "NoDisplay": noDisplay = (val.lowercased() == "true")
             case "Hidden":    hidden = (val.lowercased() == "true")
+            case "Terminal":  terminal = (val.lowercased() == "true")
             default: break    // ignore Name[xx], Icon, Categories, etc.
             }
         }
-        guard type == "Application", !noDisplay, !hidden else { return nil }
+        // Terminal=true entries need a terminal around them: ioscd refuses to
+        // launch them, and they never mapped a window here anyway.
+        guard type == "Application", !noDisplay, !hidden, !terminal else { return nil }
         let cleaned = cleanExec(exec)
         guard !cleaned.isEmpty else { return nil }
         let id = (path as NSString).lastPathComponent
-        return DesktopApp(name: name.isEmpty ? id : name, exec: cleaned, icon: icon, id: id)
+        return DesktopApp(name: name.isEmpty ? id : name, exec: cleaned, icon: icon, id: id,
+                          desktopID: desktopFileID(basename: id))
+    }
+
+    /// The desktop-file id ioscd resolves: the basename minus ".desktop", held
+    /// to ioscd's own rule (xios_desktop_file_id_valid: 1 to 200 bytes of
+    /// [A-Za-z0-9._+-], no leading '.' or '-', no ".."). ioscd refuses anything
+    /// else, and the rule also keeps the id one tab-free, newline-free field of
+    /// the SESSION line.
+    private func desktopFileID(basename: String) -> String? {
+        guard basename.hasSuffix(".desktop") else { return nil }
+        let id = String(basename.dropLast(".desktop".count))
+        let bytes = Array(id.utf8)
+        guard (1...200).contains(bytes.count),
+              bytes[0] != UInt8(ascii: "."), bytes[0] != UInt8(ascii: "-"),
+              !id.contains(".."),
+              bytes.allSatisfy({ b in
+                  (b >= UInt8(ascii: "a") && b <= UInt8(ascii: "z")) ||
+                  (b >= UInt8(ascii: "A") && b <= UInt8(ascii: "Z")) ||
+                  (b >= UInt8(ascii: "0") && b <= UInt8(ascii: "9")) ||
+                  b == UInt8(ascii: ".") || b == UInt8(ascii: "_") ||
+                  b == UInt8(ascii: "+") || b == UInt8(ascii: "-")
+              })
+        else { return nil }
+        return id
     }
 
     /// Strip freedesktop Exec field codes (%f %F %u %U %i %c %k %d %D %n %N %v %m) so
@@ -3131,6 +3326,8 @@ final class XScreenView: UIView {
         iosSurfaceFlags = 0
         presentFenceToken = nil
         presentFenceEvent = nil
+        presentFenceImportToken = nil
+        presentFenceImportFailedToken = nil
         releaseFenceToken = nil
         releaseFenceEvent = nil
         pendingStreamFrame = false
@@ -4209,11 +4406,7 @@ final class XScreenView: UIView {
         b.contentEdgeInsets = UIEdgeInsets(top: 10, left: 12, bottom: 10, right: 12)
         b.menu = UIMenu(children: [
             UIAction(title: "Open") { [weak self] _ in
-                guard let self else { return }
-                self.writeSessionRequest("app", app: app.exec, display: nil) {
-                    [weak self] accepted in
-                    if accepted { self?.dismissPicker() }
-                }
+                self?.launchDesktopApp(app)
             },
             UIAction(title: "Pin to Desktop") { [weak self] _ in
                 guard let self else { return }
@@ -4223,13 +4416,27 @@ final class XScreenView: UIView {
         ])
         b.showsMenuAsPrimaryAction = false
         b.addAction(UIAction { [weak self] _ in
-            guard let self else { return }
-            self.writeSessionRequest("app", app: app.exec, display: nil) {
-                [weak self] accepted in
-                if accepted { self?.dismissPicker() }
-            }
+            self?.launchDesktopApp(app)
         }, for: .touchUpInside)
         return b
+    }
+
+    /// Ask ioscd to open `app` by desktop-file id. The status line still names
+    /// the command the row shows. An entry without a usable id is refused here
+    /// rather than falling back to sending its Exec text.
+    private func launchDesktopApp(_ app: DesktopApp) {
+        guard let desktopID = app.desktopID else {
+            NSLog("Xios: not launching %@ (%@): no usable desktop-file id", app.name, app.id)
+            lastToolMessage = "Session request failed: \(app.id) has no usable desktop-file id"
+            toolMessageLabel?.text = lastToolMessage
+            refreshShellOverlay()
+            writeDebugSnapshot()
+            return
+        }
+        writeSessionRequest("app", app: desktopID, appLabel: app.exec, display: nil) {
+            [weak self] accepted in
+            if accepted { self?.dismissPicker() }
+        }
     }
 
     private func presentHomeScreenApps(query initialQuery: String = "",

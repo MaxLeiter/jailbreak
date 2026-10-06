@@ -46,6 +46,27 @@ int xios_desktop_entry_resolve(const char *app_id, const char *jbroot,
                                char *error, size_t error_len);
 
 /*
+ * Look up a desktop-file id (the .desktop basename without ".desktop") in the
+ * same directories, with the same trust and visibility rules. Unlike an app
+ * id, it names the file itself, so an entry that sets StartupWMClass is found
+ * by its basename too. The id is validated first so it cannot leave the
+ * application directory.
+ */
+int xios_desktop_entry_lookup_file_id(const char *file_id, const char *jbroot,
+                                      int require_trusted,
+                                      struct xios_desktop_entry *entry,
+                                      char *error, size_t error_len);
+
+int xios_desktop_file_id_valid(const char *file_id);
+
+/*
+ * Join argv into one POSIX shell command line that splits back into exactly
+ * these words: a word of characters the shell takes literally stays bare, any
+ * other is single-quoted ('\'' for a quote). Returns 0 if it does not fit.
+ */
+int xios_desktop_argv_shell_text(char *const argv[], char *dst, size_t dst_len);
+
+/*
  * Convert the Desktop Entry Exec value to argv without invoking a shell.
  * Supported field codes follow the Desktop Entry specification; file/URL
  * placeholders are omitted because a Home Screen tap supplies no files.

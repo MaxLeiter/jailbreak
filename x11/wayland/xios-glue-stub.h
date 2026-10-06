@@ -52,7 +52,9 @@ int xios_input_socket_fd (xios_input_socket *s);
 int xios_input_socket_dispatch (xios_input_socket *s, xios_input_cb cb, void *user);
 
 /* Write `len` bytes (a fixed record, e.g. XIOS_IN_TRAITS) to every connected
- * client; a client whose write fails is dropped. Returns the number written to. */
+ * client. What a full socket buffer will not take yet is queued and flushed by
+ * _dispatch(); a client whose write fails, or whose queue passes 64 KiB, is dropped.
+ * Returns the number written or queued to. */
 int xios_input_socket_broadcast (xios_input_socket *s, const void *buf, size_t len);
 
 int xios_input_socket_broadcast_bound (xios_input_socket *s, uint32_t bound_window,
@@ -66,6 +68,17 @@ int xios_input_socket_has_improxy (xios_input_socket *s);
 
 /* Number of currently-connected clients (detect a new connection across dispatch). */
 int xios_input_socket_client_count (xios_input_socket *s);
+
+/* Which client sent the record now in the callback: a nonzero id, unique for the
+ * socket's lifetime. 0 outside the callback. */
+uint32_t xios_input_socket_current_client (xios_input_socket *s);
+
+/* Called from _dispatch() once for every client that completed HELLO and is then gone
+ * (EOF, error, or dropped for a protocol violation), with the id _current_client()
+ * reported for its records, so its held buttons/keys can be released on its behalf.
+ * Not called from _free(). */
+typedef void (*xios_input_drop_cb) (uint32_t client, void *user);
+void xios_input_socket_set_drop_cb (xios_input_socket *s, xios_input_drop_cb cb, void *user);
 
 void xios_input_socket_free (xios_input_socket *s);
 
