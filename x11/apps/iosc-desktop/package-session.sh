@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.80"
+VER="1.0.81"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 
@@ -66,6 +66,7 @@ Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Depends: iosc (>= 0.9.34), uikittools
 Recommends: iosc-shell, xios
+Breaks: xios-session-stubs (<< 0.2.12)
 Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
@@ -87,6 +88,13 @@ Description: pick-a-desktop session launcher for the Xios stack
  name, with GNOME delegated to xios-session-stubs' packaged session launcher
  and one bulletproof teardown so switching sessions never leaves a stale
  compositor or socket behind.
+ .
+ Desktops can run at the same time: "xios-session --slot NAME <preset>" starts
+ a preset as its own slot, with its own sockets, session bus and helper daemons
+ (sysint_socket and a11y_socket are advertised in the slot's registry json).
+ Starting or stopping one desktop never touches another: a slot stop reaps
+ only the process groups it recorded, and a non-slot start leaves every slot
+ alone. "xios-session stop all" stops everything.
  .
  In-app session picks use the ioscd control socket; this package does not ship
  a request-file watcher or legacy fallback path.

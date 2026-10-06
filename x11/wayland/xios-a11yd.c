@@ -23,7 +23,19 @@
 #include <sys/un.h>
 #include <unistd.h>
 
-#define SOCK_PATH "/var/jb/tmp/xios-a11y.sock"
+#define SOCK_PATH_DEFAULT "/var/jb/tmp/xios-a11y.sock"
+/* Per-session socket: xios-session sets XIOS_A11Y_SOCK for each slot so several
+ * desktops can each run their own bridge. Unset keeps the global path. */
+static const char *sock_path(void)
+{
+    static const char *path;
+    if (!path) {
+        const char *e = getenv("XIOS_A11Y_SOCK");
+        path = (e && *e) ? e : SOCK_PATH_DEFAULT;
+    }
+    return path;
+}
+#define SOCK_PATH sock_path()
 #define MAX_CLIENTS 16
 #define MAX_NODES 300
 #define MAX_OUTBUF (4 * 1024 * 1024)

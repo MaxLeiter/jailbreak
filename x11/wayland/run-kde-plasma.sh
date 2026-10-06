@@ -237,17 +237,14 @@ kde_process_running() {
   ps ax | grep -v grep | grep -E "$1" >/dev/null 2>&1
 }
 
-if [ -z "${XIOS_SESSION_SLOT:-}" ]; then
-  echo "==> stop prior iosc/KDE session pieces (keep the Xios display app)"
-  ps ax | grep -v grep | grep -E "(^|[ /])iosc( |$)|ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|kded6|dbus-daemon.*--session|dbus-run-session" \
-    | awk '{print $1}' | while read -r pid; do
-        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -TERM "$pid" 2>/dev/null
-    done
-  sleep 1
-  ps ax | grep -v grep | grep -E "ioscbg|ioscbar|ioscdock|ioscoverview|kwin_wayland|plasmashell|plasmawindowed|kded6" \
-    | awk '{print $1}' | while read -r pid; do
-        [ "$pid" = "$$" ] || [ "$pid" = "$PPID" ] || kill -9 "$pid" 2>/dev/null
-    done
+# No teardown here. This script used to kill every iosc, kwin_wayland,
+# plasmashell, kded6 and session bus on the device when started outside a slot,
+# which took any other running desktop with it. Stopping the previous session of
+# THIS name is xios-session's job (it reaps recorded process groups before it
+# calls us); a hand run must stop its predecessor with `xios-session stop`.
+if ps axww 2>/dev/null | grep -v grep | grep -E "iosc( .*)? -s $WAYLAND_DISPLAY( |$)|kwin_wayland.* --socket $KWIN_SOCKET( |$)" >/dev/null 2>&1; then
+  echo "!! a session already serves $WAYLAND_DISPLAY / $KWIN_SOCKET; stop it first (xios-session ${XIOS_SESSION_SLOT:+--slot $XIOS_SESSION_SLOT }stop)"
+  exit 3
 fi
 
 rm -f "$WSOCK" "$WSOCK.lock" "$KWIN_SOCK_PATH" "$KWIN_SOCK_PATH.lock" \
@@ -912,10 +909,24 @@ nohup "$SETSID" env \
 	      fi
 	    }
 	    xios_start_session_helper() {
-	      b="$1"; log="$2"; name="${b##*/}"
+	      # One instance per session bus. The old guard ("skip when ANY process of
+	      # that name exists") meant the second desktop never got a hwbridged,
+	      # sensord or sysintd of its own. Each helper keeps a pid file beside its
+	      # log; XIOS_SYSINT_SOCK / XIOS_A11Y_SOCK (per slot, exported by
+	      # xios-session) are inherited from this environment.
+	      b="$1"; log="$2"; name="${b##*/}"; pf="$log.pid"
 	      [ -x "$b" ] || return 0
-	      ps ax 2>/dev/null | grep -v grep | grep -q "$name" && return 0
+	      if [ -f "$pf" ]; then
+	        old="$(cat "$pf" 2>/dev/null)"
+	        case "$old" in ""|*[!0-9]*) ;; *)
+	          if kill -0 "$old" 2>/dev/null &&
+	             ps -p "$old" -o command= 2>/dev/null | grep -q "$name"; then
+	            return 0
+	          fi ;;
+	        esac
+	      fi
 	      "$b" >"$log" 2>&1 &
+	      printf "%s\n" "$!" >"$pf"
 	    }
 	    # Rewrites the status file to "down" if the session dies after bring-up,
 	    # so a stale "up" does not linger for the Xios picker. No-op when run by

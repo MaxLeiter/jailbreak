@@ -7332,7 +7332,24 @@ int main(int argc, char **argv)
      * attributed to a producer name. The classic and native compositors can be up
      * at the same time, so they publish separate tables — otherwise whichever
      * started last would silently overwrite the other's pacing/upscale claim. */
-    iosc_status_set_producer(g_native_mode ? "iosc-native" : "iosc");
+    {
+        /* Slot sessions run one iosc each; the producer name carries the slot so
+         * two instances stop unlinking and rewriting one iosc.status. The slot
+         * comes from XIOS_SESSION_SLOT (xios-session exports it), else from a
+         * "-s wayland-<slot>" socket name. wayland-0 stays the unqualified
+         * "iosc"/"iosc-native" so the non-slot path and its readers are unchanged. */
+        char producer[96];
+        const char *base = g_native_mode ? "iosc-native" : "iosc";
+        const char *slot = getenv("XIOS_SESSION_SLOT");
+        if ((!slot || !*slot) && opts.sock_name &&
+            !strncmp(opts.sock_name, "wayland-", 8) && strcmp(opts.sock_name, "wayland-0"))
+            slot = opts.sock_name + 8;
+        if (slot && *slot)
+            snprintf(producer, sizeof(producer), "%s-%.64s", base, slot);
+        else
+            snprintf(producer, sizeof(producer), "%s", base);
+        iosc_status_set_producer(producer);
+    }
 
     if (iosc_env_truthy(getenv("IOSC_FULLSCREEN_TOPLEVELS")))
         g_fullscreen_toplevels = 1;

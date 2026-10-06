@@ -108,16 +108,35 @@ if [ "${1:-}" != "--no-compositor" ] && [ ! -S "$SOCK" ]; then
 fi
 
 # -- 2 + 3 + 4. shell clients -------------------------------------------------
-is_running() {  # is_running <name>: a live process whose argv[0] basename is <name>
-    # Match the program, not any argv containing "/<name>" (a `tail -f
-    # $TMP/ioscbar.log` used to count). ps ax: PID TT STAT TIME COMMAND, and a
-    # defunct entry shows as "(name)" so it never matches.
-    ps ax 2>/dev/null | awk -v b="$1" 'NR > 1 { n = split($5, p, "/"); if (p[n] == b) f = 1 } END { exit !f }'
+# Several desktops can run at once, each with its own iosc and so its own wallpaper,
+# bar and dock. "Is it running" therefore means "is the client I started FOR THIS
+# compositor running", not "is any process of that name running": that old test made
+# the second desktop silently skip its whole shell. Each client's pid is recorded in
+# a file keyed by the compositor name, and a pid is only trusted while it is still
+# the same program (pids recycle).
+case "$WAYLAND_DISPLAY" in
+    wayland-0) SHELL_SUF="" ;;
+    wayland-*) SHELL_SUF="-${WAYLAND_DISPLAY#wayland-}" ;;
+    *)         SHELL_SUF="-$WAYLAND_DISPLAY" ;;
+esac
+pid_file() { printf '%s/%s-%s.pid' "$TMP" "$1" "$WAYLAND_DISPLAY"; }
+
+is_running() {  # is_running <name>: our <name> client for this compositor is alive
+    _pf=$(pid_file "$1")
+    [ -f "$_pf" ] || return 1
+    _pid=$(cat "$_pf" 2>/dev/null)
+    case "$_pid" in ""|*[!0-9]*) return 1 ;; esac
+    kill -0 "$_pid" 2>/dev/null || return 1
+    # ps -o command=: the program's argv[0] basename must still be <name>.
+    ps -p "$_pid" -o command= 2>/dev/null | awk -v b="$1" '{ n = split($1, p, "/"); if (p[n] == b) f = 1 } END { exit !f }'
 }
 
-start() {  # start <name> (skips if already running)
+start() {  # start <name> (skips if this compositor's client is already running)
     if is_running "$1"; then log "$1 already running"; return; fi
-    if [ -x "$BIN/$1" ]; then nohup "$BIN/$1" >"$TMP/$1.log" 2>&1 & log "$1 started";
+    if [ -x "$BIN/$1" ]; then
+        nohup "$BIN/$1" >"$TMP/$1$SHELL_SUF.log" 2>&1 &
+        printf '%s\n' "$!" >"$(pid_file "$1")"
+        log "$1 started";
     else log "WARNING: $BIN/$1 not found (skipped)"; fi
 }
 start ioscbg

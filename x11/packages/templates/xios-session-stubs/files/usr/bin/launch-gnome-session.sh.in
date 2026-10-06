@@ -36,6 +36,12 @@ else
 fi
 GNOME_SHELL_LOG="${GNOME_SHELL_LOG:-$XS_TMP/gnome-shell$slot_suffix.log}"
 GNOME_SESSION_BUS_FILE="${GNOME_SESSION_BUS_FILE:-$XS_TMP/gnome-session-bus$slot_suffix}"
+# The session re-parents through xios-setsid below, so its process group is new
+# and unrelated to ours. The inner shell writes that group id here and the
+# launcher (xios-session) records it for the slot-scoped stop and the stale-slot
+# sweep. One sysintd per desktop: the launcher passes XIOS_SYSINT_SOCK per slot;
+# unset, sysintd falls back to its global default.
+XIOS_GNOME_PGID_FILE="${XIOS_GNOME_PGID_FILE:-$XS_TMP/xios-gnome$slot_suffix.pgid}"
 WSOCK="$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY"
 
 [ -x "$SHELL_BIN" ] || { echo "!! $SHELL_BIN missing — install the gnome-shell deb"; exit 1; }
@@ -67,7 +73,7 @@ done
 
 rm -f "$WSOCK" "$WSOCK.lock" "$XIOS_DDX_SOCKET" "$XIOS_JSON_PATH" \
       "$XIOS_INPUT_SOCKET" "$XIOS_CLIPBOARD_SOCKET" "$GNOME_SHELL_LOG" \
-      "$GNOME_SESSION_BUS_FILE" 2>/dev/null
+      "$GNOME_SESSION_BUS_FILE" "$XIOS_GNOME_PGID_FILE" 2>/dev/null
 
 echo "==> verify package-owned ANGLE + Mutter compatibility links"
 for lib in libGLESv2.so.2 libGLESv2.so libEGL.so.1 libEGL.so; do
@@ -127,11 +133,13 @@ echo "==> start GNOME session -> $GNOME_SHELL_LOG"
   LC_CTYPE="${LC_CTYPE:-${LANG:-C}}" \
   LIBEXEC="$LIBEXEC" \
   GNOME_SESSION_BUS_FILE="$GNOME_SESSION_BUS_FILE" \
+  XIOS_GNOME_PGID_FILE="$XIOS_GNOME_PGID_FILE" \
   PULSE_PROFILE="@PREFIX@/etc/profile.d/xios-pulse.sh" \
   SYSINT_LOG="$XS_TMP/xios-sysintd$slot_suffix.log" \
   dbus-run-session -- sh -c '
     export DBUS_SYSTEM_BUS_ADDRESS="$DBUS_SESSION_BUS_ADDRESS"
     printf %s "$DBUS_SESSION_BUS_ADDRESS" > "$GNOME_SESSION_BUS_FILE"
+    ps -o pgid= -p $$ 2>/dev/null | tr -cd 0-9 > "$XIOS_GNOME_PGID_FILE"
     [ -x "$LIBEXEC/xios-login1-stub" ] && "$LIBEXEC/xios-login1-stub" &
     [ -x "$LIBEXEC/xios-polkit-stub" ] && "$LIBEXEC/xios-polkit-stub" &
     [ -x "$LIBEXEC/xios-accounts-stub" ] && "$LIBEXEC/xios-accounts-stub" &
@@ -179,6 +187,8 @@ fi
 echo "==> relaunch the Xios app"
 uiopen -b com.max.xios 2>/dev/null || true
 sleep 1
+
+echo "   session pgid:    $(cat "$XIOS_GNOME_PGID_FILE" 2>/dev/null)"
 
 echo "==> GNOME session log tail:"
 tail -80 "$GNOME_SHELL_LOG" 2>/dev/null | sed 's/^/   /'

@@ -105,6 +105,8 @@ fi
 XS_SLOT_RAW="${XIOS_SESSION_SLOT:-}"
 XS_SLOT="$(printf '%s' "$XS_SLOT_RAW" | tr -c 'A-Za-z0-9_.-' '-' | sed 's/^-*//; s/-*$//; s/--*/-/g' | cut -c1-48)"
 if [ -n "$XS_SLOT_RAW" ] && [ -z "$XS_SLOT" ]; then XS_SLOT="desktop"; fi
+# A slot named "0" would alias the global wayland-0 rendezvous name.
+if [ "$XS_SLOT" = 0 ]; then XS_SLOT="slot-0"; fi
 XS_SLOT_REGISTRY_DIR="${XS_SLOT_REGISTRY_DIR:-$XS_TMP/xios-displays.d}"
 if [ -n "$XS_SLOT" ]; then
     export XIOS_SESSION_SLOT="$XS_SLOT"
@@ -127,6 +129,14 @@ if [ -n "$XS_SLOT" ]; then
     XS_KWIN_SOCKET="${XS_KWIN_SOCKET:-kwin-$XS_SLOT}"
     XS_IOSC_LOG="${XS_IOSC_LOG:-$XS_TMP/iosc-$XS_SLOT.log}"
     XS_KDE_LOG="${XS_KDE_LOG:-$XS_TMP/kde-plasma-$XS_SLOT.log}"
+    # Per-slot helper endpoints, advertised in the slot's registry json so the
+    # display app can find the sysintd/a11yd that belong to THIS desktop.
+    XS_SYSINT_SOCK="${XS_SYSINT_SOCK:-$XS_TMP/xios-$XS_SLOT-sysint.sock}"
+    XS_A11Y_SOCK="${XS_A11Y_SOCK:-$XS_TMP/xios-$XS_SLOT-a11y.sock}"
+    XS_APP_BUSDIR="${XS_APP_BUSDIR:-$XS_TMP/xios-session-bus-$XS_SLOT}"
+    if [ "$XS_ACTIVE" = "$XS_TMP/xios-active-session" ]; then
+        XS_ACTIVE="$XS_TMP/xios-active-session-$XS_SLOT"
+    fi
 else
     XS_SLOT_REGISTRY=""
     XS_WAYLAND_NAME="${XS_WAYLAND_NAME:-wayland-0}"
@@ -141,6 +151,9 @@ else
     XS_KWIN_SOCKET="${XS_KWIN_SOCKET:-kwin-ios-test}"
     XS_IOSC_LOG="${XS_IOSC_LOG:-$XS_TMP/iosc.log}"
     XS_KDE_LOG="${XS_KDE_LOG:-$XS_TMP/kde-plasma.log}"
+    XS_SYSINT_SOCK="${XS_SYSINT_SOCK:-$XS_TMP/xios-sysint.sock}"
+    XS_A11Y_SOCK="${XS_A11Y_SOCK:-$XS_TMP/xios-a11y.sock}"
+    XS_APP_BUSDIR="${XS_APP_BUSDIR:-$XS_TMP/xios-session-bus}"
 fi
 XS_WAYLAND_SOCK="$XS_TMP/$XS_WAYLAND_NAME"
 
@@ -365,7 +378,7 @@ xs_a11y_prefix() {
 }
 
 xs_session_bus_address() {  # xs_session_bus_address <busdir>
-    local busdir="$1" sock addr
+    local busdir="$1" sock addr out pid
     sock="$busdir/session-bus"
     addr="unix:path=$sock"
     mkdir -p "$busdir"; chmod 0700 "$busdir"
@@ -375,7 +388,12 @@ xs_session_bus_address() {  # xs_session_bus_address <busdir>
     fi
     [ -x "$XS_DBUS_DAEMON" ] || return 1
     rm -f "$sock"
-    "$XS_DBUS_DAEMON" --session --fork --address="$addr" --print-address >/dev/null 2>&1 || return 1
+    # --fork detaches the daemon into its own session, so no recorded process
+    # group will ever contain it. Keep its pid beside the socket: that is what
+    # lets `--slot X stop` (and only that) take the bus down again.
+    out="$("$XS_DBUS_DAEMON" --session --fork --address="$addr" --print-address=1 --print-pid=1 2>/dev/null)" || return 1
+    pid="$(printf '%s\n' "$out" | sed -n '2p' | tr -cd '0-9')"
+    [ -n "$pid" ] && printf '%s\n' "$pid" >"$busdir/bus.pid" 2>/dev/null
     if [ -S "$sock" ]; then
         printf '%s' "$addr"
         return 0
@@ -383,26 +401,53 @@ xs_session_bus_address() {  # xs_session_bus_address <busdir>
     return 1
 }
 
-xs_helper_running() {  # xs_helper_running <process-name>
-    ps ax 2>/dev/null | grep -v grep | grep -q "$1"
+# Stop the standalone session bus in <busdir> iff its recorded pid is still a
+# dbus-daemon serving exactly that directory (pids get recycled).
+xs_stop_bus_dir() {  # xs_stop_bus_dir <busdir>
+    local busdir="$1" pid cmd
+    [ -n "$busdir" ] && [ -d "$busdir" ] || return 0
+    pid="$(cat "$busdir/bus.pid" 2>/dev/null || true)"
+    if xs_process_alive "$pid"; then
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        case "$cmd" in
+            *dbus-daemon*"$busdir/session-bus"*) kill -TERM "$pid" 2>/dev/null || true ;;
+        esac
+    fi
+}
+
+# Live and still the program we started? (pid files outlive reboots, pids recycle)
+xs_pidfile_running() {  # xs_pidfile_running <pidfile> <program-name>
+    local pf="$1" name="$2" pid cmd
+    pid="$(cat "$pf" 2>/dev/null || true)"
+    xs_process_alive "$pid" || return 1
+    cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+    case "$cmd" in *"$name"*) return 0 ;; esac
+    return 1
 }
 
 xs_start_native_helper() {  # xs_start_native_helper <binary> <log> <busdir> <bus_addr>
-    local bin="$1" log="$2" busdir="$3" bus_addr="$4" name
+    local bin="$1" log="$2" busdir="$3" bus_addr="$4" name pf
     [ -x "$bin" ] || return 0
     name="${bin##*/}"
-    xs_helper_running "$name" && return 0
+    # One instance per session bus. This used to be "skip if ANY instance runs"
+    # (a global ps grep), which left every desktop after the first without its
+    # helper -- and, for sysintd, without a socket of its own.
+    pf="$busdir/$name.pid"
+    xs_pidfile_running "$pf" "$name" && return 0
     nohup env \
         XDG_RUNTIME_DIR="$busdir" \
         DBUS_SESSION_BUS_ADDRESS="$bus_addr" \
         DBUS_SYSTEM_BUS_ADDRESS="$bus_addr" \
         XIOS_HWBRIDGE_BUS=session \
+        XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" \
+        XIOS_A11Y_SOCK="$XS_A11Y_SOCK" \
         PULSE_SERVER="${PULSE_SERVER:-unix:$XS_TMP/pulse/native}" \
         PULSE_RUNTIME_PATH="${PULSE_RUNTIME_PATH:-$XS_TMP/pulse-daemon}" \
         GSETTINGS_BACKEND=memory \
         HOME="$XS_VAR/root" \
         PATH="$XS_BIN:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH" \
         "$bin" >"$log" 2>&1 </dev/null &
+    printf '%s\n' "$!" >"$pf" 2>/dev/null || true
 }
 
 xs_start_native_helpers() {  # xs_start_native_helpers <busdir> <bus_addr>
@@ -410,9 +455,45 @@ xs_start_native_helpers() {  # xs_start_native_helpers <busdir> <bus_addr>
     [ -n "$bus_addr" ] || return 0
     profile="$XS_JB/etc/profile.d/xios-pulse.sh"
     [ -r "$profile" ] && . "$profile" && xios_pulse_start
-    xs_start_native_helper "$XS_PREFIX/libexec/xios-hwbridged" "$XS_TMP/xios-hwbridged.log" "$busdir" "$bus_addr"
-    xs_start_native_helper "$XS_PREFIX/libexec/xios-sensord" "$XS_TMP/xios-sensord.log" "$busdir" "$bus_addr"
-    xs_start_native_helper "$XS_PREFIX/libexec/xios-sysintd" "$XS_TMP/xios-sysintd.log" "$busdir" "$bus_addr"
+    xs_start_native_helper "$XS_PREFIX/libexec/xios-hwbridged" "$XS_TMP/xios-hwbridged${XS_SLOT:+-$XS_SLOT}.log" "$busdir" "$bus_addr"
+    xs_start_native_helper "$XS_PREFIX/libexec/xios-sensord" "$XS_TMP/xios-sensord${XS_SLOT:+-$XS_SLOT}.log" "$busdir" "$bus_addr"
+    xs_start_native_helper "$XS_PREFIX/libexec/xios-sysintd" "$XS_TMP/xios-sysintd${XS_SLOT:+-$XS_SLOT}.log" "$busdir" "$bus_addr"
+}
+
+# PulseAudio's module-xios-sink and xios-hwbridged hardcode the GLOBAL sysintd
+# path to push desktop volume/brightness back to the iPad. PulseAudio stays
+# shared across desktops, so while no non-slot session owns that path, point it at
+# a live slot's sysintd instead. A real sysintd binding the default path later
+# simply replaces the link (the server unlinks before bind).
+xs_publish_default_sysint_link() {
+    local def="$XS_TMP/xios-sysint.sock"
+    [ -n "$XS_SLOT" ] || return 0
+    [ -S "$XS_SYSINT_SOCK" ] || return 0
+    if [ -L "$def" ] || [ ! -e "$def" ]; then
+        ln -sfn "$XS_SYSINT_SOCK" "$def" 2>/dev/null || true
+    fi
+}
+
+xs_retract_default_sysint_link() {  # xs_retract_default_sysint_link <slot-socket>
+    local def="$XS_TMP/xios-sysint.sock" tgt
+    [ -L "$def" ] || return 0
+    tgt="$(readlink "$def" 2>/dev/null || true)"
+    [ "$tgt" = "$1" ] && rm -f "$def" 2>/dev/null || true
+    xs_relink_default_sysint "$1"
+}
+
+# Point the default path at any OTHER live slot's sysintd (skipping <except>).
+xs_relink_default_sysint() {  # xs_relink_default_sysint [except-socket]
+    local def="$XS_TMP/xios-sysint.sock" e sock
+    [ -L "$def" ] || [ ! -e "$def" ] || return 0
+    [ ! -e "$def" ] || return 0
+    for e in "$XS_SLOT_REGISTRY_DIR"/*.json; do
+        [ -f "$e" ] || continue
+        sock="$(xs_json_get_file "$e" sysint_socket)"
+        [ -n "$sock" ] && [ "$sock" != "${1:-}" ] && [ -S "$sock" ] || continue
+        ln -sfn "$sock" "$def" 2>/dev/null && return 0
+    done
+    return 0
 }
 
 # xs_write_status <preset> <state> <message>
@@ -421,6 +502,7 @@ xs_write_status() {
     local preset="$1" state="$2" msg="$3"
     local at active width height stride display ddx socket input_socket meta="" extra=""
     at="$(date '+%Y-%m-%dT%H:%M:%S')"
+    case "$state" in up|compositor-only) xs_publish_default_sysint_link ;; esac
     active="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
     width="$(xs_json_get_file "$XS_CONFIG_JSON" width)"
     height="$(xs_json_get_file "$XS_CONFIG_JSON" height)"
@@ -433,6 +515,10 @@ xs_write_status() {
     [ -n "$XS_SLOT" ] && meta="$meta,\"slot\":\"$(xs_json_escape "$XS_SLOT")\""
     [ -n "$XS_WAYLAND_NAME" ] && meta="$meta,\"wayland\":\"$(xs_json_escape "$XS_WAYLAND_NAME")\""
     [ -n "$XS_CONFIG_JSON" ] && meta="$meta,\"json\":\"$(xs_json_escape "$XS_CONFIG_JSON")\""
+    # Per-session helper endpoints (the paths this desktop's sysintd/a11yd listen
+    # on; the display app checks the socket exists before connecting).
+    [ -n "$XS_SYSINT_SOCK" ] && meta="$meta,\"sysint_socket\":\"$(xs_json_escape "$XS_SYSINT_SOCK")\""
+    [ -n "$XS_A11Y_SOCK" ] && meta="$meta,\"a11y_socket\":\"$(xs_json_escape "$XS_A11Y_SOCK")\""
     [ -n "$width" ] && extra="$extra,\"width\":$width"
     [ -n "$height" ] && extra="$extra,\"height\":$height"
     [ -n "$stride" ] && extra="$extra,\"stride\":$stride"
@@ -447,11 +533,13 @@ xs_write_status() {
         "$(xs_json_escape "$msg")" "$at" "$meta$extra" >"$XS_STATUS" 2>/dev/null || true
     if [ -n "$XS_SLOT_REGISTRY" ]; then
         mkdir -p "$XS_SLOT_REGISTRY_DIR" 2>/dev/null || true
-        printf '{"slot":"%s","preset":"%s","state":"%s","message":"%s","at":"%s","wayland":"%s","json":"%s","status":"%s"%s}\n' \
+        printf '{"slot":"%s","preset":"%s","state":"%s","message":"%s","at":"%s","wayland":"%s","json":"%s","status":"%s","sysint_socket":"%s","a11y_socket":"%s"%s}\n' \
             "$(xs_json_escape "$XS_SLOT")" "$(xs_json_escape "$preset")" \
             "$(xs_json_escape "$state")" "$(xs_json_escape "$msg")" "$at" \
             "$(xs_json_escape "$XS_WAYLAND_NAME")" "$(xs_json_escape "$XS_CONFIG_JSON")" \
-            "$(xs_json_escape "$XS_STATUS")" "$extra" >"$XS_SLOT_REGISTRY" 2>/dev/null || true
+            "$(xs_json_escape "$XS_STATUS")" \
+            "$(xs_json_escape "$XS_SYSINT_SOCK")" "$(xs_json_escape "$XS_A11Y_SOCK")" \
+            "$extra" >"$XS_SLOT_REGISTRY" 2>/dev/null || true
     fi
 }
 
@@ -505,14 +593,122 @@ xs_record_pgid_once() {
     printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$XS_SESSION_PGIDS" 2>/dev/null || true
 }
 
-xs_record_slot_process_pgroups() {
-    local preset="${1:-session}" pid pgid
-    [ -n "${XS_SLOT:-}" ] || return 0
-    ps axww 2>/dev/null | grep -v grep | grep -E "wayland-$XS_SLOT|iosc-$XS_SLOT|kwin-$XS_SLOT" | awk '{print $1}' | while read -r pid; do
-        case "$pid" in ""|*[!0-9]*|0|1) continue ;; esac
-        pgid="$(ps -p "$pid" -o pgid= 2>/dev/null | tr -d '[:space:]')"
-        xs_record_pgid_once "$pgid" "$preset" "$XS_SLOT"
+# ---------------------------------------------------------------------------
+# process ownership (several desktops run at once; nothing may kill a neighbour)
+# ---------------------------------------------------------------------------
+# A desktop's processes are identified, in order of trust, by:
+#   1. a recorded process group (xs_record_pgid_once), validated against a live
+#      session process before it is ever signalled (xs_reap_pgid);
+#   2. an argv needle that names the slot exactly (xs_slot_regex).
+# Anything else is not provably ours and is left alone.
+
+# One process-table snapshot: "pid ppid pgid command...". Callers filter it with
+# awk, never with `grep -q` (an early-exiting grep SIGPIPEs ps under pipefail and
+# reads as "no match", which is how a live slot used to get swept).
+xs_ps_table() {
+    ps axww -o pid=,ppid=,pgid=,command= 2>/dev/null || true
+}
+
+# ERE matching every argv a slot's processes carry (and no other slot's: each
+# alternative ends at a character that cannot continue a slot name).
+xs_slot_regex() {  # xs_slot_regex <slot>
+    local s B='([^A-Za-z0-9_.-]|$)'
+    s="$(printf '%s' "$1" | sed 's/\./\\./g')"
+    printf '%s' "(wayland|kwin|xios-run|xios-kde-runtime|xios-session-bus|gnome-session-bus|kde-session-bus)-${s}${B}|(iosc|mutter)-${s}-(ddx|input|clipboard|wm)\\.sock|xios-${s}(\\.json|-sysint\\.sock|-a11y\\.sock)${B}"
+}
+
+# Pids whose argv names <slot> (never this shell or its parent).
+xs_slot_pids() {  # xs_slot_pids <slot>
+    local re
+    re="$(xs_slot_regex "$1")"
+    xs_ps_table | SLOT_RE="$re" awk -v me="$$" -v pp="$PPID" '
+        { pid = $1; if (pid == me || pid == pp) next
+          c = $0; sub(/^ *[0-9]+ +[0-9]+ +[0-9]+ +/, "", c)
+          if (c ~ /^(awk|ps|grep|sed) /) next
+          if (c ~ ENVIRON["SLOT_RE"]) print pid }'
+}
+
+# Real slot names from the pgid records and the display registry (the pgid file
+# also holds legacy rows whose slot column is "-" or a timestamp).
+xs_known_slots() {
+    local e
+    {
+        [ -f "$XS_SESSION_PGIDS" ] && awk -F'\t' '$3 != "" && $3 != "-" && $3 !~ /^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T/ { print $3 }' "$XS_SESSION_PGIDS"
+        for e in "$XS_SLOT_REGISTRY_DIR"/*.json; do
+            [ -f "$e" ] && basename "$e" .json
+        done
+        [ -n "${XS_SLOT:-}" ] && printf '%s\n' "$XS_SLOT"
+    } 2>/dev/null | sort -u
+}
+
+xs_slot_recorded_pgids() {  # xs_slot_recorded_pgids <slot>
+    [ -f "$XS_SESSION_PGIDS" ] || return 0
+    awk -F'\t' -v want="$1" '$3 == want && $1 ~ /^[0-9]+$/ { print $1 }' "$XS_SESSION_PGIDS" | sort -u
+}
+
+# Every pid that belongs to ANY slot: recorded pgids, argv needles, every other
+# member of those process groups, and all of their descendants. A non-slot
+# teardown subtracts this from whatever its pattern matches.
+xs_slot_protected_pids() {
+    local slots slot re="" pgids=""
+    slots="$(xs_known_slots)"
+    [ -n "$slots" ] || return 0
+    for slot in $slots; do
+        re="${re:+$re|}$(xs_slot_regex "$slot")"
+        pgids="$pgids $(xs_slot_recorded_pgids "$slot" | tr '\n' ' ')"
     done
+    xs_ps_table | SLOT_RE="$re" PGIDS="$pgids" awk '
+        BEGIN { n = split(ENVIRON["PGIDS"], a, " "); for (i = 1; i <= n; i++) pgset[a[i]] = 1 }
+        { pid = $1; ppid[pid] = $2; pg[pid] = $3
+          c = $0; sub(/^ *[0-9]+ +[0-9]+ +[0-9]+ +/, "", c)
+          if (c ~ /^(awk|ps|grep|sed) /) next
+          if (($3 in pgset) || c ~ ENVIRON["SLOT_RE"]) { seed[pid] = 1 } }
+        END {
+            for (p in seed) if (pg[p] > 1) pgset[pg[p]] = 1
+            for (p in pg) if (pg[p] in pgset) prot[p] = 1
+            for (round = 0; round < 12; round++) {
+                grew = 0
+                for (p in pg) if (!(p in prot) && (ppid[p] in prot) && ppid[p] > 1) { prot[p] = 1; grew = 1 }
+                if (!grew) break
+            }
+            for (p in prot) print p
+        }'
+}
+
+xs_record_pgid_of_pid() {  # xs_record_pgid_of_pid <pid> [preset] [slot]
+    local pid="$1" preset="${2:-session}" slot="${3:-${XS_SLOT:-}}" pgid
+    case "$pid" in ""|*[!0-9]*|0|1) return 0 ;; esac
+    pgid="$(ps -p "$pid" -o pgid= 2>/dev/null | tr -d '[:space:]')"
+    xs_record_pgid_once "$pgid" "$preset" "$slot"
+}
+
+# Record the process groups of everything this session just started. Slot mode
+# finds them by the slot's argv needles; the global session by the fixed global
+# names. Either way the NEXT teardown reaps by pgid instead of by pattern.
+xs_record_slot_process_pgroups() {
+    local preset="${1:-session}" pid pids
+    if [ -n "${XS_SLOT:-}" ]; then
+        pids="$(xs_slot_pids "$XS_SLOT")"
+    else
+        pids="$(
+            xs_ps_table | awk -v me="$$" -v pp="$PPID" '
+                { c = $0; sub(/^ *[0-9]+ +[0-9]+ +[0-9]+ +/, "", c)
+                  if ($1 == me || $1 == pp || c ~ /^(awk|ps|grep|sed) /) next
+                  if (c ~ /iosc-(ddx|input|clipboard|wm)\.sock|(-s|--wayland-display) wayland-0( |$)|--socket kwin-ios-test( |$)/) print $1 }'
+        )"
+    fi
+    for pid in $pids; do
+        xs_record_pgid_of_pid "$pid" "$preset"
+    done
+}
+
+# GNOME re-parents itself through xios-setsid, so its group is new and unrelated
+# to ours; launch-gnome-session.sh leaves the group id in a file for us.
+xs_record_gnome_pgid() {
+    local f="$XS_TMP/xios-gnome${XS_SLOT:+-$XS_SLOT}.pgid" pgid
+    pgid="$(tr -cd '0-9' <"$f" 2>/dev/null || true)"
+    case "$pgid" in ""|0|1) return 0 ;; esac
+    xs_record_pgid_once "$pgid" gnome "${XS_SLOT:-}"
 }
 
 xs_reap_recorded_session_pgroups() {
@@ -535,6 +731,12 @@ xs_reap_recorded_session_pgroups() {
             continue
         fi
         [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
+        # A group recorded for BOTH the global session and a slot (two sessions
+        # started from one script share a pgid) stays: the slot wins.
+        if xs_pgid_has_slot "$pgid"; then
+            printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "-" "$at" >>"$tmp" 2>/dev/null || true
+            continue
+        fi
         xs_reap_pgid "$pgid" "previous ${preset:-session}"
     done <"$XS_SESSION_PGIDS"
     if [ -s "$tmp" ]; then
@@ -559,6 +761,13 @@ xs_reap_slot_session_pgroups() {
         esac
         if [ "$slot" = "$want" ]; then
             [ -n "$current" ] && [ "$pgid" = "$current" ] && continue
+            # A group recorded for another slot or the non-slot session too is
+            # shared (two sessions started from one script); signalling it would
+            # kill the neighbour. The needle pass reaps this slot's own processes.
+            if xs_pgid_has_other_owner "$pgid" "$want"; then
+                xs_log "slot $want: process group $pgid is shared with another session; reaping by name instead"
+                continue
+            fi
             xs_reap_pgid "$pgid" "slot $want ${preset:-session}"
         else
             printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$tmp" 2>/dev/null || true
@@ -568,43 +777,52 @@ xs_reap_slot_session_pgroups() {
 }
 
 xs_reap_slot_named_processes() {
-    local slot="$1" needle pid
+    local slot="$1" pid
     [ -n "$slot" ] || return 0
-    for needle in "wayland-$slot" "iosc-$slot-" "kwin-$slot"; do
-        ps axww | grep -v grep | grep -F "$needle" | awk '{print $1}' | while read -r pid; do
-            case "$pid" in ""|*[!0-9]*|0|1|$$|$PPID) continue ;; esac
-            kill -TERM "$pid" 2>/dev/null || true
-        done
+    for pid in $(xs_slot_pids "$slot"); do
+        case "$pid" in ""|*[!0-9]*|0|1|$$|$PPID) continue ;; esac
+        kill -TERM "$pid" 2>/dev/null || true
     done
     sleep 0.5
-    for needle in "wayland-$slot" "iosc-$slot-" "kwin-$slot"; do
-        ps axww | grep -v grep | grep -F "$needle" | awk '{print $1}' | while read -r pid; do
-            case "$pid" in ""|*[!0-9]*|0|1|$$|$PPID) continue ;; esac
-            kill -KILL "$pid" 2>/dev/null || true
-        done
+    for pid in $(xs_slot_pids "$slot"); do
+        case "$pid" in ""|*[!0-9]*|0|1|$$|$PPID) continue ;; esac
+        kill -KILL "$pid" 2>/dev/null || true
+    done
+}
+
+# Shell clients (ioscbg/ioscbar/ioscdock) carry no slot in their argv; run-shell.sh
+# records each one's pid in <name>-wayland-<slot>.pid. Kill those that are still the
+# program they were (pids recycle).
+xs_reap_slot_pidfiles() {  # xs_reap_slot_pidfiles <slot>
+    local slot="${1:?slot}" pf pid name wayland entry="$XS_SLOT_REGISTRY_DIR/$1.json"
+    wayland="$(xs_json_get_file "$entry" wayland)"
+    [ -n "$wayland" ] || wayland="wayland-$slot"
+    for pf in "${XS_TMP:?}"/*-"$wayland".pid; do
+        [ -f "$pf" ] || continue
+        name="$(basename "$pf" ".pid")"; name="${name%-$wayland}"
+        pid="$(cat "$pf" 2>/dev/null || true)"
+        xs_pidfile_running "$pf" "$name" || continue
+        kill -TERM "$pid" 2>/dev/null || true
     done
 }
 
 # Is any compositor/shell process still serving this slot? This is the ONLY
 # liveness test that means anything: every file a slot leaves in $XS_TMP
 # outlives the process that made it (nothing unlinks a slot's socket on crash,
-# jetsam or reboot, and $XS_TMP is not cleared at boot). Substring matching is
-# deliberate -- a near-miss keeps a slot, and keeping a dead slot is merely
-# untidy while sweeping a live one would delete a running desktop's socket.
+# jetsam or reboot, and $XS_TMP is not cleared at boot).
 #
-# The process table is snapshotted ONCE and matched with `case`, never with a
-# `grep -q` pipeline: under `set -o pipefail` an early-exiting `grep -q` makes
-# the upstream `ps` die of SIGPIPE and the pipeline report 141, which reads as
-# "no match" and would sweep a slot that is very much alive.
+# Two independent proofs, either is enough:
+#   - a recorded process group of the slot still holds a live session process
+#     (this is what keeps a GNOME slot alive: gnome-shell's argv names no slot);
+#   - a process whose argv names the slot exactly.
+# Keeping a dead slot is merely untidy; sweeping a live one deletes a running
+# desktop's sockets.
 xs_slot_has_live_process() {
-    local slot="$1" needle procs
-    procs="$(ps axww 2>/dev/null | grep -v grep || true)"
-    for needle in "wayland-$slot" "iosc-$slot-" "mutter-$slot-" "kwin-$slot" \
-        "xios-$slot.json"; do
-        case "$procs" in
-            *"$needle"*) return 0 ;;
-        esac
+    local slot="$1" pgid
+    for pgid in $(xs_slot_recorded_pgids "$slot"); do
+        xs_pgid_has_live_session_process "$pgid" && return 0
     done
+    [ -n "$(xs_slot_pids "$slot")" ] && return 0
     return 1
 }
 
@@ -621,36 +839,88 @@ xs_slot_has_live_process() {
 xs_sweep_stale_slot_registry() {
     case "${XIOS_SESSION_SWEEP_SLOTS:-1}" in 0|no|off|false) return 0 ;; esac
     [ -d "$XS_SLOT_REGISTRY_DIR" ] || return 0
-    local entry slot wayland config swept=0
+    local entry slot swept=0
     for entry in "$XS_SLOT_REGISTRY_DIR"/*.json; do
         [ -f "$entry" ] || continue
         slot="$(basename "$entry" .json)"
         [ -n "${XS_SLOT:-}" ] && [ "$slot" = "$XS_SLOT" ] && continue
         xs_slot_has_live_process "$slot" && continue
-
-        wayland="$(xs_json_get_file "$entry" wayland)"
-        [ -n "$wayland" ] || wayland="wayland-$slot"
-        config="$(xs_json_get_file "$entry" json)"
-        [ -n "$config" ] || config="$XS_TMP/xios-$slot.json"
-
-        # The compositor's rendezvous plus every sidecar socket keyed to it.
         # Logs are left alone on purpose: they are the only post-mortem left
         # for whatever killed the session.
-        rm -f "$XS_TMP/$wayland" "$XS_TMP/$wayland.lock" 2>/dev/null || true
-        rm -f "$config" 2>/dev/null || true
-        rm -f "$XS_TMP/iosc-$slot-ddx.sock" "$XS_TMP/iosc-$slot-input.sock" \
-            "$XS_TMP/iosc-$slot-clipboard.sock" "$XS_TMP/iosc-$slot-wm.sock" \
-            2>/dev/null || true
-        rm -f "$XS_TMP/mutter-$slot-ddx.sock" "$XS_TMP/mutter-$slot-input.sock" \
-            "$XS_TMP/mutter-$slot-clipboard.sock" 2>/dev/null || true
-        rm -f "$XS_TMP/xios-session-$slot.json" 2>/dev/null || true
-        rm -f "$XS_TMP/xios-app-launch-$slot.json" 2>/dev/null || true
-        rm -f "$entry" 2>/dev/null || true
+        xs_remove_slot_state "$slot" "$entry"
         swept=$((swept + 1))
         xs_log "swept stale display slot '$slot' (no live process)"
     done
     [ "$swept" -gt 0 ] && xs_log "sweep removed $swept stale display slot(s)"
+    xs_prune_dead_pgid_rows
     return 0
+}
+
+# Drop pgid records of slots that have no registry entry and nothing alive. The
+# sweep above only walks the registry, so a slot whose entry was already removed
+# (clean stop, an older launcher) would otherwise keep its rows -- and keep its
+# name in every future protected-pid computation -- forever.
+xs_prune_dead_pgid_rows() {
+    [ -f "$XS_SESSION_PGIDS" ] || return 0
+    local slot dead=""
+    for slot in $(awk -F'\t' '$3 != "" && $3 != "-" && $3 !~ /^20[0-9][0-9]-/ { print $3 }' "$XS_SESSION_PGIDS" | sort -u); do
+        [ -n "${XS_SLOT:-}" ] && [ "$slot" = "$XS_SLOT" ] && continue
+        [ -f "$XS_SLOT_REGISTRY_DIR/$slot.json" ] && continue
+        xs_slot_has_live_process "$slot" && continue
+        dead="$dead $slot"
+    done
+    [ -n "$dead" ] || return 0
+    DEAD="$dead" awk -F'\t' 'BEGIN { n = split(ENVIRON["DEAD"], a, " "); for (i = 1; i <= n; i++) d[a[i]] = 1 }
+        !($3 in d)' "$XS_SESSION_PGIDS" >"$XS_SESSION_PGIDS.$$" 2>/dev/null &&
+        mv "$XS_SESSION_PGIDS.$$" "$XS_SESSION_PGIDS" 2>/dev/null || rm -f "$XS_SESSION_PGIDS.$$" 2>/dev/null
+    xs_log "pruned pgid records of dead slots:$dead"
+    return 0
+}
+
+# Delete one slot's rendezvous files, sockets, bus and markers. Safe to call for
+# a slot that is already dead; callers establish that (or have just killed it).
+xs_remove_slot_state() {  # xs_remove_slot_state <slot> [registry-entry]
+    local slot="${1:?slot}" entry="${2:-$XS_SLOT_REGISTRY_DIR/$1.json}" wayland config sysint t="${XS_TMP:?}"
+    wayland="$(xs_json_get_file "$entry" wayland)"
+    [ -n "$wayland" ] || wayland="wayland-$slot"
+    config="$(xs_json_get_file "$entry" json)"
+    [ -n "$config" ] || config="$t/xios-$slot.json"
+    sysint="$(xs_json_get_file "$entry" sysint_socket)"
+    [ -n "$sysint" ] || sysint="$t/xios-$slot-sysint.sock"
+
+    rm -f "$t/$wayland" "$t/$wayland.lock" "$config" \
+          "$t/iosc-$slot-ddx.sock" "$t/iosc-$slot-input.sock" \
+          "$t/iosc-$slot-clipboard.sock" "$t/iosc-$slot-wm.sock" \
+          "$t/mutter-$slot-ddx.sock" "$t/mutter-$slot-input.sock" \
+          "$t/mutter-$slot-clipboard.sock" \
+          "$t/kwin-$slot" "$t/kwin-$slot.lock" \
+          "$sysint" "$t/xios-$slot-a11y.sock" \
+          "$t/gnome-session-bus-$slot" "$t/xios-gnome-$slot.pgid" \
+          "$t/xios-active-session-$slot" \
+          "$t/xios-session-$slot.json" "$t/xios-app-launch-$slot.json" \
+          "$t/xios-status.d/iosc-$slot.status" "$t/xios-status.d/iosc-native-$slot.status" \
+          "$t"/*-"$wayland".pid 2>/dev/null || true
+    xs_retract_default_sysint_link "$sysint"
+    xs_stop_bus_dir "$t/xios-session-bus-$slot"
+    rm -rf "$t/xios-session-bus-$slot" "$t/xios-kde-runtime-$slot" \
+           "$t/xios-run-$slot" 2>/dev/null || true
+    rm -f "$entry" 2>/dev/null || true
+}
+
+# Is <pgid> also recorded for an owner other than <slot> (another slot, or the
+# non-slot session)?
+xs_pgid_has_other_owner() {  # xs_pgid_has_other_owner <pgid> <slot>
+    local want="$1" me="$2" pgid preset slot at
+    [ -f "$XS_SESSION_PGIDS" ] || return 1
+    while IFS=$'\t' read -r pgid preset slot at; do
+        [ "$pgid" = "$want" ] || continue
+        case "$slot" in
+            20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T*) slot="-" ;;
+            "") slot="-" ;;
+        esac
+        [ "$slot" != "$me" ] && return 0
+    done <"$XS_SESSION_PGIDS"
+    return 1
 }
 
 xs_pgid_has_slot() {
@@ -709,58 +979,73 @@ xs_find_bringup() {
 # to binary paths so it never matches this script itself
 # (xios-session) or our own shell. We additionally exclude $$ and
 # the parent pid as belt-and-braces.
-xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-audiod|xios-mediad|xios-sysintd|dbus-daemon.*--session|dbus-run-session|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
+#
+# This is only the FALLBACK for global-session processes nobody recorded (a
+# session started by an older launcher). Recorded process groups are reaped
+# first, and anything provably owned by a slot is subtracted before a single
+# signal is sent, so a non-slot start or stop never touches a running slot.
+xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-sysintd|dbus-daemon.*--session|dbus-run-session'
+# Shared desktop services (one per device, used by every desktop). Only an
+# everything-is-stopping teardown may touch these; switching or stopping one
+# desktop must leave another desktop's audio alone.
+xs_shared_kill_pattern='xios-audiod|xios-mediad|pactl (info|set-sink-volume xios)|paplay .*xios|mpv --player-operation-mode=pseudo-gui'
 xs_xios_app_kill_pattern='/Xios\.app/Xios'
 
+# Pids matching <pattern>, minus this shell, its parent and every slot-owned
+# process. The pattern travels in the environment so awk does not rewrite its
+# backslashes.
+xs_teardown_candidates() {  # xs_teardown_candidates <ere>
+    local prot
+    prot=" $(xs_slot_protected_pids | tr '\n' ' ') "
+    ps axww -o pid=,command= 2>/dev/null | KILL_RE="$1" PROT="$prot" awk -v self="$$" -v parent="$PPID" '
+        { pid = $1; if (pid == self || pid == parent) next
+          if (index(ENVIRON["PROT"], " " pid " ")) next
+          c = $0; sub(/^ *[0-9]+ +/, "", c)
+          if (c ~ /^(awk|ps|grep|sed) /) next
+          if (c ~ ENVIRON["KILL_RE"]) print pid }'
+}
+
+# xios_session_teardown <why> [kill-display-app 0|1] [kill-shared 0|1]
 xios_session_teardown() {
     local why="${1:-switching sessions}"
-    local kill_display_app="${2:-0}" kill_pattern="$xs_kill_pattern"
+    local kill_display_app="${2:-0}" kill_shared="${3:-0}" kill_pattern="$xs_kill_pattern"
+    if [ "$kill_shared" = 1 ]; then
+        kill_pattern="$kill_pattern|$xs_shared_kill_pattern"
+    fi
     if [ "$kill_display_app" = 1 ]; then
         kill_pattern="$kill_pattern|$xs_xios_app_kill_pattern"
     fi
-    xs_log "teardown ($why): killing compositors + clients$([ "$kill_display_app" = 1 ] && printf ' + Xios app')"
+    xs_log "teardown ($why): killing the non-slot session$([ "$kill_shared" = 1 ] && printf ' + shared services')$([ "$kill_display_app" = 1 ] && printf ' + Xios app')"
     xs_reap_recorded_session_pgroups
-    local self=$$ parent=$PPID pid pids
-    pids="$(
-        ps ax 2>/dev/null | grep -v grep | grep -E "$kill_pattern" \
-            | awk '{print $1}' \
-            | while read -r pid; do
-                [ -z "$pid" ] && continue
-                [ "$pid" = "$self" ] && continue
-                [ "$pid" = "$parent" ] && continue
-                xs_pid_belongs_to_slot "$pid" && continue
-                printf '%s\n' "$pid"
-            done
-    )"
+    local pid pids
+    pids="$(xs_teardown_candidates "$kill_pattern")"
     for pid in $pids; do kill -TERM "$pid" 2>/dev/null || true; done
     sleep 1
-    pids="$(
-        {
-            printf '%s\n' $pids
-            ps ax 2>/dev/null | grep -v grep | grep -E "$kill_pattern" | awk '{print $1}'
-        } | awk '!seen[$1]++'
-    )"
+    pids="$(xs_teardown_candidates "$kill_pattern")"
     for pid in $pids; do
-        [ -z "$pid" ] && continue
-        [ "$pid" = "$self" ] && continue
-        [ "$pid" = "$parent" ] && continue
-        xs_pid_belongs_to_slot "$pid" && continue
         kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null || true
     done
-    # Remove every stale rendezvous/socket file for the current compositor paths.
+    # Remove every stale rendezvous/socket file for the GLOBAL compositor paths
+    # (slot sessions use suffixed names and are never listed here).
+    local t="${XS_TMP:?}"
     rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
           "$XS_CONFIG_JSON" \
-          "$XS_TMP/xios-a11y.sock" \
+          "$XS_A11Y_SOCK" "$XS_SYSINT_SOCK" \
           "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
           "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
           "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
           "$XS_MUTTER_CLIPBOARD_SOCK" \
-          "$XS_TMP/kwin-ios-test" "$XS_TMP/kwin-ios-test.lock" \
-          "$XS_TMP/kde-session-bus" \
-          "$XS_TMP/iosc-wm.sock" \
-          "$XS_TMP/iosc-native.sock" 2>/dev/null || true
-    rm -rf "$XS_TMP/xios-kde-runtime" 2>/dev/null || true
-    rm -rf "$XS_TMP/xios-session-bus" 2>/dev/null || true
+          "$t/kwin-ios-test" "$t/kwin-ios-test.lock" \
+          "$t/kde-session-bus" \
+          "$t/iosc-wm.sock" \
+          "$t/iosc-native.sock" \
+          "$t/xios-gnome.pgid" \
+          "$t"/*-wayland-0.pid 2>/dev/null || true
+    rm -rf "$t/xios-kde-runtime" 2>/dev/null || true
+    rm -f "$t/xios-status.d/iosc.status" 2>/dev/null || true
+    xs_relink_default_sysint
+    xs_stop_bus_dir "$t/xios-session-bus"
+    rm -rf "$t/xios-session-bus" 2>/dev/null || true
     # Never leave a dead session advertised as running: if the status file still
     # claims a live state after everything was killed, rewrite it as down. Catches
     # teardowns arriving outside the normal preset flow (which already writes
@@ -863,6 +1148,7 @@ xs_prepare_display_session() {  # xs_prepare_display_session <preset>
             xs_write_status "$preset" error "slot already running: $XS_SLOT"
             return 1
         fi
+        xs_set_active "$preset"
     else
         xios_session_teardown "-> $preset"
         xs_settle
@@ -890,6 +1176,7 @@ xios_session_iosc() {
     export IOSC_CLIPBOARD_SOCK="$XS_IOSC_CLIPBOARD_SOCK"
     export IOSC_WM_SOCK="$XS_IOSC_WM_SOCK"
     export IOSC_LOG="$XS_IOSC_LOG"
+    export XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" XIOS_A11Y_SOCK="$XS_A11Y_SOCK"
     [ -n "$XS_SLOT" ] && export IOSC_IGNORE_ACTIVE_SESSION=1
     [ -n "${IOSC_PANEL_OPACITY:-}" ] && export IOSC_PANEL_OPACITY
     sh "$script" || true
@@ -918,8 +1205,15 @@ xios_session_mutter() {
     XIOS_JSON_PATH="$XS_CONFIG_JSON" \
     XIOS_DDX_SOCKET="$XS_MUTTER_DDX_SOCK" \
     XIOS_INPUT_SOCKET="$XS_MUTTER_INPUT_SOCK" \
+    XIOS_CLIPBOARD_SOCKET="$XS_MUTTER_CLIPBOARD_SOCK" \
+    XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" \
+    XIOS_A11Y_SOCK="$XS_A11Y_SOCK" \
+    XIOS_SESSION_SLOT="$XS_SLOT" \
     MUTTER_LOG="${XS_TMP}/mutter${XS_SLOT:+-$XS_SLOT}.log" \
     bash "$script" || true
+    # mutter's argv names the slot (--wayland-display wayland-<slot>), so its
+    # process group is found by needle; record it for the slot-scoped stop.
+    xs_record_slot_process_pgroups mutter
     xs_ensure_xios mutter   # relaunch the display if it got jetsammed during bring-up
     if [ -f "$XS_CONFIG_JSON" ]; then
         xs_log "mutter up (flat clutter stage; no shell yet)."
@@ -947,9 +1241,19 @@ xios_session_gnome() {
     XIOS_JSON_PATH="$XS_CONFIG_JSON" \
     XIOS_DDX_SOCKET="$XS_MUTTER_DDX_SOCK" \
     XIOS_INPUT_SOCKET="$XS_MUTTER_INPUT_SOCK" \
+    XIOS_CLIPBOARD_SOCKET="$XS_MUTTER_CLIPBOARD_SOCK" \
+    XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" \
+    XIOS_A11Y_SOCK="$XS_A11Y_SOCK" \
+    XIOS_GNOME_PGID_FILE="$XS_TMP/xios-gnome${XS_SLOT:+-$XS_SLOT}.pgid" \
     GNOME_SHELL_LOG="${XS_TMP}/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" \
     XIOS_SESSION_SLOT="$XS_SLOT" \
     bash "$script" || true
+    # launch-gnome-session.sh re-parents the whole session through xios-setsid;
+    # its new process group is reported in a pgid file. Record it before anything
+    # else can run, so neither the stale-slot sweep nor a non-slot teardown can
+    # mistake a live GNOME for an orphan.
+    xs_record_gnome_pgid
+    xs_record_slot_process_pgroups gnome
     xs_ensure_xios gnome    # relaunch the display if it got jetsammed during bring-up
     xs_write_status gnome waiting "waiting for GNOME Shell to paint"
     # Do NOT gate "gnome up" on xios.json: Mutter writes it before the gjs shell
@@ -1061,6 +1365,8 @@ xios_session_kde() {
     KWIN_SOCKET="$XS_KWIN_SOCKET" \
     KDE_LOG="$XS_KDE_LOG" \
     XIOS_SESSION_SLOT="$XS_SLOT" \
+    XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" \
+    XIOS_A11Y_SOCK="$XS_A11Y_SOCK" \
     XIOS_SESSION_STATUS_FILE="$XS_STATUS" \
     XIOS_SESSION_STATUS_PRESET="$preset" \
     XIOS_SESSION_ACTIVE_FILE="$XS_ACTIVE" \
@@ -1149,7 +1455,7 @@ xios_session_app() {
         *)                                  exec="$name" ;;   # run as given
     esac
 
-    local busdir="$XS_TMP/xios-session-bus" addr
+    local busdir="$XS_APP_BUSDIR" addr
     local app_runtime="$busdir" app_wayland="$XS_WAYLAND_SOCK"
     local app_env=() client_env=() kv profile_pairs
     if [ "$owner" = gnome ]; then
@@ -1243,9 +1549,17 @@ xios_session_app() {
     if [ ${#dbus_addr[@]} -eq 0 ]; then
         launcher=("$XS_DBUS_RUN" -- ${launcher[@]+"${launcher[@]}"})
     fi
-    nohup env \
+    # Give the client its own process group (xios-session-stubs ships xios-setsid),
+    # so a slot stop can reap it by group without ever sharing a group with another
+    # desktop's clients when several sessions are started from one script.
+    local setsid_cmd=""
+    [ -x "$XS_PREFIX/libexec/xios-setsid" ] && setsid_cmd="$XS_PREFIX/libexec/xios-setsid"
+    nohup ${setsid_cmd:+"$setsid_cmd"} env \
         XDG_RUNTIME_DIR="$app_runtime" \
         WAYLAND_DISPLAY="$app_wayland" \
+        XIOS_A11Y_SOCK="$XS_A11Y_SOCK" \
+        XIOS_A11YD_LOG="$XS_TMP/xios-a11yd${XS_SLOT:+-$XS_SLOT}.log" \
+        XIOS_ATSPI_LOG="$XS_TMP/xios-atspi${XS_SLOT:+-$XS_SLOT}.log" \
         ${client_env[@]+"${client_env[@]}"} \
         ${app_env[@]+"${app_env[@]}"} \
         ${gtk_a11y_env[@]+"${gtk_a11y_env[@]}"} \
@@ -1254,29 +1568,64 @@ xios_session_app() {
         ${launcher[@]+"${launcher[@]}"} \
         >>"$XS_TMP/xios-session-client.log" 2>&1 </dev/null &
     local app_pid=$!
+    # Record the client's group so a later stop of THIS session (and only it)
+    # takes the client down with the rest of the desktop.
+    [ -z "$setsid_cmd" ] || xs_record_pgid_of_pid "$app_pid" "app:$name"
     # bring the shared Xios display forward so the new window is visible
     xs_foreground_xios
     xs_log "app '$name' submitted (pid $app_pid). Window maps into the current compositor."
     xs_write_app_status "$name" submitted "$name launch submitted" "$app_pid"
 }
 
-# stop: tear everything down and return to SpringBoard.
+# Stop one slot: everything it started, nothing it did not. Recorded process
+# groups first (that is what holds GNOME, KDE and the iosc shell), then any
+# process whose argv names the slot, then its bus and rendezvous files.
+xs_stop_slot_named() {  # xs_stop_slot_named <slot>
+    local slot="${1:?slot}"
+    xs_log "stopping slot '$slot'"
+    xs_reap_slot_session_pgroups "$slot"
+    xs_reap_slot_named_processes "$slot"
+    xs_reap_slot_pidfiles "$slot"
+    xs_remove_slot_state "$slot"
+    xs_log "slot $slot stopped"
+}
+
+# stop             the non-slot session; the Xios app goes with it only when no
+#                  slot is left to show
+# stop all         every slot, the non-slot session, shared services, the Xios app
+# --slot X stop    just that slot
 xios_session_stop() {
+    local scope="${1:-}" slot live=""
     xs_write_status stop stopping "stopping session"
     if [ -n "$XS_SLOT" ]; then
-        xs_reap_slot_session_pgroups "$XS_SLOT"
-        xs_reap_slot_named_processes "$XS_SLOT"
-        rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
-              "$XS_CONFIG_JSON" "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
-              "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
-              "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
-              "$XS_TMP/$XS_KWIN_SOCKET" "$XS_TMP/$XS_KWIN_SOCKET.lock" 2>/dev/null || true
-        rm -rf "$(xs_kde_runtime_dir)" 2>/dev/null || true
-        rm -f "$XS_SLOT_REGISTRY" 2>/dev/null || true
-        xs_log "slot $XS_SLOT stopped"
+        xs_stop_slot_named "$XS_SLOT"
         xs_write_status stop stopped "slot stopped: $XS_SLOT"
+        return 0
+    fi
+    case "$scope" in
+        all|--all)
+            for slot in $(xs_known_slots); do
+                [ "$slot" = "$XS_SLOT" ] && continue
+                xs_stop_slot_named "$slot"
+            done
+            xios_session_teardown "-> stop all" 1 1
+            xs_clear_active
+            xs_log "all sessions stopped; Xios app killed, back to SpringBoard."
+            xs_write_status stop stopped "all sessions stopped"
+            return 0 ;;
+    esac
+    for slot in $(xs_known_slots); do
+        xs_slot_has_live_process "$slot" && live="$live $slot"
+    done
+    if [ -n "$live" ]; then
+        # Desktops are still running in slots: keep the display app and the shared
+        # audio services for them.
+        xios_session_teardown "-> stop" 0 0
+        xs_clear_active
+        xs_log "session stopped; slots still running:$live (Xios app left up)."
+        xs_write_status stop stopped "session stopped; slots still running:$live"
     else
-        xios_session_teardown "-> stop" 1
+        xios_session_teardown "-> stop" 1 1
         xs_clear_active
         xs_log "session stopped; Xios app killed, back to SpringBoard."
         xs_write_status stop stopped "all sessions stopped"
@@ -1287,12 +1636,14 @@ xios_session_resize() {
     local owner
     owner="$(cat "$XS_ACTIVE" 2>/dev/null || true)"
     case "$owner" in
-        iosc|mutter|gnome|kde|kde-nano|kde-mobile)
+        iosc|mutter|gnome|kde|kde-desktop|kde-nano|kde-mobile)
             xs_log "resize: restarting active preset '$owner' with requested display settings"
+            # A slot refuses to replace its own display, so stop it first.
+            [ -n "$XS_SLOT" ] && xs_stop_slot_named "$XS_SLOT"
             xios_session_run_unlocked "$owner"
             ;;
         ""|stop)
-            xs_log "resize: no active desktop; starting iosc"
+        xs_log "resize: no active desktop; starting iosc"
             xios_session_run_unlocked iosc
             ;;
         *)
@@ -1319,7 +1670,7 @@ xios_session_run_unlocked() {
         kde-mobile|plasma-mobile|mobile)       xios_session_kde mobile ;;
         app)         xios_session_app "${1:-}" ;;
         resize|display) xios_session_resize ;;
-        stop|off)    xios_session_stop ;;
+        stop|off)    xios_session_stop "${1:-}" ;;
         ""|help|-h|--help)
             cat >&2 <<EOF
 xios-session presets:
@@ -1332,7 +1683,9 @@ xios-session presets:
   app <name>      launch a client (kgx|gnome-text-editor|gnome-calculator|<exec>)
                   against the running compositor
   resize          restart the active desktop with XIOS_SESSION_WIDTH/HEIGHT/DPI
-  stop            tear everything down, back to SpringBoard
+  stop            stop the non-slot desktop (the display app stays while slots run)
+  stop all        stop every slot and the non-slot desktop, back to SpringBoard
+  --slot NAME ... run any preset as its own desktop slot; --slot NAME stop stops only it
 EOF
             return 2 ;;
         *)
