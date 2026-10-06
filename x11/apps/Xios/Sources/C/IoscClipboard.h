@@ -3,7 +3,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include "../../shared/XiosProtocol.h"
+#include "../../../shared/XiosProtocol.h"
 
 // Bridge between UIPasteboard and iosc's wl_data_device selection, over the
 // dedicated clipboard socket (iosc-clipboard.sock). Wire format is the shared
@@ -16,13 +16,13 @@
 
 // Connecting is split so the blocking part can run off the main thread:
 // iosc_clipboard_connect() does connect() plus the HELLO exchange (up to 2 s
-// waiting on the reply) and touches no module state; the main thread then
-// hands the fd to iosc_clipboard_adopt(), which takes ownership (it closes
-// the fd and returns false if a connection is already open).
+// waiting on the reply) and touches no handle; the owner then hands the fd to
+// iosc_clipboard_adopt(), which returns the handle that owns it.
+typedef struct iosc_clipboard iosc_clipboard_t;
 int iosc_clipboard_connect(const char *sock_path);   // connected fd, or -1
-bool iosc_clipboard_adopt(int fd);
-void iosc_clipboard_close(void);
-bool iosc_clipboard_is_open(void);
+iosc_clipboard_t *iosc_clipboard_adopt(int fd);      // takes the fd; NULL if fd < 0
+void iosc_clipboard_close(iosc_clipboard_t *h);      // frees the handle
+bool iosc_clipboard_is_open(iosc_clipboard_t *h);
 
 // Sending one iOS copy event: send_begin starts a new generation and returns
 // it, then each representation is one whole record from write_item;
@@ -33,8 +33,8 @@ bool iosc_clipboard_is_open(void);
 // thread can keep polling, or close and replace the connection, meanwhile.
 // send_begin's counter is unlocked: call it from one thread only (Xios calls
 // it on its clipboard queue).
-uint32_t iosc_clipboard_send_begin(void);
-int iosc_clipboard_writer_fd(void);   // dup of the open connection, or -1
+uint32_t iosc_clipboard_send_begin(void);   // process-wide counter
+int iosc_clipboard_writer_fd(iosc_clipboard_t *h);   // dup of the open connection, or -1
 // 1 written; 0 refused (bad kind, or over ITEM_MAX), nothing sent; -1 the
 // write failed and may have cut the record short: drop that connection.
 int iosc_clipboard_write_item(int fd, uint32_t generation, uint32_t kind,
@@ -46,7 +46,7 @@ int iosc_clipboard_write_clear(int fd, uint32_t generation);
 // frees), *len filled; 0 when no complete record is pending; -1 when the
 // connection dropped (caller reconnects). A KIND_NONE clear arrives as an
 // item with len 0.
-int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
-                             uint8_t **data, uint32_t *len);
+int iosc_clipboard_poll_item(iosc_clipboard_t *h, uint32_t *kind,
+                             uint32_t *generation, uint8_t **data, uint32_t *len);
 
 #endif

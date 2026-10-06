@@ -8,23 +8,31 @@
 #include <sys/time.h>
 #include <sys/un.h>
 
-static int s_fd = -1;
+// Copy-event generation. Process-wide on purpose: a reconnect (or a switch
+// back to this desktop) must not restart at 1, or the compositor would read a
+// new copy as one more representation of the previous event.
 static uint32_t s_tx_gen = 0;   // bumped per iOS copy event (never 0 once used)
-// rx: one record at a time; partial reads span poll calls
-static uint8_t s_hdr[sizeof(xios_msg)];
-static uint32_t s_hdr_have = 0;
-static xios_msg s_msg;
-static uint8_t *s_payload = NULL;
-static uint32_t s_payload_have = 0;
+
+// One clipboard connection. The handle owns the fd and the partial-record
+// receive state; Xios v2 keeps one per presented session.
+struct iosc_clipboard {
+    int fd;
+    // rx: one record at a time; partial reads span poll calls
+    uint8_t hdr[sizeof(xios_msg)];
+    uint32_t hdr_have;
+    xios_msg msg;
+    uint8_t *payload;
+    uint32_t payload_have;
+};
 
 static bool write_fd(int fd, const void *buf, size_t len);
 
-static void reset_rx(void) {
-    free(s_payload);
-    s_payload = NULL;
-    s_payload_have = 0;
-    s_hdr_have = 0;
-    memset(&s_msg, 0, sizeof(s_msg));
+static void reset_rx(iosc_clipboard_t *h) {
+    free(h->payload);
+    h->payload = NULL;
+    h->payload_have = 0;
+    h->hdr_have = 0;
+    memset(&h->msg, 0, sizeof(h->msg));
 }
 
 int iosc_clipboard_connect(const char *sock_path) {
@@ -72,20 +80,29 @@ int iosc_clipboard_connect(const char *sock_path) {
     return fd;
 }
 
-bool iosc_clipboard_adopt(int fd) {
-    if (fd < 0) return false;
-    if (s_fd >= 0) { close(fd); return false; }
-    s_fd = fd;
-    reset_rx();
-    return true;
+iosc_clipboard_t *iosc_clipboard_adopt(int fd) {
+    if (fd < 0) return NULL;
+    iosc_clipboard_t *h = calloc(1, sizeof(*h));
+    if (!h) { close(fd); return NULL; }
+    h->fd = fd;
+    return h;
 }
 
-void iosc_clipboard_close(void) {
-    if (s_fd >= 0) { close(s_fd); s_fd = -1; }
-    reset_rx();
+void iosc_clipboard_close(iosc_clipboard_t *h) {
+    if (!h) return;
+    if (h->fd >= 0) close(h->fd);
+    free(h->payload);
+    free(h);
 }
 
-bool iosc_clipboard_is_open(void) { return s_fd >= 0; }
+bool iosc_clipboard_is_open(iosc_clipboard_t *h) { return h && h->fd >= 0; }
+
+// Drop the connection but keep the handle valid, so a poll after a desync
+// reports -1 once and later calls stay safe.
+static void drop(iosc_clipboard_t *h) {
+    if (h->fd >= 0) { close(h->fd); h->fd = -1; }
+    reset_rx(h);
+}
 
 static bool write_fd(int fd, const void *buf, size_t len) {
     const char *p = (const char *)buf;
@@ -116,8 +133,8 @@ uint32_t iosc_clipboard_send_begin(void) {
     return s_tx_gen;
 }
 
-int iosc_clipboard_writer_fd(void) {
-    return s_fd >= 0 ? dup(s_fd) : -1;
+int iosc_clipboard_writer_fd(iosc_clipboard_t *h) {
+    return h && h->fd >= 0 ? dup(h->fd) : -1;
 }
 
 int iosc_clipboard_write_item(int fd, uint32_t generation, uint32_t kind,
@@ -130,58 +147,58 @@ int iosc_clipboard_write_clear(int fd, uint32_t generation) {
     return write_record(fd, generation, XIOS_CLIP_KIND_NONE, NULL, 0);
 }
 
-int iosc_clipboard_poll_item(uint32_t *kind, uint32_t *generation,
-                             uint8_t **data, uint32_t *len) {
+int iosc_clipboard_poll_item(iosc_clipboard_t *h, uint32_t *kind,
+                             uint32_t *generation, uint8_t **data, uint32_t *len) {
     if (kind) *kind = 0;
     if (generation) *generation = 0;
     if (data) *data = NULL;
     if (len) *len = 0;
-    if (s_fd < 0 || !kind || !data || !len) return s_fd < 0 ? -1 : 0;
+    if (!h || h->fd < 0 || !kind || !data || !len) return (!h || h->fd < 0) ? -1 : 0;
     for (;;) {
-        if (s_hdr_have < sizeof(s_hdr)) {
-            ssize_t r = recv(s_fd, s_hdr + s_hdr_have,
-                             sizeof(s_hdr) - s_hdr_have, MSG_DONTWAIT);
+        if (h->hdr_have < sizeof(h->hdr)) {
+            ssize_t r = recv(h->fd, h->hdr + h->hdr_have,
+                             sizeof(h->hdr) - h->hdr_have, MSG_DONTWAIT);
             if (r > 0) {
-                s_hdr_have += (uint32_t)r;
-                if (s_hdr_have < sizeof(s_hdr)) continue;
-                memcpy(&s_msg, s_hdr, sizeof(s_msg));
-                if (s_msg.magic != XIOS_MSG_MAGIC ||
-                    s_msg.type != XIOS_MSG_CLIPBOARD ||
-                    s_msg.window_id != 0 ||
-                    s_msg.length > XIOS_CLIP_ITEM_MAX ||
-                    (uint32_t)s_msg.a > XIOS_CLIP_KIND_HTML ||
-                    s_msg.b == 0 ||
-                    s_msg.c != 0 || s_msg.d != 0 ||
-                    (s_msg.a == XIOS_CLIP_KIND_NONE && s_msg.length != 0)) {
-                    iosc_clipboard_close();   // desync: reconnect from scratch
+                h->hdr_have += (uint32_t)r;
+                if (h->hdr_have < sizeof(h->hdr)) continue;
+                memcpy(&h->msg, h->hdr, sizeof(h->msg));
+                if (h->msg.magic != XIOS_MSG_MAGIC ||
+                    h->msg.type != XIOS_MSG_CLIPBOARD ||
+                    h->msg.window_id != 0 ||
+                    h->msg.length > XIOS_CLIP_ITEM_MAX ||
+                    (uint32_t)h->msg.a > XIOS_CLIP_KIND_HTML ||
+                    h->msg.b == 0 ||
+                    h->msg.c != 0 || h->msg.d != 0 ||
+                    (h->msg.a == XIOS_CLIP_KIND_NONE && h->msg.length != 0)) {
+                    drop(h);   // desync: reconnect from scratch
                     return -1;
                 }
-                s_payload = calloc(1, (size_t)s_msg.length + 1u);
-                if (!s_payload) { iosc_clipboard_close(); return -1; }
+                h->payload = calloc(1, (size_t)h->msg.length + 1u);
+                if (!h->payload) { drop(h); return -1; }
             } else {
-                if (r == 0) { iosc_clipboard_close(); return -1; }
+                if (r == 0) { drop(h); return -1; }
                 if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
                 if (errno == EINTR) continue;
-                iosc_clipboard_close();
+                drop(h);
                 return -1;
             }
         }
-        while (s_payload_have < s_msg.length) {
-            ssize_t r = recv(s_fd, s_payload + s_payload_have,
-                             s_msg.length - s_payload_have, MSG_DONTWAIT);
-            if (r > 0) { s_payload_have += (uint32_t)r; continue; }
-            if (r == 0) { iosc_clipboard_close(); return -1; }
+        while (h->payload_have < h->msg.length) {
+            ssize_t r = recv(h->fd, h->payload + h->payload_have,
+                             h->msg.length - h->payload_have, MSG_DONTWAIT);
+            if (r > 0) { h->payload_have += (uint32_t)r; continue; }
+            if (r == 0) { drop(h); return -1; }
             if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
             if (errno == EINTR) continue;
-            iosc_clipboard_close();
+            drop(h);
             return -1;
         }
-        *kind = (uint32_t)s_msg.a;
-        if (generation) *generation = (uint32_t)s_msg.b;
-        *data = s_payload;              // ownership moves to the caller
-        *len = s_msg.length;
-        s_payload = NULL;
-        reset_rx();
+        *kind = (uint32_t)h->msg.a;
+        if (generation) *generation = (uint32_t)h->msg.b;
+        *data = h->payload;              // ownership moves to the caller
+        *len = h->msg.length;
+        h->payload = NULL;
+        reset_rx(h);
         return 1;
     }
 }

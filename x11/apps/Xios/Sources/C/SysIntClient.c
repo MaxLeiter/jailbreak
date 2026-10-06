@@ -1,8 +1,9 @@
 #include "SysIntClient.h"
-#include "../../shared/XiosProtocol.h"
+#include "../../../shared/XiosProtocol.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
@@ -18,39 +19,49 @@ struct si_link {
     int         fd;
     int         hello_received;
     time_t      last_try;
+    uint8_t     rx[sizeof(xios_msg)];
+    int         rx_have;
 };
-static struct si_link s_sysint = { .path = "", .fd = -1 };
-static struct si_link s_iosc   = { .path = "", .fd = -1 };
 
-// Last state per record type, replayed on reconnect (compositor/daemon restart
-// must converge to the iPad's actual orientation/volume/appearance).
-static xios_msg s_last_output, s_last_volume, s_last_appearance;
-static int s_have_output, s_have_volume, s_have_appearance;
-static uint8_t s_iosc_rx[sizeof(xios_msg)];
-static int s_iosc_rx_have;
-static uint8_t s_sysint_rx[sizeof(xios_msg)];
-static int s_sysint_rx_have;
+// One handle per presented desktop. The caller serializes every call on one
+// queue: nothing in here is thread-safe.
+struct sysint_link {
+    struct si_link sysint;
+    struct si_link iosc;
+    // Last state per record type, replayed on reconnect (compositor/daemon
+    // restart must converge to the iPad's actual orientation/volume/appearance).
+    xios_msg last_output, last_volume, last_appearance;
+    int have_output, have_volume, have_appearance;
+    // Brightness and volume requests ride the same link, so one drain would
+    // starve the other: each poll stashes a record it is not looking for.
+    unsigned pending_brightness;
+    int      have_pending_brightness;
+    unsigned pending_volume_set;
+    int      have_pending_volume_set;
+};
 
-static void link_set_path(struct si_link *l, const char *path, int *rx_have)
+static void link_init(struct si_link *l, const char *path)
 {
-    const char *next = path ? path : "";
-    if (strncmp(l->path, next, sizeof(l->path)) == 0) return;
-    if (l->fd >= 0) close(l->fd);
+    memset(l, 0, sizeof(*l));
     l->fd = -1;
-    l->hello_received = 0;
-    l->last_try = 0;
-    if (rx_have) *rx_have = 0;
-    snprintf(l->path, sizeof(l->path), "%s", next);
+    snprintf(l->path, sizeof(l->path), "%s", path ? path : "");
 }
 
-void sysint_set_iosc_socket(const char *path)
+sysint_link_t *sysint_link_open(const char *sysint_path, const char *iosc_path)
 {
-    link_set_path(&s_iosc, path, &s_iosc_rx_have);
+    sysint_link_t *h = calloc(1, sizeof(*h));
+    if (!h) return NULL;
+    link_init(&h->sysint, sysint_path);
+    link_init(&h->iosc, iosc_path);
+    return h;
 }
 
-void sysint_set_sysint_socket(const char *path)
+void sysint_link_close(sysint_link_t *h)
 {
-    link_set_path(&s_sysint, path, &s_sysint_rx_have);
+    if (!h) return;
+    if (h->sysint.fd >= 0) close(h->sysint.fd);
+    if (h->iosc.fd >= 0) close(h->iosc.fd);
+    free(h);
 }
 
 static int link_send_raw(struct si_link *l, const xios_msg *m)
@@ -69,17 +80,17 @@ static int link_send_raw(struct si_link *l, const xios_msg *m)
     return 0;
 }
 
-static void link_replay(struct si_link *l)
+static void link_replay(sysint_link_t *h, struct si_link *l)
 {
-    if (l == &s_iosc) {
-        if (s_have_output) link_send_raw(l, &s_last_output);
+    if (l == &h->iosc) {
+        if (h->have_output) link_send_raw(l, &h->last_output);
     } else {
-        if (s_have_appearance) link_send_raw(l, &s_last_appearance);
-        if (s_have_volume) link_send_raw(l, &s_last_volume);
+        if (h->have_appearance) link_send_raw(l, &h->last_appearance);
+        if (h->have_volume) link_send_raw(l, &h->last_volume);
     }
 }
 
-static int link_ensure(struct si_link *l)
+static int link_ensure(sysint_link_t *h, struct si_link *l)
 {
     if (l->fd >= 0) return 0;
     if (!l->path[0]) return -1;
@@ -112,51 +123,55 @@ static int link_ensure(struct si_link *l)
     fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
     l->fd = fd;
     l->hello_received = 0;
-    link_replay(l);
+    link_replay(h, l);
     return 0;
 }
 
-static void link_send(struct si_link *l, const xios_msg *m,
+static void link_send(sysint_link_t *h, struct si_link *l, const xios_msg *m,
                       xios_msg *last, int *have)
 {
     *last = *m;
     *have = 1;
-    if (link_ensure(l) != 0) return;     // stored; replayed when the link is back
+    if (link_ensure(h, l) != 0) return;  // stored; replayed when the link is back
     if (link_send_raw(l, m) != 0) {
         l->last_try = 0;
-        if (link_ensure(l) == 0)
+        if (link_ensure(h, l) == 0)
             (void)link_send_raw(l, m);
     }
 }
 
-void sysint_send_volume(unsigned v16)
+void sysint_send_volume(sysint_link_t *h, unsigned v16)
 {
+    if (!h) return;
     xios_msg m = xios_input_message(XIOS_IN_VOLUME, 0, 0,
                                     v16 > 65535u ? 65535u : v16, 0, 0);
-    link_send(&s_sysint, &m, &s_last_volume, &s_have_volume);
+    link_send(h, &h->sysint, &m, &h->last_volume, &h->have_volume);
 }
 
-void sysint_send_appearance(int dark)
+void sysint_send_appearance(sysint_link_t *h, int dark)
 {
+    if (!h) return;
     xios_msg m = xios_input_message(XIOS_IN_APPEARANCE, 0, 0,
                                     dark ? 1u : 0u, 0, 0);
-    link_send(&s_sysint, &m, &s_last_appearance, &s_have_appearance);
+    link_send(h, &h->sysint, &m, &h->last_appearance, &h->have_appearance);
 }
 
-void sysint_send_output(int transform, int logical_w, int logical_h)
+void sysint_send_output(sysint_link_t *h, int transform, int logical_w, int logical_h)
 {
+    if (!h) return;
     xios_msg m = xios_input_message(XIOS_IN_OUTPUT, logical_w, logical_h,
                                     (uint32_t)(transform & 3), 0, 0);
-    link_send(&s_iosc, &m, &s_last_output, &s_have_output);
+    link_send(h, &h->iosc, &m, &h->last_output, &h->have_output);
 }
 
 // Aux-link reader: iosc broadcasts 32-byte xios_msg records to every input client
 // (TRAITS for the keyboard bridge, HAPTIC for us). Only HAPTIC is surfaced;
 // everything else is discarded — IoscInput.c's own connection handles traits.
-static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
-                         xios_msg *out)
+static int link_poll_msg(sysint_link_t *h, struct si_link *l, xios_msg *out)
 {
-    if (link_ensure(l) != 0) return 0;
+    uint8_t *rx = l->rx;
+    int *rx_have = &l->rx_have;
+    if (link_ensure(h, l) != 0) return 0;
     for (;;) {
         ssize_t r = read(l->fd, rx + *rx_have, sizeof(xios_msg) - (size_t)*rx_have);
         if (r > 0) {
@@ -171,7 +186,7 @@ static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
             }
             if (out->magic != XIOS_MSG_MAGIC || out->type == XIOS_MSG_HELLO ||
                 out->length != 0 ||
-                (l == &s_iosc
+                (l == &h->iosc
                     ? (out->type != XIOS_IN_HAPTIC && out->type != XIOS_IN_TRAITS)
                     : (out->type != XIOS_IN_VOLUME &&
                        out->type != XIOS_IN_BRIGHTNESS)))
@@ -190,11 +205,12 @@ static int link_poll_msg(struct si_link *l, uint8_t *rx, int *rx_have,
     return 0;
 }
 
-int sysint_poll_haptic(unsigned *style)
+int sysint_poll_haptic(sysint_link_t *h, unsigned *style)
 {
+    if (!h) return 0;
     xios_msg m;
-    if (link_ensure(&s_iosc) != 0) return 0;
-    while (link_poll_msg(&s_iosc, s_iosc_rx, &s_iosc_rx_have, &m) == 1) {
+    if (link_ensure(h, &h->iosc) != 0) return 0;
+    while (link_poll_msg(h, &h->iosc, &m) == 1) {
         if (m.type == XIOS_IN_HAPTIC) {
             if (style) *style = XIOS_INPUT_CODE(&m);
             return 1;                    // one per call; caller loops to drain
@@ -203,24 +219,17 @@ int sysint_poll_haptic(unsigned *style)
     return 0;
 }
 
-// Brightness requests ride the same link as volume, so one drain would starve the
-// other: whichever poll ran first would consume and discard the other's records.
-// Each poll therefore stashes a record it is not looking for instead of dropping it.
-static unsigned s_pending_brightness;
-static int      s_have_pending_brightness;
-static unsigned s_pending_volume_set;
-static int      s_have_pending_volume_set;
-
-int sysint_poll_brightness_set(unsigned *v16)
+int sysint_poll_brightness_set(sysint_link_t *h, unsigned *v16)
 {
-    if (s_have_pending_brightness) {
-        s_have_pending_brightness = 0;
-        if (v16) *v16 = s_pending_brightness;
+    if (!h) return 0;
+    if (h->have_pending_brightness) {
+        h->have_pending_brightness = 0;
+        if (v16) *v16 = h->pending_brightness;
         return 1;
     }
     xios_msg m;
-    if (link_ensure(&s_sysint) != 0) return 0;
-    while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
+    if (link_ensure(h, &h->sysint) != 0) return 0;
+    while (link_poll_msg(h, &h->sysint, &m) == 1) {
         if (m.type == XIOS_IN_BRIGHTNESS &&
             (XIOS_INPUT_STATE(&m) & XIOS_BRIGHTNESS_STATE_TO_DEVICE)) {
             uint32_t code = XIOS_INPUT_CODE(&m);
@@ -230,23 +239,24 @@ int sysint_poll_brightness_set(unsigned *v16)
         if (m.type == XIOS_IN_VOLUME &&
             (XIOS_INPUT_STATE(&m) & XIOS_VOLUME_STATE_TO_DEVICE)) {
             uint32_t code = XIOS_INPUT_CODE(&m);
-            s_pending_volume_set = code > 65535u ? 65535u : code;
-            s_have_pending_volume_set = 1;
+            h->pending_volume_set = code > 65535u ? 65535u : code;
+            h->have_pending_volume_set = 1;
         }
     }
     return 0;
 }
 
-int sysint_poll_volume_set(unsigned *v16)
+int sysint_poll_volume_set(sysint_link_t *h, unsigned *v16)
 {
-    if (s_have_pending_volume_set) {
-        s_have_pending_volume_set = 0;
-        if (v16) *v16 = s_pending_volume_set;
+    if (!h) return 0;
+    if (h->have_pending_volume_set) {
+        h->have_pending_volume_set = 0;
+        if (v16) *v16 = h->pending_volume_set;
         return 1;
     }
     xios_msg m;
-    if (link_ensure(&s_sysint) != 0) return 0;
-    while (link_poll_msg(&s_sysint, s_sysint_rx, &s_sysint_rx_have, &m) == 1) {
+    if (link_ensure(h, &h->sysint) != 0) return 0;
+    while (link_poll_msg(h, &h->sysint, &m) == 1) {
         if (m.type == XIOS_IN_VOLUME &&
             (XIOS_INPUT_STATE(&m) & XIOS_VOLUME_STATE_TO_DEVICE)) {
             uint32_t code = XIOS_INPUT_CODE(&m);
@@ -256,8 +266,8 @@ int sysint_poll_volume_set(unsigned *v16)
         if (m.type == XIOS_IN_BRIGHTNESS &&
             (XIOS_INPUT_STATE(&m) & XIOS_BRIGHTNESS_STATE_TO_DEVICE)) {
             uint32_t code = XIOS_INPUT_CODE(&m);
-            s_pending_brightness = code > 65535u ? 65535u : code;
-            s_have_pending_brightness = 1;
+            h->pending_brightness = code > 65535u ? 65535u : code;
+            h->have_pending_brightness = 1;
         }
     }
     return 0;

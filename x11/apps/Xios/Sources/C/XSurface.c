@@ -1,5 +1,5 @@
 #include "XSurface.h"
-#include "../../shared/XiosProtocol.h"
+#include "../../../shared/XiosProtocol.h"
 
 #include <stdio.h>
 #include <stdlib.h>

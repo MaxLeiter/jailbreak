@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <IOSurface/IOSurfaceRef.h>
-#include "../../shared/XiosProtocol.h"
+#include "../../../shared/XiosProtocol.h"
 
 /*
  * Client side of the Xios IOSurface hand-off. Connects to the X server's Unix
