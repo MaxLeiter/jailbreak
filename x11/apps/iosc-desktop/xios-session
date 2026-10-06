@@ -152,4 +152,19 @@ if [ "$VIA_DAEMON" = 1 ]; then
 fi
 
 # Immediate path: do the work now.
+#
+# Run state-changing requests as their own process-group leader. Process groups are
+# how a desktop's processes are recorded and later reaped; two commands chained in
+# one shell script (or one ssh line) otherwise share a group, and the second
+# desktop's stop could not tell its own processes from the first one's. ioscd
+# already starts every request as a group leader, so this only changes the CLI.
+case "$PRESET" in
+    iosc|mutter|gnome|kde|plasma|kde-*|plasma-*|nano|mobile|app|resize|display|stop|off)
+        if [ "${XIOS_SESSION_OWN_PGROUP:-}" != 1 ] \
+            && [ "$(xs_current_pgid)" != "$$" ] \
+            && [ -x "$XS_PREFIX/libexec/xios-setsid" ]; then
+            XIOS_SESSION_OWN_PGROUP=1 exec "$XS_PREFIX/libexec/xios-setsid" \
+                "$0" "$PRESET" ${2:+"$2"}
+        fi ;;
+esac
 xios_session_run "$PRESET" "${2:-}"
