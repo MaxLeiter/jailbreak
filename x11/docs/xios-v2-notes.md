@@ -5,6 +5,11 @@ of origin/main ca2f1c2e; re-check before editing.
 
 ## Concurrency blockers (M0)
 
+Resolved by M0 (xios-session 1.0.81, xios-session-stubs 0.2.12, xios-a11y-tools 0.2.17, iosc 0.9.49,
+iosc-shell 0.9.14); see `docs/handoff/session-launcher.md`, "M0 coexistence". The findings below are
+kept as the record of what the code did before. Note the two scripts live in `x11/wayland/`, not
+`apps/iosc-desktop/`.
+
 - `apps/iosc-desktop/run-kde-plasma.sh:240-251`: global mode kills every iosc, kwin_wayland,
   plasmashell, kded6, kactivitymanagerd, `dbus-daemon --session` on the system, slots included.
 - `run-mutter.sh:50-54`: gated on slot but kills globally. `run-iosc.sh:30-33`: kills every iosc
@@ -71,5 +76,36 @@ of origin/main ca2f1c2e; re-check before editing.
 
 iosc classic 141 MB footprint (IOSurface 71 MB = 3 x 2880x2160x4), Xios 60 MB, ioscbg 32 MB.
 KDE: plasmashell 333 MB (peak 433), kwin 112 MB, outer iosc 79 MB => plan 600-650 MB per KDE
-session. iosc-only ~190 MB. GNOME unmeasured (measure gnome-shell with `footprint -p` on the
-real pid; it re-execs). Device: ~26 MB free, compressor 1.25 GB in 362 MB.
+session. iosc-only ~190 MB. Device: ~26 MB free, compressor 1.25 GB in 362 MB.
+
+### GNOME, measured in M0 (`footprint -p`, iPad7,12, 2026-10-06)
+
+Measured on the real gnome-shell pid (`gnome-shell --wayland --wayland-display wayland-<slot>`, a
+child of `xios-gnome-session-client`; the re-exec means the pid you launched is not the one to
+measure). Run as a slot next to a KDE slot and the iosc shell; numbers are `Footprint:` per process,
+summed over the session's process group.
+
+| state | gnome-shell | whole session |
+|---|---|---|
+| just started, idle (Shell reported started) | 82 MB (peak 96) | 106 MB |
+| gnome-text-editor + gnome-calculator open | 147 MB | 171 MB shell+session, 221 MB with the two apps (32 + 18 MB) |
+
+Of the 82 MB at idle: IOAccelerator (graphics) 20 MB, MALLOC_TINY 18 MB, MALLOC_LARGE 14 MB,
+IOSurface 13 MB (one 2160x1620 output buffer, not three), MALLOC_SMALL 6 MB. The rest of the session
+is small: gjs notifications 5 MB, hwbridged 2.6 MB, sensord 2.1 MB, everything else 1-2 MB each.
+So GNOME is the light desktop on this device: about 110 MB idle, about 175 MB with a couple of
+windows, against KDE's 570 MB. The budget table should use ~150 MB as the GNOME estimate.
+
+### KDE and the iosc shell with all of them running
+
+| desktop | footprint |
+|---|---|
+| KDE desktop slot (kde-desktop) | 568 MB (plasmashell 332, kwin_wayland 113, iosc 79, kded6 8.5, kactivitymanagerd 7+11, powerdevil 6) |
+| KDE desktop, non-slot (same build, later run) | 554 MB |
+| iosc shell slot (iosc + bg/bar/dock) | 189-192 MB (iosc 139-141, ioscbg 32, bar 9, dock 9) |
+| GNOME slot | 106 MB idle, 221 MB with two apps |
+
+KDE + GNOME + the iosc shell together is about 0.9 GB on a device whose free pages sat at 30-110 MB
+during the test; nothing was jetsammed over the ~15 minutes of the run, but the Xios app was not
+foregrounded (slots do not present by default), so the numbers exclude its 60 MB and the presenting
+cost. Two KDEs are out of the question (shared `~/.config`, and 1.1 GB).
