@@ -46,7 +46,7 @@ XIOS_INPUT_SOCKET="${XIOS_INPUT_SOCKET:-$TMP/mutter-input.sock}"
 XIOS_CLIPBOARD_SOCKET="${XIOS_CLIPBOARD_SOCKET:-$TMP/mutter-clipboard.sock}"
 MUTTER_LOG="${MUTTER_LOG:-$TMP/mutter.log}"
 
-[ -x "$MUTTER" ] || { echo "!! $MUTTER missing/not executable — scp out/mutter there first"; exit 1; }
+[ -x "$MUTTER" ] || { echo "!! Mutter is not installed: $MUTTER is missing or not executable"; exit 1; }
 
 # No teardown here. This used to kill every iosc, iosc shell client and mutter on
 # the device whenever it ran outside a slot, taking any other running desktop
