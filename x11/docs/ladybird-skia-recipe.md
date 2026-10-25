@@ -1,8 +1,10 @@
 # Skia cross-build recipe for Ladybird-on-iOS (wall #2)
 
-Status: **design + argument-set validation. No Skia compile run.** Companion to
-[`ladybird-plan.md`](ladybird-plan.md) (this is the "Skia (the one genuinely hard dep)" section,
-worked out to a concrete recipe). Target: `iphoneos-arm64`, rootless `/var/jb`, A10 / iPadOS
+Status: **built 2026-07-02 and in use; kept as the design record.** `linux-build/build-skia.sh`
+implements this recipe (raster-only, `skia_enable_ganesh=true` with every GPU backend off,
+commit `ee20d565...`), and `build-skia-pathops.sh` splices in PathOps, which the `:skia` target
+leaves out but LibWeb needs (`Op(SkPath, SkPath, SkPathOp)`). Section 7 records how the build
+went. Companion to [`ladybird-plan.md`](ladybird-plan.md). Target: `iphoneos-arm64`, rootless `/var/jb`, A10 / iPadOS
 17.6.1. Toolchain: cctools-port `ld64` + `libtool` + a bare upstream `clang-19`/`clang++-19`
 (from apt.llvm.org, already in the image) + the staged `iPhoneOS16.5.sdk`, deployment target
 `arm64-apple-ios16.0`.
@@ -369,61 +371,27 @@ one-shot dependency stage for the Ladybird build, gated behind that track.
 
 ---
 
-## 7. Dry-run status: **un-run**, argument-set validated statically
+## 7. Result (2026-07-02)
 
-`gn gen` was **not executed**. An honest `gn gen` for `:skia` needs the full Skia source tree plus
-`third_party/externals/` populated by `git-sync-deps` (the wrapper `BUILD.gn`/`.gni` files for the
-bundled deps are `import`ed into the `:skia` graph). Fetching the multi-hundred-MB source + all
-externals is exactly the heavy step this task is scoped to avoid, and the compiler half
-(clang-19 + cctools) lives in the Docker image the concurrent agent owns. Per the task's stated
-fallback, the argument set was instead validated against the m144 GN files directly:
+The full build ran: `gn gen` clean, `ninja` exit 0, `libskia.a` (about 12 MB, arm64) and
+`libskcms.a` staged with 1718 headers and `skia.pc`.
 
-- Fetched and read `gn/skia/BUILD.gn`, `gn/BUILDCONFIG.gn`, `gn/toolchain/BUILD.gn`, `gn/skia.gni`,
-  `gn/ios.gni`, `gn/find_xcode_sysroot.py` at commit `ee20d565...`.
-- Confirmed every arg in section 2c is a real `declare_args()` entry (line refs in 2d), so GN will
-  not reject the configuration for unknown args.
-- Proved the xcrun bypass from the guard at `gn/skia/BUILD.gn:24` (`is_ios && xcode_sysroot == ""`):
-  setting `xcode_sysroot` skips the sole `xcrun` call on the `:skia` path.
-- Confirmed the iOS archiver is `libtool -static` (`gn/toolchain/BUILD.gn:297-303`), which drives
-  the PATH-shim requirement.
-- Confirmed `cc`/`cxx`/`ar` are injectable declare_args (`gn/BUILDCONFIG.gn:21-23`), matching how
-  vcpkg's own portfile feeds a non-Apple compiler.
+- **The Ganesh bet held.** `nm` shows `SkSurfaces::RenderTarget` and the `GrDirectContext`
+  symbols defined, so Ladybird links with no ifdef patch, and at runtime a null backend
+  context falls through to `WrapPixels`.
+- **Framework closure** from the undefined-symbol survey: CoreFoundation, CoreGraphics,
+  CoreText, ImageIO and libobjc. No Metal.
+- Operational fixes folded into `build-skia.sh`: a retry loop around the deps sync, thinning
+  arm64e-fat objects to arm64, and rewriting public-header `#include "include/..."` paths
+  when staging.
+- PathOps is not in the `:skia` target; `build-skia-pathops.sh` compiles the 32 pathops units
+  with Skia's own flags and adds them to the staged archive.
+- Built in the derived image `procursus-xbuild:skia` (base plus clang-19 and nasm), with the
+  source in volume `skia-ios-vol`.
 
-Walls hit during design: (1) `gn/BUILD.gn` does not exist at m144 - the compiler config lives in
-`gn/skia/BUILD.gn` (initial fetch 404'd; resolved). (2) The plan's `skia_enable_gpu` arg does not
-exist at m144 (renamed `skia_enable_ganesh`) and must stay **true**, not false (section 4) - the
-one substantive correction to the plan.
+Design notes from before the build: `gn/BUILD.gn` does not exist at m144 (the compiler config is
+`gn/skia/BUILD.gn`), and the plan's `skia_enable_gpu` arg does not exist either: it is
+`skia_enable_ganesh`, and it must stay **true** (section 4).
 
----
-
-## 8. Open risks for the full compile
-
-1. **Ganesh-core-without-backend link.** The central bet (section 4): does
-   `skia_enable_ganesh=true` with all backends off actually emit `SkSurfaces::RenderTarget` and the
-   `GrDirectContext` base methods into `libskia.a`? Verify with `nm libskia.a | grep RenderTarget`
-   before trusting the Ladybird link. Fallback = the one-file Ladybird ifdef patch.
-2. **`libtool` shadowing.** GNU `libtool-bin` in the image will silently break the archive step if
-   the PATH shim is wrong. Verify the archive rule resolves cctools `libtool`
-   (`aarch64-apple-darwin-libtool`), not `/usr/bin/libtool`.
-3. **Bare clang-19 + `-arch arm64`/`-isysroot` MachO targeting.** The triple wrapper
-   (`--target=arm64-apple-ios16.0`) should make upstream clang-19 emit Mach-O for iOS, but this
-   combination (upstream clang, cctools `ld64`/`libtool`, 16.5 SDK) is unproven for Skia
-   specifically. First failure mode to watch: clang not switching to the Darwin driver, or
-   `-fno-aligned-allocation`/`-stdlib=libc++` (Skia-injected) mismatching the SDK libc++.
-4. **`nasm` SIMD vs iOS.** Bundled libjpeg-turbo assembles arm64 SIMD; confirm the nasm path is
-   actually arm64 (some Skia builds route arm64 SIMD through the compiler, not nasm). If nasm
-   objects mis-target, set `skia_use_libjpeg_turbo_decode` SIMD off or drop the codec (Ladybird has
-   its own libjpeg-turbo for image decoding; Skia's is only for `SkImage` decode paths M0 may not
-   hit).
-5. **Apple framework closure in `skia.pc`.** The exact `-framework`/`-lobjc` set (section 5) is a
-   guess until the Ladybird link surfaces undefined symbols; too many frameworks over-links, too
-   few fails the link.
-6. **`git-sync-deps` weight + network.** Full external fetch (icu especially) is large; if the
-   image or CI budget bites, switch to a pruned manual clone of just the eight needed externals.
-7. **skcms visibility under `-DSKCMS_DLL` in a static lib.** `SKCMS_DLL` flips skcms symbol
-   visibility for a shared build; in a static archive it should be inert, but confirm skcms symbols
-   are actually present in `libskcms.a` (Ladybird's `ColorSpace.cpp` needs `skcms_Parse` et al.).
-8. **`skia-include-string.patch` / GCC-isms.** vcpkg applies a handful of source patches
-   (`skia-include-string`, `bentleyottmann-build`). Most target MSVC/GCC or the modules/shared
-   build; a raster static clang build likely needs none, but a missing `#include <string>` is the
-   classic first compile error - keep that patch handy.
+The pre-build risk list (archiver shadowing, the bare clang-19 Mach-O targeting, nasm, skcms
+visibility) all came out fine. Revisit only if the pin moves or Skia goes to Metal.

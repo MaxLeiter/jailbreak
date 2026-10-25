@@ -1,8 +1,13 @@
-# Amethyst graphical Minecraft launcher
+# Handoff: Amethyst (graphical Minecraft launcher)
 
-Last updated: 2026-07-31
+Last checked against `repo/Packages`: 2026-10-25.
 
-## Goal and current state
+## Current state
+
+Host build only. Nothing from this lane is published, and it has not been run
+on a device. No work has happened on it since the lane was added on 2026-07-31.
+It depends on `openjdk-21-jre-headless`, which is published for rootless (see
+`openjdk.md`).
 
 This lane packages AngelAuraMC's Amethyst iOS launcher as the graphical
 Minecraft Java Edition frontend for Xios. It is not an X11/AWT window: the
@@ -15,7 +20,7 @@ The source is pinned at Amethyst commit
 produced the launcher, account UI, custom controls, Java launcher jars,
 LWJGL/GLFW, GL4ES/TinyGL4ANGLE, MobileGlues, OpenAL, MoltenVK, and OSMesa
 components as 27 arm64 iOS Mach-O files after bundling liblzma.
-Physical-device GUI proof is still required before this package may be
+Physical-device GUI proof (the gate below) is required before it is
 published.
 
 ## Rootless and rootful packages
