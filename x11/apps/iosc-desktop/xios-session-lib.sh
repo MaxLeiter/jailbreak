@@ -16,6 +16,10 @@
 #   kde-nano     KWin + Plasma Nano shell package      (EXPERIMENTAL)
 #   app <name>   launch a Wayland client against the RUNNING compositor (no teardown)
 #   stop         tear everything down, return to SpringBoard
+#   presets      print the installed presets (read-only; see xs_preset_check)
+#
+# A preset that is not installed is refused BEFORE the running desktop is torn
+# down (xs_preset_preflight, called first by xs_prepare_display_session).
 #
 # It REUSES the existing bring-up scripts rather than reinventing them: the iosc
 # and mutter presets call run-shell.sh / run-mutter.sh. GNOME uses the packaged
@@ -1139,8 +1143,130 @@ xs_ensure_xios() {  # xs_ensure_xios <preset>
 # presets
 # ---------------------------------------------------------------------------
 
+# Preflight: can <preset> actually start? The Xios picker lists every flavor
+# whether or not it is installed, and a switch tears the running desktop down
+# before the new one starts, so picking a missing flavor used to leave the user
+# with nothing (a KDE user who tapped GNOME lost KDE and got
+# "launch-gnome-session.sh missing"). Every display preset runs this first (it is
+# the first thing xs_prepare_display_session does), before any teardown.
+#
+# All knowledge of what a flavor needs lives here: the bring-up script the preset
+# will resolve (xs_find_bringup, same order) plus the flavor's key binaries, at
+# the same paths and with the same env overrides the bring-up scripts use. It has
+# no side effects. On failure it sets XS_PREFLIGHT_MESSAGE (user-facing) and
+# XS_PREFLIGHT_MISSING (the first missing script or path) and returns 1.
+XS_PRESETS="iosc mutter gnome kde kde-desktop kde-nano kde-mobile"
+XS_PREFLIGHT_RC=69   # EX_UNAVAILABLE: the flavor is not installed
+XS_PREFLIGHT_MESSAGE=""
+XS_PREFLIGHT_MISSING=""
+
+xs_preset_check() {  # xs_preset_check <preset>
+    local preset="$1" label install script p setsid=0
+    local bins=()
+    local kde_apps="${XS_JB%/}/Applications/KDE"
+    XS_PREFLIGHT_MESSAGE="" XS_PREFLIGHT_MISSING=""
+    case "$preset" in
+        iosc)
+            label="The iosc desktop" install=xios-core script=run-shell.sh
+            bins=("$XS_PREFIX/local/bin/iosc") ;;
+        mutter)
+            # No meta package ships the standalone mutter binary; say what is missing.
+            label="Mutter" install="" script=run-mutter.sh
+            bins=("${MUTTER:-$XS_PREFIX/bin/mutter}") ;;
+        gnome)
+            # launch-gnome-session.sh execs gnome-session by PATH and refuses to run
+            # without the packaged xios-setsid.
+            label="GNOME" install=xios-gnome script=launch-gnome-session.sh
+            bins=("${SHELL_BIN:-$XS_PREFIX/bin/gnome-shell}"
+                  "$(command -v gnome-session 2>/dev/null || printf '%s' "$XS_PREFIX/bin/gnome-session")"
+                  "$XS_PREFIX/libexec/xios-setsid") ;;
+        kde|kde-desktop|kde-nano|kde-mobile)
+            case "$preset" in
+                kde-nano)   label="Plasma Nano" ;;
+                kde-mobile) label="Plasma Mobile" ;;
+                *)          label="KDE Plasma" ;;
+            esac
+            install=xios-kde script=run-kde-plasma.sh setsid=1
+            bins=("${IOSC_BIN:-$XS_PREFIX/local/bin/iosc}"
+                  "${KWIN_BIN:-$kde_apps/kwin_wayland.app/kwin_wayland}"
+                  "${PLASMA_BIN:-$kde_apps/plasmashell.app/plasmashell}") ;;
+        *)
+            XS_PREFLIGHT_MISSING="preflight for $preset"
+            XS_PREFLIGHT_MESSAGE="unknown desktop: $preset"
+            return 1 ;;
+    esac
+    if ! xs_find_bringup "$script" >/dev/null; then
+        XS_PREFLIGHT_MISSING="$script"
+    else
+        for p in "${bins[@]}"; do
+            [ -x "$p" ] || { XS_PREFLIGHT_MISSING="$p"; break; }
+        done
+    fi
+    if [ -z "$XS_PREFLIGHT_MISSING" ] && [ "$setsid" = 1 ] \
+        && [ ! -x "$XS_PREFIX/libexec/xios-setsid" ] && ! command -v setsid >/dev/null 2>&1; then
+        # run-kde-plasma.sh starts iosc and the KWin session as group leaders.
+        XS_PREFLIGHT_MISSING="$XS_PREFIX/libexec/xios-setsid"
+        XS_PREFLIGHT_MESSAGE="$label cannot start: install xios-session-stubs"
+        return 1
+    fi
+    [ -n "$XS_PREFLIGHT_MISSING" ] || return 0
+    if [ -n "$install" ]; then
+        XS_PREFLIGHT_MESSAGE="$label is not installed: install $install"
+    else
+        XS_PREFLIGHT_MESSAGE="$label is not installed: ${XS_PREFLIGHT_MISSING##*/} is missing"
+    fi
+    return 1
+}
+
+# Installed presets, one per line (`xios-session presets`), so the picker can
+# hide flavors that cannot start. kde and kde-desktop are the same flavor.
+xs_installed_presets() {
+    local p
+    for p in $XS_PRESETS; do
+        xs_preset_check "$p" && printf '%s\n' "$p"
+    done
+    return 0
+}
+
+# Report a refused switch without disturbing the session that keeps running.
+# If a desktop is live, its status record keeps its preset and state (ioscd, the
+# KDE exit monitor and the picker key on those two fields; an "error" record for
+# another preset is exactly what once left a dead KDE advertised as running). The
+# refusal goes in "message" plus request/request_state fields. With nothing live
+# it is an ordinary error status for the requested preset. Slot mode never
+# creates a registry entry for a desktop that never started.
+xs_report_preflight_failure() {  # xs_report_preflight_failure <preset>
+    local preset="$1" msg="$XS_PREFLIGHT_MESSAGE" state cur rmsg rpreset
+    xs_log "ERROR: $preset cannot start: $msg (missing: $XS_PREFLIGHT_MISSING); nothing was stopped"
+    state="$(xs_json_get_file "$XS_STATUS" state)"
+    case "$state" in
+        up|compositor-only|waiting|starting|relaunching)
+            cur="$(head -n 1 "$XS_STATUS" 2>/dev/null)"
+            # JSON-escape, then escape for a sed replacement ('#' is the delimiter).
+            rmsg="$(xs_json_escape "$msg" | sed 's/[&#\\]/\\&/g')"
+            rpreset="$(xs_json_escape "$preset" | sed 's/[&#\\]/\\&/g')"
+            cur="$(printf '%s\n' "$cur" | sed -E \
+                -e 's#,"request(_state)?":"([^"\\]|\\.)*"##g' \
+                -e 's#"message":"([^"\\]|\\.)*"#"message":"'"$rmsg"'"#' \
+                -e 's#}[[:space:]]*$#,"request":"'"$rpreset"'","request_state":"error"}#')"
+            case "$cur" in
+                *'"message":'*) printf '%s\n' "$cur" >"$XS_STATUS" 2>/dev/null || true ;;
+            esac ;;
+        *)
+            ( XS_SLOT_REGISTRY=""; xs_write_status "$preset" error "$msg" ) ;;
+    esac
+}
+
+xs_preset_preflight() {  # xs_preset_preflight <preset>
+    xs_preset_check "$1" && return 0
+    xs_report_preflight_failure "$1"
+    return "$XS_PREFLIGHT_RC"
+}
+
 xs_prepare_display_session() {  # xs_prepare_display_session <preset>
     local preset="$1"
+    # Nothing below may run for a flavor that cannot start: it stops the current desktop.
+    xs_preset_preflight "$preset" || return $?
     xs_write_status "$preset" stopping "stopping current session"
     if [ -n "$XS_SLOT" ]; then
         if [ -S "$XS_WAYLAND_SOCK" ] || [ -f "$XS_CONFIG_JSON" ]; then
@@ -1179,6 +1305,14 @@ xios_session_iosc() {
     export XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" XIOS_A11Y_SOCK="$XS_A11Y_SOCK"
     [ -n "$XS_SLOT" ] && export IOSC_IGNORE_ACTIVE_SESSION=1
     [ -n "${IOSC_PANEL_OPACITY:-}" ] && export IOSC_PANEL_OPACITY
+    # X11 (the xios-x11 flavor installs Xwayland): iosc spawns it rootless under
+    # its own XWM, one per iosc, so each slot gets its own X display. iosc
+    # publishes it as x11-display (see xs_iosc_x11_display). IOSC_XWAYLAND=0 opts out.
+    local xwl="${IOSC_XWAYLAND_BIN:-$XS_PREFIX/bin/Xwayland}"
+    if [ "${IOSC_XWAYLAND:-1}" != 0 ] && [ -x "$xwl" ]; then
+        export IOSC_XWAYLAND=1 IOSC_XWAYLAND_BIN="$xwl"
+        xs_log "iosc: Xwayland found ($xwl); X11 apps run rootless under iosc's XWM"
+    fi
     sh "$script" || true
     xs_record_slot_process_pgroups iosc
     xs_write_status iosc waiting "waiting for compositor surface"
@@ -1421,6 +1555,23 @@ xios_session_kde() {
 # No teardown — this rides on whatever compositor is up. Reuses run-kgx.sh's proven
 # client environment (shared session bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
 # GTK ngl on ANGLE/IOSurface, memory gsettings, writable HOME).
+# ":N" of the rootless Xwayland this session's iosc runs, if any. iosc latches it
+# as x11-display in its xios-status.d sidecar (iosc.status, iosc-<slot>.status)
+# once its XWM owns the display. The sidecar outlives a killed iosc, so the X
+# socket must exist too before the number is believed.
+xs_iosc_x11_display() {
+    local f="${XIOS_STATUS_DIR:-$XS_TMP/xios-status.d}/iosc${XS_SLOT:+-$XS_SLOT}.status" d
+    [ -r "$f" ] || return 1
+    d="$(awk -F'\t' '$1 == "x11-display" { v = $2 } END { print v }' "$f" 2>/dev/null)"
+    case "$d" in
+        :*[!0-9]*|:) return 1 ;;
+        :*) ;;
+        *) return 1 ;;
+    esac
+    [ -S "${XS_X11_UNIX_DIR:-/tmp/.X11-unix}/X${d#:}" ] || return 1
+    printf '%s\n' "$d"
+}
+
 xios_session_app() {
     local name="$1"
     [ -n "$name" ] || {
@@ -1545,6 +1696,18 @@ xios_session_app() {
         dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr" DBUS_SYSTEM_BUS_ADDRESS="$addr")
         xs_start_native_helpers "$busdir" "$addr"
     fi
+    # X11 apps: an iosc desktop running Xwayland publishes its X display (per
+    # slot). GTK stays Wayland-first and only falls back to X11 for an X11-only
+    # build; everything else just needs DISPLAY.
+    local x11_env=() x11_display
+    case "$owner" in
+        ""|iosc)
+            if x11_display="$(xs_iosc_x11_display)"; then
+                x11_env=(DISPLAY="$x11_display" "GDK_BACKEND=wayland,x11")
+                xs_log "app: X11 display $x11_display available"
+            fi
+            ;;
+    esac
     local launcher=("$XS_BASH" -lc "${a11y_prefix}exec $exec")
     if [ ${#dbus_addr[@]} -eq 0 ]; then
         launcher=("$XS_DBUS_RUN" -- ${launcher[@]+"${launcher[@]}"})
@@ -1562,6 +1725,7 @@ xios_session_app() {
         XIOS_ATSPI_LOG="$XS_TMP/xios-atspi${XS_SLOT:+-$XS_SLOT}.log" \
         ${client_env[@]+"${client_env[@]}"} \
         ${app_env[@]+"${app_env[@]}"} \
+        ${x11_env[@]+"${x11_env[@]}"} \
         ${gtk_a11y_env[@]+"${gtk_a11y_env[@]}"} \
         ${dbus_addr[@]+"${dbus_addr[@]}"} \
         HOME="$XS_VAR/root" \
@@ -1638,6 +1802,8 @@ xios_session_resize() {
     case "$owner" in
         iosc|mutter|gnome|kde|kde-desktop|kde-nano|kde-mobile)
             xs_log "resize: restarting active preset '$owner' with requested display settings"
+            # The slot stop below runs before the preset's own preflight, so check first.
+            xs_preset_preflight "$owner" || return $?
             # A slot refuses to replace its own display, so stop it first.
             [ -n "$XS_SLOT" ] && xs_stop_slot_named "$XS_SLOT"
             xios_session_run_unlocked "$owner"
@@ -1671,6 +1837,7 @@ xios_session_run_unlocked() {
         app)         xios_session_app "${1:-}" ;;
         resize|display) xios_session_resize ;;
         stop|off)    xios_session_stop "${1:-}" ;;
+        presets)     xs_installed_presets ;;
         ""|help|-h|--help)
             cat >&2 <<EOF
 xios-session presets:
@@ -1686,6 +1853,7 @@ xios-session presets:
   stop            stop the non-slot desktop (the display app stays while slots run)
   stop all        stop every slot and the non-slot desktop, back to SpringBoard
   --slot NAME ... run any preset as its own desktop slot; --slot NAME stop stops only it
+  presets         print the presets that are installed and can start, one per line
 EOF
             return 2 ;;
         *)
@@ -1722,7 +1890,8 @@ xs_refresh_ios_app_entries() {
 xios_session_run() {
     local preset="${1:-}" rc
     case "$preset" in
-        ""|help|-h|--help)
+        ""|help|-h|--help|presets)
+            # Read-only: no lock, no request marker, no sweep.
             xios_session_run_unlocked "$@"
             return $? ;;
         app)

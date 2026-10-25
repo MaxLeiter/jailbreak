@@ -15,6 +15,7 @@
 #   xios-session resize          # restart active desktop with XIOS_SESSION_WIDTH/HEIGHT/DPI
 #   xios-session stop            # tear everything down, back to SpringBoard
 #   xios-session status          # print the last session status
+#   xios-session presets         # installed presets that can start, one per line
 #
 # Optional for ioscd requests:
 #   XIOS_SESSION_WIDTH=1080 XIOS_SESSION_HEIGHT=1440 XIOS_SESSION_DPI=176 xios-session -d kde-mobile
@@ -102,6 +103,10 @@ case "$PRESET" in
         cat "${XS_STATUS:-$XS_TMP/xios-session-status.json}" 2>/dev/null \
             || echo '{"state":"unknown","message":"no status yet"}'
         exit 0 ;;
+    presets)
+        # Answered locally (also with -d): ioscd has no presets request.
+        xios_session_run presets
+        exit $? ;;
 esac
 
 send_ioscd_session() {

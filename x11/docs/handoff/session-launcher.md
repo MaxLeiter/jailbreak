@@ -5,7 +5,7 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 
 ## Key files (all under `x11/apps/iosc-desktop/`)
 - `xios-session-lib.sh` — single source of truth: ONE teardown for the non-slot session (recorded process groups first, then a pattern fallback that skips everything a slot owns; see "M0 coexistence") + a slot stop that reaps only that slot + preset fns that CALL `run-shell.sh`/`run-mutter.sh`; normal switches preserve the Xios display app, while explicit `stop` also terminates it. GNOME resolves the packaged `launch-gnome-session.sh` from `xios-session-stubs`. Resolver normally prefers the installed owner script (`/var/jb/usr/local/bin`, then `/var/jb/usr/bin`) over the pinned libexec copy, but slot mode prefers the packaged libexec copy first so stale live owner scripts cannot drop slot-specific env/argv. Switch operations serialize with atomic `/var/jb/tmp/xios-session.lock`; `app <name>` deliberately stays off that lock so a slow GUI launch cannot block desktop controls. The launcher records daemon session process groups, validates that a live group still contains a known Xios session process before signaling it, and uses `/var/jb/tmp/xios-session.request-seq` so stale queued switch requests skip instead of running after a newer pick.
-- `xios-session` — CLI: `xios-session iosc|mutter|gnome|kde|app <name>|stop|status`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal). `-d/--via-daemon` talks to ioscd's Unix socket via `nc`, `socat`, then Python; it now falls through to the next transport if an installed `nc` exists but cannot handle the socket.
+- `xios-session` — CLI: `xios-session iosc|mutter|gnome|kde|app <name>|stop|status|presets`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal). `-d/--via-daemon` talks to ioscd's Unix socket via `nc`, `socat`, then Python; it now falls through to the next transport if an installed `nc` exists but cannot handle the socket.
 - `package-session.sh` → current device-tested package is `xios-session 1.0.67`
   (immutable deb in `linux-build/out/` and top-level `repo/debs/`; not a production
   publication claim). This package carries the KDE Qt platformtheme/Breeze env bridge,
@@ -14,6 +14,35 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
   slot sessions, slot cleanup, and the 2026-07-29 responsiveness fixes.
 - `ioscd` — socket daemon. For `SESSION`, it now invokes `/var/jb/usr/bin/bash /var/jb/usr/local/bin/xios-session ...` instead of `execve`ing the shell script directly; direct script exec from launchd returned `ENOENT` before the script reached its own log. The daemon logs untracked child exit/signal status and now logs each `SESSION` request's peer pid/uid/path plus payload before launch, so parallel CLI/app-picker requests are attributable in `/var/jb/tmp/ioscd.log`.
 - In-app picker: ⧉ button → modal; sends `SESSION` over `/var/jb/tmp/ioscd.sock`. Status line polls `/var/jb/tmp/xios-session-status.json`.
+
+## 2026-10-25: uninstalled flavors are refused before teardown (host-tested, not on device)
+
+- The picker lists every preset, and a switch used to tear the running desktop down
+  before the new preset looked for its bring-up. A KDE user who tapped GNOME lost KDE and
+  got "launch-gnome-session.sh missing". Now `xs_preset_check` (next to the presets in
+  `xios-session-lib.sh`) is the one place that knows what each flavor needs, and
+  `xs_prepare_display_session` runs it first, so nothing is stopped for a flavor that
+  cannot start. It checks the bring-up script `xs_find_bringup` would resolve plus the
+  key binaries, with the same paths and env overrides as the run scripts: iosc =
+  `usr/local/bin/iosc`; mutter = `$MUTTER` or `usr/bin/mutter`; gnome = `$SHELL_BIN` or
+  `usr/bin/gnome-shell`, `gnome-session` on PATH, `usr/libexec/xios-setsid`; kde,
+  kde-desktop, kde-nano, kde-mobile = `$IOSC_BIN`, `$KWIN_BIN`, `$PLASMA_BIN` (defaults
+  under `/var/jb/Applications/KDE/`) and xios-setsid or setsid. It does not check the
+  Plasma shell packages (mobile/nano); `xios-kde` depends on both.
+- A refusal exits 69 and logs `<preset> cannot start: ... nothing was stopped`. If a
+  desktop is live, its status record keeps its `preset` and `state` (ioscd, the KDE exit
+  monitor and the picker key on those); only `message` changes ("GNOME is not installed:
+  install xios-gnome") and `request`/`request_state:"error"` are added. With nothing live
+  it is a normal `error` status for the requested preset; a refused slot gets no registry
+  entry. ioscd counts the non-zero exit as a failure, so a non-root retry of that preset
+  within 2 minutes hits the existing cooldown.
+- `xios-session presets` prints the presets that can start, one per line (no lock, also
+  answered locally with `-d`), for the app to hide uninstalled flavors later.
+- `run-mutter.sh` says "Mutter is not installed: ..." instead of the scp hint.
+  `run-kde-plasma.sh` starts iosc and the KWin session through `$LIBEXEC/xios-setsid`
+  (falling back to `setsid`); the python3 shim it used to write is gone.
+- Test: `apps/iosc-desktop/test-session-preflight.sh` (scratch prefix, fake live KDE,
+  `xios-session gnome` must exit 69 and leave KDE, its status and pgids alone).
 
 ## M0 coexistence (2026-10-06): desktops run side by side
 
@@ -105,6 +134,24 @@ xios-session,xios-session-stubs,xios-a11y-tools,iosc,iosc-shell` once the PR mer
 index is what ships). Install the five together: `xios-session 1.0.81` Breaks `xios-session-stubs`
 older than 0.2.12 (the old GNOME launcher writes no pgid file, so the new sweep could not see a live
 GNOME slot). `xios-a11y-tools` older than 0.2.17 ignores `XIOS_A11Y_SOCK` and binds the global path.
+
+## ioscd helpers per bus, honest SESSION reply (2026-10-25, xios-launcher-tools 0.1.12, unpublished)
+
+- ioscd's app-launch helper guard was still the old "skip if any `xios-hwbridged`/`xios-sensord`/
+  `xios-sysintd` runs anywhere" ps grep, so once a desktop ran its own helpers, Home Screen and
+  picker launches got none on `ioscd-bus`. It now uses the shell lib's rule: one per bus,
+  recorded in `<busdir>/<name>.pid` (`"<pid>\n"`), running while that pid is alive and its
+  process name matches. Because the bus dir is mobile's and the helpers start as root, the pid
+  files and `<name>.log` are unlinked and recreated through the dir fd (O_EXCL|O_NOFOLLOW) and
+  bash writes through those fds, never by name. An empty pid file under 30 s old counts as a
+  start in progress, so two quick launches do not double-start during `xios_pulse_start`.
+- `SESSION` used to answer `SESSION_STARTED` even with no xios-session installed (bash just
+  exited 127 in `ioscd.log`). ioscd now checks the script with `access(R_OK)` before forking
+  and answers `ERR xios-session is not installed`. The `/usr/bin/xios-session` fallback exec
+  was unreachable (the first exec is bash, which only fails if bash is missing) and is gone.
+- The package now Depends on `xios-session-stubs (>= 0.2.12)`, which ships `xios-sysintd`; only
+  the GNOME flavor pulled it in before. hwbridged/sensord still come from `xios-fhs`.
+- Host test: `apps/iosc-desktop/test-ioscd-helpers.sh` (run by `build-stub.sh`).
 
 ## Current state — package-installed 2026-07-29, CLI/daemon works
 

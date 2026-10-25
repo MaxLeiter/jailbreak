@@ -40,7 +40,7 @@ fi
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.49"
+VER="0.9.51"
 ARCH="$XIOS_DEB_ARCH"
 DEB="iosc_${VER}_${ARCH}.deb"
 
@@ -151,7 +151,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-16), libwayland0, libxkbcommon0
+Depends: angle (>= 2.1.0+git20260630.a32d31d+es3-16), libwayland0, libxkbcommon0, libxcb1
 Recommends: gnome-console
 Section: X11
 Priority: optional
@@ -170,6 +170,11 @@ Description: GPU-accelerated Wayland compositor for the Xios desktop
  Since 0.9 it also provides the shell-side protocols (wlr layer-shell,
  foreign-toplevel management and screencopy) that the iosc-shell desktop
  package builds on.
+ .
+ With IOSC_XWAYLAND=1 it also starts rootless Xwayland as its own X window
+ manager, so each X11 window is an ordinary iosc window. xios-session turns this
+ on when Xwayland is installed (the xios-x11 flavor) and hands X11 apps the
+ matching DISPLAY; without it the X11 support stays idle.
  .
  The package also ships iosc-input-test for direct input-path diagnostics and
  ios-inputd, the input-method bridge for compositors that consume standard
@@ -232,7 +237,11 @@ ldid -e "$BIN/iosc" | grep -E "iokit-user-client-class|AGXDevice|IOGPU|no-contai
 #    macOS host, or directly when already running as root inside one.
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
 echo "=== DEB BUILT ==="
-if [ -n "$REPODEBS" ]; then
+if [ -n "$REPODEBS" ] && [ ! -d "$REPODEBS" ]; then
+  # A worktree has no repo/debs (it is untracked); staging is a separate step.
+  echo "   $REPODEBS absent: not staging (mkdir it and cp the deb to publish)"
+  ls -la "$OUTDIR/${DEB}"
+elif [ -n "$REPODEBS" ]; then
   cp "$built" "$REPODEBS/${DEB}"
   ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
 else

@@ -872,10 +872,13 @@ static int surface_opaque_full(struct iosc_surface *s)
  *     the client's opaque_region: a window that declares itself fully opaque (or
  *     an XRGB buffer, alpha undefined) stays on the fast opaque path; anything
  *     with a partial/absent opaque region and a real alpha channel blends.
- * IOSurface and single-pixel buffers always carry a real alpha channel. */
+ * IOSurface and single-pixel buffers always carry a real alpha channel, except
+ * an X11 window on a 24-bit visual: Xwayland hands its IOSurface over with the
+ * alpha byte undefined, so the XWM's depth decides (as weston's XWM does). */
 static int surface_blends(struct iosc_surface *s)
 {
     if (!s->current_buffer) return 0;
+    if (s->is_xwayland && s->xwayland_opaque) return 0;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(s->current_buffer);
     int argb = shm ? (wl_shm_buffer_get_format(shm) == WL_SHM_FORMAT_ARGB8888) : 1;
     if (s->role == IOSC_ROLE_LAYER) return argb;
@@ -3054,6 +3057,7 @@ int iosc_xwm_adopt_surface(struct wl_resource *res,
     if (!s || !info) return -1;
     if (s->role != IOSC_ROLE_NONE && !s->is_xwayland) return -1; /* already has an xdg role */
     s->is_xwayland = 1;
+    s->xwayland_opaque = !info->has_alpha;
     s->role = info->override_redirect ? IOSC_ROLE_POPUP : IOSC_ROLE_TOPLEVEL;
     snprintf(s->title,  sizeof s->title,  "%s",
              (info->title && info->title[0]) ? info->title : "X11");
@@ -3069,6 +3073,7 @@ void iosc_xwm_unadopt_surface(struct wl_resource *res)
     if (!s || !s->is_xwayland) return;
     surface_unmap(s);
     s->is_xwayland = 0;
+    s->xwayland_opaque = 0;
     s->role = IOSC_ROLE_NONE;
 }
 
@@ -3093,6 +3098,18 @@ void iosc_xwm_set_title(struct wl_resource *res, const char *title)
     if (!s || !s->is_xwayland) return;
     snprintf(s->title, sizeof s->title, "%s", title ? title : "");
     if (s->role == IOSC_ROLE_TOPLEVEL) ftl_broadcast_title(s);
+}
+
+/* Latched in this producer's xios-status.d sidecar (iosc.status, or
+ * iosc-<slot>.status for a slot), which xios-session reads to give X11 apps the
+ * DISPLAY of the Xwayland this compositor owns. iosc_status_clear() at exit drops
+ * it with the rest of the table. */
+void iosc_xwm_display_changed(int display_number)
+{
+    if (display_number >= 0)
+        iosc_status_set("x11-display", ":%d", display_number);
+    else
+        iosc_status_set_value("x11-display", "none");
 }
 
 /* ---- wl_surface ---------------------------------------------------------- */
@@ -7490,6 +7507,10 @@ int main(int argc, char **argv)
     /* 2c) Rootless Xwayland XWM (opt-in): spawns Xwayland, owns WM_S0, advertises
      *      xwayland_shell_v1. Each X window becomes its own iosc surface. */
     if (iosc_env_truthy(getenv("IOSC_XWAYLAND"))) {
+        /* Xwayland must connect to THIS compositor's socket, not whatever
+         * WAYLAND_DISPLAY the launcher happened to leave in the environment. */
+        if (opts.sock_name && *opts.sock_name)
+            setenv("WAYLAND_DISPLAY", opts.sock_name, 1);
         if (iosc_xwm_start(wl_display_get_event_loop(g_display)) != 0)
             fprintf(stderr, "iosc: Xwayland XWM failed to start\n");
     }
