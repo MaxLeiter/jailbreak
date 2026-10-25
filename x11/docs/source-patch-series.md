@@ -5,7 +5,12 @@ Dependency source patches should live as quilt-style stacks under
 by `linux-build/recipes/stage-port-patches.sh` and applied from the recipe with
 `$(call DO_PATCH,<pkg>,<pkg>,-p1)`.
 
-Current converted non-Qt stacks:
+The list below covers the stacks converted in the July 2026 pass. Ports added
+since (the games, GIMP/Krita, OpenJDK, LibreOffice, WebKitGTK/Epiphany/Geary,
+Thunar, the SDL ports and others) use the same `ports/<pkg>/patches/series` layout
+from the start; `ls x11/ports/*/patches/series` is the full set.
+
+Converted non-Qt stacks:
 
 - `ports/angle/patches`: Metal ES3 capability and jailbreak dylib dispatch
   changes. ANGLE is built natively on macOS rather than through Procursus, so
