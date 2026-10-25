@@ -1,0 +1,42 @@
+Subject: [PATCH] xwayland: attach the IOSurface acquire fence before
+presenting a window buffer
+
+24.1 dropped the backend post_damage hook. Window buffers now present
+through xwl_window_handle_pixmap_sync(); call the backend's brokered Metal
+acquire fence export there (the backend reports implicit sync, so the
+glamor_finish/explicit-sync paths do not run).
+
+diff -ruN xwayland-24.1.13/hw/xwayland/xwayland-glamor.h xwayland-24.1.13.patched/hw/xwayland/xwayland-glamor.h
+--- xwayland-24.1.13/hw/xwayland/xwayland-glamor.h
++++ xwayland-24.1.13.patched/hw/xwayland/xwayland-glamor.h
+@@ -48,6 +48,14 @@
+ 
+ Bool xwl_glamor_init(struct xwl_screen *xwl_screen);
+ 
++#ifdef XWL_HAS_IOSURFACE
++/* xwayland-glamor-iosurface.c replaces the gbm backend (see meson.build). */
++Bool xwl_glamor_init_iosurface(struct xwl_screen *xwl_screen);
++#define xwl_glamor_init_gbm xwl_glamor_init_iosurface
++void xwl_glamor_iosurface_signal_acquire(struct xwl_window *xwl_window,
++                                         PixmapPtr pixmap);
++#endif
++
+ Bool xwl_screen_set_drm_interface(struct xwl_screen *xwl_screen,
+                                   uint32_t id, uint32_t version);
+ Bool xwl_screen_set_syncobj_interface(struct xwl_screen *xwl_screen,
+diff -ruN xwayland-24.1.13/hw/xwayland/xwayland-window-buffers.c xwayland-24.1.13.patched/hw/xwayland/xwayland-window-buffers.c
+--- xwayland-24.1.13/hw/xwayland/xwayland-window-buffers.c
++++ xwayland-24.1.13.patched/hw/xwayland/xwayland-window-buffers.c
+@@ -375,6 +375,12 @@
+ #ifdef XWL_HAS_GLAMOR
+     struct xwl_screen *xwl_screen = xwl_window->xwl_screen;
+ 
++#ifdef XWL_HAS_IOSURFACE
++    /* Export the brokered Metal acquire fence for the buffer about to be
++     * attached; the backend reports implicit sync, so nothing else runs. */
++    xwl_glamor_iosurface_signal_acquire(xwl_window, pixmap);
++#endif
++
+     if (!xwl_glamor_supports_implicit_sync(xwl_screen)) {
+         if (xwl_screen->explicit_sync && xwl_glamor_gbm_set_syncpts(xwl_window, pixmap)) {
+             implicit_sync = FALSE;

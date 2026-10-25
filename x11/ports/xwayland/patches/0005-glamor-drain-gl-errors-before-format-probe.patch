@@ -1,0 +1,43 @@
+Subject: [PATCH] glamor: drain stale GL errors before probing texture formats
+
+24.1 added a glGetError() check after the 1x1 probe glTexImage2D in
+glamor_add_format(). Any error left pending from earlier GL calls makes the
+depth-8 (a8) format fall back to software, which breaks Render glyph drawing
+on ANGLE. Drop (and log) pending errors first, and report the probe error code.
+
+diff -ruN xwayland-24.1.13/glamor/glamor.c xwayland-24.1.13.patched/glamor/glamor.c
+--- xwayland-24.1.13/glamor/glamor.c
++++ xwayland-24.1.13.patched/glamor/glamor.c
+@@ -458,18 +458,28 @@
+     if (rendering_supported && glamor_priv->is_gles) {
+         unsigned fbo, tex;
+         int read_format, read_type;
+-        GLenum status;
++        GLenum status, probe_err;
+ 
+         glGenTextures(1, &tex);
+         glBindTexture(GL_TEXTURE_2D, tex);
+         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
++        /* Drain errors left over from earlier setup, so the check below
++         * only sees glTexImage2D's own. */
++        for (int i = 0; i < 16; i++) {
++            GLenum stale = glGetError();
++            if (stale == GL_NO_ERROR)
++                break;
++            LogMessageVerb(X_INFO, 3, "glamor: dropping stale GL error 0x%x "
++                           "before probing depth %d\n", stale, depth);
++        }
+         glTexImage2D(GL_TEXTURE_2D, 0, internalformat, 1, 1, 0,
+                      format, type, NULL);
+-        if (glGetError() != GL_NO_ERROR)
++        probe_err = glGetError();
++        if (probe_err != GL_NO_ERROR)
+         {
+-            ErrorF("glamor: Cannot upload texture for depth %d.  "
+-                   "Falling back to software.\n", depth);
++            ErrorF("glamor: Cannot upload texture for depth %d (GL error 0x%x).  "
++                   "Falling back to software.\n", depth, probe_err);
+             glDeleteTextures(1, &tex);
+             return;
+         }

@@ -23,6 +23,12 @@ sidecar. See memory `xwayland-on-angle-feasibility`, and the north star
 Every hard primitive is already proven on-device by other tracks; the only real
 new code is a glamor buffer backend, which has a direct upstream template.
 
+> **2026-10-25: superseded by Xwayland 24.1.** The 24.1 port replaces the vtable backend
+> with `xwayland-glamor-iosurface.c` compiled in place of `xwayland-glamor.c` + `-gbm.c`
+> (see the header of `recipes/xwayland.mk` and the `ports/xwayland/patches/0001-0005` series).
+> `xwayland 24.1.14+ios1` is built from branch `claude/land-xwayland-24`; the section below is
+> the 23.2 history.
+
 ## Version pin (LOAD-BEARING): xwayland 23.2.7
 
 `xwayland <= 23.2` is the last series with the pluggable `struct xwl_egl_backend`

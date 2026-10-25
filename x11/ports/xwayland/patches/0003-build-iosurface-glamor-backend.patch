@@ -1,0 +1,105 @@
+Subject: [PATCH] build: select the IOSurface glamor backend when gbm is
+absent
+
+Xwayland 24.1 removed the pluggable xwl_egl_backend vtable;
+xwayland-glamor.c is hard-wired to gbm/dma-buf. With glamor enabled and no
+gbm, compile hw/xwayland/xwayland-glamor-iosurface.c (a local build input
+staged by the recipe, with the iosc protocol XML and the Metal sync
+sources) in place of xwayland-glamor.c and xwayland-glamor-gbm.c.
+XWL_HAS_GLAMOR is set for it, XWL_HAS_IOSURFACE selects the iOS-specific
+paths.
+
+diff -ruN xwayland-24.1.13/hw/xwayland/meson.build xwayland-24.1.13.patched/hw/xwayland/meson.build
+--- xwayland-24.1.13/hw/xwayland/meson.build
++++ xwayland-24.1.13.patched/hw/xwayland/meson.build
+@@ -109,13 +109,34 @@
+ 
+ xwayland_glamor = []
+ if build_xwayland_glamor
+-    srcs += [
+-              'xwayland-glamor.c',
+-              'xwayland-dmabuf.h',
+-              'xwayland-dmabuf.c',
+-              'xwayland-glamor-gbm.c',
+-              'xwayland-glamor-gbm.h'
+-            ]
++    if build_iosurface
++        # No gbm: the IOSurface backend (a build input staged by the recipe)
++        # replaces xwayland-glamor.c and xwayland-glamor-gbm.c wholesale.
++        # dmabuf.c stays (it only needs xwl_gbm_get_main_device, shimmed there).
++        srcs += [
++                  'xwayland-dmabuf.h',
++                  'xwayland-dmabuf.c',
++                  'xwayland-glamor-gbm.h',
++                  'xwayland-glamor-iosurface.c',
++                  'xios_metal_sync.m',
++                  'XiosMetalEventBroker.m',
++                ]
++        srcs += client_header.process('iosc-iosurface.xml')
++        srcs += code.process('iosc-iosurface.xml')
++        # IOSurface plus the brokered Metal shared-event transport.
++        xwayland_dep += declare_dependency(link_args: [
++            '-Wl,-framework,IOSurface', '-Wl,-framework,CoreFoundation',
++            '-Wl,-framework,Foundation', '-Wl,-framework,Metal',
++            '-lEGL', '-lGLESv2'])
++    else
++        srcs += [
++                  'xwayland-glamor.c',
++                  'xwayland-dmabuf.h',
++                  'xwayland-dmabuf.c',
++                  'xwayland-glamor-gbm.c',
++                  'xwayland-glamor-gbm.h'
++                ]
++    endif
+ 
+     if build_xv
+         srcs += 'xwayland-glamor-xv.c'
+diff -ruN xwayland-24.1.13/include/meson.build xwayland-24.1.13.patched/include/meson.build
+--- xwayland-24.1.13/include/meson.build
++++ xwayland-24.1.13.patched/include/meson.build
+@@ -315,10 +315,11 @@
+ configure_file(output : 'xkb-config.h',
+                configuration : xkb_data)
+ 
+-build_xwayland_glamor = build_glamor and gbm_dep.found()
++build_xwayland_glamor = build_glamor and (gbm_dep.found() or build_iosurface)
+ 
+ xwayland_data = configuration_data()
+ xwayland_data.set('XWL_HAS_GLAMOR', build_xwayland_glamor ? '1' : false)
++xwayland_data.set('XWL_HAS_IOSURFACE', build_iosurface ? '1' : false)
+ xwayland_data.set('XWL_HAS_LIBDECOR', have_libdecor ? '1' : false)
+ xwayland_data.set('XWL_HAS_XWAYLAND_EXTENSION', xwaylandproto_dep.found() ? '1' : false)
+ xwayland_data.set('XWL_HAS_EI', build_ei)
+diff -ruN xwayland-24.1.13/include/xwayland-config.h.meson.in xwayland-24.1.13.patched/include/xwayland-config.h.meson.in
+--- xwayland-24.1.13/include/xwayland-config.h.meson.in
++++ xwayland-24.1.13.patched/include/xwayland-config.h.meson.in
+@@ -7,6 +7,9 @@
+ /* Build glamor support for Xwayland */
+ #mesondefine XWL_HAS_GLAMOR
+ 
++/* Build the iOS IOSurface glamor backend (ANGLE-Metal) in place of gbm */
++#mesondefine XWL_HAS_IOSURFACE
++
+ /* Build Xwayland with libdecor support*/
+ #mesondefine XWL_HAS_LIBDECOR
+ 
+diff -ruN xwayland-24.1.13/meson.build xwayland-24.1.13.patched/meson.build
+--- xwayland-24.1.13/meson.build
++++ xwayland-24.1.13.patched/meson.build
+@@ -1,4 +1,4 @@
+-project('xwayland', 'c',
++project('xwayland', 'c', 'objc',
+         default_options: [
+             'buildtype=debugoptimized',
+             'c_std=gnu99',
+@@ -206,6 +206,10 @@
+     gbm_dep = dependency('gbm', version: gbm_req, required: false)
+     epoxy_dep = dependency('epoxy', required: false)
+ endif
++
++# iOS has no gbm/dma-buf. 24.1 removed the pluggable xwl_egl_backend, so with
++# glamor but no gbm we build the IOSurface backend in its place (hw/xwayland).
++build_iosurface = build_glamor and not gbm_dep.found()
+ 
+ libdecor_dep = dependency('libdecor-0', required: false)
+ libdecor_option = get_option('libdecor')
