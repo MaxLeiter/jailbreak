@@ -1,13 +1,22 @@
 # GNOME touch UX on the iPad: from "boots" to "usable"
 
+**Status (checked against `x11/wayland/meta-input-ios.c`, 2026-10-25):** Phases 1 to 3 landed.
+Mutter now has a real virtual touchscreen and `touch-mode = TRUE`, the AXIS wire type carries
+trackpad and wheel scroll, non-ASCII text from the iOS keyboard is committed through the Shell's
+input method, and text-input focus broadcasts TRAITS so the iOS keyboard comes up. Still open:
+Phase 0 (none of the gsettings below are applied by any package), Phase 4 (the Pencil is still
+mapped onto the pointer, pressure and tilt dropped), and Phase 5. Section 2 describes the gap as it
+was before this work. Current backend state is in [handoff/mutter.md](handoff/mutter.md).
+
 Target: stock GNOME Shell 46 on Mutter 46 + MetaBackendIOS, usable as a
 touch + trackpad hybrid desktop on the iPad 7 (A10, 2160x1620). Not a phone
 shell; the native-iPadOS flavor is the touch-first path
 (docs/native-ipados-plan.md). This doc ranks the minimal work, reusing the
 input plumbing the iosc flavor already validated on-device.
 
-Related: docs/mutter-on-iosc.md (backend), docs/gnome-session-plan.md
-(session), memory notes `wayland-m1-compositor`, `x11-distribution-chooser`.
+Related: [mutter-on-iosc.md](mutter-on-iosc.md) (backend),
+[gnome-session-plan.md](gnome-session-plan.md) (session), [osk-plan.md](osk-plan.md) (keyboards
+per flavor).
 
 ## 1. What GNOME 46 already does on a touchscreen (verified upstream)
 
@@ -56,7 +65,7 @@ Two upstream facts that bound the design:
   and no external keyboard forces it off. MetaSeatIOS must do its own
   override (Phase 1).
 
-## 2. The gap: what our GNOME flavor drops today
+## 2. The gap as it was (2026-07, before Phases 1-3)
 
 The wire from the Xios app already carries everything
 (x11/wayland/xios_input_socket.h): MOTION(1) BUTTON(2) KEY(3) TEXT(4)
@@ -77,7 +86,7 @@ The Mutter backend consumes only half of it:
 | Scroll | **absent end-to-end**: no wire type, app suppresses it on iosc (`if usingIosc { return }`, XScreen.swift:879), no notify_scroll in the virtual device | XScreen.swift:877, meta-virtual-input-device-ios.c |
 | TRAITS(5) emission | iosc-only (iosc.c:4736); mutter never sends it | n/a |
 
-Consequences in a booted gnome-shell today: taps work (as mouse clicks),
+Consequences in a booted gnome-shell at the time: taps work (as mouse clicks),
 typing works (ASCII), but no 3-finger gestures, no kinetic scrolling, no
 OSK auto-show (touch-mode FALSE and last device is never a touchscreen),
 no two-finger trackpad scroll, Pencil is just a mouse.
@@ -87,16 +96,14 @@ no two-finger trackpad scroll, Pencil is just a mouse.
 `zwp_virtual_keyboard_v1`, which mutter does not implement. The GNOME path
 is meta-input-ios feeding ClutterVirtualInputDevices, full stop.
 
-Correction (2026-07-29, verified against the kwin 6.1.5 sources): those two
-are **wlroots** protocols, not "wlroots/KWin". KWin 6.1.5 implements
-`input-method-unstable-v1` + `input-panel-v1` and neither of ios-inputd's
-globals, so ios-inputd is dead on KDE too until its Wayland half is
-rewritten for v1. Details and the bridge design are in osk-plan.md, section
-"KDE flavor".
+Note on KDE (2026-07-29): those two are wlroots protocols. KWin 6.1.5 implements
+`input-method-unstable-v1` instead, so ios-inputd grew a v1 mode for the KDE flavor (launched by
+`run-kde-plasma.sh` with `--inputmethod`). That does not change anything here: GNOME still gets text
+through meta-input-ios. Details in osk-plan.md, section "KDE flavor".
 
 ## 3. Recommended plan, ranked by effort
 
-### Phase 0: config only, no code (hours)
+### Phase 0: config only, no code (not applied)
 
 gsettings applied by the session launcher (GSETTINGS_BACKEND is dconf once
 the session layer lands; `gsettings set` from the launch script):
@@ -111,7 +118,7 @@ the session layer lands; `gsettings set` from the launch script):
 
 Keep monitor scale 2. Nothing else in Phase 0.
 
-### Phase 1: touch into Mutter (the unlock, 1-2 days)
+### Phase 1: touch into Mutter (done)
 
 Small, all in files we own, modeled exactly on mutter's remote-desktop touch
 path:
@@ -148,7 +155,7 @@ Validation: injector `iosc-input-test -t` equivalents against the mutter
 socket; then on-screen: 3-finger swipe up = overview, tap a GTK text field =
 OSK appears, flick-scroll kgx output.
 
-### Phase 2: scroll (trackpad two-finger, small wire addition, ~1 day)
+### Phase 2: scroll (done)
 
 Core hybrid-desktop UX; currently dead on this path.
 
@@ -172,16 +179,16 @@ Core hybrid-desktop UX; currently dead on this path.
 Payoff: two-finger trackpad scroll in GTK apps and shell (overview workspace
 scrub, app-grid paging), pinch-ish momentum via UIKit's pan recognizer.
 
-### Phase 3: text entry polish (0 days now, optional bridge later)
+### Phase 3: text entry (done)
 
 Ship the **shell OSK** as the GNOME flavor's keyboard. It already delivers
 full Unicode via `Main.inputMethod.commit()`, honors content-purpose
 layouts, and needs nothing from us once Phases 0-1 land. The iOS system
 keyboard (TRAITS path) stays the iosc-flavor mechanism.
 
-Known limitation to accept for now: the hardware/floating iOS keyboard path
-into gnome-shell (XIOS_IN_TEXT) is ASCII-only keyval clicks
-(meta-input-ios.c:107). Two upgrade options if it matters later, in order:
+This used to be a limitation: XIOS_IN_TEXT into gnome-shell was ASCII-only keyval clicks. The
+second option below is what landed (2026-10-01): meta-input-ios resolves the Shell's input method
+and commits text through it, falling back to keysyms only without one. The options as planned:
 
 - map non-ASCII codepoints to Unicode keysyms (`codepoint | 0x01000000`) in
   the TEXT loop; works for most input without touching the shell;
@@ -206,7 +213,7 @@ turn off `screen-keyboard-enabled` rather than dropping the patch: mutter is
 the root compositor here and owns the input socket, which makes the TRAITS
 half the cheap one to keep. Flavor matrix lives in osk-plan.md.
 
-### Phase 4: Apple Pencil as a real stylus (2-4 days, after 1-2)
+### Phase 4: Apple Pencil as a real stylus (open)
 
 No virtual tablet device exists in mutter 46, but MetaBackendIOS is compiled
 in-tree, so it can use private Clutter event constructors like the native
