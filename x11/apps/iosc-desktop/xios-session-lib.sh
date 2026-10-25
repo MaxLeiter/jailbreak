@@ -1179,6 +1179,14 @@ xios_session_iosc() {
     export XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" XIOS_A11Y_SOCK="$XS_A11Y_SOCK"
     [ -n "$XS_SLOT" ] && export IOSC_IGNORE_ACTIVE_SESSION=1
     [ -n "${IOSC_PANEL_OPACITY:-}" ] && export IOSC_PANEL_OPACITY
+    # X11 (the xios-x11 flavor installs Xwayland): iosc spawns it rootless under
+    # its own XWM, one per iosc, so each slot gets its own X display. iosc
+    # publishes it as x11-display (see xs_iosc_x11_display). IOSC_XWAYLAND=0 opts out.
+    local xwl="${IOSC_XWAYLAND_BIN:-$XS_PREFIX/bin/Xwayland}"
+    if [ "${IOSC_XWAYLAND:-1}" != 0 ] && [ -x "$xwl" ]; then
+        export IOSC_XWAYLAND=1 IOSC_XWAYLAND_BIN="$xwl"
+        xs_log "iosc: Xwayland found ($xwl); X11 apps run rootless under iosc's XWM"
+    fi
     sh "$script" || true
     xs_record_slot_process_pgroups iosc
     xs_write_status iosc waiting "waiting for compositor surface"
@@ -1421,6 +1429,23 @@ xios_session_kde() {
 # No teardown — this rides on whatever compositor is up. Reuses run-kgx.sh's proven
 # client environment (shared session bus dir, absolute WAYLAND_DISPLAY, GDK wayland,
 # GTK ngl on ANGLE/IOSurface, memory gsettings, writable HOME).
+# ":N" of the rootless Xwayland this session's iosc runs, if any. iosc latches it
+# as x11-display in its xios-status.d sidecar (iosc.status, iosc-<slot>.status)
+# once its XWM owns the display. The sidecar outlives a killed iosc, so the X
+# socket must exist too before the number is believed.
+xs_iosc_x11_display() {
+    local f="${XIOS_STATUS_DIR:-$XS_TMP/xios-status.d}/iosc${XS_SLOT:+-$XS_SLOT}.status" d
+    [ -r "$f" ] || return 1
+    d="$(awk -F'\t' '$1 == "x11-display" { v = $2 } END { print v }' "$f" 2>/dev/null)"
+    case "$d" in
+        :*[!0-9]*|:) return 1 ;;
+        :*) ;;
+        *) return 1 ;;
+    esac
+    [ -S "${XS_X11_UNIX_DIR:-/tmp/.X11-unix}/X${d#:}" ] || return 1
+    printf '%s\n' "$d"
+}
+
 xios_session_app() {
     local name="$1"
     [ -n "$name" ] || {
@@ -1545,6 +1570,18 @@ xios_session_app() {
         dbus_addr=(DBUS_SESSION_BUS_ADDRESS="$addr" DBUS_SYSTEM_BUS_ADDRESS="$addr")
         xs_start_native_helpers "$busdir" "$addr"
     fi
+    # X11 apps: an iosc desktop running Xwayland publishes its X display (per
+    # slot). GTK stays Wayland-first and only falls back to X11 for an X11-only
+    # build; everything else just needs DISPLAY.
+    local x11_env=() x11_display
+    case "$owner" in
+        ""|iosc)
+            if x11_display="$(xs_iosc_x11_display)"; then
+                x11_env=(DISPLAY="$x11_display" "GDK_BACKEND=wayland,x11")
+                xs_log "app: X11 display $x11_display available"
+            fi
+            ;;
+    esac
     local launcher=("$XS_BASH" -lc "${a11y_prefix}exec $exec")
     if [ ${#dbus_addr[@]} -eq 0 ]; then
         launcher=("$XS_DBUS_RUN" -- ${launcher[@]+"${launcher[@]}"})
@@ -1562,6 +1599,7 @@ xios_session_app() {
         XIOS_ATSPI_LOG="$XS_TMP/xios-atspi${XS_SLOT:+-$XS_SLOT}.log" \
         ${client_env[@]+"${client_env[@]}"} \
         ${app_env[@]+"${app_env[@]}"} \
+        ${x11_env[@]+"${x11_env[@]}"} \
         ${gtk_a11y_env[@]+"${gtk_a11y_env[@]}"} \
         ${dbus_addr[@]+"${dbus_addr[@]}"} \
         HOME="$XS_VAR/root" \
