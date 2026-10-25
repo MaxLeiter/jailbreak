@@ -21,7 +21,6 @@ import argparse
 import filecmp
 import functools
 import os
-import re
 import shutil
 from collections import defaultdict
 
@@ -112,7 +111,6 @@ REPO_DIR = os.environ.get(
 )
 
 # Parse {name}_{version}_{arch}.deb
-DEB_RE = re.compile(r"^(.+?)_(.+?)\.deb$")
 
 
 def parse_deb_filename(fname):
@@ -195,6 +193,13 @@ def main():
     all_keys = {k for k in all_keys if not k[0].startswith("com.max.")}
     if selected is not None:
         all_keys = {k for k in all_keys if k[0] in selected}
+        # A misspelled (or com.max.*) name used to select nothing and report
+        # "0 copies", which reads exactly like "already in sync".
+        unknown = selected - {k[0] for k in all_keys}
+        if unknown:
+            raise SystemExit(
+                "ERROR: --only names no x11 build output or repo/debs package: "
+                + ", ".join(sorted(unknown)))
 
     copies = []  # (src, dst)
     collisions = []  # (package, version, out_path, repo_path)
