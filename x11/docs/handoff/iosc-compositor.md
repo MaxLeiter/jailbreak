@@ -229,3 +229,17 @@
 
 ## Verify
 `/var/jb/tmp/iosc.log` (logical/output/clients), shell stderr logs (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.
+
+## 2026-10-25 (later): X access for mobile clients
+- iosc 0.9.52 (unpublished, device-tested; the binary was tested in its own slot and
+  mv'd into place for the ioscd test, then the 0.9.51 bytes restored, not dpkg-installed:
+  the iosc postinst re-bootstraps the Metal event broker, which a live KDE depends on). Xwayland
+  seeds its host list with `SI:localuser:<its own user>` only and has no cookie, so with iosc
+  (and Xwayland) as root every mobile client (all ioscd launches) got "Authorization required".
+  The XWM now does what `xhost +si:localuser:mobile` does, right after WM setup and before
+  `x11-display` is published: core `ChangeHosts(Insert, ServerInterpreted, "localuser\0mobile")`
+  (`xwm_grant_local_user`, core libxcb only). Access control stays on; uid -2 (nobody) is still
+  refused. Device: with both Xwayland 24.1.13+ios2 and 23.2.7+ios5 the host list reads
+  `localuser:root`, `localuser:mobile`; mobile `glxgears` and `xterm` map as iosc surfaces;
+  two iosc instances got distinct displays (`:0`, `:1`). Evidence:
+  `x11/artifacts/device-runs/x11-gaps-20261025/` (main checkout).

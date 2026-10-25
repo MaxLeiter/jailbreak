@@ -152,6 +152,8 @@ static char g_xios_start_a11y[PATH_MAX];
 static char g_xios_hwbridged[PATH_MAX];
 static char g_xios_sensord[PATH_MAX];
 static char g_xios_sysintd[PATH_MAX];
+static char g_xwayland_bin[PATH_MAX];
+static char g_x11_unix_dir[PATH_MAX];
 static char g_native_flag[PATH_MAX];
 static char g_session_status[PATH_MAX];
 static char g_status_dir[PATH_MAX];
@@ -256,6 +258,11 @@ static void init_paths(void)
     prefixed_path(g_xios_hwbridged, sizeof(g_xios_hwbridged), "/usr/libexec/xios-hwbridged");
     prefixed_path(g_xios_sensord, sizeof(g_xios_sensord), "/usr/libexec/xios-sensord");
     prefixed_path(g_xios_sysintd, sizeof(g_xios_sysintd), "/usr/libexec/xios-sysintd");
+    prefixed_path(g_xwayland_bin, sizeof(g_xwayland_bin), "/usr/bin/Xwayland");
+    {
+        const char *d = getenv("XIOS_X11_UNIX_DIR");   /* tests; X sockets live here */
+        copy_path(g_x11_unix_dir, sizeof(g_x11_unix_dir), (d && *d) ? d : "/tmp/.X11-unix");
+    }
 
     if (g_jbroot[0]) {
         snprintf(g_home, sizeof(g_home), "%s/var/root", g_jbroot);
@@ -429,6 +436,19 @@ static void close_inherited_fds(void)
     int max = getdtablesize();
     if (max <= 0 || max > 65536) max = 65536;
     for (int fd = 3; fd < max; fd++) close(fd);
+}
+
+/* As close_inherited_fds, but keeping the listed descriptors (a helper shell's
+ * pid and log fds). */
+static void close_inherited_fds_except(const int *keep, int nkeep)
+{
+    int max = getdtablesize();
+    if (max <= 0 || max > 65536) max = 65536;
+    for (int fd = 3; fd < max; fd++) {
+        int kept = 0;
+        for (int i = 0; i < nkeep && !kept; i++) kept = keep[i] == fd;
+        if (!kept) close(fd);
+    }
 }
 
 static void set_rootless_path(int include_local)
@@ -960,6 +980,65 @@ static void ensure_audio(void)
     waitpid(pid, &status, 0);
 }
 
+/* X11 for the classic desktop, the rule xios_session_iosc follows in
+ * xios-session-lib.sh: when Xwayland is installed (the xios-x11 flavor), iosc
+ * spawns it rootless under its own XWM and publishes the display as
+ * x11-display (see iosc_x11_display). IOSC_XWAYLAND=0 opts out; IOSC_XWAYLAND_BIN
+ * picks another Xwayland. The session lib starts no native iosc, so the native
+ * namespace keeps whatever the environment says. */
+static const char *iosc_xwayland_bin(int native)
+{
+    if (native) return NULL;
+    const char *want = getenv("IOSC_XWAYLAND");
+    if (want && strcmp(want, "0") == 0) return NULL;
+    const char *bin = getenv("IOSC_XWAYLAND_BIN");
+    if (!bin || !*bin) bin = g_xwayland_bin;
+    return access(bin, X_OK) == 0 ? bin : NULL;
+}
+
+/* In the iosc child. */
+static void set_iosc_xwayland_env(int native)
+{
+    const char *bin = iosc_xwayland_bin(native);
+    if (!bin) return;
+    setenv("IOSC_XWAYLAND", "1", 1);
+    setenv("IOSC_XWAYLAND_BIN", bin, 1);
+}
+
+/* ":N" of the rootless Xwayland the mode's iosc runs, read the way
+ * xs_iosc_x11_display does in xios-session-lib.sh: iosc latches x11-display in
+ * its xios-status.d sidecar (iosc.status, iosc-native.status) once its XWM owns
+ * the display ("none" if Xwayland died). The sidecar outlives a killed iosc,
+ * so the number is believed only while <x11 unix dir>/X<N> accepts a connection.
+ * 1 = *out is the display; 0 = none (yet); -1 = iosc says Xwayland is gone. */
+static int iosc_x11_display(int native, char *out, size_t out_len)
+{
+    char path[PATH_MAX], line[256], value[32] = "";
+    snprintf(path, sizeof(path), "%s/%s.status", g_status_dir,
+             native ? "iosc-native" : "iosc");
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return 0;
+    FILE *f = fdopen(fd, "r");
+    if (!f) { close(fd); return 0; }
+    while (fgets(line, sizeof(line), f)) {
+        static const char key[] = "x11-display\t";
+        if (strncmp(line, key, sizeof(key) - 1) != 0) continue;
+        snprintf(value, sizeof(value), "%s", line + sizeof(key) - 1);   /* last one wins */
+        value[strcspn(value, "\r\n")] = 0;
+    }
+    fclose(f);
+    if (strcmp(value, "none") == 0) return -1;
+    if (value[0] != ':' || !value[1] || strlen(value) > 6) return 0;
+    for (const char *p = value + 1; *p; p++)
+        if (*p < '0' || *p > '9') return 0;
+    /* Something must answer there: a SIGKILLed iosc leaves both its sidecar
+     * and its Xwayland's socket behind. */
+    snprintf(path, sizeof(path), "%s/X%s", g_x11_unix_dir, value + 1);
+    if (!wayland_sock_live(path)) return 0;
+    snprintf(out, out_len, "%s", value);
+    return 1;
+}
+
 /* Start iosc the way run-iosc.sh does: nohup it with XDG_RUNTIME_DIR=/var/jb/tmp,
  * wait for the wayland socket + the app-handshake json, then fix socket perms. */
 static int ensure_iosc(int native)
@@ -994,6 +1073,14 @@ static int ensure_iosc(int native)
     unlink(mode->wayland_sock);
     unlink(mode->lock_sock);
     unlink(mode->json);
+    /* and its latched status, whose x11-display would name a dead (or since
+     * reused) X display until the new iosc writes its own */
+    {
+        char status[PATH_MAX];
+        snprintf(status, sizeof(status), "%s/%s.status", g_status_dir,
+                 native ? "iosc-native" : "iosc");
+        unlink(status);
+    }
 
     pid_t pid = fork();
     if (pid < 0) return -1;
@@ -1004,6 +1091,7 @@ static int ensure_iosc(int native)
         set_rootless_path(0);
         if (native) setenv("IOSC_NATIVE", "1", 1);   /* per-window canvas export */
         else unsetenv("IOSC_NATIVE");
+        set_iosc_xwayland_env(native);
         /* Logical desktop; iosc renders a 2x-oversized IOSurface the Xios app
          * supersamples down to the panel for the ~1.5 effective scale (Max-approved).
          * Env override lets the launcher retune without a rebuild. */
@@ -1034,6 +1122,22 @@ static int ensure_iosc(int native)
     }
     if (!path_exists(mode->wayland_sock) || !path_exists(mode->json)) return -1;
     fix_ddx_perms(native);
+    /* iosc latches x11-display only once its Xwayland is up, a beat after the
+     * Wayland socket; the app that caused this start would otherwise launch
+     * with no DISPLAY. Wait for the display, or for iosc to report none. */
+    if (iosc_xwayland_bin(native)) {
+        char d[32];
+        int rc = 0;
+        uint64_t x_deadline = now_ms() + 6000;
+        while (now_ms() < x_deadline &&
+               (rc = iosc_x11_display(native, d, sizeof(d))) == 0) {
+            int status;
+            if (waitpid(pid, &status, WNOHANG) > 0) { g_iosc_pid[native] = 0; return -1; }
+            usleep(100 * 1000);
+        }
+        if (rc > 0) fprintf(stderr, "ioscd: %s iosc runs X display %s\n", mode_name(native), d);
+        else fprintf(stderr, "ioscd: %s iosc started without an X display\n", mode_name(native));
+    }
     refresh_session_status(native, 1);
     return 0;
 }
@@ -1172,8 +1276,8 @@ static int ensure_session_bus(char *addr, size_t addr_len)
 }
 
 /* A pid file created by an earlier request whose shell has not written the
- * pid yet (it runs xios_pulse_start first, which can take seconds) counts as
- * a helper being started for this long. */
+ * pid yet (a login bash on a loaded iPad can take seconds) counts as a helper
+ * being started for this long. */
 #define HELPER_STARTING_GRACE_SEC 30
 
 /* One helper per session bus, the rule xs_start_native_helper follows in
@@ -1182,7 +1286,10 @@ static int ensure_session_bus(char *addr, size_t addr_len)
  * (xs_pidfile_running). This used to be "skip if ANY instance runs" (a global
  * ps grep), so once any desktop had started a helper on its own bus, apps
  * launched through ioscd got none on ioscd's bus. */
-static int helper_pidfile_running(int dfd, const char *pidfile, const char *name)
+enum { HELPER_NONE, HELPER_RUNNING, HELPER_WRONG_USER };
+
+static int helper_pidfile_running(int dfd, const char *pidfile, const char *name,
+                                  pid_t *pid_out)
 {
     int fd = openat(dfd, pidfile, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
     if (fd < 0) return 0;
@@ -1201,15 +1308,24 @@ static int helper_pidfile_running(int dfd, const char *pidfile, const char *name
     for (ssize_t i = 0; i < n; i++)
         if (buf[i] < '0' || buf[i] > '9') return 0;  /* xs_process_alive: digits only */
     pid_t pid = (pid_t)atoi(buf);
-    if (pid <= 0 || kill(pid, 0) != 0) return 0;
+    if (pid <= 0 || kill(pid, 0) != 0) return HELPER_NONE;
 
     struct kinfo_proc kp;
     size_t len = sizeof(kp);
     int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)pid };
     memset(&kp, 0, sizeof(kp));
     if (sysctl(mib, 4, &kp, &len, NULL, 0) != 0 || len == 0)
-        return 1;  /* alive but unnamed: starting a second one is the worse error */
-    return strncmp(kp.kp_proc.p_comm, name, MAXCOMLEN) == 0;
+        return HELPER_RUNNING;  /* alive but unnamed: starting a second one is the worse error */
+    if (strncmp(kp.kp_proc.p_comm, name, MAXCOMLEN) != 0) return HELPER_NONE;
+    /* Ours, but started as root by an older ioscd: the mobile bus refuses
+     * root, so it runs with no bus. Replace it. */
+    struct passwd *mobile = getpwnam("mobile");
+    uid_t mobile_uid = mobile ? mobile->pw_uid : 501;
+    if (kp.kp_eproc.e_ucred.cr_uid != mobile_uid) {
+        if (pid_out) *pid_out = pid;
+        return HELPER_WRONG_USER;
+    }
+    return HELPER_RUNNING;
 }
 
 /* The bus dir belongs to mobile, so root never opens a name in it that could
@@ -1242,9 +1358,20 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
         snprintf(pidfile, sizeof(pidfile), "%s.pid", name);
         snprintf(logfile, sizeof(logfile), "%s.log", name);
         pid_fd[i] = log_fd[i] = -1;
-        start[i] = access(bins[i], X_OK) == 0 &&
-                   !helper_pidfile_running(dfd, pidfile, name);
-        if (!start[i]) continue;
+        start[i] = 0;
+        if (access(bins[i], X_OK) != 0) continue;
+        pid_t old = 0;
+        int state = helper_pidfile_running(dfd, pidfile, name, &old);
+        if (state == HELPER_RUNNING) continue;
+        if (state == HELPER_WRONG_USER) {
+            fprintf(stderr, "ioscd: replacing %s pid %d on %s: not running as mobile, "
+                    "so the bus refused it\n", name, (int)old, busdir);
+            /* Wait it out: sysintd unlinks its socket on the way down, which
+             * must not happen after the new one has bound the same name. */
+            if (kill(old, SIGTERM) == 0)
+                for (int t = 0; t < 40 && kill(old, 0) == 0; t++) usleep(50 * 1000);
+        }
+        start[i] = 1;
         pid_fd[i] = create_in_bus_dir(dfd, pidfile);
         log_fd[i] = create_in_bus_dir(dfd, logfile);
         if (pid_fd[i] < 0)
@@ -1260,12 +1387,26 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
      * the global path, which is what the native host connects to. */
     char global_sysint[PATH_MAX], own_sysint[PATH_MAX] = "";
     snprintf(global_sysint, sizeof(global_sysint), "%s/xios-sysint.sock", g_tmp);
-    if (start[NHELPERS - 1] /* sysintd, last in bins */ && wayland_sock_live(global_sysint))
-        snprintf(own_sysint, sizeof(own_sysint), "%s/xios-sysint.sock", busdir);
+    if (start[NHELPERS - 1] /* sysintd, last in bins */) {
+        struct stat st;
+        if (wayland_sock_live(global_sysint)) {
+            snprintf(own_sysint, sizeof(own_sysint), "%s/xios-sysint.sock", busdir);
+        } else if (lstat(global_sysint, &st) == 0 &&
+                   (S_ISSOCK(st.st_mode) || S_ISLNK(st.st_mode))) {
+            /* The helpers run as mobile, and the sticky tmp dir keeps mobile
+             * from replacing a dead socket (or a stale link to a stopped
+             * slot's sysintd) that root left at the global name. Nothing
+             * answers there, so clear it for this bus's sysintd. */
+            if (unlink(global_sysint) != 0)
+                fprintf(stderr, "ioscd: cannot clear stale %s: %s\n",
+                        global_sysint, strerror(errno));
+        }
+    }
 
     pid_t pid = fork();
     if (pid == 0) {
         char cmd[4096], closes[128] = "";
+        int keep[2 * NHELPERS], nkeep = 0;
         size_t off;
         setsid();
         child_stdio(g_ioscd_client_log, 1);
@@ -1274,7 +1415,9 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
         setenv("DBUS_SYSTEM_BUS_ADDRESS", bus_addr, 1);
         setenv("XIOS_HWBRIDGE_BUS", "session", 1);
         if (*own_sysint) setenv("XIOS_SYSINT_SOCK", own_sysint, 1);
-        setenv("HOME", g_home, 1);
+        setenv("HOME", g_mobile_home, 1);
+        setenv("USER", "mobile", 1);
+        setenv("LOGNAME", "mobile", 1);
         set_rootless_path(1);
         /* The fds reach bash; a started helper inherits none of them. */
         for (int i = 0; i < NHELPERS; i++) {
@@ -1282,12 +1425,23 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
             for (int k = 0; k < 2; k++) {
                 if (fds[k] < 0) continue;
                 (void)fcntl(fds[k], F_SETFD, 0);
+                keep[nkeep++] = fds[k];
                 off = strlen(closes);
                 snprintf(closes + off, sizeof(closes) - off, " %d>&-", fds[k]);
             }
         }
+        /* As mobile, like the bus daemon: its policy admits only its own uid,
+         * so a root helper authenticates and is then disconnected (hwbridged
+         * logged "lost org.freedesktop.UPower" and exited; sensord and sysintd
+         * stayed up with no bus). None of them needs root: IOKit battery,
+         * backboardd, CoreMotion and the torch go by entitlement, /var/jb/sys
+         * is mobile's, and PulseAudio admits mobile clients. */
+        close_inherited_fds_except(keep, nkeep);
+        if (drop_to_mobile() != 0) _exit(126);
+        /* The profile only for PULSE_SERVER (sysintd's pactl): ensure_audio
+         * already started the audio daemons as root before any launch. */
         off = (size_t)snprintf(cmd, sizeof(cmd),
-                 "if [ -r '%s' ]; then . '%s' 2>/dev/null && xios_pulse_start; fi; ",
+                 "if [ -r '%s' ]; then . '%s' 2>/dev/null; fi; ",
                  g_xios_pulse_profile, g_xios_pulse_profile);
         for (int i = 0; i < NHELPERS && off < sizeof(cmd); i++) {
             char out[32], record[64] = "";
@@ -1456,6 +1610,16 @@ static pid_t launch_client(const char *app_id, char *const app_argv[], int nativ
         close_inherited_fds();
 
         set_wayland_client_env(mode, busdir, have_bus, bus_addr, enable_a11y);
+        /* X11-only apps: the iosc desktop's rootless Xwayland, if it runs one
+         * (xios_session_app passes the same). GTK stays Wayland-first. */
+        char x11_display[32];
+        if (iosc_x11_display(native, x11_display, sizeof(x11_display)) > 0) {
+            setenv("DISPLAY", x11_display, 1);
+            setenv("GDK_BACKEND", "wayland,x11", 1);
+            fprintf(stderr, "ioscd: app_id=%s X11 display %s\n", app_id, x11_display);
+        } else {
+            unsetenv("DISPLAY");
+        }
         if (drop_to_mobile() != 0) _exit(126);
         if (!have_bus) {
             char *run_argv[XIOS_DESKTOP_ARG_MAX + 3];
