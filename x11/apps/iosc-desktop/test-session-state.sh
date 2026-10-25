@@ -171,3 +171,66 @@ live_pid=
 trap cleanup EXIT
 
 echo "session-state: stale display-slot sweep checks passed"
+
+# ---------------------------------------------------------------------------
+# bring-up override, session-lock handoff, and GNOME liveness
+# ---------------------------------------------------------------------------
+# XIOS_SESSION_BRINGUP_DIR must resolve to the script inside it. It used to
+# resolve to the bare directory: `local name=$1 o=$DIR/$name` expands $name
+# before the first assignment takes effect.
+bringup="$TEST_TMP/bringup"
+mkdir -p "$bringup"
+: >"$bringup/run-shell.sh"
+found="$(XIOS_SESSION_BRINGUP_DIR="$bringup" xs_find_bringup run-shell.sh)"
+[ "$found" = "$bringup/run-shell.sh" ] || {
+    echo "XIOS_SESSION_BRINGUP_DIR override resolved to '$found'" >&2
+    exit 1
+}
+
+# A lock dir whose owner has not written its pid yet is a lock being taken,
+# not a stale one; only a pid file that stays missing means a dead owner.
+mkdir -p "$XS_LOCK_DIR"
+XS_LOCK_NOPID_SEEN=0
+if xs_session_lock_is_stale; then
+    echo "a just-taken session lock (no pid yet) was judged stale" >&2
+    exit 1
+fi
+if xs_session_lock_is_stale; then
+    echo "a pid-less session lock was judged stale on the 2nd sighting" >&2
+    exit 1
+fi
+xs_session_lock_is_stale || { echo "a pid-less lock was never judged stale" >&2; exit 1; }
+printf '%s\n' "$$" >"$XS_LOCK_DIR/pid"
+date '+%s' >"$XS_LOCK_DIR/started"
+if xs_session_lock_is_stale; then
+    echo "a live lock owner was judged stale" >&2
+    exit 1
+fi
+rm -rf "$XS_LOCK_DIR"
+
+# Another desktop's GNOME must not keep this session's dead GNOME "alive":
+# with a recorded pgid, only that process group counts.
+perl -e 'setpgrp(0,0); exec { "sleep" } @ARGV' -- \
+    "/usr/bin/gnome-session --builtin --session=xios" 30 >/dev/null 2>&1 </dev/null &
+other_gnome=$!
+trap 'kill "$other_gnome" 2>/dev/null || true; cleanup' EXIT
+for _ in $(seq 1 30); do
+    xios_session_process_running "gnome-session.*--session=xios" && break
+    sleep 0.1
+done
+(
+    XS_SLOT=gslot
+    # A process group nothing lives in.
+    printf '%s\n' 999999 >"$XS_TMP/xios-gnome-gslot.pgid"
+    if xs_gnome_session_alive; then
+        echo "a dead slot GNOME looked alive because another GNOME runs" >&2
+        exit 1
+    fi
+    ps -p "$other_gnome" -o pgid= | tr -cd '0-9' >"$XS_TMP/xios-gnome-gslot.pgid"
+    xs_gnome_session_alive || { echo "a live GNOME process group was not seen" >&2; exit 1; }
+)
+kill "$other_gnome" 2>/dev/null || true
+wait "$other_gnome" 2>/dev/null || true
+trap cleanup EXIT
+
+echo "session-state: bring-up override, lock handoff and GNOME liveness checks passed"

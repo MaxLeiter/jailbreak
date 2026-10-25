@@ -32,8 +32,8 @@ jb_path() {
 }
 
 export PATH="$XS_PREFIX/local/bin:$XS_PREFIX/bin:$XS_PREFIX/sbin${XS_JB:+:$XS_JB/bin:$XS_JB/sbin}:/usr/bin:/bin:$PATH"
-case "${LANG:-}" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) LANG=C ;; esac
-case "${LC_CTYPE:-}" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) LC_CTYPE=UTF-8 ;; esac
+case "${LANG:-}" in ""|UTF-8|*.UTF-8|*.utf8) LANG=C ;; esac
+case "${LC_CTYPE:-}" in ""|C|POSIX|*.UTF-8|*.utf8) LC_CTYPE=UTF-8 ;; esac
 export LANG LC_CTYPE
 export FC_LANG="${FC_LANG:-en}"
 export XCOMPOSEFILE="${XCOMPOSEFILE:-$XS_PREFIX/share/X11/locale/en_US.UTF-8/Compose}"
@@ -580,8 +580,8 @@ EOF
 
 kde_seed_mobile_wallpaper_config() {
   [ "$KDE_PLASMA_FLAVOR" = mobile ] || return 0
-  local file id tmp seen=0 wallpaper="file:///var/jb/usr/share/backgrounds/xios/xios-default.png"
-  local old_wallpaper="file:///var/jb/usr/share/backgrounds/xios/xios-default.jpg"
+  local file id tmp seen=0 wallpaper="file://$XS_PREFIX/share/backgrounds/xios/xios-default.png"
+  local old_wallpaper="file://$XS_PREFIX/share/backgrounds/xios/xios-default.jpg"
   for file in \
     "$XS_VAR/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc" \
     "/var/root/Library/Preferences/plasma-org.kde.plasma.mobileshell-appletsrc"; do

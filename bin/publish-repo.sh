@@ -197,9 +197,8 @@ REPO_KEY="repo@maxleiter.com"
 # publishing that under --from-index would quietly ship the accumulated delta the
 # flag exists to avoid. Enforce it instead of documenting it.
 if [ "$TARGET" = prod ] && [ "$SOURCE" = index ]; then
-  repo_root_for_git="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-  if ! git -C "$repo_root_for_git" ls-files --error-unmatch "$PROFILE_PACKAGES_GIT_PATH" >/dev/null 2>&1 \
-     || ! git -C "$repo_root_for_git" diff --quiet HEAD -- "$PROFILE_PACKAGES_GIT_PATH" 2>/dev/null; then
+  if ! git -C "$REPO_ROOT" ls-files --error-unmatch "$PROFILE_PACKAGES_GIT_PATH" >/dev/null 2>&1 \
+     || ! git -C "$REPO_ROOT" diff --quiet HEAD -- "$PROFILE_PACKAGES_GIT_PATH" 2>/dev/null; then
     echo "ERROR: $PROFILE_PACKAGES_GIT_PATH differs from HEAD, so --from-index would not publish what is committed." >&2
     echo "       This is the normal state right after a staging publish (it regenerates the" >&2
     echo "       index from every deb in repo/debs). Pick one:" >&2
@@ -225,7 +224,11 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
   echo "ERROR: another repo publish is already running ($LOCKDIR)" >&2
   exit 1
 fi
-trap 'rm -rf "$LOCKDIR"' EXIT
+# The deploy copy is cleaned here, not by a RETURN trap in deploy_static_repo:
+# every `exit 1` in there (a credential found, a failed verify) skipped that and
+# left a full copy of repo/ behind.
+DEPLOY_ROOT=""
+trap 'rm -rf "$LOCKDIR" ${DEPLOY_ROOT:+"$DEPLOY_ROOT"}' EXIT
 
 snapshot_debs() {
   find "$PROFILE_REPO_DIR/debs" -type f -name '*.deb' -print0 \
@@ -317,9 +320,8 @@ refresh_sibling_profiles() {
 deploy_static_repo() {
   local project="$1" config_name="$2" domain="$3" mode="${4:-prod}"
   local deploy_root index_dir published_path
-  deploy_root="$(mktemp -d "${TMPDIR:-/tmp}/maxleiter-repo-deploy.XXXXXX")"
-  cleanup_deploy_root() { rm -rf "$deploy_root"; }
-  trap cleanup_deploy_root RETURN
+  DEPLOY_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/maxleiter-repo-deploy.XXXXXX")"
+  deploy_root="$DEPLOY_ROOT"
 
   mkdir -p "$deploy_root/repo"
   # The Vercel CLI applies a .gitignore found in the directory it uploads, so
@@ -341,7 +343,7 @@ deploy_static_repo() {
             -o -name 'id_rsa*' -o -name '.netrc' \) -print 2>/dev/null | head -5)"
   if [ -n "$leaked" ]; then
     echo "ERROR: refusing to deploy, the staged copy contains credential files:" >&2
-    printf '       %s\n' $leaked >&2
+    printf '%s\n' "$leaked" | sed 's/^/       /' >&2
     exit 1
   fi
 
@@ -469,6 +471,13 @@ if [ "$SOURCE" = index ]; then
   "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" "${audit_args[@]}"
   BEFORE=""
 else
+  # find fails inside $(snapshot_debs) without one, and set -e then ended the
+  # run with no message at all.
+  [ -d "$PROFILE_REPO_DIR/debs" ] || {
+    echo "ERROR: $PROFILE_REPO_DIR/debs does not exist; --from-debs needs the payloads." >&2
+    echo "       Use --from-index to publish the committed index, or stage the debs first." >&2
+    exit 1
+  }
   finalize_x11_graphics_debs
   BEFORE="$(snapshot_debs)"
 

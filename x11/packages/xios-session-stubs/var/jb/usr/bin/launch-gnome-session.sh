@@ -166,9 +166,13 @@ echo "==> start GNOME session -> $GNOME_SHELL_LOG"
   ' >"$GNOME_SHELL_LOG" 2>&1 </dev/null &
 GPID=$!
 
+# The session's own process group (the inner shell reports it), never "any GNOME
+# on the device": another slot's GNOME must not keep a dead one looking alive.
 session_alive() {
   kill -0 "$GPID" 2>/dev/null && return 0
-  ps ax 2>/dev/null | grep -v grep | grep -E "gnome-session.*--session=xios|/usr/bin/gnome-shell" >/dev/null 2>&1
+  pg="$(tr -cd 0-9 <"$XIOS_GNOME_PGID_FILE" 2>/dev/null)"
+  [ -n "$pg" ] || return 1
+  ps ax -o pgid= 2>/dev/null | awk -v g="$pg" '$1 == g { f = 1 } END { exit !f }'
 }
 
 echo "==> wait for GNOME Shell to create the output IOSurface + rendezvous sockets"
@@ -197,9 +201,14 @@ if [ -S "$XIOS_DDX_SOCKET" ]; then
   fi
 fi
 
-echo "==> relaunch the Xios app"
-uiopen -b com.max.xios 2>/dev/null || true
-sleep 1
+# A slot leaves the foreground alone unless asked (same rule as xios-session).
+if [ -z "${XIOS_SESSION_SLOT:-}" ] || [ "${XIOS_SLOT_FOREGROUND:-0}" = 1 ]; then
+  echo "==> relaunch the Xios app"
+  uiopen -b com.max.xios 2>/dev/null || true
+  sleep 1
+else
+  echo "==> slot $XIOS_SESSION_SLOT: leaving Xios foreground unchanged"
+fi
 
 echo "   session pgid:    $(cat "$XIOS_GNOME_PGID_FILE" 2>/dev/null)"
 
