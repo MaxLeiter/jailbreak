@@ -1478,7 +1478,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.50
+Version: 0.9.51
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1488,11 +1488,11 @@ Section: X11
 Priority: optional
 Installed-Size: 756
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.50_iphoneos-arm64.deb
-Size: 185218
-MD5sum: 2db09ad6494cbdf7a14d0f99f378effa
-SHA1: b4a1e3b971bfbb241b4c0d800c54522ea5df4147
-SHA256: 86d56ee536d7075a69d814e4cbcbba1fcbaf529ee50210d55c0003a9b13e8fee
+Filename: debs/iosc_0.9.51_iphoneos-arm64.deb
+Size: 186738
+MD5sum: 2df1a18d4738921b943e8ba9aad0ce0d
+SHA1: 2e37683d5fa8af3397968636947840d3d2b0050a
+SHA256: d4a58741c1db677ac9790ad55b747d1025bdbb42cb27abe8793bcb51b90df291
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -13077,20 +13077,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-x11
 Name: Xios Desktop (X11)
-Version: 0.1.11
+Version: 0.1.12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-core (>= 0.1.13), iosc (>= 0.9.50), xwayland (>= 23.2.7+ios5), xauth
+Depends: firmware (>= 16.5), xios-core (>= 0.1.13), iosc (>= 0.9.51), xwayland (>= 23.2.7+ios5), xauth
 MinimumOSVersion: 16.5.0
 Description: the X11 flavor for Xios
-Filename: debs/xios-x11_0.1.11_iphoneos-arm64.deb
-Size: 870
-MD5sum: e11b032e36dd81c69311cd64aa2242f1
-SHA1: 463e36efd1f871c7aebbf5c940007378292e4315
-SHA256: c8be4e8410463b6afe77f43172d938f37b0b638da880a083d73070e44aa941f5
+Filename: debs/xios-x11_0.1.12_iphoneos-arm64.deb
+Size: 868
+MD5sum: ab4b4b9ddf4ca9fdbf128467c23ca998
+SHA1: 555659a60ac744853b425bba32a73f2d8c363d15
+SHA256: 6ebb5c4468a1d6d438b733981754f63a9b658959262a9eb27ef86d51ff67d2c9
 Icon: https://repo.maxleiter.com/icons/xios-x11.png
 Depiction: https://repo.maxleiter.com/depictions/xios-x11.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-x11.json
