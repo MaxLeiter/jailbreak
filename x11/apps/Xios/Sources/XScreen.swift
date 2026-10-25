@@ -1654,12 +1654,17 @@ final class XScreenView: UIView {
     /// Streaming verbs (APPS_LIST/APPS_SYNC) still need the read-to-EOF path.
     private func sendIOSCDRequest(_ line: String, maxBytes: Int = 1 << 20,
                                   timeout: TimeInterval = 2.0,
-                                  stopAtNewline: Bool = false) -> String? {
+                                  stopAtNewline: Bool = false)
+        -> Result<String, IOSCDFailure> {
         let fd = xiosConnectUnixSocket(ioscdSocketPath, timeout: timeout)
-        guard fd >= 0 else { return nil }
+        guard fd >= 0 else {
+            let err = errno
+            return .failure(err == ENOENT || err == ECONNREFUSED
+                            ? .notRunning : .unreachable(err))
+        }
         defer { close(fd) }
         guard line.data(using: .utf8)?.withUnsafeBytes({ xiosWriteAll(fd, bytes: $0) }) == true
-        else { return nil }
+        else { return .failure(.unreachable(errno)) }
         Darwin.shutdown(fd, SHUT_WR)
 
         var data = Data()
@@ -1674,18 +1679,42 @@ final class XScreenView: UIView {
             } else if n < 0 && errno == EINTR {
                 continue
             } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return nil
+                return .failure(.timedOut)
             } else {
                 break
             }
         }
-        return String(data: data, encoding: .utf8)
+        guard !data.isEmpty else { return .failure(.noReply) }
+        return .success(String(decoding: data, as: UTF8.self))
+    }
+
+    /// Why an ioscd request got no answer, worded for the status line. Before
+    /// this, every case read "ioscd timed out", including the common one where
+    /// ioscd was never installed (GitHub issue #11).
+    private enum IOSCDFailure: Error, CustomStringConvertible {
+        case notRunning
+        case unreachable(Int32)
+        case timedOut
+        case noReply
+
+        var description: String {
+            switch self {
+            case .notRunning:
+                return "ioscd is not running (is xios-launcher-tools installed?)"
+            case .unreachable(let err):
+                return "cannot reach ioscd: \(String(cString: strerror(err)))"
+            case .timedOut:
+                return "ioscd timed out"
+            case .noReply:
+                return "ioscd sent no reply"
+            }
+        }
     }
 
     private func requestIOSCD(_ line: String, maxBytes: Int = 1 << 20,
                               timeout: TimeInterval = 2.0,
                               stopAtNewline: Bool = false,
-                              completion: @escaping (String?) -> Void) {
+                              completion: @escaping (Result<String, IOSCDFailure>) -> Void) {
         ioscdRequestQueue.async { [weak self] in
             guard let self else { return }
             let response = self.sendIOSCDRequest(
@@ -1697,16 +1726,19 @@ final class XScreenView: UIView {
         }
     }
 
-    private func parseIOSCDResponseLines(_ response: String?) -> [String]? {
-        response?.split(separator: "\n", omittingEmptySubsequences: false)
+    private static func parseIOSCDResponseLines(_ response: String) -> [String] {
+        response.split(separator: "\n", omittingEmptySubsequences: false)
             .map { String($0).trimmingCharacters(in: .newlines) }
             .filter { !$0.isEmpty }
     }
 
     private func requestIOSCDLines(_ line: String, timeout: TimeInterval = 2.0,
-                                   completion: @escaping ([String]?) -> Void) {
-        requestIOSCD(line, timeout: timeout) { [weak self] response in
-            completion(self?.parseIOSCDResponseLines(response))
+                                   completion: @escaping (Result<[String], IOSCDFailure>) -> Void) {
+        requestIOSCD(line, timeout: timeout) { response in
+            completion(response.flatMap { text in
+                let lines = Self.parseIOSCDResponseLines(text)
+                return lines.isEmpty ? .failure(.noReply) : .success(lines)
+            })
         }
     }
 
@@ -1754,12 +1786,12 @@ final class XScreenView: UIView {
         }
 
         let line = sessionRequestLine(preset, app: app, display: display, slot: slot)
-        requestIOSCD(line, maxBytes: 4096, stopAtNewline: true) { [weak self] rawResponse in
+        requestIOSCD(line, maxBytes: 4096, stopAtNewline: true) { [weak self] result in
             guard let self else { return }
             self.sessionRequestInFlight = false
-            let response = rawResponse?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if response?.hasPrefix("SESSION_STARTED") == true ||
-                response?.hasPrefix("SESSION_ACTIVE") == true {
+            let response = result.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if case .success(let reply) = response,
+               reply.hasPrefix("SESSION_STARTED") || reply.hasPrefix("SESSION_ACTIVE") {
                 if preset == "app" {
                     self.lastToolMessage = "Launch requested: \(appLabel ?? "app")"
                 } else {
@@ -1770,7 +1802,11 @@ final class XScreenView: UIView {
                 }
                 completion?(true)
             } else {
-                let detail = response?.isEmpty == false ? response! : "ioscd timed out"
+                let detail: String
+                switch response {
+                case .success(let reply): detail = reply.isEmpty ? "ioscd sent no reply" : reply
+                case .failure(let failure): detail = failure.description
+                }
                 self.lastToolMessage = "Session request failed: \(detail)"
                 completion?(false)
             }
@@ -3604,12 +3640,11 @@ final class XScreenView: UIView {
     private typealias LauncherState = (apps: [LauncherApp], error: String?)
 
     private func fetchLauncherApps(completion: @escaping (LauncherState) -> Void) {
-        requestIOSCDLines("APPS_LIST\n", timeout: 5.0) { lines in
-            guard let lines else {
-                completion(([], "ioscd timed out"))
-                return
+        requestIOSCDLines("APPS_LIST\n", timeout: 5.0) { result in
+            switch result {
+            case .success(let lines): completion(Self.launcherState(from: lines))
+            case .failure(let failure): completion(([], failure.description))
             }
-            completion(Self.launcherState(from: lines))
         }
     }
 
@@ -3630,13 +3665,17 @@ final class XScreenView: UIView {
     private func sendLauncherToggle(_ app: LauncherApp, enabled: Bool,
                                     completion: @escaping (Bool) -> Void) {
         let verb = enabled ? "APP_ENABLE" : "APP_DISABLE"
-        requestIOSCDLines("\(verb)\t\(app.id)\n", timeout: 5.0) { [weak self] lines in
+        requestIOSCDLines("\(verb)\t\(app.id)\n", timeout: 5.0) { [weak self] result in
             guard let self else { return }
-            guard let lines, let last = lines.last else {
-                self.lastToolMessage = "Launcher update failed: ioscd timed out"
+            let lines: [String]
+            switch result {
+            case .success(let reply): lines = reply
+            case .failure(let failure):
+                self.lastToolMessage = "Launcher update failed: \(failure)"
                 completion(false)
                 return
             }
+            let last = lines.last ?? ""
             if last == "APPS_END\t0" {
                 self.lastToolMessage = "\(enabled ? "Enabled" : "Disabled") \(app.name)"
                 completion(true)
@@ -3651,10 +3690,13 @@ final class XScreenView: UIView {
                                   completion: @escaping ([String]?) -> Void) {
         let mode = native ? "native" : "classic"
         let dry = dryRun ? "dry" : "apply"
-        requestIOSCDLines("APPS_SYNC\t\(mode)\t\(dry)\n", timeout: 15.0) { [weak self] lines in
+        requestIOSCDLines("APPS_SYNC\t\(mode)\t\(dry)\n", timeout: 15.0) { [weak self] result in
             guard let self else { return }
-            guard let lines else {
-                self.lastToolMessage = "Launcher sync failed: ioscd timed out"
+            let lines: [String]
+            switch result {
+            case .success(let reply): lines = reply
+            case .failure(let failure):
+                self.lastToolMessage = "Launcher sync failed: \(failure)"
                 completion(nil)
                 return
             }

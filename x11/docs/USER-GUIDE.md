@@ -90,9 +90,11 @@ Substitute `xios-kde`, `xios-native`, or `xios-x11`. Every flavor brings in:
 - **`xios-desktop-defaults`**, fonts, locale, XDG paths, and the retina display profile.
 
 GNOME, KDE, and X11 additionally install **`xios-core`**, **`com.max.xios`**
-(the **X11** display app), **`iosc-shell`**, and **`xios-session`**. Native
-instead installs **`xios-launcher-tools`**, the per-app host payload, and its
-app-ID-only `ioscd` service.
+(the **X11** display app), **`iosc-shell`**, **`xios-session`**, and
+**`xios-launcher-tools`**, which carries the `ioscd` service the app's desktop
+picker talks to. Native skips the fullscreen pieces and installs
+**`xios-launcher-tools`** for the per-app host payload and its app-ID-only
+`ioscd` launches.
 
 Sileo will not auto-install the *recommended* extras. For GNOME those are worth adding by
 hand:
@@ -184,6 +186,17 @@ up, start one.
 
 **Nothing on screen and `status` says `compositor-only`.** The compositor is up but the
 shell never painted. Check the log for the flavor you picked.
+
+**The picker says "Session request failed: ioscd timed out" (or "ioscd is not running").**
+The app could not reach `ioscd`, the daemon that starts desktops for it. Installs of
+`xios-core` 0.1.11 and older did not bring it in. Install it, which also starts it:
+
+```bash
+apt install xios-launcher-tools
+```
+
+If it is installed and the error stays, `ls -l /var/jb/tmp/ioscd.sock` should show the
+socket, and `/var/jb/tmp/ioscd.log` says why it did not start.
 
 **Logs.** All under `/var/jb/tmp/`:
 
