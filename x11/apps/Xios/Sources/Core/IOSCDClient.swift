@@ -15,13 +15,13 @@ final class IOSCDClient {
     /// a session child that inherited the socket cannot stall the reply to the recv
     /// timeout. Streaming verbs (APPS_LIST, APPS_SYNC) read to EOF.
     private func send(_ line: String, maxBytes: Int, timeout: TimeInterval,
-                      stopAtNewline: Bool) -> String? {
+                      stopAtNewline: Bool) -> Result<String, IOSCDProtocol.Failure> {
         let fd = xiosConnectUnixSocket(XiosRuntimePaths.firstExisting("ioscd.sock"),
                                        timeout: timeout)
-        guard fd >= 0 else { return nil }
+        guard fd >= 0 else { return .failure(.init(connectErrno: errno)) }
         defer { close(fd) }
         guard line.data(using: .utf8)?.withUnsafeBytes({ xiosWriteAll(fd, bytes: $0) }) == true
-        else { return nil }
+        else { return .failure(.unreachable(errno)) }
         Darwin.shutdown(fd, SHUT_WR)
 
         var data = Data()
@@ -34,17 +34,18 @@ final class IOSCDClient {
             } else if n < 0 && errno == EINTR {
                 continue
             } else if n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return nil
+                return .failure(.timedOut)
             } else {
                 break
             }
         }
-        return String(data: data, encoding: .utf8)
+        guard !data.isEmpty else { return .failure(.noReply) }
+        return .success(String(decoding: data, as: UTF8.self))
     }
 
     func request(_ line: String, maxBytes: Int = 1 << 20, timeout: TimeInterval = 2.0,
                  stopAtNewline: Bool = false,
-                 completion: @escaping (String?) -> Void) {
+                 completion: @escaping (Result<String, IOSCDProtocol.Failure>) -> Void) {
         queue.async { [self] in
             let response = send(line, maxBytes: maxBytes, timeout: timeout,
                                 stopAtNewline: stopAtNewline)
@@ -52,12 +53,16 @@ final class IOSCDClient {
         }
     }
 
+    /// A successful reply always has at least one line (APPS_END, or ERR).
     func requestLines(_ line: String, timeout: TimeInterval = 2.0,
-                      completion: @escaping ([String]?) -> Void) {
+                      completion: @escaping (Result<[String], IOSCDProtocol.Failure>) -> Void) {
         request(line, timeout: timeout) { response in
-            completion(response?.split(separator: "\n", omittingEmptySubsequences: false)
-                .map { String($0).trimmingCharacters(in: .newlines) }
-                .filter { !$0.isEmpty })
+            completion(response.flatMap { text in
+                let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+                    .map { String($0).trimmingCharacters(in: .newlines) }
+                    .filter { !$0.isEmpty }
+                return lines.isEmpty ? .failure(.noReply) : .success(lines)
+            })
         }
     }
 
@@ -74,27 +79,30 @@ final class IOSCDClient {
     }
 
     func appsList(completion: @escaping (IOSCDProtocol.AppsList) -> Void) {
-        requestLines("APPS_LIST\n", timeout: 5.0) { lines in
-            guard let lines else {
-                completion(.init(apps: [], error: "ioscd timed out")); return
+        requestLines("APPS_LIST\n", timeout: 5.0) { result in
+            switch result {
+            case .success(let lines): completion(IOSCDProtocol.parseAppsList(lines))
+            case .failure(let failure): completion(.init(apps: [], error: failure.description))
             }
-            completion(IOSCDProtocol.parseAppsList(lines))
         }
     }
 
     func setAppEnabled(_ app: LauncherApp, enabled: Bool,
                        completion: @escaping (String?) -> Void) {
         let verb = enabled ? "APP_ENABLE" : "APP_DISABLE"
-        requestLines("\(verb)\t\(app.id)\n", timeout: 5.0) { lines in
-            guard let lines, let last = lines.last else {
-                completion("ioscd timed out"); return
+        requestLines("\(verb)\t\(app.id)\n", timeout: 5.0) { result in
+            switch result {
+            case .failure(let failure):
+                completion(failure.description)
+            case .success(let lines):
+                let last = lines.last ?? ""
+                completion(last == "APPS_END\t0" ? nil : (lines.first ?? last))
             }
-            completion(last == "APPS_END\t0" ? nil : (lines.first ?? last))
         }
     }
 
     func syncLaunchers(native: Bool, dryRun: Bool,
-                       completion: @escaping ([String]?) -> Void) {
+                       completion: @escaping (Result<[String], IOSCDProtocol.Failure>) -> Void) {
         requestLines("APPS_SYNC\t\(native ? "native" : "classic")\t\(dryRun ? "dry" : "apply")\n",
                      timeout: 15.0, completion: completion)
     }
@@ -102,6 +110,6 @@ final class IOSCDClient {
     /// VoiceOver state for the desktop-side accessibility helper (invariant 59).
     func sendA11yState(_ enabled: Bool, completion: @escaping (Bool) -> Void) {
         request("A11Y_STATE\t\(enabled ? 1 : 0)\n", maxBytes: 256, timeout: 2.0,
-                stopAtNewline: true) { completion($0 != nil) }
+                stopAtNewline: true) { completion((try? $0.get()) != nil) }
     }
 }

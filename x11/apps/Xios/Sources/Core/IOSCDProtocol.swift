@@ -18,16 +18,46 @@ enum IOSCDProtocol {
             .joined(separator: "\t") + "\n"
     }
 
+    /// Why a request got no answer, worded for the status line. Every one of these
+    /// used to read "ioscd timed out", including the common case where ioscd was
+    /// never installed (GitHub issue #11).
+    enum Failure: Error, Equatable, CustomStringConvertible {
+        case notRunning
+        case unreachable(Int32)
+        case timedOut
+        case noReply
+
+        /// connect(2) failing with nothing listening (no socket, or a stale one)
+        /// means the daemon is down, not slow.
+        init(connectErrno err: Int32) {
+            self = err == ENOENT || err == ECONNREFUSED ? .notRunning : .unreachable(err)
+        }
+
+        var description: String {
+            switch self {
+            case .notRunning: return "ioscd is not running (is xios-launcher-tools installed?)"
+            case .unreachable(let err): return "cannot reach ioscd: \(String(cString: strerror(err)))"
+            case .timedOut: return "ioscd timed out"
+            case .noReply: return "ioscd sent no reply"
+            }
+        }
+    }
+
     enum SessionReply: Equatable {
         case started
         case failed(String)
 
-        init(_ raw: String?) {
-            let text = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if text.hasPrefix("SESSION_STARTED") || text.hasPrefix("SESSION_ACTIVE") {
-                self = .started
-            } else {
-                self = .failed(text.isEmpty ? "ioscd timed out" : text)
+        init(_ raw: Result<String, Failure>) {
+            switch raw {
+            case .failure(let failure):
+                self = .failed(failure.description)
+            case .success(let reply):
+                let text = reply.trimmingCharacters(in: .whitespacesAndNewlines)
+                if text.hasPrefix("SESSION_STARTED") || text.hasPrefix("SESSION_ACTIVE") {
+                    self = .started
+                } else {
+                    self = .failed(text.isEmpty ? Failure.noReply.description : text)
+                }
             }
         }
     }

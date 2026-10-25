@@ -314,10 +314,13 @@ final class HomeScreenAppsViewController: FormViewController {
 
     private func sync(native: Bool, dry: Bool, title: String) {
         Toast.show("\(dry ? "Checking" : "Syncing") \(native ? "native" : "classic") launchers...", in: view)
-        IOSCDClient.shared.syncLaunchers(native: native, dryRun: dry) { [weak self] lines in
+        IOSCDClient.shared.syncLaunchers(native: native, dryRun: dry) { [weak self] result in
             guard let self else { return }
-            guard let lines else {
-                Toast.show("Launcher sync failed: ioscd timed out", in: self.view)
+            let lines: [String]
+            switch result {
+            case .success(let reply): lines = reply
+            case .failure(let failure):
+                Toast.show("Launcher sync failed: \(failure)", in: self.view)
                 return
             }
             let report = SyncReportViewController(title: title, lines: lines,

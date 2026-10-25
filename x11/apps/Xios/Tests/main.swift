@@ -159,10 +159,17 @@ do {
     check(IOSCDProtocol.sessionLine(preset: "stop") == "SESSION\tstop\t\t\t\t\t\n", "unqualified stop")
     check(IOSCDProtocol.sessionLine(preset: "app", app: "org.kde.kate", display: .landscape, slot: "s")
           == "SESSION\tapp\torg.kde.kate\t\t\t\ts\n", "app never carries a size")
-    check(IOSCDProtocol.SessionReply("SESSION_STARTED\n") == .started, "started")
-    check(IOSCDProtocol.SessionReply("SESSION_ACTIVE\n") == .started, "active")
-    check(IOSCDProtocol.SessionReply("ERR nope\n") == .failed("ERR nope"), "error text")
-    check(IOSCDProtocol.SessionReply(nil) == .failed("ioscd timed out"), "timeout")
+    check(IOSCDProtocol.SessionReply(.success("SESSION_STARTED\n")) == .started, "started")
+    check(IOSCDProtocol.SessionReply(.success("SESSION_ACTIVE\n")) == .started, "active")
+    check(IOSCDProtocol.SessionReply(.success("ERR nope\n")) == .failed("ERR nope"), "error text")
+    check(IOSCDProtocol.SessionReply(.failure(.timedOut)) == .failed("ioscd timed out"), "timeout")
+    check(IOSCDProtocol.SessionReply(.success(" \n")) == .failed("ioscd sent no reply"), "blank reply")
+    // Issue #11: a missing daemon must not read as a slow one.
+    check(IOSCDProtocol.Failure(connectErrno: ENOENT) == .notRunning, "no socket = not running")
+    check(IOSCDProtocol.Failure(connectErrno: ECONNREFUSED) == .notRunning, "stale socket = not running")
+    check(IOSCDProtocol.Failure(connectErrno: EACCES) == .unreachable(EACCES), "other errno kept")
+    check(IOSCDProtocol.SessionReply(.failure(.notRunning))
+          == .failed("ioscd is not running (is xios-launcher-tools installed?)"), "not running text")
     let list = IOSCDProtocol.parseAppsList([
         "b.app\tBeta\tbeta --x\ticon\t/var/jb/Applications/b.app\tenabled",
         "a.app\tAlpha\talpha\ticon\t/var/jb/Applications/a.app\tdisabled",
