@@ -23,6 +23,31 @@ function readTokenFile(path: string): string | undefined {
   }
 }
 
+// Rough upper bound on how long the daemon spends executing `actions` (it runs them
+// back to back on one serial queue), mirroring the timings in ipadctl/core/hid.m and
+// the daemon's own clamps. Used to size the request timeout: a fixed 20 s abort fired
+// in the middle of a valid batch (a 4000-character `type` takes minutes), and the
+// model was then told the iPad was unreachable while its actions kept running.
+export function estimateActionsMs(actions: Action[], screenshot: boolean): number {
+  const clamp = (v: number | undefined, d: number) => Math.min(Math.max(v ?? d, 0), 10_000);
+  let ms = screenshot ? 1_500 : 0;
+  for (const a of actions) {
+    switch (a.type) {
+      case "tap": ms += 150; break;
+      case "double_tap": ms += 400; break;
+      case "long_press": ms += clamp(a.duration_ms, 800) + 150; break;
+      case "swipe": ms += clamp(a.duration_ms, 300) + 150; break;
+      case "scroll": ms += 1_300; break;
+      case "type": ms += Math.min(a.text.length, 4000) * 75; break;
+      case "key": ms += 200; break;
+      case "button": ms += 200; break;
+      case "open_app": case "open_url": ms += 2_000; break;
+      case "wait": ms += clamp(a.ms, 0); break;
+    }
+  }
+  return ms;
+}
+
 export class DaemonRequestError extends Error {
   constructor(
     message: string,
@@ -47,12 +72,13 @@ export class DaemonClient {
 
   static fromEnv(env = process.env): DaemonClient {
     return new DaemonClient(
-      (env.IPADCTL_URL ?? "http://MaxsiPad.local:8790").replace(/\/+$/, ""),
+      // `||`, not `??`: the agent runner passes IPADCTL_URL="" when it is unset.
+      (env.IPADCTL_URL || "http://MaxsiPad.local:8790").replace(/\/+$/, ""),
       env.IPADCTL_TOKEN || readTokenFile(tokenFilePath(env)),
     );
   }
 
-  private async req(method: string, path: string, body?: unknown): Promise<Response> {
+  private async req(method: string, path: string, body?: unknown, timeoutMs = this.timeoutMs): Promise<Response> {
     if (!this.token) {
       throw new DaemonRequestError(
         `No bearer token: set IPADCTL_TOKEN, or put ipadctld's token in ${tokenFilePath(process.env)} (mode 0600).`,
@@ -68,14 +94,20 @@ export class DaemonClient {
           ...(body === undefined ? {} : { "content-type": "application/json" }),
         },
         body: body === undefined ? undefined : JSON.stringify(body),
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (e) {
       const err = e as Error;
       const timedOut = err.name === "TimeoutError" || err.name === "AbortError";
+      if (timedOut && path === "/v1/actions") {
+        throw new DaemonRequestError(
+          `ipadctld at ${this.baseUrl} did not answer within ${Math.round(timeoutMs / 1000)}s. Some or all of the actions may have run on the iPad. Take a screenshot to see what happened before retrying anything.`,
+          "unreachable",
+        );
+      }
       throw new DaemonRequestError(
         timedOut
-          ? `ipadctld at ${this.baseUrl} did not answer within ${this.timeoutMs / 1000}s. The iPad may be asleep or off the network.`
+          ? `ipadctld at ${this.baseUrl} did not answer within ${Math.round(timeoutMs / 1000)}s. The iPad may be asleep or off the network.`
           : `Cannot reach ipadctld at ${this.baseUrl} (${err.message}). Check that the iPad is awake and on the LAN/Tailscale, ipadctld is running, and IPADCTL_URL is correct.`,
         "unreachable",
       );
@@ -121,7 +153,12 @@ export class DaemonClient {
 
   async actions(actions: Action[], returnScreenshot: boolean): Promise<ActionsResponse> {
     return (await (
-      await this.req("POST", "/v1/actions", { actions, screenshot: returnScreenshot ? {} : undefined })
+      await this.req(
+        "POST",
+        "/v1/actions",
+        { actions, screenshot: returnScreenshot ? {} : undefined },
+        this.timeoutMs + Math.ceil(estimateActionsMs(actions, returnScreenshot) * 1.5),
+      )
     ).json()) as ActionsResponse;
   }
 }

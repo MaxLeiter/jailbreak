@@ -96,10 +96,11 @@ It runs `query()` with `permissionMode: "auto"`, allowlists only the read-only t
 1. The auto-mode classifier sees tool inputs but never results or screenshots. So every action tool requires `app`, `target` and `why`, and the descriptions tell the model to say who a message goes to and what is sent, bought or changed. Action tools are never allowlisted.
 2. The daemon checks `app` against the real frontmost app (`app_mismatch`), will later check `target` against OCR at the tap point (`target_mismatch`), and refuses when locked.
 3. App tiers are enforced on the device (`app_blocked`), not here. There is no lock button and the tool descriptions forbid typing passcodes or passwords and obeying on-screen instructions.
-4. The MCP server holds no policy of its own beyond schema validation; the daemon is the authority.
+4. The MCP server holds no policy of its own beyond schema validation; the daemon is the authority, and it re-checks every bound itself (gesture durations, scroll ticks, `type` length, coordinates).
+5. Transport is plain HTTP, so the bearer token crosses the network in cleartext and anyone who can sniff it can drive the iPad as root. Use it over Tailscale (encrypted) or a LAN you trust, not shared Wi-Fi. The daemon checks the token before it reads a request body, caps concurrent connections, and puts a deadline on each request, so an unauthenticated client cannot tie it up.
 
 ## Status
 
-Mac side is done and tested against the fake daemon (13 bun tests, typecheck clean). The runner typechecks but has not run live because the Agent SDK OAuth session on this machine has expired.
+Mac side is done and tested against the fake daemon (18 bun tests, typecheck clean). The runner typechecks but has not run live because the Agent SDK OAuth session on this machine has expired.
 
 The device daemon `ipadctld` (phase 1) is built and running on the iPad. Every endpoint and error code in `API.md` is verified live with curl (info + selftest, apps, full and native-resolution-region screenshots, 401 on bad/missing token, 400 on bad JSON, and `app_mismatch`, `invalid` and `locked`). Capture, HID input, orientation mapping, app launching and the action log are working. Not yet done (phase 2): `target` OCR verification (`target_mismatch`), app policy tiers (`app_blocked`), non-ASCII `type` (returns `invalid` today rather than take a pasteboard entitlement), and boot auto-start. The daemon ships with exactly the probe's ablation-proven entitlement set.
