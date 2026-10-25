@@ -10,6 +10,10 @@ or a meta pinned to a leaf deb that was never rebuilt).
 Version constraints are only enforced against packages WE publish; deps satisfied
 by the Procursus base or by a Provides carry no version here and are accepted.
 
+It also fails if a package installs something without the companion that thing
+cannot work without (COMPANIONS below): an install that resolves but does nothing
+when opened is just as broken for the user.
+
 Run over the WHOLE repo, not just metas. A small allowlist covers virtual/base
 names that live outside our repo (firmware, the Procursus base, etc.).
 
@@ -29,6 +33,16 @@ PACKAGES = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "repo", "Pac
 ALLOW = {
     "firmware",            # iOS version virtual (firmware (>= 16.x))
     "apt", "dpkg", "base", # bootstrap
+}
+
+# package -> (companion, why). Every published package whose dependency closure
+# installs `package` (other than `package` itself) must install `companion` too.
+COMPANIONS = {
+    # xios-core 0.1.6 through 0.1.11 did not depend on xios-launcher-tools, so a
+    # clean xios-gnome/xios-kde/xios-x11 install had no ioscd and every in-app
+    # desktop pick failed with "ioscd timed out" (GitHub issue #11).
+    "com.max.xios": ("xios-launcher-tools",
+                     "the app's desktop picker talks to ioscd, which ships there"),
 }
 
 
@@ -162,6 +176,53 @@ def constraint_ok(have, op, want):
     return True  # unknown operator: do not invent a failure
 
 
+def missing_companions(stanzas):
+    """(package, trigger, companion, why) for each COMPANIONS rule a package breaks.
+
+    The closure follows Depends/Pre-Depends through packages we publish, taking the
+    first alternative of each clause that we publish (directly or via Provides),
+    which is what apt picks when nothing else is installed.
+    """
+    by_name = {s["Package"]: s for s in stanzas}
+    providers = {}
+    for s in stanzas:
+        for pv in s.get("Provides", "").split(","):
+            pv = pv.strip().split()[0].split(":")[0] if pv.strip() else ""
+            if pv:
+                providers.setdefault(pv, s["Package"])
+
+    def closure(root):
+        seen, todo = set(), [root]
+        while todo:
+            name = todo.pop()
+            if name in seen:
+                continue
+            seen.add(name)
+            s = by_name.get(name)
+            if not s:
+                continue
+            for field in ("Pre-Depends", "Depends"):
+                for alts in dep_clauses(s.get(field, "")):
+                    for dep, _, _ in alts:
+                        pick = dep if dep in by_name else providers.get(dep)
+                        if pick:
+                            todo.append(pick)
+                            break
+        return seen
+
+    out = []
+    for s in stanzas:
+        pkg = s["Package"]
+        rules = [(t, c, why) for t, (c, why) in COMPANIONS.items() if t != pkg]
+        if not rules:
+            continue
+        reach = closure(pkg)
+        for trigger, companion, why in rules:
+            if trigger in reach and companion not in reach:
+                out.append((pkg, trigger, companion, why))
+    return out
+
+
 def main():
     stanzas = parse(PACKAGES)
     available = set(ALLOW)
@@ -246,6 +307,13 @@ def main():
         for pkg, dep in sorted(stale):
             print(f"  {pkg}  ->  {dep}", file=sys.stderr)
 
+    lonely = missing_companions(stanzas)
+    if lonely:
+        print(f"\nMISSING COMPANIONS ({len(lonely)}):", file=sys.stderr)
+        for pkg, trigger, companion, why in sorted(lonely):
+            print(f"  {pkg} installs {trigger} but not {companion}: {why}",
+                  file=sys.stderr)
+
     if fatal:
         print(f"\nUNRESOLVABLE DEPENDENCIES ({len(fatal)}):", file=sys.stderr)
         for pkg, dep, reason in sorted(fatal):
@@ -253,6 +321,13 @@ def main():
         print(
             "\nFAIL: repo advertises impossible installs. Fix the Depends or drop the "
             "package from the published set before publishing.",
+            file=sys.stderr,
+        )
+        return 1
+    if lonely:
+        print(
+            "\nFAIL: repo advertises installs that cannot work. Add the companion to "
+            "a Depends in the installing package's closure (usually its meta).",
             file=sys.stderr,
         )
         return 1

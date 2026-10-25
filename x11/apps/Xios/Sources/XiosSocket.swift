@@ -11,8 +11,10 @@ private func xiosSocketTimeout(_ seconds: TimeInterval) -> timeval {
 }
 
 /// Connects a SOCK_STREAM AF_UNIX socket to `path`. Returns the fd, or -1 on
-/// failure. SO_NOSIGPIPE keeps a dead peer from terminating the process; the
-/// timeout bounds later reads and writes if the daemon accepts but stalls.
+/// failure with `errno` left as connect(2) set it (ENOENT/ECONNREFUSED mean
+/// nothing is listening). SO_NOSIGPIPE keeps a dead peer from terminating the
+/// process; the timeout bounds later reads and writes if the daemon accepts but
+/// stalls.
 func xiosConnectUnixSocket(_ path: String, timeout: TimeInterval = 2.0) -> Int32 {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { return -1 }
@@ -41,7 +43,12 @@ func xiosConnectUnixSocket(_ path: String, timeout: TimeInterval = 2.0) -> Int32
             connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
         }
     }
-    guard rc == 0 else { close(fd); return -1 }
+    guard rc == 0 else {
+        let err = errno
+        close(fd)
+        errno = err
+        return -1
+    }
     return fd
 }
 

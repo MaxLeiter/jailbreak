@@ -19,7 +19,7 @@ Sileo copy comes from `repo/meta/xios-*.json` (already written).
 | Package | Pulls in (Depends) | Floor today | Publishable? |
 |---|---|---|---|
 | `xios-runtime` | iosc, angle, dbus, desktop defaults, audio, xios-fhs hardware bridges | **16.0.0** | 0.1.0 staged |
-| `xios-core` | xios-runtime + com.max.xios, iosc-shell, xios-session | **16.5.0** | 0.1.6 staged |
+| `xios-core` | xios-runtime + com.max.xios, iosc-shell, xios-session, xios-launcher-tools | **16.5.0** | 0.1.12 |
 | `xios-gnome` | xios-core + GNOME Shell/session/services/theme | **16.5.0** | 0.1.5 staged |
 | `xios-kde` | xios-core + KWin, Plasma Desktop/Mobile/Nano, KDE apps | **16.5.0** | 0.1.15 staged |
 | `xios-native` | xios-runtime + xios-launcher-tools, com.max.xiosprefs | **16.5.0** | 0.1.3 staged |
@@ -50,8 +50,9 @@ is unsigned, so AppSync Unified is a hard runtime requirement; that is stated in
 the control description and the depiction rather than expressed as a dependency,
 since AppSync lives on another repo.
 
-`xios-core` depends on the display app, iosc shell, and `xios-session`, so every
-fullscreen flavor installs a complete selectable desktop. Native mode depends
+`xios-core` depends on the display app, iosc shell, `xios-session`, and
+`xios-launcher-tools` (for `ioscd`, which the app's desktop picker talks to), so
+every fullscreen flavor installs a complete selectable desktop. Native mode depends
 on `xios-runtime` directly and adds `xios-launcher-tools`; it does not install
 the fullscreen presentation layer. The runtime remains at 16.0; the audited
 launcher/native and fullscreen closures require 16.5.
@@ -70,9 +71,11 @@ choice in sync with `packages/meta/xios-gnome/DEBIAN/control`.
 Names that settled since the original fold-in note: `xios-session-stubs` ships
 the login1/polkit/accounts stub daemons, and `xios-gnome-typelibs` ships the
 aggregated on-device-scanned typelibs GNOME Shell imports at boot. `ioscd` is not
-its own package: it ships inside `xios-launcher-tools`, which is what
-`xios-native` depends on. The fullscreen `xios-core` package does not pull in
-the privileged launcher service.
+its own package: it ships inside `xios-launcher-tools`, which both `xios-native`
+and `xios-core` depend on. `xios-core` 0.1.6 through 0.1.11 left it out, so a
+clean GNOME/KDE/X11 install had no `ioscd` and every in-app desktop pick failed
+with "ioscd timed out" (GitHub issue #11). `bin/lib/check-repo-solvable.py` now
+fails any package that installs `com.max.xios` without `xios-launcher-tools`.
 
 ## How the store does the gating
 
