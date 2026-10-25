@@ -18,8 +18,8 @@ endif
 # on iOS); glamor only accelerates the 2D X path.
 
 SUBPROJECTS      += xwayland
-XWAYLAND_VERSION := 24.1.13
-DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios3
+XWAYLAND_VERSION := 24.1.14
+DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios1
 
 # libdrm is a links-only build shim: xwayland-window.h
 # includes <xf86drm.h> unconditionally (xwl_window / xwl_dmabuf_feedback carry

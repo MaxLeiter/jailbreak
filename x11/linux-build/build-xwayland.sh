@@ -164,6 +164,7 @@ XW=build_work/$XIOS_TRIPLE/xwayland
 XS=build_stage/$XIOS_TRIPLE/xwayland
 XF="$XW/.xios_patch_series.sha256"
 NEW_FP="$(sha256sum \
+  /work/recipes/xwayland.mk \
   /work/ports/xwayland/patches/series \
   /work/ports/xwayland/patches/*.patch \
   /work/ports/libepoxy/patches/series \
