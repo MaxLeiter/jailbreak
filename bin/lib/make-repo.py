@@ -1371,7 +1371,7 @@ def write_index(pkgs):
     if PROFILE == "rootless":
         index_description = ("Rootless jailbreak packages and xiOS desktop apps for iPad, "
                              "including GIMP, GNOME, KDE Plasma, X11, and Wayland software.")
-        tweak_lede = "Small quality-of-life tweaks and companion apps for iPadOS on rootless jailbreaks."
+        tweak_lede = "Small quality-of-life tweaks and companion apps for iOS and iPadOS on rootless jailbreaks."
     else:
         index_description = (f"{PROFILE.title()} jailbreak packages for 64-bit iPhone and iPad "
                              "on iOS or iPadOS 16 and newer.")
