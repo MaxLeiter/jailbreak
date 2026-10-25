@@ -13,6 +13,7 @@
 #   xsign   <bin> [ents] [required-marker...]   ldid-sign + verify entitlements
 #   xmkdeb  <staging_dir> <out_dir>               build a .deb
 #   xdeb_refuse_published <staging_dir> [index]   fail if that version is public
+#   xis_stale <output> <source>...                output missing or older than sources
 #   xstage_lagom_fonts <fonts_dir> [cache_dir]    stage Ladybird's text fonts
 #   xdeb_find    <stem> <dir>...                  newest matching iphoneos deb path
 #   xdeb_extract <sysroot> <deb-dir-list> <pkg>... extract dev debs into a sysroot
@@ -143,6 +144,16 @@ xmkdeb() {
     fi
 
     echo "$deb"
+}
+
+# xis_stale <output> <source>...
+#   True when <output> is missing or any <source> (a file, or anything under a
+#   directory) is newer than it. For "build it if missing" call sites, which
+#   otherwise keep shipping an old binary after its sources change.
+xis_stale() {
+    local out="$1"; shift
+    [ -e "$out" ] || return 0
+    [ -n "$(find "$@" -newer "$out" -print 2>/dev/null | head -n 1)" ]
 }
 
 _xlib_control_field() {  # _xlib_control_field <control-file> <key>
