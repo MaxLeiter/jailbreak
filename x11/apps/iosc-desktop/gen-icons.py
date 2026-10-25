@@ -41,8 +41,20 @@ def find_icon(name, roots):
     """Return a path to a source image for `name`, or None."""
     if not name:
         return None
-    if os.path.isabs(name) and os.path.isfile(name):
-        return name
+    if os.path.isabs(name):
+        if os.path.isfile(name):
+            return name
+        # A device path (Icon=/var/jb/usr/share/pixmaps/foo.png): the roots are
+        # host mirrors of that share/ dir, so look for the same relative path.
+        # Falling through to the theme lookup joined an absolute path onto each
+        # root, which never matches.
+        if "/share/" in name:
+            rel = name.split("/share/", 1)[1]
+            for root in roots:
+                p = os.path.join(root, rel)
+                if os.path.isfile(p):
+                    return p
+        return None
     # strip an extension if the .desktop gave one (Icon=foo.png is legal)
     base = name
     for ext in (".png", ".svg", ".xpm"):
