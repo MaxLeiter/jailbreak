@@ -64,9 +64,9 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.34), uikittools, xios-session-stubs (>= 0.2.12)
+Depends: iosc (>= 0.9.50), uikittools, xios-session-stubs (>= 0.2.12)
 Recommends: iosc-shell, com.max.xios
-Breaks: iosc (<< 0.9.49), xios-a11y-tools (<< 0.2.17)
+Breaks: xios-a11y-tools (<< 0.2.17)
 Suggests: libmutter-14-0, gnome-shell, gnome-session, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
