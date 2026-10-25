@@ -76,6 +76,7 @@
 #include <limits.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/param.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/wait.h>
@@ -134,7 +135,6 @@ static char g_iosc_wm_sock[PATH_MAX];
 static char g_active_session[PATH_MAX];
 static char g_iosc_bin[PATH_MAX];
 static char g_xios_session_bin[PATH_MAX];
-static char g_xios_session_bin_fallback[PATH_MAX];
 static char g_xios_launcher_sync[PATH_MAX];
 static char g_uiopen_bin[PATH_MAX];
 static char g_bash_bin[PATH_MAX];
@@ -245,7 +245,6 @@ static void init_paths(void)
 
     prefixed_path(g_iosc_bin, sizeof(g_iosc_bin), "/usr/local/bin/iosc");
     prefixed_path(g_xios_session_bin, sizeof(g_xios_session_bin), "/usr/local/bin/xios-session");
-    prefixed_path(g_xios_session_bin_fallback, sizeof(g_xios_session_bin_fallback), "/usr/bin/xios-session");
     prefixed_path(g_xios_launcher_sync, sizeof(g_xios_launcher_sync), "/usr/local/bin/xios-launcher-sync");
     prefixed_path(g_uiopen_bin, sizeof(g_uiopen_bin), "/usr/bin/uiopen");
     prefixed_path(g_bash_bin, sizeof(g_bash_bin), "/usr/bin/bash");
@@ -1172,15 +1171,92 @@ static int ensure_session_bus(char *addr, size_t addr_len)
     return ok;
 }
 
+/* A pid file created by an earlier request whose shell has not written the
+ * pid yet (it runs xios_pulse_start first, which can take seconds) counts as
+ * a helper being started for this long. */
+#define HELPER_STARTING_GRACE_SEC 30
+
+/* One helper per session bus, the rule xs_start_native_helper follows in
+ * xios-session-lib.sh: <busdir>/<name>.pid holds "<pid>\n", and the helper is
+ * running while that pid is alive and still that program
+ * (xs_pidfile_running). This used to be "skip if ANY instance runs" (a global
+ * ps grep), so once any desktop had started a helper on its own bus, apps
+ * launched through ioscd got none on ioscd's bus. */
+static int helper_pidfile_running(int dfd, const char *pidfile, const char *name)
+{
+    int fd = openat(dfd, pidfile, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return 0;
+    struct stat st;
+    char buf[32];
+    ssize_t n = -1;
+    if (fstat(fd, &st) == 0 && S_ISREG(st.st_mode))
+        n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+    if (n < 0) return 0;
+    buf[n] = 0;
+    while (n > 0 && buf[n - 1] == '\n') buf[--n] = 0;
+    if (n == 0)
+        return time(NULL) - st.st_mtime < HELPER_STARTING_GRACE_SEC;
+    if (n > 9) return 0;
+    for (ssize_t i = 0; i < n; i++)
+        if (buf[i] < '0' || buf[i] > '9') return 0;  /* xs_process_alive: digits only */
+    pid_t pid = (pid_t)atoi(buf);
+    if (pid <= 0 || kill(pid, 0) != 0) return 0;
+
+    struct kinfo_proc kp;
+    size_t len = sizeof(kp);
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PID, (int)pid };
+    memset(&kp, 0, sizeof(kp));
+    if (sysctl(mib, 4, &kp, &len, NULL, 0) != 0 || len == 0)
+        return 1;  /* alive but unnamed: starting a second one is the worse error */
+    return strncmp(kp.kp_proc.p_comm, name, MAXCOMLEN) == 0;
+}
+
+/* The bus dir belongs to mobile, so root never opens a name in it that could
+ * be a planted symlink: the old file is unlinked through the dir fd and a new
+ * one created exclusively. The shell writes through these fds, never by name. */
+static int create_in_bus_dir(int dfd, const char *name)
+{
+    (void)unlinkat(dfd, name, 0);
+    return openat(dfd, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0644);
+}
+
 static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_addr, int have_bus)
 {
     if (!have_bus || !busdir || !*busdir || !bus_addr || !*bus_addr)
         return;
 
+    const char *bins[] = { g_xios_hwbridged, g_xios_sensord, g_xios_sysintd };
+    enum { NHELPERS = sizeof(bins) / sizeof(bins[0]) };
+    int pid_fd[NHELPERS], log_fd[NHELPERS], start[NHELPERS];
+    int dfd = open(busdir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dfd < 0) {
+        fprintf(stderr, "ioscd: not starting helpers: cannot open %s: %s\n",
+                busdir, strerror(errno));
+        return;
+    }
+    for (int i = 0; i < NHELPERS; i++) {
+        const char *slash = strrchr(bins[i], '/');
+        const char *name = slash ? slash + 1 : bins[i];
+        char pidfile[NAME_MAX + 1], logfile[NAME_MAX + 1];
+        snprintf(pidfile, sizeof(pidfile), "%s.pid", name);
+        snprintf(logfile, sizeof(logfile), "%s.log", name);
+        pid_fd[i] = log_fd[i] = -1;
+        start[i] = access(bins[i], X_OK) == 0 &&
+                   !helper_pidfile_running(dfd, pidfile, name);
+        if (!start[i]) continue;
+        pid_fd[i] = create_in_bus_dir(dfd, pidfile);
+        log_fd[i] = create_in_bus_dir(dfd, logfile);
+        if (pid_fd[i] < 0)
+            fprintf(stderr, "ioscd: starting %s without a pid file in %s: %s\n",
+                    name, busdir, strerror(errno));
+    }
+    close(dfd);
+
     pid_t pid = fork();
-    if (pid < 0) return;
     if (pid == 0) {
-        char cmd[4096];
+        char cmd[4096], closes[128] = "";
+        size_t off;
         setsid();
         child_stdio(g_ioscd_client_log, 1);
         setenv("XDG_RUNTIME_DIR", busdir, 1);
@@ -1189,22 +1265,38 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
         setenv("XIOS_HWBRIDGE_BUS", "session", 1);
         setenv("HOME", g_home, 1);
         set_rootless_path(1);
-        snprintf(cmd, sizeof(cmd),
-                 "if [ -r '%s' ]; then . '%s' 2>/dev/null && xios_pulse_start; fi; "
-                 "start_helper() { b=\"$1\"; log=\"$2\"; name=\"${b##*/}\"; "
-                 "[ -x \"$b\" ] || return 0; "
-                 "ps ax 2>/dev/null | grep -v grep | grep -q \"$name\" && return 0; "
-                 "\"$b\" >\"$log\" 2>&1 & }; "
-                 "start_helper '%s' '%s/xios-hwbridged.log'; "
-                 "start_helper '%s' '%s/xios-sensord.log'; "
-                 "start_helper '%s' '%s/xios-sysintd.log'; "
-                 "sleep 0.2",
-                 g_xios_pulse_profile, g_xios_pulse_profile,
-                 g_xios_hwbridged, busdir,
-                 g_xios_sensord, busdir,
-                 g_xios_sysintd, busdir);
+        /* The fds reach bash; a started helper inherits none of them. */
+        for (int i = 0; i < NHELPERS; i++) {
+            int fds[2] = { pid_fd[i], log_fd[i] };
+            for (int k = 0; k < 2; k++) {
+                if (fds[k] < 0) continue;
+                (void)fcntl(fds[k], F_SETFD, 0);
+                off = strlen(closes);
+                snprintf(closes + off, sizeof(closes) - off, " %d>&-", fds[k]);
+            }
+        }
+        off = (size_t)snprintf(cmd, sizeof(cmd),
+                 "if [ -r '%s' ]; then . '%s' 2>/dev/null && xios_pulse_start; fi; ",
+                 g_xios_pulse_profile, g_xios_pulse_profile);
+        for (int i = 0; i < NHELPERS && off < sizeof(cmd); i++) {
+            char out[32], record[64] = "";
+            if (!start[i]) continue;
+            if (log_fd[i] >= 0) snprintf(out, sizeof(out), ">&%d", log_fd[i]);
+            else snprintf(out, sizeof(out), ">/dev/null");
+            if (pid_fd[i] >= 0)
+                snprintf(record, sizeof(record), " printf '%%s\\n' \"$!\" >&%d;", pid_fd[i]);
+            off += (size_t)snprintf(cmd + off, sizeof(cmd) - off,
+                                    "if [ -x '%s' ]; then '%s' %s 2>&1%s & %s fi; ",
+                                    bins[i], bins[i], out, closes, record);
+        }
+        if (off < sizeof(cmd))
+            snprintf(cmd + off, sizeof(cmd) - off, "sleep 0.2");
         xios_execl(g_bash_bin, "bash", "-lc", cmd, (char *)NULL);
         _exit(127);
+    }
+    for (int i = 0; i < NHELPERS; i++) {
+        if (pid_fd[i] >= 0) close(pid_fd[i]);
+        if (log_fd[i] >= 0) close(log_fd[i]);
     }
 }
 
@@ -1419,22 +1511,21 @@ static pid_t launch_session_request(const char *preset, const char *app,
         setsid();
         child_stdio(g_ioscd_session_log, 1);
         set_rootless_path(1);
-        fprintf(stderr, "ioscd: child exec xios-session preset=%s%s%s%s%s bash=%s path=%s fallback=%s\n",
+        fprintf(stderr, "ioscd: child exec xios-session preset=%s%s%s%s%s bash=%s path=%s\n",
                 preset, (app && *app) ? " app=" : "", (app && *app) ? app : "",
                 (slot && *slot) ? " slot=" : "", (slot && *slot) ? slot : "",
-                g_bash_bin, g_xios_session_bin, g_xios_session_bin_fallback);
+                g_bash_bin, g_xios_session_bin);
         fflush(stderr);
         set_session_request_env(width, height, dpi, slot);
 
+        /* bash runs the script, so a missing script is bash's exit 127, not
+         * an exec failure here: handle_session_request checks it exists
+         * before forking. Only a missing bash reaches the line below. */
         if (app && *app)
             xios_execl(g_bash_bin, "bash", g_xios_session_bin, preset, app, (char *)NULL);
         else
             xios_execl(g_bash_bin, "bash", g_xios_session_bin, preset, (char *)NULL);
-        if (app && *app)
-            xios_execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, app, (char *)NULL);
-        else
-            xios_execl(g_bash_bin, "bash", g_xios_session_bin_fallback, preset, (char *)NULL);
-        fprintf(stderr, "ioscd: exec xios-session failed: %s\n", strerror(errno));
+        fprintf(stderr, "ioscd: exec %s failed: %s\n", g_bash_bin, strerror(errno));
         _exit(127);
     }
     return pid;
@@ -1586,6 +1677,15 @@ static void handle_session_request(int fd, char *payload, int ensure,
                 return;
             }
         }
+    }
+
+    /* Without this check the request was answered SESSION_STARTED and the
+     * only trace of the failure was bash's exit 127 in ioscd.log. */
+    if (access(g_xios_session_bin, R_OK) != 0) {
+        fprintf(stderr, "ioscd: session request FAILED: %s is not installed (%s)\n",
+                g_xios_session_bin, strerror(errno));
+        reply(fd, "ERR xios-session is not installed\n");
+        return;
     }
 
     pid_t pid = launch_session_request(preset, app, width, height, dpi, slot);

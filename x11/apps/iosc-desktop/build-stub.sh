@@ -29,6 +29,9 @@ bash "$HERE/test-session-bus.sh"
 echo "==> testing that ioscd's children inherit none of its fds"
 bash "$HERE/test-ioscd-fds.sh"
 
+echo "==> testing ioscd's per-bus helper guard and missing-xios-session reply"
+bash "$HERE/test-ioscd-helpers.sh"
+
 SDK="$(xcrun -sdk iphoneos --show-sdk-path)"
 CLANG="$(xcrun -sdk iphoneos -f clang)"
 MIN="-miphoneos-version-min=16.0"
