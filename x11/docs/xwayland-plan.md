@@ -2,7 +2,8 @@
 
 > **Current status (2026-07-03): core plan landed.** Xwayland 23.2.7 packages exist, the
 > glamor/IOSurface path is verified on-device with local `xwayland 23.2.7+ios2`, and rootless
-> XWM integration has landed locally in iosc as an explicit `IOSC_BUILD_XWM=1` opt-in. Use
+> XWM integration is built into iosc by default since 0.9.50 (started by xios-session when
+> Xwayland is installed; device proof pending). Use
 > [`docs/handoff/iosc-compositor.md`](handoff/iosc-compositor.md) and
 > [`docs/handoff/wayland-apps.md`](handoff/wayland-apps.md) for current status.
 
