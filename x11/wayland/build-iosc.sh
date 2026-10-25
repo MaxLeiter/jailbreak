@@ -17,6 +17,7 @@
 #   x11/wayland/iosc.c, iosc-client.c, iosc-gpu-client.c, iosc-iosurface.xml
 #   x11/linux-build/patches/xios/xios_surface.{c,h}   (reused output path)
 #   {libwayland,libepoll-shim,wayland-protocols,angle,libxkbcommon}*.deb
+#   libxcb1{,-dev}*.deb   (XWM, default on; IOSC_BUILD_XWM=0 opts out)
 # Outputs: x11/wayland/out/{iosc, iosc-client, iosc-gpu-client}
 #   iosc is signed on the host after the build (needs ldid) so it is device-ready.
 set -euo pipefail
@@ -97,7 +98,7 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
   echo "==> cross-building iosc in $IMAGE"
   docker run --rm --platform linux/arm64 -e IOSC_XBUILD_INNER=1 \
     -e XIOS_TARGET="$XIOS_TARGET_ID" \
-    -e IOSC_BUILD_XWM="${IOSC_BUILD_XWM:-0}" \
+    -e IOSC_BUILD_XWM="${IOSC_BUILD_XWM:-1}" \
     -e IOSC_SHIM_ONLY="${IOSC_SHIM_ONLY:-0}" \
     "${mounts[@]}" "$IMAGE" -c "bash /work/x11/wayland/build-iosc.sh"
 
@@ -138,11 +139,11 @@ DEB_DIRS=""
 
 echo "==> [1/5] extract W0 dev debs (+ angle for the GPU client) into a sysroot"
 echo "   (searching:$DEB_DIRS)"
-# libxcb is only linked by the rootless-Xwayland XWM module, which is off by
-# default -- requiring it unconditionally makes every build depend on a package
-# it will not use.
+# libxcb is only linked by the rootless-Xwayland XWM module. It is on by default
+# (the xios-x11 flavor needs it to start Xwayland); IOSC_BUILD_XWM=0 builds the
+# old non-XCB link profile and drops the libxcb inputs with it.
 XCB_DEBS=""
-[ "${IOSC_BUILD_XWM:-0}" = "1" ] && XCB_DEBS="libxcb1 libxcb1-dev"
+[ "${IOSC_BUILD_XWM:-1}" = "1" ] && XCB_DEBS="libxcb1 libxcb1-dev"
 # shellcheck disable=SC2086
 xdeb_extract "$SYS" "$DEB_DIRS" \
   libwayland-dev libwayland0 libepoll-shim-dev libepoll-shim0 wayland-protocols angle \
@@ -331,13 +332,13 @@ RPATH="-Wl,-rpath,$XIOS_PREFIX/usr/lib"
 XWM_CFLAGS=()
 XWM_SRCS=()
 XWM_LIBS=()
-if [ "${IOSC_BUILD_XWM:-0}" = "1" ]; then
+if [ "${IOSC_BUILD_XWM:-1}" = "1" ]; then
   XWM_CFLAGS=(-DIOSC_ENABLE_XWM=1)
   XWM_SRCS=("$X11/wayland/iosc_xwm.c")
   XWM_LIBS=(-lxcb)
   echo "   XWM: enabled (links libxcb)"
 else
-  echo "   XWM: disabled (set IOSC_BUILD_XWM=1 to include rootless Xwayland XWM)"
+  echo "   XWM: disabled (IOSC_BUILD_XWM=0; the package still declares libxcb1, harmless)"
 fi
 
 echo "==> [5/5] cross-compile"

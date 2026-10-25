@@ -40,10 +40,15 @@ extern "C" {
  * (A) PUBLIC API — implemented by iosc_xwm.c, called by iosc.c.
  * ========================================================================= */
 
-/* Start the XWM: spawn Xwayland, connect the WM xcb socket, own WM_S0, advertise
- * xwayland_shell_v1 as a wl_global, and register the xcb fd on `loop`. `loop`
- * must be the compositor's wl_event_loop (wl_display_get_event_loop(g_display)).
- * Returns 0 on success, -1 on failure (already logged). Safe to call once.
+/* Start the XWM: advertise xwayland_shell_v1 as a wl_global, spawn Xwayland, and
+ * watch its -displayfd on `loop`. `loop` must be the compositor's wl_event_loop
+ * (wl_display_get_event_loop(g_display)). This does NOT wait for Xwayland:
+ * Xwayland round-trips with the compositor before it reports its display, so a
+ * blocking wait here (before wl_display_run) would deadlock both processes. The
+ * WM half (xcb connect, WM_S0, root redirect) runs from the loop once the display
+ * number arrives, then iosc_xwm_display_changed() reports it.
+ * Returns 0 if Xwayland was spawned, -1 on failure (already logged). Safe to
+ * call once.
  *
  * Gate this behind IOSC_XWAYLAND=1 in iosc's main() (see the integration doc);
  * the XWM is opt-in so a plain Wayland session pays nothing. */
@@ -179,6 +184,13 @@ extern void iosc_xwm_configure_surface(struct wl_resource *surface_res,
  * surface title and re-broadcasts foreign-toplevel/taskbar state. No-op if not
  * adopted. */
 extern void iosc_xwm_set_title(struct wl_resource *surface_res, const char *title);
+
+/* The X display this XWM serves changed. Called with N >= 0 once Xwayland has
+ * reported `:N` on -displayfd AND the WM owns WM_S0 (so an X client that connects
+ * after this is managed from its first map), and with -1 when the XWM stops or
+ * Xwayland goes away. iosc.c publishes it (status key "x11-display") so session
+ * launchers can hand X11 apps the right DISPLAY without guessing a number. */
+extern void iosc_xwm_display_changed(int display_number);
 
 #ifdef __cplusplus
 }
