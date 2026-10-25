@@ -45,4 +45,6 @@ fi
 cd "$HERE" || { echo "  cannot cd '$HERE'"; exit 1; }
 echo "  running: installsubstrate.sh link"
 /bin/bash ./installsubstrate.sh link
-echo "  done (exit $?)"
+rc=$?
+echo "  done (exit $rc)"
+exit "$rc"

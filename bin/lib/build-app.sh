@@ -8,6 +8,9 @@
 # All build chatter goes to stderr; stdout is ONLY the .app path so callers can
 # capture it with $(...).
 
+# xsign (x11/lib/xlib.sh) signs and fails loud; it prints to stderr only.
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/x11/lib/xlib.sh"
+
 build_app() {
   local app_dir app_name app
   app_dir="$(cd "$1" 2>/dev/null && pwd)" || { echo "build_app: app dir not found: $1" >&2; return 1; }
@@ -33,9 +36,9 @@ build_app() {
 
   echo "==> Pseudo-signing with ldid" >&2
   if [ -f "$app_dir/entitlements.plist" ]; then
-    ldid -S"$app_dir/entitlements.plist" "$app/${app_name}" >&2
+    xsign "$app/${app_name}" "$app_dir/entitlements.plist" || return 1
   else
-    ldid -S "$app/${app_name}" >&2
+    xsign "$app/${app_name}" || return 1
   fi
 
   echo "$app"
