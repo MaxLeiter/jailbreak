@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://kde.org/
-Depends: qt6-base, qt6-wayland, angle
+Depends: qt6-base, qt6-wayland, angle, libwayland0 (>= 1.24.0)
 Description: KWayland for the Xios desktop
  Qt-style client library for Plasma's Wayland protocols.
  .

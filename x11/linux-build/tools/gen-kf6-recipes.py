@@ -509,7 +509,9 @@ TABLE = [
          seds=["sed -i 's/find_package(Wayland 1.24 COMPONENTS Client)/find_package(Wayland 1.23 COMPONENTS Client) # ios: staged libwayland is 1.23.1 (floor lowered; a missing 1.24 symbol fails at link)/' $(BUILD_WORK)/kwayland/CMakeLists.txt",
                # Darwin has no pipe2(): emulate with pipe()+fcntl()
                "sed -i 's#pipe2(pipeFds, O_CLOEXEC | O_NONBLOCK) != 0#!(pipe(pipeFds) == 0 \\&\\& fcntl(pipeFds[0], F_SETFD, FD_CLOEXEC) == 0 \\&\\& fcntl(pipeFds[1], F_SETFD, FD_CLOEXEC) == 0 \\&\\& fcntl(pipeFds[0], F_SETFL, O_NONBLOCK) == 0 \\&\\& fcntl(pipeFds[1], F_SETFL, O_NONBLOCK) == 0)#' $(BUILD_WORK)/kwayland/src/client/plasmawindowmanagement.cpp"],
-         qt_deps=["qt6-base", "qt6-wayland", "angle"],
+         # The floor sed only gets CMake past configure: build-kf6.sh stages libwayland 1.24, so
+         # libKWaylandClient links _wl_fixes_interface (a 1.24-only symbol) and needs 1.24 on device.
+         qt_deps=["qt6-base", "qt6-wayland", "angle", "libwayland0 (>= 1.24.0)"],
          desc="Qt-style client library for Plasma's Wayland protocols.",
          notes=["Links EGL directly (audited REQUIRED): headers/libs resolve from the staged",
                 "ANGLE chain in build_base, on-device from the angle deb. No KF deps at all,",

@@ -6,7 +6,7 @@ endif
 
 SUBPROJECTS += phonon
 PHONON_VERSION = 4.12.0
-DEB_PHONON_V ?= $(PHONON_VERSION)+ios1
+DEB_PHONON_V ?= $(PHONON_VERSION)+ios2
 
 phonon-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/phonon/$(PHONON_VERSION)/phonon-$(PHONON_VERSION).tar.xz)
