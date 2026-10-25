@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.1.0  \u00b7  2026-07-01\n- First release: GNOME Shell 46 + Mutter + full session layer"
+          "markdown": "## 0.1.12  \u00b7  2026-10-25\n- Requires the fixed xios-core (0.1.13), so the in-app desktop picker works on a clean install\n- If GNOME isn't fully installed, switching to it now leaves the running desktop alone instead of tearing it down first\n\n## 0.1.0  \u00b7  2026-07-01\n- First release: GNOME Shell 46 + Mutter + full session layer"
         }
       ]
     }

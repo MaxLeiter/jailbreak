@@ -1,5 +1,24 @@
 # Procursus Overlay Monorepo Plan
 
+> Status (2026-10-25): this is the strategy doc; the working checklist is
+> `rootless-rootful-cfver-migration-plan.md`. Where the milestones stand:
+>
+> - **M1 (pin Procursus): not done.** `linux-build/build.sh` still shallow-clones the
+>   Procursus tip; there is no `procursus.lock` and no overlay report.
+> - **M2 (target matrix): done.** `linux-build/targets/{rootless,rootful}-1900.env`,
+>   loaded by `linux-build/target-lib.sh`. `run-target-script.sh` and
+>   `build-procursus-target.sh` take a target id; the `build-target.sh` and
+>   `package-target.sh` sketched below were never written under those names.
+> - **M3 (templates): partly done.** `packages/templates/` covers `x11-fonts-sf`,
+>   `x11-xvfb`, `xfce4`, the `xios-*` metas and several runtime packages.
+> - **M4 (rootful): one package.** `ladybird-app` publishes to `repo/profiles/rootful/`
+>   (`XIOS_REPO_PROFILE=rootful` for `bin/lib/make-repo.py`, not a `--profile` flag).
+>   No rootful device validation yet.
+>
+> The `xios-server` package used as the example throughout was retired on 2026-07-29
+> along with the software Xios X server; X11 is rootless Xwayland under iosc now. The
+> examples are kept as written because the shape still applies.
+
 Plan for making this repo the single source of truth for the X11/iOS distribution while
 still using Procursus as the upstream build system, dependency graph, and bootstrap
 compatibility layer.

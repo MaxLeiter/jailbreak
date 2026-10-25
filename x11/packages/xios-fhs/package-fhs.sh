@@ -49,5 +49,6 @@ find "$STAGE/var" -type f -exec chmod 0644 {} +
 chmod 0755 "$STAGE$XIOS_PREFIX/usr/libexec/xios-hwbridged" \
            "$STAGE$XIOS_PREFIX/usr/libexec/xios-sensord"
 
+xdeb_refuse_published "$STAGE"
 built="$(xmkdeb "$STAGE" "$OUT")"
 echo "==> built $built"

@@ -29,6 +29,9 @@ DIR="${1:-.}"
 cd "$DIR"
 
 echo "==> Building $(basename "$PWD")"
+# bin/sim.sh builds the simulator target into the same .theos/obj; without a
+# clean those objects would be linked into the device deb.
+"$MAKE" clean >/dev/null 2>&1 || true
 "$MAKE" package FINALPACKAGE=1
 DEB="$(ls -t packages/*.deb 2>/dev/null | head -1)"
 [ -n "$DEB" ] || { echo "error: no .deb produced" >&2; exit 1; }

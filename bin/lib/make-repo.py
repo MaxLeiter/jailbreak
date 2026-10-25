@@ -405,19 +405,6 @@ def md_to_html(md):
     return "\n".join(x for x in out if x)
 
 # ── image assets ─────────────────────────────────────────────────────────────
-def clock_icon(px=256):
-    s = 4; S = px * s
-    img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    d.rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.22), fill=ICON_BG + (255,))
-    c = S / 2; r = S * 0.30; w = max(2, int(S * 0.05))
-    d.ellipse([c - r, c - r, c + r, c + r], outline=ACCENT + (255,), width=w)
-    # hands (rounded-ish via wide lines)
-    d.line([c, c, c, c - r * 0.72], fill=ACCENT + (255,), width=w)                       # minute → 12
-    d.line([c, c, c + r * 0.46, c + r * 0.30], fill=ACCENT + (255,), width=w)            # hour → ~4-5
-    hub = S * 0.035
-    d.ellipse([c - hub, c - hub, c + hub, c + hub], fill=ACCENT + (255,))
-    return img.resize((px, px), Image.LANCZOS)
 
 # ── per-category glyph icons ──────────────────────────────────────────────────
 # A cohesive set of line/solid glyphs on the same dark rounded tile, one per

@@ -1,5 +1,14 @@
 # Linux apps as first-class iOS Home Screen apps (iosc desktop env)
 
+> Status (2026-10-25): shipped, in a different package shape than the build steps in §9
+> and §10 describe. `ioscd`, the launcher payloads and the on-device generator
+> `xios-launcher-sync` ship in `xios-launcher-tools` (pulled in by `xios-core` and
+> `xios-native`), and the Settings pane `com.max.xiosprefs` drives the sync. The host-side
+> `gen-launchers.sh` flow below is still the dev loop. Native per-window launches (each app
+> in its own iPad window instead of the fullscreen desktop) are in
+> [`handoff/native-ipados.md`](handoff/native-ipados.md); ioscd's session behavior and its
+> per-bus helpers are in [`handoff/session-launcher.md`](handoff/session-launcher.md).
+
 Make a Linux/GNOME app that ships a `.desktop` file appear as an **icon on the
 iPad Home Screen**. Tapping it launches that app inside an **iosc** Wayland
 window and brings the **Xios** display to the front — so it feels like an ordinary
@@ -230,6 +239,9 @@ For each launch:
 3. **Show the display.** `uiopen com.max.xios` foregrounds Xios.app (the same
    call the run-scripts use; `uiopen` is the entitled component, the daemon only
    `exec`s it).
+   ioscd also starts the per-session helpers (`xios-sysintd` and friends) on its app
+   bus. Since `xios-launcher-tools 0.1.12` that check is per bus, so a desktop's own
+   helpers no longer stop ioscd's from starting.
 4. **Raise or launch.** If a client we previously spawned for this `app_id` is
    still alive → ask iosc to raise it (§7) and reply `RAISED`. Otherwise `fork`
    and execute the parsed argv directly under the iosc environment as `mobile`.
@@ -255,7 +267,6 @@ on each toplevel and serves `/var/jb/tmp/iosc-wm.sock`; `ioscd` sends
 This remains best-effort: if the compositor is not running, the socket is absent,
 or no mapped surface has that `app_id`, `ioscd` still foregrounds Xios and the
 window remains mapped; it simply may not move to the top.
-ships without any iosc change; this only sharpens multi-window focus.
 
 Note on app_id matching: GTK reports the application-id as the Wayland `app_id`
 (e.g. `org.gnome.Console`), which matches `StartupWMClass` / the `.desktop`
@@ -271,10 +282,12 @@ per-app tweaking for well-behaved GNOME apps.
   launcher apps (`LAUNCH`, `SESSION`). Destructive `SESSION` verbs are gated by
   the policy in §6 (2026-07-08), so a stray mobile process can no longer tear
   down a healthy desktop or retry a failing preset in a loop.
-- `ioscd` runs as root but only ever `exec`s fixed binaries (`iosc`, `uiopen`,
-  `dbus-run-session`/`bash -lc <exec>`). `<exec>` comes from an installed
-  `.desktop` the user chose to make a launcher for — same trust level as running
-  it from a shell.
+- `ioscd` runs as root but only `exec`s fixed binaries (`iosc`, `uiopen`,
+  `dbus-run-session`, `xios-session`) plus the argv parsed from a trusted, root-owned
+  `.desktop` entry, without a shell. The one place command text exists is the
+  `SESSION ... app` path, where `xios-session` runs `bash -lc "exec <app>"`; ioscd
+  only passes text through from root peers and builds it from a desktop entry for
+  everyone else.
 - The launchers are unsigned and rely on AppSync, like every app bundle this repo
   installs (whether packaged as a deb, as `com.max.xios` is, or sideloaded with
   `bin/install-app.sh`).
@@ -336,10 +349,9 @@ installed (gives `/var/jb/usr/local/bin/iosc` signed with GPU entitlements),
 5. **Tap "Calculator".** Expect: a second window appears alongside Console (iosc
    stacks multiple toplevels).
 6. **Second-tap test.** Go Home, tap "Console" again. Expect: Xios re-foregrounds
-   and (with the §7 iosc change) the existing Console window raises; `ioscd.log`
-   shows `raise app_id=org.gnome.Console (pid … live)` → `RAISED`. Without the
-   iosc change yet, it should still re-show the display with the window present
-   (no duplicate process — verify only one `kgx`/`gnome-console` in `ps`).
+   and the existing Console window raises; `ioscd.log` shows
+   `raise app_id=org.gnome.Console (pid … live)` → `RAISED`, and there is only one
+   `kgx` in `ps`.
 
 **Triage hooks:** `ioscd.log` (daemon decisions), `iosc.log` (compositor /
 toplevel mapping), `ioscd-client.log` (the spawned app's stdout/stderr),
@@ -351,9 +363,9 @@ missing dep or env issue is the app, not the launcher).
 
 ## 11. Open items / what to route where
 
-- **iosc maintainer:** the `app_id` storage + `iosc-wm.sock` `raise` verb in §7
-  (small, isolated; the raise/focus primitives already exist). Optional follow-on:
-  a `list` verb so `ioscd` can re-sync its table to live windows after a restart.
+- The `iosc-wm.sock` `raise` verb from §7 landed (`wayland/iosc_wm_socket.c`). Still
+  open: a `list` verb so `ioscd` can re-sync its table to live windows after a restart
+  (today `raise` is the only command).
 - **Possible nicety:** generate one launcher per installed `.desktop` in bulk
   (`gen-launchers.sh --apps-root <dir>`), already supported, to populate the Home
   Screen with the whole installed app set at once.

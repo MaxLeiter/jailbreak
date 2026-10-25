@@ -1,10 +1,14 @@
 # Ladybird on iOS — leaf-dependency tier & build integration
 
-Status: **Phase 0 design, settled 2026-07-02.** Companion to [`ladybird-plan.md`](ladybird-plan.md)
-(coordinator-owned; that doc holds the top-level feasibility, phasing, and the Skia/toolchain
-walls). This doc scopes the **leaf third-party closure** for the headless-raster **M0** and
-settles the build-integration fork. Skia is out of scope here (standalone `build-skia.sh`, other
-agent); ICU 78.3 is DONE (recipe deb, do not touch); the toolchain (clang-19) is done.
+Status: **done; kept as the design record.** This plan was carried out as written (Option B,
+per-dep recipes under `linux-build/recipes-ladybird/`), and the closure ships as normal dylib debs
+alongside `ladybird-app` and `ladybird-wayland`. Current state is in
+[`ladybird-plan.md`](ladybird-plan.md). The tables below are the 2026-07-02 snapshot: the
+"Ours" column and the per-dep status describe the tree before the port, not today.
+
+This doc scoped the **leaf third-party closure** for the headless-raster **M0** and settled the
+build-integration fork. Skia has its own doc ([`ladybird-skia-recipe.md`](ladybird-skia-recipe.md),
+`build-skia.sh`).
 
 ---
 

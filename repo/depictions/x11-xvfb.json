@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**Xvfb** is the X virtual framebuffer server for headless X11 sessions. It runs a full X11 server with no display hardware, drawing into an off-screen framebuffer.\n\nUse it for headless/debug X11 sessions or software-only bring-up. The public Xios app display path uses **xios-server** instead.\n\n- xorg-server 1.20.11 virtual framebuffer\n- Registers `/var/jb/usr/bin/Xvfb`\n- Pair with a window manager (`fluxbox`), `xterm`, and the `x11-fonts-sf` package"
+          "markdown": "**Xvfb** is the X virtual framebuffer server for headless X11 sessions. It runs a full X11 server with no display hardware, drawing into an off-screen framebuffer.\n\nUse it for headless or debug X11 sessions. To run X11 apps on screen, install **xios-x11**, which uses rootless Xwayland on the iosc desktop.\n\n- xorg-server 1.20.11 virtual framebuffer\n- Registers `/var/jb/usr/bin/Xvfb`\n- Pair with a window manager (`fluxbox`), `xterm`, and the `x11-fonts-sf` package"
         },
         {
           "class": "DepictionSeparatorView"

@@ -23,7 +23,7 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-launcher-tools-deb"
 STAGE="$STAGEROOT/xios-launcher-tools"
 SYSROOT="$STAGEROOT/sysroot"
-VER="0.1.12"
+VER="0.1.13"
 ARCH="iphoneos-arm64"
 DEB="xios-launcher-tools_${VER}_${ARCH}.deb"
 
@@ -167,6 +167,8 @@ INSTKB="$(du -sk "$STAGE/var" | cut -f1)"
 # it in before, so KDE, X11, native and the *-native app packages ran apps
 # without it. (xios-hwbridged/xios-sensord come from xios-fhs; ioscd skips any
 # helper that is not installed.)
+# iosc 0.9.52: ioscd now starts iosc with Xwayland and hands its DISPLAY to
+# apps it runs as mobile; older iosc leaves that display refusing mobile.
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: xios-launcher-tools
 Name: Xios Home Screen launcher tools
@@ -174,7 +176,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: firmware (>= 16.5), iosc (>= 0.9.39), libiosexec1 (>= 1.3.1), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools, xios-session-stubs (>= 0.2.12)
+Depends: firmware (>= 16.5), iosc (>= 0.9.52), libiosexec1 (>= 1.3.1), libgdk-pixbuf-2.0-0, libglib2.0-0, libpng16-16, libgtkintl, libintl8, librsvg2-common, ldid, uikittools, xios-session-stubs (>= 0.2.12)
 Suggests: com.max.xios, iosc-shell, xios-session
 Breaks: com.max.xios (<< 0.1.12)
 Section: X11

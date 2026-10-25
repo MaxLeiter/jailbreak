@@ -1,0 +1,49 @@
+Subject: [PATCH] libepoxy: resolve desktop GL from mesa libGL on iOS, not OpenGL.framework
+
+On __APPLE__ epoxy loads desktop GL entrypoints (glGetString, glClear, ...)
+from /System/Library/Frameworks/OpenGL.framework with exit_on_fail, so the
+first GL call in a GLX context aborts on iOS, which has no OpenGL framework.
+GTK4's X11 backend hits this as soon as its GLX context is current (ANGLE's
+EGL has no X11 platform, so GDK falls back to GLX).
+
+Here desktop GL is mesa's classic libGL.1.dylib, which carries GLX and every
+GL entrypoint (it is what glxgears links). Point OPENGL_LIB at it, same as
+GLX_LIB, and resolve non-core GL through glXGetProcAddressARB while a GLX
+context is current, as the Linux path does. EGL/GLES (ANGLE, the Wayland
+path) is untouched: an EGL context still returns through eglGetProcAddress
+before the GLX branch is reached.
+
+diff -ruN a/src/dispatch_common.c b/src/dispatch_common.c
+--- a/src/dispatch_common.c	2026-10-25 16:13:15
++++ b/src/dispatch_common.c	2026-10-25 16:13:30
+@@ -174,9 +174,15 @@
+ #include "dispatch_common.h"
+
+ #if defined(__APPLE__)
+-#define GLX_LIB "/var/jb/usr/lib/libGL.1.dylib"
++/* iOS has no OpenGL.framework. Desktop GL here is mesa's classic libGL (GLX +
++ * every GL entrypoint in one library, like Linux libGL.so.1), so the GL
++ * library and the GLX library are the same file. Overridable for host tests. */
++#ifndef EPOXY_IOS_LIBGL
++#define EPOXY_IOS_LIBGL "/var/jb/usr/lib/libGL.1.dylib"
++#endif
++#define GLX_LIB EPOXY_IOS_LIBGL
+ #define EGL_LIB "/var/jb/lib/angle/libEGL.dylib"
+-#define OPENGL_LIB "/System/Library/Frameworks/OpenGL.framework/Versions/Current/OpenGL"
++#define OPENGL_LIB EPOXY_IOS_LIBGL
+ #define GLES1_LIB "libGLESv1_CM.so"
+ #define GLES2_LIB "/var/jb/lib/angle/libGLESv2.dylib"
+ #elif defined(__ANDROID__)
+@@ -856,6 +862,12 @@
+ #if defined(_WIN32)
+     return wglGetProcAddress(name);
+ #elif defined(__APPLE__)
++    /* A mesa GLX context: resolve like Linux, so GL entrypoints libGL does
++     * not export by name still resolve instead of aborting in dlsym. */
++# if PLATFORM_HAS_GLX
++    if (epoxy_current_context_is_glx())
++        return glXGetProcAddressARB((const GLubyte *)name);
++# endif
+     return epoxy_gl_dlsym(name);
+ #elif PLATFORM_HAS_GLX
+     if (epoxy_current_context_is_glx())

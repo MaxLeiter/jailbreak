@@ -1,231 +1,147 @@
-# iosc-compositor — the iosc Wayland compositor + wire protocol
+# iosc-compositor: the iosc Wayland compositor and the app wire
 
-## Ownership
-`iosc` — the clean-room pure-C libwayland-server compositor that composites clients into IOSurfaces for the Xios/native hosts to present. Owns the wire protocol between compositor and app hosts (input, present/DIRTY, clipboard, cursor, native per-window rendezvous, rootless Xwayland XWM glue). NOTE: `iosc.c` is still large and refactor-worthy, but several small lead-approved thawed changes have landed since the original freeze note.
+Owns `iosc`, the C compositor on libwayland-server that composites clients on the GPU
+(ANGLE on Metal) into IOSurfaces for the Xios app and the native per-window hosts to
+present. Also owns the wire between compositor and app hosts (present, input, clipboard,
+cursor, native per-window rendezvous) and the rootless Xwayland XWM. Every flavor runs on
+iosc: the iosc shell directly, KDE as KWin nested inside it, native mode through its
+per-window canvases. (GNOME uses Mutter's own iOS backend, see `mutter.md`.)
 
-## Key files
-- `x11/wayland/iosc.c` — the compositor (monolithic; freeze). `out/iosc` binary → `/var/jb/usr/local/bin/iosc`.
-- `x11/wayland/xios_input_socket.{h,c}` — the 24-byte input wire (shared by iosc AND mutter's MetaBackendIOS). Types: 1 MOTION, 2 BUTTON, 3 KEY, 4 TEXT, 5 TRAITS(→client OSK), 6 TOUCH, 7 TABLET/Pencil, 8 BIND(per-window native), 9 AXIS(scroll), 10 OUTPUT(rotation), 11 HAPTIC, 12 VOLUME, 13 APPEARANCE. x,y = absolute OUTPUT-pixel.
-- `x11/wayland/xios_surface.{c,h}` — the DDX present side (IOSurface, typed HELLO/DIRTY/CURSOR framing).
-- `x11/wayland/xios_canvas.{c,h}` — native-iPadOS per-window canvas registry + `iosc-native.sock` rendezvous.
-- `x11/wayland/iosc_xwm.{c,h}` — rootless Xwayland XWM module integrated into iosc.
-- `x11/linux-build/patches/xios/xios_output_queue.h` — platform-neutral output
-  ownership scheduler (rotation, buffer age, release waits, disconnect quarantine),
-  exercised by `x11/wayland/xios-output-queue-test.c` on every iosc host build.
-- Clipboard bridge is now compiled/wired through `iosc.c` on the shared 32-byte `XMS1` envelope (`XIOS_MSG_CLIPBOARD` 0x04).
-- `x11/wayland/xios.json` contract: `{width,height,stride,format:BGRA,ddx:"iosurface",socket:<ddx>,input_socket:<path>,display}`.
-- Run: `run-shell.sh` (iosc + ioscbg + ioscbar + ioscdock), `run-kgx.sh` (a client).
+## Current state (2026-10-25)
 
-## Current state
-- 2026-08-01 host-only swapchain hardening and repository release (`iosc
-  0.9.46`, ANGLE `es3-16`, `com.max.xios 0.1.10`; published to staging and
-  production, not installed on-device): output ownership is now a
-  platform-neutral, header-only scheduler rather than policy embedded in the
-  Apple transport. Its mandatory host test covers legacy primary-only use,
-  three-buffer rotation, exact-generation releases, one-shot GPU wait transfer,
-  EGL-style age, cancellation, fixed one-buffer stream-v2, and disconnect
-  recovery. A dropped app socket no longer makes an allocation immediately
-  reusable: pending output buffers are quarantined until the next completed app
-  handshake proves the old Metal consumer was torn down or died. Deferred
-  direct-present `wl_buffer.release` now follows the same boundary instead of
-  becoming safe merely because no stream-v2 socket is active. This closes a
-  latent write-while-sampled race in otherwise successful reconnect smoke tests.
-  The GLES IOSurface cache also destroys a pbuffer when `eglBindTexImage` fails
-  instead of permanently caching a zero texture.
+- Production serves `iosc 0.9.51` (depends on `angle ...+es3-16`, `libxcb1`). It is the
+  build every flavor installs through `xios-runtime`.
+- **X11 works under iosc.** 0.9.50 builds the XWM by default; 0.9.51 makes X windows
+  actually appear (the WM redirects the root's subwindows, X windows on non-32-bit visuals
+  composite opaque, iosc picks the X display per slot). Device-verified on 2026-10-25:
+  `glxgears` maps as an iosc window through the XWM, and two slots get `:0` and `:1` with
+  their own sockets. The XWM stays dormant unless `IOSC_XWAYLAND` is set;
+  `xios-session` sets it for the iosc preset when Xwayland is installed (the `xios-x11`
+  flavor). See the 2026-10-25 note below for how X11 apps get `DISPLAY`.
+- Presentation is fenced and triple-buffered: three output IOSurfaces rotated under an
+  explicit ownership scheduler (`xios_output_queue.h`), a GPU release wait before reuse,
+  and a direct-present path that forwards a fullscreen opaque client IOSurface (KWin) to the
+  app with no outer draw. Device-verified with KDE in July (direct and composited
+  transitions, app kill and reconnect).
+- Coexistence (Xios v2 M0, 0.9.49): each slot's iosc publishes status as `iosc-<slot>` and
+  binds `iosc-<slot>-clipboard.sock` and `iosc-<slot>-wm.sock`. See `session-launcher.md`.
+- Startup fails closed: no ANGLE or IOSurface, no compositor. The old CPU fallback is gone.
 
-  The host audit caught a packaging mismatch before rollout: public ANGLE
-  `es3-15` does not export `eglWaitSync`, despite the final development shim
-  doing so. The immutable successor `es3-16` contains the fixed load-bearing
-  `/var/jb/lib/angle/libEGL.dylib`; `iosc 0.9.46` depends on that exact floor.
-  Full cross-build, render-plan tests, output-queue tests, Release iPhoneOS app
-  build, package assembly, symbol inspection, entitlement inspection, and
-  rootless target-package checks pass. The production index is solvable across
-  all 621 published packages, its signed live stanzas match source/index commit
-  `fc95ee3a`, and the full public-version/collision gate passes. Published
-  package SHA256 values:
-  `angle ...+es3-16` =
-  `ed7488b9714728c891a5dfe6cbb2ba895da842fb3b98e9e7fc25369a480d385d`,
-  `iosc 0.9.46` =
-  `2cf942dd87c063c26be3ec6ebbf8ad79f001f3ef35df1e54c12e6df00505650f`,
-  and `com.max.xios 0.1.10` =
-  `79a0acbb85f4af3f0e3cd43ed4926371ba6dc0ea52a7e1378eca8d102083e071`.
-  Extracted payload hashes are iosc
-  `97cb62c722c394bf7470c71aa8aa9cc499827660d4e17a39a7c0bf22145b6ed0`,
-  load-bearing ANGLE shim
-  `ec542f1a5c3feb78e060bb0e950cc444e0843580c116d31b4a34fdcf658fc8c8`,
-  and Xios
-  `e4bfb9f2d4a64e5ff2e1203ac3a81cf210ace227f28e73628a7c880f807ee4a5`.
-  The physical gate is a matched three-package install followed by (1) classic
-  output IDs 1/2/3 rotating with releases, (2) KDE direct -> forced composited
-  -> direct transitions, (3) live Xios socket loss/reconnect without premature
-  `wl_buffer.release`, and (4) one physical UIKit-origin tap. No 2026-08-01
-  device claim is made while the iPad is away.
-- 2026-07-30 swapchain/direct-present performance wave (`iosc 0.9.44`
-  package built; direct path and disconnect recovery device verified):
-  classic iosc now allocates three output
-  IOSurfaces and rotates them under explicit ownership. The producer publishes
-  its existing Metal completion timeline with each surface-addressed DIRTY; the
-  Xios app signals a compositor-owned release timeline after its last sample;
-  iosc encodes that release wait on the GPU before reusing the allocation.
-  Neither CPU waits for the other GPU queue. Buffer-age damage history preserves
-  partial repaint correctness when an older output returns from the app.
-  Stream-v2 also supports dynamically exported client IOSurfaces. When exactly
-  one fullscreen, explicitly opaque IOSurface toplevel owns the output (and no
-  lock, DnD, viewport transform, or compositor cursor intervenes), iosc forwards
-  that allocation and its original producer fence directly to Xios and submits
-  no outer GLES draw. Every transition back to composition forces a complete
-  restoration frame. Legacy clients retain output 1; fixed one-buffer producers
-  may negotiate surface-addressed framing without a release timeline and are
-  deliberately never parked awaiting RELEASED. `build-iosc.sh` and its render
-  plan tests pass. Physical launch then proved stream-v2 app attachment with
-  release capability, `buffers=3`, A10 ANGLE/Metal, brokered bidirectional
-  shared events, vblank pacing, and Xios `iosurface-zerocopy`.
-  KWin's fullscreen opaque output entered `present-path=direct-iosurface`,
-  bypassing the outer GLES draw.
+**Open**
 
-  The device gate found two real transition bugs before closure. First, the
-  packaged EGL shim did not export/return the EGL 1.5 `eglWaitSync` core entry
-  point, so release waits could never be queued. Second, output IOSurface
-  pbuffers were both texture-bound and later reused as EGL draw surfaces;
-  rotation back to one correctly failed with `EGL_BAD_ACCESS`. The shim now
-  forwards `eglWaitSync`, while iosc keeps its context current on a dedicated
-  1x1 pbuffer and treats all output IOSurfaces only as permanent texture-backed
-  FBO targets. Target setup occurs before the GPU release wait, with writes
-  still ordered after that wait.
+1. XWM coverage beyond `glxgears`: focus, close, popups and menus of a real toolkit app
+   (`xterm`, a GTK3 app on `GDK_BACKEND=x11`) through the XWM.
+2. X11 launch paths outside `xios-session app`: ioscd's direct `LAUNCH` (Home Screen
+   launchers) sets no `DISPLAY` and runs clients as `mobile` while Xwayland runs as root,
+   and iosc-shell's panel launches set no `DISPLAY` either.
+3. The physical input matrix in `xios-app.md` (pointer lock, confinement, custom cursor
+   surfaces, five-button chording, wheel versus finger axis source) has not been run on
+   the shipped build.
+4. Damage: cache the static layers (wallpaper, panel, dock).
+5. `iosc.c` is still about 7.5k lines. The next low-risk seams are output and damage
+   bookkeeping, `wl_surface` lifecycle, then input routing; keep each slice buildable and
+   device-smoked.
 
-  The final isolated `codex-gles` KDE proof survived a screencopy-forced
-  direct-to-composited transition with Xios attached, produced a 2880x2160
-  capture with 99.8% non-black pixels, and re-entered `direct-iosurface`
-  without fatal/EGL/release-wait errors. The authoritative log is
-  `artifacts/device-runs/kde-direct-context-pbuffer-20260730-0415/iosc-codex-gles.log`;
-  that bundle also contains an unrelated stale global `iosc.log` from the
-  earlier failing default session. A second capture also had 99.8% content,
-  but concurrent session work backgrounded/relaunched Xios before it, so it
-  does not count as three-target consumer-ownership proof.
-  A subsequent default-session proof deliberately killed the attached Xios
-  process while KWin and Plasma were live. `iosc` logged the client drop,
-  continued compositing without `EGL_BAD_ACCESS` or a fatal target bind, and
-  accepted the relaunched Xios client; app status returned to
-  `iosurface-zerocopy 2880x2160 [metal]` and
-  `input-connected iosc(wayland)`. A deterministic click also reached the live
-  `/var/jb/tmp/iosc-input.sock`. Evidence:
-  `artifacts/device-runs/kde-stream-v2-disconnect-reconnect-fixed-20260730/`.
-  The `0.9.44` package SHA256 is
-  `42b9092a7bd313727656e2c8fce9c42229d0798c697ce3d2fb4f2d6e4ae2d024`;
-  its iosc and canonical EGL shim payload hashes are
-  `0ef418c08cda4d740bd1b160ba4e9872a69971200219682adea8d7d6da55a349`
-  and
-  `1944b72f3cdeed0fcd0bc1cfc644a9cd5a0fa1da0f03324492969bb73b3717a2`.
-  It used the matching development EGL shim. A later package audit found that
-  public ANGLE `es3-15` predates the final `eglWaitSync` export; the host-only
-  `es3-16`/`iosc 0.9.46` candidates above supersede that packaging pair. A fresh
-  physical tap remains the final UIKit-origin input observation;
-  the deterministic socket click does not cross that app boundary.
-  `idevicescreenshot` over the network still failed, so the PNG is
-  compositor-output evidence rather than a physical-screen capture.
-- 2026-07-29 classic selective repaint: `iosc 0.9.42` no longer turns a
-  repaint request with no pending output damage into a full-output composite.
-  Explicit full-scene transitions (output reconfigure and session lock/unlock)
-  now mark full damage, while cursor-free screencopy marks only the cursor
-  footprint before and after capture. A host render-plan test runs as part of
-  `build-iosc.sh`. The package was installed and exercised in the isolated
-  `codexrepaint` device slot first as `0.9.41`: ANGLE/Metal rendered a mapped client, screencopy
-  captured 87.4% non-black pixels, `IOSC_DAMAGE_STATS=1` recorded two
-  `output-damage rects=0 skipped` events, and the compositor remained alive.
-  The final `0.9.42` release also includes the merged input-method-v1 support;
-  the version was bumped because public deb filenames are immutable. Evidence:
-  `.artifacts/iosc-classic-repaint-0941/`.
-- 2026-07-29 native selective repaint: `iosc 0.9.40` marks the owning
-  native toplevel canvas dirty when that toplevel, one of its popups, or one of
-  its subsurfaces is damaged, and skips unchanged live canvases during a
-  recomposite cycle. `IOSC_NATIVE_STATS=1` provides opt-in counters. On-device,
-  with GIMP and GNOME Calculator mapped across three native toplevel canvases,
-  120 repaint cycles composited 60 changed canvases and avoided 243 unchanged
-  canvas composites. The implementation was first device-tested as `0.9.39`;
-  that version collided with a different immutable public payload, so the final
-  package is `0.9.40`. It was relaunched through the
-  normal `ioscd` `LAUNCH_NATIVE` path with GIMP live. Benchmark and device-state
-  evidence: `artifacts/device-runs/native-repaint-0.9.39-20260729/`.
-- 2026-07-29 single-contract host closure: the private `iosc_iosurface`
-  interface is version 1 everywhere (iosc, ANGLE EGL producer, Mutter, KWin,
-  and Xwayland). Its one frame contract requires a 32-byte broker token and a
-  non-zero `MTLSharedEvent` value before a compositor samples an IOSurface.
-  Capability negotiation, archive transport, version branches, and unfenced
-  frame variants are gone. Native per-window presentation is independently
-  normalized to version 1 with the same mandatory-fence rule. Host builds passed
-  for `iosc 0.9.33`, `angle ...+es3-14`, `libmutter-14-0 46.0+ios6`,
-  `xwayland 23.2.7+ios3`, `kwin 6.1.5+ios29`, and the iOS native host.
-- 2026-07-29 historical matched device validation: `iosc 0.9.27` and
-  `angle 2.1.0+git20260630.a32d31d+es3-10` are installed on the A10 iPad.
-  `iosc` reports `ANGLE Metal Renderer: Apple A10 GPU`, and a mapped GTK client
-  enabled the 32-byte broker-token
-  cross-process GPU fence. The launchd broker was running and had never exited;
-  no CPU-side completion diagnostic or fatal fence line appeared. The matched
-  rebuilt Xios app is installed, but the screen/FrontBoard gate prevented
-  foregrounding it, so the final `iosc -> Xios` wait/present half still needs
-  one awake-screen physical confirmation. Evidence:
-  `artifacts/device-runs/gpu-fence-final-20260729-1600/`.
-- 2026-07-29 GPU-fence transport: ordinary
-  `NSKeyedArchiver` transport of `MTLSharedEventHandle` has been removed from
-  `client -> iosc`, `iosc -> Xios`, and native per-window paths. `iosc 0.9.27`
-  ships the
-  launchd-owned `com.max.xios.metal-event-broker` NSXPC service; producers
-  publish a persistent handle once under an opaque 32-byte token, consumers
-  recreate the event through XPC, and only monotonic values stay on the existing
-  Wayland/app wires. Tokens remain available for Xios reconnects and are
-  revoked when the publishing XPC connection dies. The current Wayland
-  interface has since been collapsed to the single version-1 broker-token
-  contract described above. Native presentation requires a broker token/value
-  on every frame and pairs each fence with a canvas
-  generation so resize/reconnect delivery cannot authorize stale storage.
-  `iosc_0.9.27_iphoneos-arm64.deb` SHA256:
-  `4a986650be20e77b60c7b32e6e5162bd3bc2f7584d842cbd6d4db503253e609a`.
-- 2026-07-29 release-policy update: `iosc` fails closed when
-  ANGLE/IOSurface initialization or a live output-target rebind fails. The
-  deliberately incomplete top-surface-only CPU compositor now requires the
-  explicit `IOSC_ALLOW_CPU_DIAGNOSTIC=1` opt-in. CPU-side frame completion also
-  requires `IOSC_ALLOW_CPU_SYNC_DIAGNOSTIC=1`; production never publishes an
-  unfenced frame.
-- 2026-07-19 input closure is staged as `iosc 0.9.20`: KEY records now carry actual down/up
-  state plus depressed/locked Shift/Ctrl/Alt/Super/Caps/Num masks; TEXT remains an explicit
-  down/up fallback. Multi-button state supports chording, pointer-lock deltas are incremental,
-  confinement regions and lock-position hints are honored, and arbitrary client cursor surfaces
-  (including hotspot) are compositor-rendered while named cursors retain the app-overlay fast path.
-  `iosc-input-test` now emits valid key taps, and both it and the stateful `ios-inputd` external-
-  compositor bridge ship in the package. Cross-build/package checks pass; device proof is pending.
-- iosc composites at logical N×M with 2× supersample → output IOSurface = 2N×2M (e.g. `-logical 1600x1200` → 3200×2400). Default in run-shell.sh is 1440×1080.
-- Input path PROVEN correct on-device: `surface_at()` pick is role-agnostic (delivers wl_pointer + wl_touch to layer surfaces too, not just toplevels); `handle_motion`/`handle_button`/`handle_touch` route to the hit surface's client; `iosc_input_record` divides output-px by `output_scale` ONCE (`iosc.c:4922-4923`) — no double-divide. Injected known-coord taps land dead-on.
-- Layer-surface translucency (alpha blend) needs iosc ≥ 0.9.1 (commit e11aa52); deployed iosc has it.
-- Cursor overlay + typed HELLO/DIRTY/CURSOR framing landed. AXIS scroll wire + touch (type 6) + tablet/Pencil (type 7) wire decode landed (3ebf085). The Xios app halves also landed (`sendScroll`/`iosc_input_touch`/`iosc_input_tablet`, 9470335) — both sides are in, not pending.
-- Clipboard is no longer split between app and compositor work: `XIOS_MSG_CLIPBOARD` 0x04 is wired into `iosc.c` and should be treated as deploy-coupled with a matching Xios app.
-- Native iPadOS mode is implemented in the same binary and selected at runtime by ioscd/request mode (`LAUNCH_NATIVE`) or `iosc -native`/env. Native gets its own namespace (`wayland-native-0`, `iosc-native-input.sock`, `xios-native.json`) and per-window canvas delivery via `iosc-native.sock`; the single-output Xios presenter remains available simultaneously. The legacy software X server is no longer part of the default `xios-x11` flavor.
-- Rootless Xwayland XWM integration landed locally: `iosc_xwm` plus `xwayland-shell-v1.xml`, `build-iosc.sh` glue, and `run-xwayland.sh` MIT-SHM disable for iOS/mesa clients such as `glxgears`. Since iosc 0.9.50 the XWM is built by default (`IOSC_BUILD_XWM=0` opts out); see the 2026-10-25 note below.
-- Local compositor upload path now tracks `damage_buffer` dirty rectangles for cached wl_shm textures, so repaint pulses and cursor movement do not force whole-window re-uploads. The nested-compositor frame pulse is deployed in the iosc launch paths with `IOSC_FRAME_PULSE=1` by default.
-- 2026-07-03: `iosc` now cleans up compositor surfaces on client disconnect, accumulates real output damage, and scissors redraws to the damaged output rects instead of recompositing the full output for small surface updates. Debug tracing is behind `IOSC_DAMAGE_STATS=1` and `IOSC_DAMAGE_REASON=1`. Packaged/deployed on-device as `iosc 0.9.4`; installed `/var/jb/usr/local/bin/iosc` sha256 is `82b08437245ff678af0cb9fee66458cb860cd14f1c147c8a0b771b1f2da371c4`.
-- 2026-07-03 on-device soak: clean `xios-session iosc` mapped the four shell layer surfaces; launching `kgx` mapped a fifth toplevel; killing `kgx` and remapping `ioscbar` returned the compositor to `4 window(s)`, confirming the dead client was not retained. Evidence: `artifacts/device-runs/20260703-124645/compositor.png`.
-- 2026-07-03 Xwayland glamor/IOSurface path is verified on-device with `xwayland 23.2.7+ios2`: Xwayland binds `iosc_iosurface`, iosc imports client IOSurfaces from the Xwayland task, and the compositor presents through ANGLE/Metal (`GL_RENDERER=ANGLE ... Apple A10 GPU`, frame barrier `EGL fence`). The Xwayland glamor backend marks its IOSurfaces as top-left to avoid inverted X11 output. Evidence: `artifacts/device-runs/xwayland-glamor-ios2-flipfix-20260703-153036/compositor.png`.
-- 2026-07-04 refactor pass started: CLI/default parsing moved to `iosc_options.{c,h}`, truthy/size helpers moved to `iosc_util.{c,h}`, and the custom `iosc_iosurface` protocol/buffer implementation moved to `iosc_iosurface.{c,h}`. Cross-build passed and an on-device smoke mapped `iosc-client` against the refactored compositor. Evidence: `artifacts/device-runs/iosc-split-client-smoke-20260704-221927/compositor.png`.
-- 2026-07-04 protocol/stats follow-up: `iosc_iosurface.xml` now documents `format` as a named enum (`bgra8888_gl_origin` plus `flag_top_left`) and adds an `unsupported_format` protocol error for unknown layouts/flags. The compositor, ANGLE shim test client, GPU smoke client, and Xwayland glamor backend now use generated enum constants instead of raw flag words. `IOSC_DAMAGE_STATS=1` also records per-surface damage counters (`surface`, `buffer`, `full`, pixels) next to the existing output-damage/scissor trace. Host validation passed for `IOSC_BUILD_XWM=0 wayland/build-iosc.sh`; targeted `xwayland-package` rebuilt as `linux-build/out/xwayland_23.2.7+ios2_iphoneos-arm64.deb` (sha256 `6d98a1934c51b88dc9af1951f4dedac31e433adbfdb9d1bed7f131fb5a08b063`). On-device direct smoke deployed `/var/jb/usr/local/bin/iosc` sha256 `370b40b160542c4e1747444cbd20c5eba1ae6ff584ef8fc255690c2d66885b63`, showed wl_shm per-surface damage stats, then ran a DER-signed `iosc-gpu-client` that bound `iosc_iosurface`, rendered through ANGLE on the A10 GPU, and was imported by `iosc` as a client IOSurface. Evidence: `artifacts/device-runs/iosc-protocol-stats-20260704-223925/compositor.png`; KDE was restored afterward and `bin/xios-device status` reported `"preset":"kde","state":"up"`.
-- 2026-07-04 packaging follow-up: `wayland/package-iosc.sh` now builds `iosc 0.9.5` so the protocol enum/validation and per-surface damage stats ship without replacing the public `0.9.4` deb bytes. Built `linux-build/out/iosc_0.9.5_iphoneos-arm64.deb` and `repo/debs/iosc_0.9.5_iphoneos-arm64.deb` with sha256 `07ce2ed1ae6d328abc951a5dc0b38e6e2850c1dc480f7da28475b3e312128ab4`; installed on-device with `dpkg -i`, confirmed `dpkg-query` reports `iosc 0.9.5`, and relaunched KDE on the packaged compositor. Evidence: `artifacts/device-runs/iosc-095-kde-20260704-224352/compositor.png`.
-- 2026-07-04 multi-rect damage follow-up: output damage now keeps up to 16 independent output-pixel rects and only collapses to the coarse union on overflow. The GPU repaint loop runs one scissored clear/draw pass per rect and sends one final dirty notification; screencopy `copy_with_damage` reports the per-rect damage list. `iosc-client` has an opt-in `IOSC_CLIENT_SPLIT_DAMAGE=1` mode that emits two separated `damage_buffer` rects for validation. On-device direct smoke showed the second repaint as `output-damage rects=2` with two `192x192` rects instead of the `2528x1808` union. Packaged as `iosc 0.9.6` (`linux-build/out/iosc_0.9.6_iphoneos-arm64.deb`, sha256 `61cb84aab6773f52eb22b4a095aa4b1f1ff064379fc3b76f0556b62ff3b7b30d`), installed on-device, and relaunched KDE on the packaged compositor. Evidence: split damage `artifacts/device-runs/iosc-multirect-damage-20260704-225157/compositor.png`; packaged KDE smoke `artifacts/device-runs/iosc-096-kde-20260704-225337/compositor.png`.
-- 2026-07-04 occlusion follow-up: the repaint loop now subtracts opaque surfaces above each damaged surface and draws only the remaining visible rect pieces. `iosc_gl_set_damage()` changes the current scissor without clearing so one output damage rect can be further clipped per surface. `IOSC_DAMAGE_STATS=1` logs `occlusion surface=... visible=...` when a surface is partially or fully hidden. Clean package built from commit `d8c1dc50` as `iosc 0.9.8` (`linux-build/out/iosc_0.9.8_iphoneos-arm64.deb` and `repo/debs/iosc_0.9.8_iphoneos-arm64.deb`, sha256 `8481c8fbb3355c4cc1e30027cd64408652695818142628214b652d83ad24b4ab`); installed `/var/jb/usr/local/bin/iosc` sha256 is `0309f9df7b49e21dfed1038a5280d0dadc0808b1da61a4933fa78c195dea8a17`. Clean on-device proof: `artifacts/device-runs/iosc-098-clean-occlusion-20260704-232619/live-check.txt` shows package `0.9.8`, two `192x192` output damage rects, and the covered lower surface skipped with `visible=0` for both rects. Normal `xios-session iosc` was restored afterward with the same installed hash.
-- 2026-07-04 rotation/native-feel package: the `XIOS_IN_OUTPUT` resize/haptic work is now clean-packaged as `iosc 0.9.9` (`linux-build/out/iosc_0.9.9_iphoneos-arm64.deb` and `repo/debs/iosc_0.9.9_iphoneos-arm64.deb`, sha256 `4903b541b4a522a6e1746f2acdfe5b68e12866bca94903485e6e73f30662464b`). It handles OUTPUT by reallocating the output IOSurface via `xios_surface_resize`, rebinding `iosc_gl`, resending `wl_output`/`zxdg_output`, reconfiguring layer/fullscreen/maximized surfaces, clamping windows/cursor, and dropping stale Xios app clients so the app re-adopts. It also broadcasts `XIOS_IN_HAPTIC` on shell/layer pointer/touch down. Installed on-device over `0.9.8`; final proof after `xios-session iosc` + foreground Xios showed package `0.9.9`, `/var/jb/tmp/xios.json` `2160x2880`, Xios status `iosurface-zerocopy 2160x2880 [metal]`, and `/var/jb/tmp/iosc.log` lines `output resized to 2160x2880`, `iosc_gl: output rebound (2160x2880)`, `output now 1080x1440 logical transform=1`.
-- 2026-07-05 KDE Mobile nested-compositor follow-up: `iosc 0.9.15` adds `IOSC_FULLSCREEN_TOPLEVELS=1` for sessions where a nested compositor owns the entire output. In fullscreen-toplevel mode, initial xdg-toplevel configure is the current output logical size, the toplevel is marked fullscreen, and mapped fullscreen toplevels stay at `(0,0)` across output reconfigure. Current local package SHA256: `iosc_0.9.15_iphoneos-arm64.deb` = `c2bdb93230fe2206399feb4a9dfd53f514cfdd00311b8ad0c9012c78b7376708`. On-device proof with `xios-session 1.0.44` and `plasma-mobile 6.1.5+ios7` shows `fullscreen toplevel mode enabled`, `initial toplevel configure 1080x1440 fullscreen`, `surface mapped role=1 band=2 at (0,0)`, and a full-frame `2160x2880` capture (`bbox=0,0,2160,2880`). Evidence: clean Mobile home `artifacts/device-runs/kde-mobile-final-clean-20260705-2152/`; current read-only live capture with user-launched Ark foreground `artifacts/device-runs/kde-mobile-ios7-readonly-20260705-2202/`.
+## Key files (`x11/wayland/` unless noted)
+
+- `iosc.c` plus the split-out modules (`iosc_options`, `iosc_util`, `iosc_iosurface`,
+  `iosc_gl`, `iosc_render_plan`, `iosc_text_input`, `iosc_pointer_ext`, `iosc_tablet`,
+  `iosc_viewport`, `iosc_screencopy`, `iosc_kde_output`, `iosc_foreign_toplevel`).
+- `iosc_xwm.{c,h}` and `protocols/xwayland-shell-v1.xml`: the rootless XWM.
+- `xios_input_socket.{c,h}`: the input side of the wire, shared with Mutter's backend.
+- `xios_canvas.{c,h}`: native per-window canvases and the `iosc-native.sock` rendezvous.
+- `x11/linux-build/patches/xios/xios_surface.{c,h}` (present side) and
+  `xios_output_queue.h` (output ownership; host test `xios-output-queue-test.c` runs on
+  every `build-iosc.sh`).
+- `x11/apps/shared/XiosProtocol.h`: the wire definition. One 32-byte `xios_msg`;
+  present/control codes below 0x100 (`HELLO`, `DIRTY`, `CURSOR`, `CLIPBOARD`, `RELEASED`,
+  native `BIND`/`WINDOW_*`/`NATIVE_FRAME`, ...) and input codes `XIOS_IN_*` from 0x100. Unknown
+  codes are fatal on purpose.
+- `iosc_iosurface` (private Wayland protocol): version 1 everywhere (iosc, the ANGLE EGL
+  producer, Mutter, KWin, Xwayland). Every frame carries a 32-byte broker token and a
+  non-zero `MTLSharedEvent` value; the `com.max.xios.metal-event-broker` XPC service turns
+  tokens into events. There are no unfenced variants.
+- `build-iosc.sh` (cross build plus host tests; `IOSC_BUILD_XWM=0` drops the XWM),
+  `package-iosc.sh`, `run-iosc.sh`, `run-kgx.sh`, `run-xwayland.sh` (rootful harness).
+- `/var/jb/tmp/xios.json` is what the compositor writes for the app: size, stride, format,
+  ddx and input sockets. Anything mapping framebuffer to screen must read it, never a
+  constant. Slots write `xios-<slot>.json`.
+
+## Debug switches
+
+`IOSC_DAMAGE_STATS=1`, `IOSC_DAMAGE_REASON=1` (output and per-surface damage, occlusion),
+`IOSC_NATIVE_STATS=1` (native canvas repaint counters), `IOSC_XWM_DEBUG=1` (X events,
+errors, map requests, depth), `IOSC_FULLSCREEN_TOPLEVELS=1` (a nested compositor owns the
+whole output; KDE sets it), `IOSC_IGNORE_ACTIVE_SESSION=1` (start a classic iosc over
+another active owner, diagnostics only). Logs: `/var/jb/tmp/iosc.log` (or the slot's log),
+shell stderr with `IOSC_SHELL_DEBUG=1`. Input socket: `/var/jb/tmp/iosc-input.sock`.
+
+## Gotchas and root causes
+
+- **Logical vs output pixels.** iosc composites at logical size times scale (default
+  `1440x1080` at 2x, so a `2880x2160` IOSurface). Input records carry output pixels and are
+  divided by the scale exactly once.
+- **ANGLE `eglWaitSync`.** Public ANGLE `es3-15` did not export the EGL 1.5 `eglWaitSync`
+  core entry point, so release waits could never queue. `es3-16` does; iosc depends on it.
+- **A pbuffer cannot be both a bound texture and a draw surface.** Output IOSurfaces are
+  permanent texture-backed FBO targets, and the context stays current on a dedicated 1x1
+  pbuffer. Reusing an output pbuffer as a draw surface failed with `EGL_BAD_ACCESS` on
+  rotation. A failed `eglBindTexImage` must destroy the pbuffer, not cache a zero texture.
+- **A dropped app socket does not free its buffers.** Pending output buffers stay
+  quarantined until the next completed app handshake proves the old Metal consumer is gone;
+  otherwise iosc could write into a surface the dead app was still sampling.
+- **XWM start-up.** Do not block on Xwayland's `-displayfd` before `wl_display_run()`:
+  Xwayland writes it only after `InitOutput`, which round-trips with the compositor. Read
+  it from the event loop.
+- **Rootless Xwayland only makes a `wl_surface` for a manually redirected top-level.** The
+  WM must redirect the root's subwindows (Composite, Manual), as wlroots and weston do.
+- **Xwayland lock files never appear on iOS**, so two Xwaylands both took `:0` and the
+  second unlinked the first one's socket. iosc picks the display and passes it explicitly.
+- **No MIT-SHM.** iOS has no SysV shm and clients that see the extension die; Xwayland runs
+  with `-extension MIT-SHM`.
+- **Alpha on non-32-bit visuals is undefined** in the IOSurface; composite those opaque.
+- **Nested compositors need frame callbacks after the mapping commit.** KWin stalled until
+  iosc answered `wl_surface.frame` requested after the commit that made a surface visible;
+  iosc now runs a real frame clock (c382a9b6).
+- **Public `.deb` filenames are immutable.** Several iosc versions (0.9.39, 0.9.41) were
+  skipped because a different payload already had that name. Bump, never replace.
+
+## History (short)
+
+- 0.8.0 to 0.9.9 (late June to early July): first release, layer-shell translucency,
+  client-disconnect cleanup, damage tracking with up to 16 rects and occlusion, the protocol
+  enum and validation, OUTPUT resize for rotation, haptic broadcast. Xwayland glamor via
+  `iosc_iosurface` verified on device with `xwayland 23.2.7+ios2`.
+- 0.9.15 (2026-07-05): fullscreen-toplevel mode for KDE Mobile.
+- 0.9.20 (2026-07-19): stateful keys with modifier masks, chording, pointer lock and
+  confinement, client cursor surfaces, `ios-inputd` for external compositors.
+- 0.9.27 to 0.9.42 (2026-07-29): broker-token GPU fences, the single v1 `iosc_iosurface`
+  contract, fail-closed start-up, input-method v1, native and classic selective repaint.
+- 0.9.44 to 0.9.47 (2026-07-30 to 08-02): triple-buffered fenced output, direct present,
+  the output-queue scheduler, disconnect quarantine, non-fatal IOSurface import failure.
+- 0.9.48 and 0.9.49 (2026-10): audit rebuild, M0 per-slot sockets and status.
+- 0.9.50 and 0.9.51 (2026-10-25): XWM by default, then X windows that actually show up.
+
+## Dated notes
+
 - 2026-10-25 X11 under iosc (iosc 0.9.50, xios-session change unpackaged): the published `xios-x11` flavor installed Xwayland but nothing started it (iosc built without the XWM, nothing set `IOSC_XWAYLAND`). Now: `build-iosc.sh` builds the XWM by default and the deb depends on `libxcb1`; the XWM stays dormant unless `IOSC_XWAYLAND` is truthy, so non-X11 sessions only gain a libxcb link. `xios_session_iosc` exports `IOSC_XWAYLAND=1` + `IOSC_XWAYLAND_BIN` when `$XS_PREFIX/bin/Xwayland` exists (each slot's iosc spawns its own Xwayland; `IOSC_XWAYLAND=0` opts out). Fixed a start-up deadlock that had kept the XWM from ever working: `iosc_xwm_start()` blocked reading `-displayfd` before `wl_display_run()`, but Xwayland writes it only after `InitOutput`, which round-trips with iosc. The display fd is now read from the event loop and the xcb/`WM_S0` setup runs then. Xwayland also gets `-extension MIT-SHM` (as in `run-xwayland.sh`) and iosc's own `-s` socket as `WAYLAND_DISPLAY`. **How X11 apps get DISPLAY:** once the WM owns the display, iosc latches `x11-display` = `:N` in its `xios-status.d` sidecar (`iosc.status` or `iosc-<slot>.status`; `none` if Xwayland dies; cleared on exit). `xios_session_app` (which the ioscd `SESSION app` path, i.e. the X11 picker, also runs) reads it via `xs_iosc_x11_display`, requires `/tmp/.X11-unix/X<N>` to exist, and passes `DISPLAY` plus `GDK_BACKEND=wayland,x11` when the session owner is iosc. Host coverage: `apps/iosc-desktop/test-session-x11.sh`. **Not yet device-proven:** Xwayland actually spawning under iosc and mapping an X window (`xterm`) as its own iosc surface; focus/close/popups through the XWM; slots getting distinct displays. **Known gaps:** ioscd's direct `LAUNCH` path (home-screen launchers) still sets no `DISPLAY`, runs clients as `mobile` while Xwayland runs as root (X local-user access would refuse them), and its own iosc restart does not set `IOSC_XWAYLAND`; xios-session needs a `Depends: iosc (>= 0.9.50)` bump or an older iosc just logs `Xwayland XWM failed to start`.
+- 2026-10-25 follow-up (iosc 0.9.51, xios-x11 0.1.12, both published): the device test of
+  0.9.50 got Xwayland running and X clients connecting (`glxgears` at about 190 fps) but no X
+  window on screen. 0.9.51 redirects the root's subwindows, composites non-32-bit visuals
+  opaque and picks the X display per slot; `glxgears` then mapped as an iosc window and two
+  slots got `:0` and `:1`. `xios-session 1.0.82` already depends on `iosc (>= 0.9.50)`. The
+  ioscd `LAUNCH` gaps above are still open.
 
-## Known compositor-side issues
-1. **Nested-compositor frame callbacks**: first-light KWin-on-iosc is now verified. `wayland/iosc.c` queues a coalesced repaint pulse when a mapped surface requests `wl_surface.frame` after the commit that made it visible, and `IOSC_FRAME_PULSE=1` is defaulted by `run-iosc.sh`, `run-shell.sh`, `xios-session`, and `ioscd`. Evidence: `x11/artifacts/device-runs/kde-kwin-framepulse-20260702-234309/` shows KWin importing QtWayland IOSurfaces and the Qt client no longer logging the frame-callback timeout loop. Keep soaking for clients that repaint continuously.
-2. `iosc.c` remains a monolith. Clipboard/native/XWM hooks landed because they were product-critical, but further broad behavior changes should still prefer small modules or a deliberate refactor pass.
-3. Native mode still needs device validation around fenced presentation, resize/focus/keyboard/jetsam replay, and a decision on whether to retain the single-output IOSurface while native hosts are active.
-
-## Open items
-1. Exercise the installed `iosc 0.9.27` with the matching Xios app using the physical input matrix
-   in `xios-app.md`; specifically include pointer lock, non-rectangular confinement expectations,
-   custom cursor surfaces/hotspots, five-button chording, and wheel-versus-finger axis source.
-2. Damage optimization: static layer caching for wallpaper/panel/dock, then per-surface damage telemetry dashboards to catch chatty clients.
-3. Native-ipados follow-up: finish/record on-device validation for generated native hosts, coexistence with the fullscreen desktop, per-window touch transform, keyboard hints, and jetsam replay. See native-ipados.md.
-4. Rotation follow-up: basic iosc portrait resize is clean-packaged and device-validated. Remaining work is shell layout polish at `1080x1440`, wider app/client soak after live `wl_output` reconfigure, and physical orientation-change QA. See polish.md #21.
-5. Refactor plan: continue splitting `iosc.c` after the first options/IOSurface extraction. Next low-risk seams are output/damage bookkeeping, wl_surface lifecycle helpers, then input routing; keep each slice buildable and device-smoked.
-
-## Verify
-`/var/jb/tmp/iosc.log` (logical/output/clients), shell stderr logs (with IOSC_SHELL_DEBUG=1). Input socket is `/var/jb/tmp/iosc-input.sock` for iosc.
+## 2026-10-25 (later): X access for mobile clients
+- iosc 0.9.52 (unpublished, device-tested; the binary was tested in its own slot and
+  mv'd into place for the ioscd test, then the 0.9.51 bytes restored, not dpkg-installed:
+  the iosc postinst re-bootstraps the Metal event broker, which a live KDE depends on). Xwayland
+  seeds its host list with `SI:localuser:<its own user>` only and has no cookie, so with iosc
+  (and Xwayland) as root every mobile client (all ioscd launches) got "Authorization required".
+  The XWM now does what `xhost +si:localuser:mobile` does, right after WM setup and before
+  `x11-display` is published: core `ChangeHosts(Insert, ServerInterpreted, "localuser\0mobile")`
+  (`xwm_grant_local_user`, core libxcb only). Access control stays on; uid -2 (nobody) is still
+  refused. Device: with both Xwayland 24.1.13+ios2 and 23.2.7+ios5 the host list reads
+  `localuser:root`, `localuser:mobile`; mobile `glxgears` and `xterm` map as iosc surfaces;
+  two iosc instances got distinct displays (`:0`, `:1`). Evidence:
+  `x11/artifacts/device-runs/x11-gaps-20261025/` (main checkout).

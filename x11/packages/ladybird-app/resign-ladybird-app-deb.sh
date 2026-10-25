@@ -69,6 +69,7 @@ done
 # carry a now-unused /var/jb/usr/lib LC_RPATH. Strip any foreign scheme rpath
 # and re-sign every dylib after the load-command mutation.
 for dylib in "$APP"/lib/*.dylib; do
+    [ -e "$dylib" ] || break   # no lib/: the unmatched glob is not a dylib
     for stale_rpath in /var/jb/usr/lib /usr/lib; do
         if [ "$stale_rpath" != "$XIOS_INSTALL_PREFIX/lib" ] && \
            otool -l "$dylib" | grep -A2 LC_RPATH | grep -Fq "path $stale_rpath "; then

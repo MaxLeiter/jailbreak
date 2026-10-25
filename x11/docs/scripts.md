@@ -1,7 +1,7 @@
 # Build / sign / package scripts
 
-The x11 tree has ~100 shell scripts. The repeated primitives — ldid signing,
-`dpkg-deb` packaging, and extracting dev debs into a cross sysroot — now live in
+The x11 tree has ~100 shell scripts. The repeated primitives (ldid signing,
+`dpkg-deb` packaging, and extracting dev debs into a cross sysroot) live in
 one sourced library, `x11/lib/xlib.sh`, so callers stop hand-rolling (and
 diverging on) them.
 
@@ -18,7 +18,7 @@ while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; do
 
 ### `xsign <bin> [entitlements] [required-marker...]`
 ldid-signs `<bin>` (with an entitlements plist, or ad-hoc without one) and then
-asserts every `required-marker` shows up in `ldid -e` — the verification the ~28
+asserts every `required-marker` shows up in `ldid -e`, the verification the ~28
 inline `ldid -S` sites lacked. Fails loud so `set -e` aborts. Prints only to
 stderr (safe to call anywhere).
 
@@ -36,8 +36,8 @@ accepted and only prints a note saying so.
 ### `xstage_lagom_fonts <share/Lagom/fonts dir> [cache dir]`
 Stages the Liberation text family (Sans/Serif/Mono × 4 styles) into a Ladybird
 resource font directory, then fails if the directory still has no monospace face.
-Ladybird's WebContent loads fonts **only** from `resource://fonts` — that exact
-directory — and the iOS build has no fontconfig, so system fonts under
+Ladybird's WebContent loads fonts **only** from `resource://fonts` (that exact
+directory), and the iOS build has no fontconfig, so system fonts under
 `$XIOS_PREFIX/usr/share/fonts` are invisible to it. Upstream `Base/res/fonts` (all
 that `cmake --install --component ladybird_Runtime` ships) is NotoEmoji +
 SerenitySans-Regular, neither monospace, which aborts WebContent on
@@ -69,7 +69,7 @@ When converting a site to `xsign`:
 - **In-container** `ldid` → `xsign` still helps (adds marker-presence checks), but
   the host DER re-sign must still happen; don't delete it.
 - **On-device** `ldid` over ssh (e.g. `gen-launchers.sh --deploy`) is a third
-  context — that is the device's ldid, not `xsign`; leave it.
+  context: that is the device's ldid, not `xsign`; leave it.
 
 ## Migration status
 
@@ -88,7 +88,7 @@ end-to-end):
   `apps/iosc-shell/package-shell.sh`, `packages/xios-fhs/package-fhs.sh`,
   `packages/xios-session-stubs/build.sh`, `packages/meta/build-meta.sh`.
 
-### Intentionally NOT converted (with reasons — do not "fix" these blindly)
+### Intentionally NOT converted (with reasons; do not "fix" these blindly)
 
 - **In-container build scripts** (`build.sh`, `build-gtk/kwin/mutter/qt/qt-modules/
   xwayland.sh`, `build-audio.sh`, legacy `build-bun.sh`, `build-cogl-smoke.sh`,
@@ -97,7 +97,7 @@ end-to-end):
   `wayland/build-session-stubs.sh`, `wayland/build-xios-glue.sh`, ...): their
   `ldid`/`dpkg-deb` run *inside* the container, where `x11/lib` is not mounted, so
   `xlib.sh` cannot be sourced. Their `docker run` mounts would each need
-  `x11/lib` added before they could use the helpers — a separate, deliberate step.
+  `x11/lib` added before they could use the helpers, a separate, deliberate step.
   (Their in-container `ldid` is also DER-less; the real sign is the host re-sign,
   which IS converted.)
 - **On-device / sh-only helpers** (`gir-ondevice.sh`, `gi-package.sh`,
@@ -112,7 +112,7 @@ end-to-end):
   `debian:bookworm-slim` for `dpkg-deb` (documented host-bash workaround);
   `xmkdeb` assumes the procursus image's bash entrypoint. Its signing IS converted.
 - **`packages/xios-desktop-theme/build.sh`**: `dpkg-deb` is inside a bespoke
-  in-container step that also generates the wallpaper — a restructure, not a swap.
+  in-container step that also generates the wallpaper, so it is a restructure, not a swap.
 
 ### Notes
 
@@ -145,7 +145,7 @@ end-to-end):
 ## Version marking (`+iosN`)
 
 Every upstream package we rebuild for iOS carries a build marker appended to its
-deb version — the house style is `+ios1` (older tracks used `+wl1`, `+angle1`,
+deb version. The house style is `+ios1` (older tracks used `+wl1`, `+angle1`,
 `+rootless1`, `+xios1`, `+es3-3`; all equivalent in intent). This makes our deb
 unambiguously *our* build and sorts it above a same-named upstream deb
 (`2.52.0+ios1` > `2.52.0` and > `2.52.0-3` upstream revision). Our own originals
@@ -156,20 +156,22 @@ marked.
 Where it lives:
 - **In recipes** (the source of truth): on the deb-version seam
   `DEB_<PKG>_V ?= $(<PKG>_VERSION)+ios1`. Never append to the upstream
-  `<PKG>_VERSION` var itself — that drives the source-tarball URL/dir and would
+  `<PKG>_VERSION` var itself; that drives the source-tarball URL/dir and would
   break the download. Revision-suffixed recipes keep the revision first
   (`$(QTBASE_VERSION)-3+ios1`). `xmkdeb` reads the resulting version straight
   from `DEBIAN/control`, so a rebuilt deb inherits the marker automatically.
-- **In the shipped debs**: the ~300 already-published debs were back-filled once
-  by a repack that re-tars each archive with the new `Version:` and renames the
-  file. The payload (every Mach-O and its DER code signature) is byte-identical
-  across the repack — only the deb wrapper and `DEBIAN/control` change — so
-  signatures survive untouched. Dependency resolution is unaffected: the repo has
-  zero `(= x)` / `(>= x)` version pins, and the `xios-*` metas depend on bare
-  names.
+- **In the shipped debs**: the ~300 debs published before the marker existed were
+  back-filled once (July 2026) by a repack that re-tarred each archive with the
+  new `Version:` and renamed the file. The payload (every Mach-O and its DER code
+  signature) was byte-identical across the repack; only the deb wrapper and
+  `DEBIAN/control` changed. That was safe at the time because nothing pinned
+  versions. That is no longer true: the `xios-*` metas and many packages now
+  carry `(>= x)` floors (for example `xios-x11` needs `iosc (>= 0.9.51)`), so a
+  marker change on an already-pinned package is a real version change and needs
+  the normal bump, never a repack at the same filename.
 
 When adding a new upstream port, set `DEB_<PKG>_V ?= $(<PKG>_VERSION)+ios1` in its
-recipe and it ships marked from the first build — no repack needed.
+recipe and it ships marked from the first build.
 
 Always **skip files with uncommitted changes** (concurrent edits); migrate a dirty
 script the next time it is touched rather than sweeping it.

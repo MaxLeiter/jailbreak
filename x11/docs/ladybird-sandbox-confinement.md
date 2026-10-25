@@ -4,7 +4,7 @@
 
 `com.apple.WebKit.WebContent` fails at the event loop (below). `container` was re-tested on
 2026-08-02 and fails too, at the paint backing store for WebContent and at Mach port descriptor
-passing for ImageDecoder — see [Measured, 2026-08-02](#measured-2026-08-02--and-the-answer-is-still-no).
+passing for ImageDecoder. See [Measured, 2026-08-02](#measured-2026-08-02--and-the-answer-is-still-no).
 That section also records a synthetic probe that briefly said `container` worked, and why it was
 wrong; read it before trusting any future probe result on this.
 
@@ -16,8 +16,10 @@ Mach messages instead.
 
 Everything below was measured on iPad7,12 (A10 / T8010, iPadOS 17.6.1, Dopamine rootless)
 with fakesigned throwaway binaries, as both `root` and `mobile`. Probes are in
-`x11/linux-build/probes-ladybird-sandbox/`. Background on what the platform offers at all is
-in `ios-platform-features.md` section 1.
+`x11/linux-build/probes-ladybird-sandbox/`. Background: iOS refuses to compile SBPL at all, so
+the only profiles available are the precompiled named ones. (The wider platform-feature write-up,
+`ios-platform-features.md`, is on the unmerged branch `claude/ios-features-graphics-50ff62`, not
+on main.)
 
 ## The capability matrix
 
@@ -204,8 +206,9 @@ threat model for the `.app` flavor is smaller than "renderer compromise owns the
 stack," because file permissions already stop a `mobile` process from writing the tree. The
 root-run `ladybird-wayland` case is the one where a renderer compromise really does get the
 whole prefix — and since confinement is unavailable, **running those helpers as `mobile`
-instead of `root` is now the cheapest real mitigation left.** That is uid separation, which
-`ios-platform-features.md` named as the fallback and which nothing here has ruled out.
+instead of `root` is now the cheapest real mitigation left.** That is uid separation, the
+first of the fallbacks (uid separation, `setrlimit`, entitlement minimisation), and nothing here
+has ruled it out.
 
 Do not reopen `container` without new information. The two failures above are architectural,
 not ordering or entitlement problems: a renderer that cannot allocate a backing store and an
@@ -215,8 +218,8 @@ another synthetic probe.
 
 ## What to do instead: entitlement minimisation
 
-The fallback named in `ios-platform-features.md` is uid separation, `setrlimit`, and
-entitlement minimisation. Entitlements are the cheapest real win, and unlike the sandbox they
+The fallbacks are uid separation, `setrlimit`, and entitlement minimisation. Entitlements are
+the cheapest real win, and unlike the sandbox they
 are independent of it: writes were denied under confinement even as root with the read-write
 path exception present, so trimming entitlements is a real restriction rather than cosmetic.
 
@@ -274,61 +277,23 @@ the test page uses no Web Workers so WebWorker was not exercised.
   mechanism cannot carry this key. fd 2 is inherited and always works. Include a
   `process=` tag; the helpers share one stderr and the lines are otherwise identical.
 
-## Two pre-existing bugs found on the way
+## Two bugs found on the way (both fixed)
 
-Neither is caused by any of the above; both block launching a freshly built
-`ladybird-wayland` and are filed as separate tasks.
+1. **The Wayland deb shipped no monospace font**, so `FontPlugin` failed
+   `VERIFY(m_default_fixed_width_font)` and WebContent aborted on every launch. The package now
+   stages the pinned Liberation family through `xstage_lagom_fonts`
+   (`packages/ladybird-wayland/build.sh`). `--force-fontconfig` used to trip
+   `VERIFY(font_manager)` in `TypefaceSkia.cpp`; patch
+   `0010-ios-m0-reject-force-fontconfig.patch` now rejects it with a clear error.
+2. **`ladybird-wayland 0.1.0+wl4` shipped without the `ladybird-tls` rpath.** `WebContent` and
+   `WebWorker` import `_EVP_PKEY_sign_message_init`/`_EVP_PKEY_verify_message_init`, which the
+   base OpenSSL 3.2.1 lacks, so run directly they died at dyld. wl4's launcher exported
+   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:...`, which papered over it from the desktop
+   entry while handing OpenSSL 3.5 to every child process. `prepend_tls_rpath` in the build
+   script was already right; nothing re-checked the built artifact. `bin/lib/check-ladybird-tls-rpath.py`
+   is now a publish gate for exactly this, and **wl5 is what production serves** (indexed
+   2026-10-05). Don't put the `DYLD_LIBRARY_PATH` workaround on a global launcher path: the point
+   of `ladybird-tls` is that the private OpenSSL shadows nothing.
 
-1. **The wayland deb ships no monospace font.** `share/Lagom/fonts/` has only `NotoEmoji` and
-   `SerenitySans-Regular`, so `FontPlugin`'s constructor fails
-   `VERIFY(m_default_fixed_width_font)` (`FontPlugin.cpp:53`) and **WebContent aborts on every
-   launch**. This is why a running `/var/jb/usr/bin/ladybird` has Compositor, ImageDecoder and
-   RequestServer children but no WebContent child. The `.app` flavor ships the full Liberation
-   set (14 files) and works. Copying those in makes headless screenshots work.
-   Related: `--force-fontconfig` is broken on iOS, because patch 0008 only installs the
-   CoreText `SkFontMgr` when the provider is *not* FontConfig and its `#elif AK_OS_IOS` branch
-   is a comment, so `VERIFY(font_manager)` fires at `TypefaceSkia.cpp:105`.
-2. **SHIPPED BROKEN: `ladybird-wayland` 0.1.0+wl4 lacks the `ladybird-tls` rpath.**
-   Confirmed 2026-08-02 against the published deb's installed payload: `WebContent` and
-   `ladybird` carry only `@executable_path/../lib`, so `libcrypto` resolves to the base
-   3.2.1 and every helper dies at dyld on `_EVP_PKEY_sign_message_init`. **The wayland
-   browser cannot start a renderer for anyone who installs it.** It fails closed, so it is
-   not a weak-crypto exposure -- it is a dead browser.
-
-   Not a build-script bug: `prepend_tls_rpath` is correct and fails closed per binary, and
-   it landed in 879cfd7c *before* the wl4 bump in 1a5655b6. The deb simply reached users
-   without anything re-checking the property on the artifact. `bin/lib/check-ladybird-tls-rpath.py`
-   is now a publish gate for exactly that, and flags these binaries.
-
-   The `.app` flavor is unaffected: it links `@executable_path/lib/libcrypto.3.dylib` by
-   path and bundles OpenSSL 3.5.3 inside the bundle, so no rpath search happens.
-
-   Narrowed 2026-10-01 by an on-device A/B (iPad7,12, wl4's WebContent and RequestServer run
-   from a scratch prefix in `/var/jb/tmp`): "every helper dies" overstates it. Only
-   `WebContent` and `WebWorker` import a symbol base 3.2.1 lacks
-   (`_EVP_PKEY_sign_message_init`, `_EVP_PKEY_verify_message_init`); `ladybird`,
-   `Compositor`, `ImageDecoder` and `RequestServer` load the base libcrypto and run. And
-   wl4's own `ladybird-wayland` launcher exports
-   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:...`, which wins over
-   `@rpath` by leaf name, so a launch from the desktop entry gets WebContent past dyld on
-   the private 3.5. Run directly, WebContent aborts (exit 134). So wl4 renders only through
-   the workaround below, shipped on the launcher path, which hands OpenSSL 3.5 to every
-   process the browser spawns. The gate is still right to fail it.
-
-   Remedy is a rebuild + republish as `wl5` -- the packaging script needs no change. Do not
-   hand-patch the deb. **Status 2026-10-01:** wl5 (sha256 `264c4b75...`, the 2026-08-02
-   build; a fresh rebuild from the same install root is identical file-for-file) is on
-   dev.repo, prod still serves wl4. Rebuild from the Jul 29 install root whose linker UUIDs
-   match wl4, not the main checkout's `out/ladybird-wayland-install` (Jul 6), which is an
-   older engine. Testing-only workaround meanwhile:
-   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:/var/jb/lib/angle`;
-   do not put that on a global launcher path, since the whole point of ladybird-tls is that
-   the private OpenSSL 3.5 shadows nothing.
-
-   (Original note, now superseded by the above.) **A fresh build lacks the `ladybird-tls` rpath.** The committed build script defaults to
-   `0.1.0+wl1` and does not do the rpath prepend that published `wl2` has, so `libcrypto`
-   resolves to base OpenSSL 3.2.1 and `_EVP_PKEY_sign_message_init` is missing at launch.
-   Workaround for testing only:
-   `DYLD_LIBRARY_PATH=/var/jb/usr/lib/ladybird-tls:/var/jb/usr/lib:/var/jb/lib/angle`.
-   Do not put that on a global launcher path; the whole point of `ladybird-tls` is that the
-   private OpenSSL 3.5 shadows nothing.
+   The `.app` flavor was never affected: it links `@executable_path/lib/libcrypto.3.dylib` by
+   path and bundles OpenSSL 3.5.3, so no rpath search happens.

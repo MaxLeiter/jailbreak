@@ -24,8 +24,8 @@ STUBOUT="$X11DIR/wayland/out"
 OUT="$X11DIR/linux-build/out"
 
 echo "==> stage stub binaries from $STUBOUT"
-# The libexec staging dir holds only build artifacts, so it isn't git-tracked; create it so a
-# clean checkout doesn't fail the install below.
+# The libexec staging dir is mostly build artifacts (only xios-setsid, xios-bluez-stub and
+# xios-gnome-shell-session are tracked); create it so a clean checkout doesn't fail below.
 mkdir -p "$PKGDIR$XIOS_PREFIX/usr/libexec"
 for b in xios-login1-stub xios-polkit-stub xios-accounts-stub xios-setsid \
          xios-gnome-session-client; do
@@ -49,6 +49,9 @@ if [ -f "$STUBOUT/xios-sysintd" ]; then
   install -m 0755 "$STUBOUT/xios-sysintd" "$PKGDIR$XIOS_PREFIX/usr/libexec/xios-sysintd"
   echo "   + xios-sysintd"
 else
+  # The staging dir is the package tree, so a copy from an earlier build would still be
+  # here and ship; remove it so the deb really goes out without one.
+  rm -f "$PKGDIR$XIOS_PREFIX/usr/libexec/xios-sysintd"
   echo "   (xios-sysintd absent — packaging without it; launcher -x guard covers it)"
 fi
 chmod 0755 "$PKGDIR$XIOS_PREFIX/usr/bin/launch-gnome-session.sh"
@@ -76,6 +79,7 @@ if [ -f "$STAGE$XIOS_PREFIX/usr/libexec/xios-bluez-stub" ] && [ -f "$BT_ENT" ]; 
   xsign "$STAGE$XIOS_PREFIX/usr/libexec/xios-bluez-stub" "$BT_ENT" "com.apple.bluetooth.system"
 fi
 
+xdeb_refuse_published "$STAGE"
 built="$(xmkdeb "$STAGE" "$OUT")"
 # Keep the historical copy next to this script too.
 cp -v "$built" "$PKGDIR/$DEB"
