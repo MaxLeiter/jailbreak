@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.81"
+VER="1.0.82"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 
@@ -64,10 +64,10 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.34), uikittools
-Recommends: iosc-shell, xios
-Breaks: xios-session-stubs (<< 0.2.12)
-Suggests: libmutter-14-0, gnome-shell, gnome-session, xios-session-stubs, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
+Depends: iosc (>= 0.9.34), uikittools, xios-session-stubs (>= 0.2.12)
+Recommends: iosc-shell, com.max.xios
+Breaks: iosc (<< 0.9.49), xios-a11y-tools (<< 0.2.17)
+Suggests: libmutter-14-0, gnome-shell, gnome-session, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
 Replaces: iosc-shell (<= 0.9.9)
 Section: X11
 Priority: optional

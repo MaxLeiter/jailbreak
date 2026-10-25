@@ -1,10 +1,11 @@
 {
-  "tagline": "The classic X11 path, kept alive",
+  "tagline": "X11 apps on the iosc desktop",
   "developer": "Max",
   "homepage": "https://repo.maxleiter.com",
   "iconGlyph": "xmark.rectangle",
-  "description": "**xios-x11** is the compatibility flavor: a full X11 environment on the iPad. It installs the original Xios X server for plain X11 apps, plus Xwayland so X11 clients can also run inside the GPU-accelerated iosc compositor.\n\nUse this flavor for software that predates Wayland, for window managers and tools that expect a bare X server, or simply because the classic path started this whole project.\n\nXvfb and the TigerVNC server are recommended alongside it for headless and remote-display setups.\n\nRequires iOS 16.5+.",
+  "description": "**xios-x11** runs X11 apps on the iPad through rootless Xwayland, inside the GPU-accelerated iosc desktop. Start the iosc desktop from the X11 app and Xwayland comes up with it; X11 apps you open there get the right DISPLAY on their own.\n\nUse it for software that predates Wayland. The old software-rendered Xios X server is retired, so this is the only interactive X11 path.\n\nXvfb and TigerVNC are still separate packages if you want a headless or remote X display.\n\nRequires iOS 16.5+.",
   "changelog": [
+    { "version": "0.1.11", "date": "2026-10-25", "notes": "- Xwayland now actually starts with the iosc desktop, so X11 apps run\n- Pulls in the fixed xios-core (the in-app picker works on a clean install)" },
     { "version": "0.1.0", "date": "2026-07-01", "notes": "- First release: Xios X server + Xwayland" }
   ]
 }
