@@ -247,6 +247,7 @@ struct iosc_surface {
     int                 pending_scale_dirty;
     int                 mapped;          /* present in the z-order list */
     int                 is_xwayland;     /* adopted X11 window (no xdg role; XWM drives close/focus) */
+    int                 xwayland_opaque; /* adopted X11 window with no alpha channel (depth != 32) */
     enum iosc_role      role;
     struct iosc_surface *parent;         /* subsurface/popup parent, OR xdg_toplevel.set_parent (transient/modal) */
     int                 rel_x, rel_y;

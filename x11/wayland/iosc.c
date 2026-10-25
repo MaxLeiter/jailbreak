@@ -872,10 +872,13 @@ static int surface_opaque_full(struct iosc_surface *s)
  *     the client's opaque_region: a window that declares itself fully opaque (or
  *     an XRGB buffer, alpha undefined) stays on the fast opaque path; anything
  *     with a partial/absent opaque region and a real alpha channel blends.
- * IOSurface and single-pixel buffers always carry a real alpha channel. */
+ * IOSurface and single-pixel buffers always carry a real alpha channel, except
+ * an X11 window on a 24-bit visual: Xwayland hands its IOSurface over with the
+ * alpha byte undefined, so the XWM's depth decides (as weston's XWM does). */
 static int surface_blends(struct iosc_surface *s)
 {
     if (!s->current_buffer) return 0;
+    if (s->is_xwayland && s->xwayland_opaque) return 0;
     struct wl_shm_buffer *shm = wl_shm_buffer_get(s->current_buffer);
     int argb = shm ? (wl_shm_buffer_get_format(shm) == WL_SHM_FORMAT_ARGB8888) : 1;
     if (s->role == IOSC_ROLE_LAYER) return argb;
@@ -3054,6 +3057,7 @@ int iosc_xwm_adopt_surface(struct wl_resource *res,
     if (!s || !info) return -1;
     if (s->role != IOSC_ROLE_NONE && !s->is_xwayland) return -1; /* already has an xdg role */
     s->is_xwayland = 1;
+    s->xwayland_opaque = !info->has_alpha;
     s->role = info->override_redirect ? IOSC_ROLE_POPUP : IOSC_ROLE_TOPLEVEL;
     snprintf(s->title,  sizeof s->title,  "%s",
              (info->title && info->title[0]) ? info->title : "X11");
@@ -3069,6 +3073,7 @@ void iosc_xwm_unadopt_surface(struct wl_resource *res)
     if (!s || !s->is_xwayland) return;
     surface_unmap(s);
     s->is_xwayland = 0;
+    s->xwayland_opaque = 0;
     s->role = IOSC_ROLE_NONE;
 }
 

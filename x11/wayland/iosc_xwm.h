@@ -144,6 +144,8 @@ struct iosc_xwm_window_info {
     int         width, height;     /* requested size, X/logical px (>=1) */
     const char *title;             /* UTF-8, may be "" (never NULL) */
     const char *wm_class;          /* WM_CLASS instance/app id, may be "" */
+    int         has_alpha;         /* 32-bit visual; else the alpha byte is undefined
+                                      and the window must be composited opaque */
     void       *xwm;               /* opaque XWM handle (do not dereference) */
 };
 

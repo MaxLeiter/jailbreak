@@ -41,11 +41,15 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 
 #include <wayland-server-core.h>
 
+#include <sys/uio.h>
+
 #include <xcb/xcb.h>
+#include <xcb/xcbext.h>
 #include <xcb/xproto.h>
 
 #include "iosc_xwm.h"
@@ -157,6 +161,7 @@ struct xwm_window {
     int                 supports_delete;   /* WM_DELETE_WINDOW in WM_PROTOCOLS */
     int                 supports_take_focus;
     int32_t             x, y, w, h;
+    uint8_t             depth;             /* visual depth from GetGeometry (0 = unknown) */
     char                title[256];
     char                wm_class[128];
 };
@@ -255,6 +260,13 @@ static void try_adopt(struct xwm_window *win)
 
     /* Pull latest title just before handing off (cheap, one round-trip). */
     xwm_read_title(win);
+    /* Override-redirect windows never send a MapRequest, so their depth is
+     * still unknown here. */
+    if (!win->depth) {
+        xcb_get_geometry_reply_t *g =
+            xcb_get_geometry_reply(xwm.conn, xcb_get_geometry(xwm.conn, win->xwindow), NULL);
+        if (g) { win->depth = g->depth; free(g); }
+    }
 
     struct iosc_xwm_window_info info = {
         .xwm_window        = (uint32_t)win->xwindow,
@@ -264,13 +276,14 @@ static void try_adopt(struct xwm_window *win)
         .height = win->h > 0 ? win->h : 1,
         .title    = win->title,
         .wm_class = win->wm_class,
+        .has_alpha = win->depth == 32,
         .xwm      = win,
     };
     if (iosc_xwm_adopt_surface(win->surface_res, &info) == 0) {
         win->adopted = 1;
-        XWM_DBG("adopted xwindow=0x%x %s \"%s\" %dx%d\n",
+        XWM_DBG("adopted xwindow=0x%x %s \"%s\" %dx%d depth=%u\n",
                 win->xwindow, win->override_redirect ? "(override-redirect)" : "",
-                win->title, info.width, info.height);
+                win->title, info.width, info.height, win->depth);
     } else {
         XWM_LOG("adopt refused for xwindow=0x%x\n", win->xwindow);
     }
@@ -553,6 +566,7 @@ static void handle_map_request(xcb_map_request_event_t *e)
 {
     struct xwm_window *win = ensure_window(e->window, 0, 0, 0, 1, 1);
     if (!win) return;
+    XWM_DBG("map request xwindow=0x%x\n", e->window);
     /* We are the WM: honor the map. Read managed metadata, then map the frame. */
     xwm_read_protocols(win);
     xwm_read_wm_class(win);
@@ -566,6 +580,7 @@ static void handle_map_request(xcb_map_request_event_t *e)
         win->x = g->x; win->y = g->y;
         win->w = g->width ? g->width : win->w;
         win->h = g->height ? g->height : win->h;
+        win->depth = g->depth;
         free(g);
     }
     xcb_map_window(xwm.conn, e->window);
@@ -646,6 +661,13 @@ static void handle_client_message(xcb_client_message_event_t *e)
 
 static void dispatch_event(xcb_generic_event_t *ev)
 {
+    if (ev->response_type == 0) {
+        xcb_generic_error_t *err = (xcb_generic_error_t *)ev;
+        XWM_DBG("X error %u (request %u.%u, resource 0x%x)\n", err->error_code,
+                err->major_code, err->minor_code, err->resource_id);
+        return;
+    }
+    XWM_DBG("X event %u\n", ev->response_type & 0x7f);
     switch (ev->response_type & 0x7f) {
     case XCB_CREATE_NOTIFY:     handle_create_notify((xcb_create_notify_event_t *)ev); break;
     case XCB_MAP_REQUEST:       handle_map_request((xcb_map_request_event_t *)ev); break;
@@ -708,6 +730,48 @@ static int intern_atoms(void)
     return 0;
 }
 
+/* Composite RedirectSubwindows(root, Manual), sent through libxcb's extension
+ * interface because this module links only core libxcb (no libxcb-composite).
+ * A rootless Xwayland gives a top-level window a wl_surface only once it is
+ * manually redirected (xwayland-window.c: redirectDraw == RedirectDrawManual),
+ * and it is the WM's job to ask, as wlroots' and weston's XWMs do. Without it
+ * every X window maps on the X side and never shows up in the compositor. */
+static xcb_extension_t xwm_composite_ext = { "Composite", 0 };
+
+static int xwm_redirect_subwindows(void)
+{
+    const xcb_query_extension_reply_t *ext =
+        xcb_get_extension_data(xwm.conn, &xwm_composite_ext);
+    if (!ext || !ext->present) {
+        XWM_LOG("X server has no Composite extension; X windows cannot be shown\n");
+        return -1;
+    }
+    static const xcb_protocol_request_t req = {
+        .count = 2, .ext = &xwm_composite_ext,
+        .opcode = 2 /* RedirectSubwindows */, .isvoid = 1,
+    };
+    struct {
+        uint8_t major_opcode, minor_opcode;
+        uint16_t length;
+        xcb_window_t window;
+        uint8_t update;            /* 1 = CompositeRedirectManual */
+        uint8_t pad[3];
+    } out = { 0, 0, 0, xwm.root, 1, { 0, 0, 0 } };
+    struct iovec parts[4];
+    parts[2].iov_base = &out;
+    parts[2].iov_len = sizeof(out);
+    parts[3].iov_base = NULL;
+    parts[3].iov_len = -parts[2].iov_len & 3;
+    xcb_void_cookie_t c = { xcb_send_request(xwm.conn, XCB_REQUEST_CHECKED, parts + 2, &req) };
+    xcb_generic_error_t *err = xcb_request_check(xwm.conn, c);
+    if (err) {
+        XWM_LOG("Composite RedirectSubwindows failed: X error %d\n", err->error_code);
+        free(err);
+        return -1;
+    }
+    return 0;
+}
+
 static int setup_wm(void)
 {
     const xcb_setup_t *setup = xcb_get_setup(xwm.conn);
@@ -736,6 +800,8 @@ static int setup_wm(void)
             return -1;
         }
     }
+
+    if (xwm_redirect_subwindows() != 0) return -1;
 
     /* Dedicated window: WM_S0 selection owner + _NET_SUPPORTING_WM_CHECK target. */
     xwm.wm_window = xcb_generate_id(xwm.conn);
@@ -780,6 +846,42 @@ static int setup_wm(void)
 /* ------------------------------------------------------------------------- *
  * Spawn Xwayland.
  * ------------------------------------------------------------------------- */
+/* Is X display :n taken? Something answers on its socket, or a lock file names a
+ * live pid (an Xvfb or Xwayland that has not bound its socket yet). */
+static int x_display_taken(int n)
+{
+    char path[64];
+    snprintf(path, sizeof(path), "/tmp/.X11-unix/X%d", n);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd >= 0) {
+        struct sockaddr_un a;
+        memset(&a, 0, sizeof(a));
+        a.sun_family = AF_UNIX;
+        snprintf(a.sun_path, sizeof(a.sun_path), "%s", path);
+        int live = connect(fd, (struct sockaddr *)&a, sizeof(a)) == 0;
+        close(fd);
+        if (live) return 1;
+    }
+    snprintf(path, sizeof(path), "/tmp/.X%d-lock", n);
+    FILE *f = fopen(path, "r");
+    if (!f) return 0;
+    long pid = 0;
+    int got = fscanf(f, "%ld", &pid) == 1;
+    fclose(f);
+    return got && pid > 0 && (kill((pid_t)pid, 0) == 0 || errno == EPERM);
+}
+
+/* Xwayland's own pick (-displayfd with no display) does not work here: its lock
+ * files never appear on iOS, so a second Xwayland (another slot's iosc) sees :0
+ * as free and its listener unlinks the first one's socket. Pick the display
+ * ourselves and pass it explicitly; -displayfd still reports it once ready. */
+static int pick_x_display(void)
+{
+    for (int n = 0; n < 64; n++)
+        if (!x_display_taken(n)) return n;
+    return -1;
+}
+
 /* Spawn Xwayland with:
  *   wm_fd        : one end of a SOCK_STREAM socketpair -> Xwayland's -wm fd; the
  *                  XWM connects to the other end with xcb_connect_to_fd.
@@ -814,9 +916,16 @@ static pid_t spawn_xwayland(int *out_wm_fd, int *out_display_fd)
     fcntl(wm_sv[1], F_SETFD, 0);
     fcntl(disp_pipe[1], F_SETFD, 0);
 
-    char wm_fd_str[16], disp_fd_str[16];
+    char wm_fd_str[16], disp_fd_str[16], disp_str[16];
     snprintf(wm_fd_str, sizeof(wm_fd_str), "%d", wm_sv[1]);
     snprintf(disp_fd_str, sizeof(disp_fd_str), "%d", disp_pipe[1]);
+    int dpy = pick_x_display();
+    if (dpy < 0) {
+        XWM_LOG("no free X display in :0-:63\n");
+        close(wm_sv[0]); close(wm_sv[1]); close(disp_pipe[0]); close(disp_pipe[1]);
+        return -1;
+    }
+    snprintf(disp_str, sizeof(disp_str), ":%d", dpy);
 
     /* -extension MIT-SHM: iOS has no SysV shared memory (shmget raises SIGSYS),
      * so any client that sees MIT-SHM (cairo-xlib, mesa's Xlib driver) dies on
@@ -825,6 +934,7 @@ static pid_t spawn_xwayland(int *out_wm_fd, int *out_display_fd)
     const char *bin = xwm_xwayland_bin();
     char *const argv[] = {
         (char *)bin,
+        disp_str,
         (char *)"-rootless",
         (char *)"-wm",        wm_fd_str,
         (char *)"-displayfd", disp_fd_str,
@@ -854,8 +964,8 @@ static pid_t spawn_xwayland(int *out_wm_fd, int *out_display_fd)
         close(wm_sv[0]); close(disp_pipe[0]);
         return -1;
     }
-    XWM_LOG("spawned Xwayland pid=%d (bin=%s, wayland=%s)\n",
-            (int)pid, bin, xwm_wayland_display());
+    XWM_LOG("spawned Xwayland pid=%d on %s (bin=%s, wayland=%s)\n",
+            (int)pid, disp_str, bin, xwm_wayland_display());
 
     *out_wm_fd = wm_sv[0];
     *out_display_fd = disp_pipe[0];
