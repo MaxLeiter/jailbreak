@@ -158,6 +158,5 @@ both split out under it. Present-side MetalFX spatial upscaling landed alongside
 (opt-in, default off — `IOSC_UPSCALE=auto|<factor>`, or `XIOS_UPSCALE` in the app's own
 environment; `upscale=` in `xios-status`). It is the cheapest remaining lever on this
 hardware and does not appear as a numbered item here because it is not a shortcut being
-paid down — see docs/ios-platform-features.md §2 on branch
-claude/ios-features-graphics-50ff62. The thermal/jetsam track (§3 there) is sequenced
-next and clamps the frame-rate range P0.4 introduced.
+paid down — see docs/ios-platform-features.md §2. The thermal/jetsam track (§3
+there) is sequenced next and clamps the frame-rate range P0.4 introduced.
