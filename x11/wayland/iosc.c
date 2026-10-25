@@ -3095,6 +3095,18 @@ void iosc_xwm_set_title(struct wl_resource *res, const char *title)
     if (s->role == IOSC_ROLE_TOPLEVEL) ftl_broadcast_title(s);
 }
 
+/* Latched in this producer's xios-status.d sidecar (iosc.status, or
+ * iosc-<slot>.status for a slot), which xios-session reads to give X11 apps the
+ * DISPLAY of the Xwayland this compositor owns. iosc_status_clear() at exit drops
+ * it with the rest of the table. */
+void iosc_xwm_display_changed(int display_number)
+{
+    if (display_number >= 0)
+        iosc_status_set("x11-display", ":%d", display_number);
+    else
+        iosc_status_set_value("x11-display", "none");
+}
+
 /* ---- wl_surface ---------------------------------------------------------- */
 
 static void surface_handle_destroy(struct wl_client *c, struct wl_resource *r)
@@ -7490,6 +7502,10 @@ int main(int argc, char **argv)
     /* 2c) Rootless Xwayland XWM (opt-in): spawns Xwayland, owns WM_S0, advertises
      *      xwayland_shell_v1. Each X window becomes its own iosc surface. */
     if (iosc_env_truthy(getenv("IOSC_XWAYLAND"))) {
+        /* Xwayland must connect to THIS compositor's socket, not whatever
+         * WAYLAND_DISPLAY the launcher happened to leave in the environment. */
+        if (opts.sock_name && *opts.sock_name)
+            setenv("WAYLAND_DISPLAY", opts.sock_name, 1);
         if (iosc_xwm_start(wl_display_get_event_loop(g_display)) != 0)
             fprintf(stderr, "iosc: Xwayland XWM failed to start\n");
     }

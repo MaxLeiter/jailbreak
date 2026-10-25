@@ -1,9 +1,11 @@
 # Rootless Xwayland XWM for iosc (`iosc_xwm`) — plan + resume-here
 
 > **Current status (2026-07-03): integration is no longer pending.** `iosc_xwm` and
-> `xwayland-shell-v1` are wired locally into iosc, and the build keeps XWM off by default unless
-> `IOSC_BUILD_XWM=1` is set. The checklist below is retained as historical implementation notes
-> and as a useful summary of the integration contract.
+> `xwayland-shell-v1` are wired locally into iosc. **2026-10-25:** the XWM is built by default
+> (iosc 0.9.50, `IOSC_BUILD_XWM=0` opts out), start-up no longer blocks on `-displayfd` (that
+> deadlocked against Xwayland's init round-trips), and xios-session starts it when Xwayland is
+> installed; see `handoff/iosc-compositor.md`. The checklist below is retained as historical
+> implementation notes and as a useful summary of the integration contract.
 
 Goal: make **rootless** Xwayland work under the iosc Wayland compositor, so each
 X11 window becomes an **individual iosc surface** (toplevel or popup), instead of
