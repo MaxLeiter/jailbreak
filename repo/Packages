@@ -12744,20 +12744,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-core
 Name: Xios Desktop Core
-Version: 0.1.11
+Version: 0.1.12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
 Section: Desktop
 Priority: optional
-Depends: firmware (>= 16.5), xios-runtime (>= 0.1.4), com.max.xios (>= 0.1.7), iosc (>= 0.9.43), iosc-shell (>= 0.9.11), xios-session (>= 1.0.75)
+Depends: firmware (>= 16.5), xios-runtime (>= 0.1.4), com.max.xios (>= 0.1.7), iosc (>= 0.9.43), iosc-shell (>= 0.9.11), xios-session (>= 1.0.75), xios-launcher-tools (>= 0.1.11)
 MinimumOSVersion: 16.5.0
 Description: shared base for Xios fullscreen desktop flavors
-Filename: debs/xios-core_0.1.11_iphoneos-arm64.deb
-Size: 1032
-MD5sum: 7e3fd5ab53a006c1daffa2484376264a
-SHA1: 1295361806b6e3df6f77287a2f035517df11cb97
-SHA256: 2032fa9b7c48c8780c1313f11f3adcbf070baa7b160129cccf924ba3a89f786d
+Filename: debs/xios-core_0.1.12_iphoneos-arm64.deb
+Size: 1076
+MD5sum: aedf617a92c63a90aa0053c591a660ca
+SHA1: e4be377d10313964da6c6537eb7df18976b29696
+SHA256: 2a21af9137c5f85f422c36fff973fe1f2662388cf5de64db962ca4a9fecf10b4
 Icon: https://repo.maxleiter.com/icons/xios-core.png
 Depiction: https://repo.maxleiter.com/depictions/xios-core.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-core.json
