@@ -14,6 +14,9 @@ import Foundation
 final class SessionRegistry {
     /// Delivered on the main queue, only when the snapshot changed.
     var onChange: (([SessionInfo]) -> Void)?
+    /// A start, restart or resize that was handed to xios-session failed:
+    /// (slot, preset, xios-session's own words). Main queue.
+    var onStartFailed: ((_ slot: String, _ preset: String, _ why: String) -> Void)?
 
     private let queue = DispatchQueue(label: "com.max.xios.registry", qos: .utility)
     private var watchers: [String: FileWatcher] = [:]
@@ -26,6 +29,16 @@ final class SessionRegistry {
     private var lastGoodJSON: [String: [String: Any]] = [:]
     private var socketMissingSince: [String: Date] = [:]
     private var dismissed: [String: String] = [:]   // slot -> stamp that was dismissed
+    /// Requests whose outcome is read from their status file (see
+    /// SessionParsing.startFailure), keyed by slot.
+    private struct StartWatch {
+        let statusPath: String
+        let preset: String
+        let since: Date
+    }
+    private var startWatches: [String: StartWatch] = [:]
+    /// How long a request's status file is watched for a failure.
+    static let startWatchSeconds: TimeInterval = 60
 
     private static let fallbackPollSeconds = 2.0
     private static let debounce = 0.08
@@ -64,6 +77,19 @@ final class SessionRegistry {
     /// Ask for a scan soon (after an action the user just took).
     func refreshNow() { scheduleScan(after: 0.02) }
 
+    /// Watch the status file a SESSION request for `slot` writes, and report a
+    /// failure for `preset` written after `since` through `onStartFailed`. Ends on
+    /// the first failure or after `startWatchSeconds`; a newer request for the same
+    /// slot replaces it. The file may not exist yet: the fallback poll and the
+    /// rescans below pick it up.
+    func watchStart(slot: String, statusPath: String, preset: String, since: Date = Date()) {
+        queue.async { [self] in
+            startWatches[slot] = StartWatch(statusPath: statusPath, preset: preset, since: since)
+        }
+        // xios-session's preflight runs within a second or two of the fork.
+        for delay in [0.4, 1.2, 2.5, 5.0] { scheduleScan(after: delay, coalesce: false) }
+    }
+
     /// Hide a failed/killed/stopped card until the launcher writes a newer state.
     func dismiss(slot: String, stamp: String) {
         queue.async { [self] in
@@ -75,9 +101,17 @@ final class SessionRegistry {
 
     // MARK: scanning (queue)
 
-    private func scheduleScan(after delay: TimeInterval = SessionRegistry.debounce) {
+    /// `coalesce` folds the request into a scan that is already pending (kqueue
+    /// bursts); a timed rescan passes false so it is not swallowed by an earlier one.
+    private func scheduleScan(after delay: TimeInterval = SessionRegistry.debounce,
+                              coalesce: Bool = true) {
         queue.async { [self] in
-            guard running, !scanPending else { return }
+            guard running else { return }
+            guard coalesce else {
+                queue.asyncAfter(deadline: .now() + delay) { [self] in scan() }
+                return
+            }
+            guard !scanPending else { return }
             scanPending = true
             queue.asyncAfter(deadline: .now() + delay) { [self] in
                 scanPending = false
@@ -163,8 +197,12 @@ final class SessionRegistry {
             if let path = info.configPath, path == globalConfigPath { continue }
             infos.append(info)
         }
+        checkStartWatches(&watchPaths)
         // Prune cache entries for files that no longer exist in this scan.
         lastGoodJSON = lastGoodJSON.filter { watchPaths.contains($0.key) }
+        // Forget the socket timers of desktops that are gone.
+        let slots = Set(infos.map(\.slot))
+        socketMissingSince = socketMissingSince.filter { slots.contains($0.key) }
 
         infos = infos.map(applyKilledDetection)
         infos = infos.filter { info in
@@ -179,6 +217,29 @@ final class SessionRegistry {
         if forcePublish || infos != lastPublished {
             lastPublished = infos
             DispatchQueue.main.async { [weak self] in self?.onChange?(infos) }
+        }
+    }
+
+    /// Report (once) a watched request whose status file now says it failed.
+    private func checkStartWatches(_ watchPaths: inout Set<String>) {
+        let now = Date()
+        for (slot, watch) in startWatches {
+            if now.timeIntervalSince(watch.since) > Self.startWatchSeconds {
+                startWatches[slot] = nil
+                continue
+            }
+            watchPaths.insert(watch.statusPath)
+            // Only a write made after the request speaks for it: a failure left by
+            // an older attempt at the same slot must not be reported again.
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: watch.statusPath),
+                  let modified = attrs[.modificationDate] as? Date,
+                  modified >= watch.since.addingTimeInterval(-0.5),
+                  let status = json(watch.statusPath),
+                  let why = SessionParsing.startFailure(status: status, preset: watch.preset)
+            else { continue }
+            startWatches[slot] = nil
+            let preset = watch.preset
+            DispatchQueue.main.async { [weak self] in self?.onStartFailed?(slot, preset, why) }
         }
     }
 

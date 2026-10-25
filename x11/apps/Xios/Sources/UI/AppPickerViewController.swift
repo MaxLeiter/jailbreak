@@ -78,10 +78,15 @@ final class AppPickerViewController: UITableViewController, UISearchResultsUpdat
         tableView.deselectRow(at: indexPath, animated: true)
         guard !shown.isEmpty else { return }
         let app = shown[indexPath.row]
-        SessionManager.shared.openApp(app, in: connection) { [weak self] accepted in
-            // Keep the sheet open on a rejected request so the daemon's error (shown
-            // by the launcher's toast) stays in view.
-            if accepted { self?.dismiss(animated: true) }
+        SessionManager.shared.openApp(app, in: connection) { [weak self] failure in
+            guard let self else { return }
+            guard let failure else { self.dismiss(animated: true); return }
+            // Keep the sheet open and say why in it: the launcher's toast and the
+            // desktop's pill are both underneath this sheet.
+            let alert = UIAlertController(title: "\(app.name) did not open", message: failure,
+                                          preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            self.present(alert, animated: true)
         }
     }
 }

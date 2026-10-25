@@ -103,8 +103,10 @@ final class SettingsViewController: FormViewController, PHPickerViewControllerDe
         note("Extra presets. Each starts in its own slot like any other desktop.")
         for p in DesktopCatalog.developer {
             let live = manager.liveSession(preset: p.preset)
-            _ = row(title: p.title, detail: live != nil ? "Running. Opens it." : p.detail,
-                    symbol: p.symbol) { [weak self] in
+            let installed = live != nil || manager.presetAvailability.isInstalled(p.preset)
+            let detail = live != nil ? "Running. Opens it."
+                : (installed ? p.detail : PresetProbe.installHint(for: p.preset))
+            _ = row(title: p.title, detail: detail, symbol: p.symbol, enabled: installed) { [weak self] in
                 if let live {
                     self?.dismissToLauncherThen { SessionManager.shared.present(live) }
                 } else {

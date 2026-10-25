@@ -87,6 +87,15 @@ final class IOSCDClient {
         }
     }
 
+    /// The installed presets, from ioscd's PRESETS (`xios-session presets` run as
+    /// root). nil when ioscd cannot say: no such verb on this ioscd, an error, or no
+    /// daemon at all.
+    func presets(completion: @escaping (Set<String>?) -> Void) {
+        requestLines(PresetProbe.requestLine, timeout: 5.0) { result in
+            completion((try? result.get()).flatMap(PresetProbe.parseIOSCD))
+        }
+    }
+
     func setAppEnabled(_ app: LauncherApp, enabled: Bool,
                        completion: @escaping (String?) -> Void) {
         let verb = enabled ? "APP_ENABLE" : "APP_DISABLE"

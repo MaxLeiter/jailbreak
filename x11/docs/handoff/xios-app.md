@@ -11,8 +11,10 @@ The app was rewritten for Xios v2 (see `x11/docs/xios-v2-design.md`, `x11/apps/X
   and the switcher sheet).
 - `Core/` — `SessionRegistry` (discovers desktops: global `xios.json` + `xios-session-status.json`
   as slot `main`, `xios-displays.d/*.json` as slots; kqueue vnode watches + 2 s fallback poll,
-  off main, torn reads retried), `FileWatcher`, `SessionParsing` (pure), `Models` (SessionInfo,
-  SessionState, presets), `IOSCDClient` + `IOSCDProtocol` (ioscd request lines, APPS_LIST),
+  off main, torn reads retried; also watches a start request's status file for xios-session's
+  refusal), `FileWatcher`, `SessionParsing` (pure), `Models` (SessionInfo, SessionState,
+  presets), `PresetAvailability` (which flavors are installed), `IOSCDClient` + `IOSCDProtocol`
+  (ioscd request lines, APPS_LIST),
   `Paths`, `Socket`, `Concurrency` (Epoch tokens).
 - `Session/` — `SessionManager` (owns every connection, `present`/`goHome`, ioscd verbs),
   `SessionConnection` (one per desktop; holds surface/input/clipboard/sysint ONLY while
@@ -32,7 +34,8 @@ The app was rewritten for Xios v2 (see `x11/docs/xios-v2-design.md`, `x11/apps/X
   presets), `StatusPill`, `Form`.
 - `Diagnostics/` — `StatusWriter` (every file write, background queue, on change only),
   `DebugReport`.
-- `C/` — `XSurface.c` (DDX client, unchanged apart from `xsurface_surface_known`), `IoscInput.c`
+- `C/` — `XSurface.c` (DDX client, unchanged apart from `xsurface_surface_known` and ending the
+  stream on a partial record write), `IoscInput.c`
   (the iosc-host handle version), `IoscClipboard.c`, `SysIntClient.c` (handle-based).
 - `x11/apps/Xios/Tests/run.sh` — host-side checks (FitTransform, lane tracker, parsing, ioscd line
   formats, the real file registry with kqueue). `swiftc` only, no Xcode project.
@@ -44,18 +47,44 @@ The app was rewritten for Xios v2 (see `x11/docs/xios-v2-design.md`, `x11/apps/X
   KDE, and X11 fullscreen flavors pull it in. Native mode depends on
   `xios-runtime` and does not install this app.
 
-## v2 M1 status (2026-10-06): built, NOT yet device-tested
-Branch `claude/xios-v2-app`, `com.max.xios 0.2.0`. Builds Release-iphoneos clean; host checks pass.
-Waiting on the iPad (M0 owns it): the device plan below. Known follow-ups for M2:
+## v2 M1 status (2026-10-25): ship-reviewed, built, NOT yet device-tested
+Branch `claude/xios-v2` (the M1 commits rebased onto main after PR #13, plus a ship review),
+`com.max.xios 0.2.0` (unpublished). Builds Release-iphoneos clean; host checks pass.
+Waiting on the iPad: the device plan below. Known follow-ups for M2:
 - (Resolved by M0: every slot has its own active marker, so `app` into a slot finds that slot's
   compositor.)
 - APPS_LIST ids are `app_id` (StartupWMClass when set), while the `app` verb takes the desktop-FILE
   id. They match for most entries; ioscd should accept the app id or list the file id.
-- "Change size" restarts the slot's preset at the new size (`SESSION <preset> ... <slot>`); the
-  `resize` verb restarts whatever owns the global marker, which is wrong for a slot.
 - Skipped on purpose: M1 review finding 12 (pre-existing in v1, not a regression); see the PR description.
 - Hidden desktops are not paused yet (M2): switching away detaches the app, but the compositor
   keeps rendering.
+- Proposed for ioscd (not done, ioscd.c had another owner): a read-only `PRESETS` verb that runs
+  `xios-session presets` through `run_and_stream` (preset lines, then `APPS_END\t<status>`). The
+  app already asks for it and uses it when it answers; once it ships, the app's file mirror of
+  `xs_preset_check` (`Core/PresetAvailability.swift`) can go.
+
+Ship review (2026-10-25), on top of the M1 report:
+- Installed flavors only: New Desktop (and Settings > Developer) offer the presets
+  `xs_preset_check` accepts; missing ones stay listed, disabled, with "Install xios-gnome" etc.
+  Source order: ioscd `PRESETS`, else the app's mirror of `xs_preset_check` (pinned to the shell
+  function by `Tests/run.sh` on fake roots), else unknown = offer everything. The answer is in
+  `/var/jb/tmp/xios-presets.txt` (`source=ioscd|files|unknown installed=...`).
+- xios-session refusals reach the user verbatim. ioscd answers SESSION_STARTED as soon as it
+  forks, so the preflight's "GNOME is not installed: install xios-gnome" only ever reached the
+  slot's `xios-session-<slot>.json` (a refused slot gets no xios-displays.d entry): the app said
+  "Starting GNOME..." and then nothing, and blocked a retry for 60 s as "already starting". Every
+  start, restart and resize now watches the request's status file and shows the message.
+- Change size was broken for slots: `SESSION <preset> ... <slot>` on a running slot is refused
+  by xios-session ("slot already running") and marked the live desktop failed. It now sends
+  `SESSION resize ... <slot>`, which stops the slot and restarts its owner at the new size.
+- A desktop that vanished from the registry while on screen kept a stale card after going home
+  (the registry only publishes on change). Dropped on goHome now.
+- Touch: a second finger landing and lifting mid-drag released the drag. The pointer now belongs
+  to the finger that started the gesture.
+- DDX socket: a partial write of a 32-byte record desynced the stream (listed for M3 in the
+  design); it now ends the stream so the app reconnects.
+- App picker: a refused launch is shown in the picker sheet itself (the toast was underneath).
+- The display link no longer ticks at the launcher before the first desktop is shown.
 
 Device test plan (run when the iPad is handed over; home-screen tap, not `uiopen`):
 1. Launch: launcher shows Main (if a legacy session runs) plus any slots; thumbnails absent until
@@ -77,6 +106,18 @@ Device test plan (run when the iPad is handed over; home-screen tap, not `uiopen
    Restart; killing the presented one returns home after ~3 s.
 9. Background and foreground the app in a desktop and at the launcher; reconnects, no stale frame.
 10. Settings: render scale chips, Debug copy/save, Home Screen Apps list + dry run, Shell wallpaper.
+11. Installed flavors: with xios-gnome NOT installed, New Desktop lists GNOME under "Not Installed"
+    with "Install xios-gnome" and cannot start it; `xios-presets.txt` says `source=files` (or
+    `ioscd` once PRESETS ships) and matches `xios-session presets` run as root. Install it in
+    Sileo, background and foreground Xios: GNOME moves up into the startable list.
+12. Refusal text: with a KDE slot killed (step 8), `chmod -x` plasmashell over SSH, then tap
+    Restart on its card (Restart does not consult the installed list): the toast shows
+    xios-session's own words ("KDE Plasma is not installed: install xios-kde"), nothing is left
+    "starting", and New Desktop now lists KDE under "Not Installed". Restore the bit after.
+13. Change size on a running slot (launcher card menu and Custom...): the desktop restarts at the
+    new size and stays presented if it was; no "slot already running" card.
+14. Stop a presented desktop over SSH so its registry entry disappears: back home after ~3 s and
+    its card is gone (not left as "Stopped").
 
 ## Recent commits / status notes
 - 2026-07-29 display pacing + present-side MetalFX (device-tested; closes perf P0.4).

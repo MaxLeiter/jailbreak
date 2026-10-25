@@ -78,6 +78,9 @@ final class PresentView: UIView {
             }
             clock.onTick = { [weak self] link in self?.tick(link) }
             clock.start()
+            // The view is built at launch, under the launcher: no ticks until a
+            // desktop is put on screen.
+            clock.isPaused = !presenting
         }
         setNeedsLayout()
     }
@@ -94,7 +97,10 @@ final class PresentView: UIView {
     }
 
     /// The display link only runs while a desktop is on screen.
+    private var presenting = false
+
     func setPresenting(_ on: Bool) {
+        presenting = on
         clock.isPaused = !on
         if on {
             needsPresent = true

@@ -41,6 +41,10 @@ final class TouchRouter {
     private var pendingPressViewPoint = CGPoint.zero
     private var leftPressSent = false
     private var longPressFired = false
+    /// The finger that drives the emulated pointer: the one that started a
+    /// one-finger gesture. Only its moves and its lift move or release the pointer,
+    /// so a second finger landing and lifting mid-drag does not drop the drag.
+    private var pointerTouch: UITouch?
     static let longPressSeconds: TimeInterval = 0.55
     static let longPressSlopPt: CGFloat = 12
 
@@ -97,6 +101,7 @@ final class TouchRouter {
         leftPressSent = false
         for slot in touchSlots.values { host.inputLink?.touch(slot: slot, phase: 3, 0, 0) }
         touchSlots.removeAll()
+        pointerTouch = nil
         lanes.reset()
         // A reset mid three-finger gesture must not leave touches ignored until a
         // later lift: the fingers' own up events belong to the old connection.
@@ -132,6 +137,7 @@ final class TouchRouter {
               let (x, y) = framebufferPoint(t.location(in: host.touchView)) else { return }
         lastTouchPt = (x, y)
         longPressFired = false
+        pointerTouch = t
         if t.type == .direct {
             // Finger: defer the press so a still hold can become a right click.
             pendingPress = (x, y)
@@ -159,8 +165,10 @@ final class TouchRouter {
             forward(touches, phase: 2, event: event)
             if lane.consumesPointer { return }
         }
+        // Only the pointer finger moves the pointer, and only while it is alone on
+        // the glass (two fingers are a scroll or a zoom).
         guard (event?.allTouches?.count ?? touches.count) == 1,
-              host.inputLink != nil, let t = touches.first,
+              host.inputLink != nil, let t = pointerTouch, touches.contains(t),
               let (x, y) = framebufferPoint(t.location(in: host.touchView)) else { return }
         if longPressFired { return }          // the hold became a right click
         if pendingPress != nil {
@@ -186,6 +194,10 @@ final class TouchRouter {
             forward(touches, phase: 0, event: event)
             if lane.consumesPointer { return }
         }
+        // Another finger lifting is not the end of the pointer gesture: a drag
+        // continues until the finger that started it lifts.
+        if let p = pointerTouch, !touches.contains(p) { return }
+        pointerTouch = nil
         guard host.inputLink != nil else {
             cancelPendingPress(); longPressFired = false
             return
@@ -323,6 +335,7 @@ final class TouchRouter {
         cancelPendingPress()
         longPressFired = false
         releaseLeftPress()
+        pointerTouch = nil
     }
 
     // MARK: indirect pointer (mouse, trackpad)

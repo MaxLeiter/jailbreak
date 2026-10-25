@@ -641,7 +641,13 @@ static int send_msg(XSurfaceConn *c, const xios_msg *m)
     do {
         r = send(c->fd, m, sizeof(*m), MSG_DONTWAIT);
     } while (r < 0 && errno == EINTR);
-    return r == (ssize_t)sizeof(*m) ? 0 : -1;
+    if (r == (ssize_t)sizeof(*m)) return 0;
+    /* A whole record that did not fit is dropped (the never-stall rule), but a
+     * PART of one has already gone out and every later record would be read
+     * shifted by it. End the stream instead: the next drain sees EOF and the app
+     * reconnects cleanly. */
+    if (r > 0) shutdown(c->fd, SHUT_RDWR);
+    return -1;
 }
 
 static int presented_common(XSurfaceConn *c, uint64_t seq,

@@ -33,6 +33,15 @@ final class SessionManager {
     private var connections: [String: SessionConnection] = [:]
     private(set) var presented: SessionConnection?
     private var hasSnapshot = false
+    /// The slots in the registry's latest snapshot. A presented desktop that left
+    /// it is kept until we go home, then dropped.
+    private var snapshotSlots = Set<String>()
+
+    /// Which presets can start (see PresetAvailability). Unknown until the first
+    /// answer, and unknown offers everything.
+    private(set) var presetAvailability = PresetAvailability.unknown
+    /// The New Desktop sheet listens: the installed-preset answer changed.
+    var onPresetAvailabilityChanged: (() -> Void)?
 
     /// The launcher listens: the set of sessions (or any card's content) changed.
     var onSessionsChanged: (() -> Void)?
@@ -57,7 +66,42 @@ final class SessionManager {
         writeLauncherStatus()
         renderer = Renderer.make()
         registry.onChange = { [weak self] infos in self?.registryUpdated(infos) }
+        registry.onStartFailed = { [weak self] slot, preset, why in
+            self?.startFailed(slot: slot, preset: preset, why)
+        }
         registry.start()
+        refreshPresetAvailability()
+    }
+
+    // MARK: installed presets
+
+    /// Ask which presets are installed: ioscd's PRESETS first (it runs
+    /// `xios-session presets`), else the same checks on the files directly, else
+    /// unknown (offer everything; xios-session's preflight then refuses a missing
+    /// flavor and its words are shown).
+    func refreshPresetAvailability() {
+        IOSCDClient.shared.presets { [weak self] fromIOSCD in
+            if let fromIOSCD {
+                self?.setPresetAvailability(PresetAvailability(installed: fromIOSCD, source: .ioscd))
+                return
+            }
+            let jb = XiosRuntimePaths.jbroot
+            DispatchQueue.global(qos: .userInitiated).async {
+                let probed = PresetProbe.installed(jb: jb)
+                DispatchQueue.main.async {
+                    self?.setPresetAvailability(
+                        probed.map { PresetAvailability(installed: $0, source: .files) } ?? .unknown)
+                }
+            }
+        }
+    }
+
+    private func setPresetAvailability(_ value: PresetAvailability) {
+        guard value != presetAvailability else { return }
+        presetAvailability = value
+        let list = value.installed.map { $0.sorted().joined(separator: " ") } ?? "(all offered)"
+        StatusWriter.shared.write("xios-presets.txt", "source=\(value.source.rawValue) installed=\(list)\n")
+        onPresetAvailabilityChanged?()
     }
 
     var sessions: [SessionConnection] {
@@ -96,6 +140,7 @@ final class SessionManager {
     private func registryUpdated(_ infos: [SessionInfo]) {
         hasSnapshot = true
         var seen = Set<String>()
+        defer { snapshotSlots = seen }
         for info in infos {
             seen.insert(info.slot)
             if let existing = connections[info.slot] {
@@ -216,6 +261,12 @@ final class SessionManager {
         guard let old = presented else { return }
         old.detach(captureThumbnail: true)
         presented = nil
+        // A desktop that left the registry while on screen was kept only because it
+        // was presented. The registry publishes on change, so nothing else would
+        // ever remove its card.
+        if !snapshotSlots.contains(old.slot), connections[old.slot] === old {
+            connections[old.slot] = nil
+        }
         onPresentedChanged?(nil)
         syncAppearanceTargets()
         writeLauncherStatus()
@@ -249,6 +300,8 @@ final class SessionManager {
         }
         renderer?.syncUpscaler()      // rebuild the pass backgrounding released
         if wasBackgrounded || !hasSnapshot { registry.start() }
+        // A flavor may have been installed or removed in Sileo meanwhile.
+        if wasBackgrounded { refreshPresetAvailability() }
         if let presented, !presented.isAttached {
             // Black first: the layer still holds the last frame from before the
             // background, and the desktop may have changed since.
@@ -306,8 +359,14 @@ final class SessionManager {
 
     // MARK: desktop lifecycle (ioscd)
 
+    /// `watchPreset`: the desktop this request starts, restarts or resizes. ioscd
+    /// answers SESSION_STARTED once it has forked xios-session, so a refusal from
+    /// xios-session itself (its preflight's "GNOME is not installed: install
+    /// xios-gnome", "slot already running", ...) lands only in the request's status
+    /// file; the registry watches that file and `startFailed` shows the words.
     private func perform(_ description: String, preset: String, app: String? = nil,
                          display: DisplayProfile? = nil, slot: String?,
+                         watchPreset: String? = nil,
                          success: @escaping () -> Void = {}) {
         guard !requestInFlight else {
             onMessage?("A desktop request is already being sent.")
@@ -315,18 +374,37 @@ final class SessionManager {
         }
         requestInFlight = true
         onMessage?(description)
+        let sentAt = Date()
         IOSCDClient.shared.session(preset: preset, app: app, display: display, slot: slot) {
             [weak self] reply in
             guard let self else { return }
             self.requestInFlight = false
             switch reply {
             case .started:
+                if let watchPreset {
+                    // xios-session's status file for this request: the slot's own, or
+                    // the global one for the legacy Main desktop.
+                    let status = slot.map { XiosRuntimePaths.tmp("xios-session-\($0).json") }
+                        ?? XiosRuntimePaths.firstExisting("xios-session-status.json")
+                    self.registry.watchStart(slot: slot ?? SessionInfo.mainSlot, statusPath: status,
+                                             preset: watchPreset, since: sentAt)
+                }
                 success()
             case .failed(let why):
                 self.onMessage?("Request failed: \(why)")
             }
             self.registry.refreshNow()
         }
+    }
+
+    /// xios-session refused or failed a request ioscd had accepted. Its words go to
+    /// the user unchanged, and nothing keeps waiting for that desktop: no present
+    /// when it registers, no "already starting" for the next attempt.
+    private func startFailed(slot: String, preset: String, _ why: String) {
+        if pendingPresent?.slot == slot { pendingPresent = nil }
+        startingPresets[preset] = nil
+        onMessage?(why)
+        onSessionsChanged?()
     }
 
     /// Start a new desktop in its own slot and present it as soon as it registers.
@@ -342,7 +420,7 @@ final class SessionManager {
         }
         let slot = reusable?.slot ?? DesktopCatalog.newSlot(for: preset, taken: Set(connections.keys))
         perform("Starting \(DesktopCatalog.label(for: preset))...", preset: preset,
-                display: display, slot: slot) { [weak self] in
+                display: display, slot: slot, watchPreset: preset) { [weak self] in
             self?.pendingPresent = (slot, Date().addingTimeInterval(30))
             self?.startingPresets[preset] = Date().addingTimeInterval(Self.startingWindow)
         }
@@ -357,23 +435,26 @@ final class SessionManager {
         }
         let preset = c.info.preset
         perform("Restarting \(c.info.title)...", preset: preset,
-                display: c.info.requestedProfile, slot: c.info.ioscdSlot) { [weak self] in
+                display: c.info.requestedProfile, slot: c.info.ioscdSlot,
+                watchPreset: preset) { [weak self] in
             self?.pendingPresent = (c.slot, Date().addingTimeInterval(30))
             self?.startingPresets[preset] = Date().addingTimeInterval(Self.startingWindow)
         }
     }
 
-    /// Change a desktop's size: restart that slot's preset at the new size. (The
-    /// `resize` verb restarts whatever owns the GLOBAL active marker, which is the
-    /// wrong desktop for a slot.)
+    /// Change a desktop's size: xios-session's `resize` restarts the desktop that
+    /// owns the request's active marker at the new size. With a slot that is the
+    /// slot's own marker (per-slot since M0), and it stops the slot first. Sending
+    /// the preset itself is refused by xios-session for a running slot ("slot
+    /// already running"), and that error then lands on the live desktop's card.
     func resize(_ c: SessionConnection, to display: DisplayProfile) {
         guard !c.info.preset.isEmpty else {
             onMessage?("\(c.info.title) has no recorded desktop type, so it cannot be resized from here.")
             return
         }
         let preset = c.info.preset
-        perform("Resizing \(c.info.title) to \(display.detail)...", preset: preset,
-                display: display, slot: c.info.ioscdSlot) { [weak self] in
+        perform("Resizing \(c.info.title) to \(display.detail)...", preset: "resize",
+                display: display, slot: c.info.ioscdSlot, watchPreset: preset) { [weak self] in
             // The desktop passes through a stopped state on its way back: keep it
             // presented (and re-present it if the debounce still sent us home).
             self?.pendingPresent = (c.slot, Date().addingTimeInterval(45))
@@ -395,15 +476,19 @@ final class SessionManager {
     }
 
     /// Open an ioscd launcher app in `c`. ioscd takes the slot field for `app`.
-    func openApp(_ app: LauncherApp, in c: SessionConnection, completion: @escaping (Bool) -> Void) {
+    /// `completion` gets nil when ioscd accepted it, else the reason word for word,
+    /// so a sheet over the desktop can show it (the toast sits underneath).
+    func openApp(_ app: LauncherApp, in c: SessionConnection, completion: @escaping (String?) -> Void) {
         guard IOSCDProtocol.isValidDesktopFileID(app.id) else {
-            onMessage?("\(app.name) has no usable desktop-file id.")
-            completion(false)
+            let why = "\(app.name) has no usable desktop-file id."
+            onMessage?(why)
+            completion(why)
             return
         }
         guard !requestInFlight else {
-            onMessage?("A desktop request is already being sent.")
-            completion(false)
+            let why = "A desktop request is already being sent."
+            onMessage?(why)
+            completion(why)
             return
         }
         requestInFlight = true
@@ -414,10 +499,10 @@ final class SessionManager {
             switch reply {
             case .started:
                 self?.onMessage?("Launch requested: \(app.name)")
-                completion(true)
+                completion(nil)
             case .failed(let why):
                 self?.onMessage?("Request failed: \(why)")
-                completion(false)
+                completion("Request failed: \(why)")
             }
         }
     }

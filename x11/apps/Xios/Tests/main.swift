@@ -184,6 +184,117 @@ do {
           && !IOSCDProtocol.isValidDesktopFileID(""), "invalid ids refused")
 }
 
+// MARK: start failures (preflight refusals land in a status file, not on the socket)
+
+do {
+    // Slot start, nothing running in the slot: an error status for the preset.
+    let refused: [String: Any] = ["preset": "gnome", "state": "error",
+                                  "message": "GNOME is not installed: install xios-gnome", "slot": "gnome-1a2b"]
+    check(SessionParsing.startFailure(status: refused, preset: "gnome")
+          == "GNOME is not installed: install xios-gnome", "refusal text is passed through verbatim")
+    check(SessionParsing.startFailure(status: refused, preset: "kde") == nil, "another preset's error is not ours")
+    // A desktop keeps running: the refusal rides along as request/request_state.
+    let beside: [String: Any] = ["preset": "kde", "state": "up", "request": "gnome", "request_state": "error",
+                                 "message": "GNOME is not installed: install xios-gnome"]
+    check(SessionParsing.startFailure(status: beside, preset: "gnome")
+          == "GNOME is not installed: install xios-gnome", "refusal beside a running desktop")
+    check(SessionParsing.startFailure(status: beside, preset: "kde") == nil, "the running desktop did not fail")
+    check(SessionParsing.startFailure(status: ["preset": "kde", "state": "starting"], preset: "kde") == nil,
+          "a start in progress is not a failure")
+    // Resize sends the `resize` verb with the slot (a running slot refuses its own preset).
+    check(IOSCDProtocol.sessionLine(preset: "resize", display: .portrait, slot: "kde-3fa9")
+          == "SESSION\tresize\t\t1080\t1440\t176\tkde-3fa9\n", "resize carries the size and the slot")
+}
+
+// MARK: installed presets
+
+do {
+    check(PresetProbe.parseIOSCD(["iosc", "kde", "kde-desktop", "PRESETS_END\t0"]) == ["iosc", "kde", "kde-desktop"],
+          "PRESETS reply")
+    check(PresetProbe.parseIOSCD(["xios-session: some warning", "gnome", "APPS_END\t0"]) == ["gnome"],
+          "stderr noise is ignored; run_and_stream's APPS_END ends it too")
+    check(PresetProbe.parseIOSCD(["ERR malformed"]) == nil, "an ioscd without PRESETS falls back")
+    check(PresetProbe.parseIOSCD(["iosc", "APPS_END\t1"]) == nil, "a failed run falls back")
+    check(PresetProbe.parseIOSCD(["iosc"]) == nil, "no end marker falls back")
+    check(PresetAvailability.unknown.isInstalled("gnome"), "unknown offers everything")
+    check(!PresetAvailability(installed: ["iosc"], source: .ioscd).isInstalled("gnome"), "known list filters")
+    check(PresetProbe.installHint(for: "gnome") == "Install xios-gnome"
+          && PresetProbe.installHint(for: "kde") == "Install xios-kde", "install hints name the package")
+
+    // The file probe against xios-session's own xs_preset_check, on fake roots.
+    let root = NSTemporaryDirectory() + "xios-presets-\(getpid())"
+    let fm = FileManager.default
+    func reset() {
+        try? fm.removeItem(atPath: root)
+        try! fm.createDirectory(atPath: root + "/tmp", withIntermediateDirectories: true)
+    }
+    func touch(_ rel: String, exec: Bool) {
+        let path = root + "/" + rel
+        try! fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data("#!/bin/sh\n".utf8),
+                      attributes: [.posixPermissions: exec ? 0o755 : 0o644])
+    }
+    func shellPresets() -> Set<String>? {
+        guard let lib = ProcessInfo.processInfo.environment["XIOS_TEST_SESSION_LIB"],
+              fm.fileExists(atPath: lib) else { return nil }
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/bash")
+        p.arguments = ["-c", ". \"$LIB\" && xs_installed_presets"]
+        p.environment = [
+            "LIB": lib, "XS_JB": root, "XS_TMP": root + "/tmp",
+            "PATH": ["/usr/local/bin", "/usr/bin", "/usr/sbin", "/bin", "/sbin"].map { root + $0 }
+                .joined(separator: ":") + ":/usr/bin:/bin",
+        ]
+        let out = Pipe()
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        try? p.run()
+        p.waitUntilExit()
+        let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        return Set(text.split(separator: "\n").map(String.init))
+    }
+    let fixtures: [(name: String, files: [(String, Bool)])] = [
+        ("core only", [("usr/local/bin/iosc", true), ("libexec/xios-session/run-shell.sh", false)]),
+        ("core + kde", [("usr/local/bin/iosc", true), ("libexec/xios-session/run-shell.sh", false),
+                        ("libexec/xios-session/run-kde-plasma.sh", false),
+                        ("Applications/KDE/kwin_wayland.app/kwin_wayland", true),
+                        ("Applications/KDE/plasmashell.app/plasmashell", true),
+                        ("usr/libexec/xios-setsid", true)]),
+        ("kde without setsid", [("usr/local/bin/iosc", true), ("usr/bin/run-kde-plasma.sh", false),
+                                ("Applications/KDE/kwin_wayland.app/kwin_wayland", true),
+                                ("Applications/KDE/plasmashell.app/plasmashell", true)]),
+        ("kde, plasmashell not executable", [("usr/local/bin/iosc", true), ("usr/bin/run-kde-plasma.sh", false),
+                                             ("Applications/KDE/kwin_wayland.app/kwin_wayland", true),
+                                             ("Applications/KDE/plasmashell.app/plasmashell", false),
+                                             ("usr/libexec/xios-setsid", true)]),
+        ("core + gnome", [("usr/local/bin/iosc", true), ("usr/local/bin/run-shell.sh", false),
+                          ("libexec/xios-session/launch-gnome-session.sh", false),
+                          ("usr/bin/gnome-shell", true), ("usr/bin/gnome-session", true),
+                          ("usr/libexec/xios-setsid", true)]),
+        ("gnome-session only on PATH", [("usr/local/bin/iosc", true), ("usr/bin/launch-gnome-session.sh", false),
+                                        ("usr/bin/gnome-shell", true), ("bin/gnome-session", true),
+                                        ("usr/libexec/xios-setsid", true)]),
+        ("gnome without its script", [("usr/local/bin/iosc", true), ("usr/bin/gnome-shell", true),
+                                      ("usr/bin/gnome-session", true), ("usr/libexec/xios-setsid", true)]),
+        ("mutter", [("usr/local/bin/iosc", true), ("usr/bin/run-mutter.sh", false), ("usr/bin/mutter", true)]),
+    ]
+    var compared = 0
+    for fixture in fixtures {
+        reset()
+        for (rel, exec) in fixture.files { touch(rel, exec: exec) }
+        let swift = PresetProbe.installed(jb: root)
+        guard let shell = shellPresets() else { break }
+        compared += 1
+        check(swift == shell, "\(fixture.name): app probe \(swift.map { $0.sorted() } ?? []) "
+              + "!= xs_installed_presets \(shell.sorted())")
+    }
+    check(compared == fixtures.count, "xs_preset_check parity ran (XIOS_TEST_SESSION_LIB set by run.sh)")
+    reset()
+    check(PresetProbe.installed(jb: root) == nil, "an invisible iosc means the probe cannot see: unknown")
+    try? fm.removeItem(atPath: root)
+}
+
 // MARK: registry (real files, real kqueue)
 
 do {
@@ -264,6 +375,32 @@ do {
         // A clean stop (entry deleted) removes the card; state stopped hides it too.
         try? FileManager.default.removeItem(atPath: "\(dir)/xios-displays.d/gnome-1.json")
         wait("removed slot disappears", timeout: 2) { $0.map(\.slot) == ["main"] }
+
+        // A slot start xios-session refused: no registry entry, only the slot's
+        // status file. An error left by an earlier attempt is not reported again.
+        let slotStatus = "\(dir)/xios-session-kde-77aa.json"
+        write("xios-session-kde-77aa.json", #"{"preset":"kde","state":"error","message":"old failure"}"#)
+        let old = Date().addingTimeInterval(-30)
+        try? FileManager.default.setAttributes([.modificationDate: old], ofItemAtPath: slotStatus)
+        let failures = NSCondition()
+        var reported: [(String, String, String)] = []
+        registry.onStartFailed = { slot, preset, why in
+            failures.lock(); reported.append((slot, preset, why)); failures.broadcast(); failures.unlock()
+        }
+        registry.watchStart(slot: "kde-77aa", statusPath: slotStatus, preset: "kde")
+        Thread.sleep(forTimeInterval: 0.8)
+        failures.lock(); let early = reported.count; failures.unlock()
+        check(early == 0, "a stale failure from an earlier attempt is ignored")
+        write("xios-session-kde-77aa.json",
+              #"{"preset":"kde","state":"error","message":"KDE Plasma is not installed: install xios-kde"}"#)
+        let deadline = Date().addingTimeInterval(4)
+        failures.lock()
+        while reported.isEmpty && failures.wait(until: deadline) {}
+        let got = reported
+        failures.unlock()
+        check(got.count == 1 && got.first?.0 == "kde-77aa" && got.first?.1 == "kde"
+              && got.first?.2 == "KDE Plasma is not installed: install xios-kde",
+              "refused slot start reported once, verbatim (got \(got))")
         registry.stop()
         done.signal()
     }

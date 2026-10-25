@@ -35,6 +35,28 @@ enum SessionParsing {
             requestedDPI: status?["requested_dpi"] as? Int)
     }
 
+    /// Why a desktop start (or restart, or resize) of `preset` did not happen, read
+    /// from the status file that request writes, worded exactly as xios-session
+    /// wrote it. nil when the file reports no failure for that preset.
+    ///
+    /// ioscd answers SESSION_STARTED as soon as it has forked xios-session, so a
+    /// refusal never comes back on the socket. xios-session's preflight
+    /// (xs_report_preflight_failure) instead writes it to the request's status
+    /// file: as `request`/`request_state` beside a desktop that keeps running, or
+    /// as an `error` status when nothing was running. A slot refusal touches only
+    /// that slot's xios-session-<slot>.json, never xios-displays.d, so without
+    /// this the launcher never hears of it.
+    static func startFailure(status: [String: Any], preset: String) -> String? {
+        let message = (status["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        if (status["request_state"] as? String) == "error", (status["request"] as? String) == preset {
+            return message ?? "\(DesktopCatalog.label(for: preset)) could not start"
+        }
+        if (status["state"] as? String) == "error", (status["preset"] as? String) == preset {
+            return message ?? "\(DesktopCatalog.label(for: preset)) could not start"
+        }
+        return nil
+    }
+
     /// One xios-displays.d entry plus the config it points at.
     static func slot(entry: [String: Any], fallbackName: String,
                      config: [String: Any]?, defaults: Defaults) -> SessionInfo? {

@@ -18,7 +18,8 @@ Description: the display app for the Xios desktop
  .
  It opens to a launcher: a card for each desktop that is running, with a
  thumbnail, its state and size. Tap a card to go full screen, touch and hold
- for Stop, Open app in it or Change size, and use New Desktop to start another.
+ for Stop, Open app in it or Change size, and use New Desktop to start another
+ (it offers the flavors you have installed and names the package for the rest).
  Inside a desktop, a three-finger tap or a pull from the top edge opens the
  switcher, pinch zooms, and a swipe up from the lower edge raises the keyboard.
  Several desktops can run side by side (xios-session 1.0.81, iosc 0.9.49).

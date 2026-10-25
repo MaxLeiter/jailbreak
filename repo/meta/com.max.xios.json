@@ -7,8 +7,8 @@
   "changelog": [
     {
       "version": "0.2.0",
-      "date": "2026-10-06",
-      "notes": "- Rewritten: the app opens to a launcher of desktop cards with thumbnails, and each desktop has its own connection\n- Several desktops can run at once; switching detaches the one you leave\n- Rotation reconnects at once instead of flashing black; a second finger no longer breaks a drag\n- Long-press is always right click; the status file and every diagnostic write moved off the main thread\n- Needs xios-session 1.0.81 and iosc 0.9.49 for side-by-side desktops"
+      "date": "2026-10-25",
+      "notes": "- Rewritten: the app opens to a launcher of desktop cards with thumbnails, and each desktop has its own connection\n- Several desktops can run at once; switching detaches the one you leave\n- Rotation reconnects at once instead of flashing black; a second finger no longer breaks a drag\n- New Desktop offers only the flavors you have installed and names the package for the others\n- When the session launcher refuses to start a desktop, it says why in its own words\n- Change size works on a desktop in its own slot\n- Long-press is always right click; the status file and every diagnostic write moved off the main thread\n- Needs xios-session 1.0.81 and iosc 0.9.49 for side-by-side desktops"
     },
     {
       "version": "0.1.0",

@@ -2,7 +2,9 @@ import UIKit
 
 /// The + New Desktop sheet: pick KDE, GNOME or Shell and a screen size, with the
 /// memory estimate in front of you. One desktop per preset: when one is already up
-/// the primary action opens it instead of starting a second.
+/// the primary action opens it instead of starting a second. Only installed
+/// flavors can be picked; the others are listed underneath with the package that
+/// provides them (SessionManager.presetAvailability).
 final class NewDesktopViewController: FormViewController {
     private let manager = SessionManager.shared
     private var preset = DesktopCatalog.primary[0]
@@ -14,13 +16,32 @@ final class NewDesktopViewController: FormViewController {
         super.viewDidLoad()
         title = "New Desktop"
         navigationItem.rightBarButtonItem = closeButtonItem()
+        manager.onPresetAvailabilityChanged = { [weak self] in self?.rebuild() }
+        manager.refreshPresetAvailability()
         rebuild()
+    }
+
+    /// Installed, or already running (a desktop whose package went away while it
+    /// ran can still be opened).
+    private func offered(_ p: DesktopPreset) -> Bool {
+        manager.presetAvailability.isInstalled(p.preset) || manager.liveSession(preset: p.preset) != nil
     }
 
     private func rebuild() {
         clearForm()
+        let available = DesktopCatalog.primary.filter(offered)
+        let missing = DesktopCatalog.primary.filter { !offered($0) }
+        if !offered(preset), let first = available.first { preset = first }
+        defer { listMissing(missing) }
+        guard !available.isEmpty else {
+            section("Desktop")
+            note("No desktop flavor is installed. Install xios-kde, xios-gnome or xios-core from the package manager.",
+                 color: .systemOrange)
+            start = nil
+            return
+        }
         section("Desktop")
-        for p in DesktopCatalog.primary {
+        for p in available {
             let live = manager.liveSession(preset: p.preset)
             let starting = live == nil && manager.isStarting(preset: p.preset)
             let memory = p.memory.map { "Memory: \($0)" } ?? "Memory: not measured yet"
@@ -54,6 +75,17 @@ final class NewDesktopViewController: FormViewController {
         if existing == nil, manager.isStarting(preset: preset.preset) { go.isEnabled = false }
         stack.setCustomSpacing(18, after: stack.arrangedSubviews.last ?? go)
         stack.addArrangedSubview(go)
+    }
+
+    /// The flavors that cannot start, and what to install for each. Not tappable.
+    private func listMissing(_ missing: [DesktopPreset]) {
+        guard !missing.isEmpty else { return }
+        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(24, after: last) }
+        section("Not Installed")
+        for p in missing {
+            _ = row(title: p.title, detail: PresetProbe.installHint(for: p.preset), symbol: p.symbol,
+                    enabled: false) {}
+        }
     }
 
     private func go() {
