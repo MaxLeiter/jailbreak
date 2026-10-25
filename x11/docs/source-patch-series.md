@@ -86,7 +86,9 @@ Current converted non-Qt stacks:
 - `ports/pango/patches`: makes Pango's macOS ApplicationServices backend
   optional so the iOS build stays on fontconfig/freetype/cairo.
 - `ports/libepoxy/patches`: enables Apple EGL dispatch for the ANGLE/Mesa
-  rootless paths used by GTK4's Wayland renderer.
+  rootless paths used by GTK4's Wayland renderer, and loads desktop GL from
+  mesa's libGL instead of the absent OpenGL.framework (GLX/X11 clients).
+  Host test: `ports/libepoxy/tests/host-glx-loader-test.sh`.
 - `ports/harfbuzz/patches`: marks the CFF1 supplemental-size local as unused
   for the iOS clang build.
 - `ports/nghttp2/patches`: enables Darwin's RFC3542 control-message macros

@@ -295,3 +295,30 @@ IOSC_CAP_WAIT=4 x11/bin/iosc-capture-remote.sh imv-native \
   env IOSC_EGL_DEBUG=1 ANGLE_REAL_LIBEGL=/var/jb/lib/angle/libEGL.angle.dylib \
   XIOS_IMV_NATIVE_WAYLAND=1 imv /var/jb/tmp/xios-imv-native-proof.jpg
 ```
+
+## 2026-10-25: GTK4 on the X11 backend aborted in libepoxy (fixed in `libepoxy0 1.5.7+angle2`, not device-tested)
+
+`DISPLAY=:0 GDK_BACKEND=x11 gnome-calculator` died right after start with
+`Couldn't open /System/Library/Frameworks/OpenGL.framework/...`. gnome-calculator 46 is
+GTK4, not GTK3. GDK-X11 tries EGL first, but ANGLE has no `EGL_EXT_platform_x11`, so it
+falls back to GLX. It then gets a mesa GLX context and makes its first GL call
+(`glGetString`). epoxy's `__APPLE__` block loads desktop GL from `OPENGL_LIB` =
+OpenGL.framework with abort-on-fail, and iOS has no such framework. The GLX probe itself
+was never the problem: `GLX_LIB` already pointed at mesa's `/var/jb/usr/lib/libGL.1.dylib`,
+which is also what glxgears links. That library exports GLX and every GL entrypoint.
+
+Fix: `ports/libepoxy/patches/0002-ios-desktop-gl-from-mesa-libgl.patch` points
+`OPENGL_LIB` at that same libGL. It also resolves non-core GL through
+`glXGetProcAddressARB` while a GLX context is current, as on Linux. The EGL/GLES (ANGLE)
+names are unchanged, and an EGL context still returns through `eglGetProcAddress` before
+the new branch. The exported symbol set is identical to `+angle1`. Built on
+`procursus-vol-gtk-calc` into `linux-build/out/`. Host test:
+`bash x11/ports/libepoxy/tests/host-glx-loader-test.sh` builds epoxy natively against a
+stub libGL. It PASSes, and with `--baseline` (0001 only) it crashes at the first GL call,
+which is the bug.
+
+Device check, still to do:
+- Install the deb and confirm `strings /var/jb/usr/lib/libepoxy.0.dylib | grep OpenGL.framework` prints nothing.
+- Run `GDK_DEBUG=opengl GDK_BACKEND=x11 DISPLAY=:0 gnome-calculator`. It should map a window. It will be either GL on mesa software GLX, or a logged GL failure that falls back to cairo. It must not abort.
+- If GL on software GLX turns out too slow, `GSK_RENDERER=cairo` is the knob for X11 GTK4 apps. That is GTK's call, not epoxy's.
+- Regressions to rule out: a Wayland GTK4 app under iosc should still say EGL/ANGLE, and Xwayland (which links epoxy for glamor) and glxgears on `:0` should still work.
