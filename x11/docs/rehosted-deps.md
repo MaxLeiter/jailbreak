@@ -1,5 +1,15 @@
 # Rehosted Procursus dependencies
 
+> Status (2026-10-25): the rehosting still holds, but the table below is the
+> 2026-07-08 snapshot. Since then every rehosted deb got the `+ios1` marker in the
+> one-time repack (`scripts.md`, "Version marking"), and several were replaced by our
+> own source builds at newer versions: `libfreetype6 2.13.3+ios1`,
+> `libpng16-16 1.6.50+ios1`, `fontconfig`/`libfontconfig1`/`fontconfig-config
+> 2.17.1+ios1`, `libjpeg62-turbo 3.1.1+ios1`, `libpixman-1-0 0.42.2+ios1`,
+> `libxfixes3 6.0.1+ios1`. `repo/Packages` is the authority for what is served. The
+> zstd-to-gzip recompression described here is no longer required:
+> `bin/lib/make-repo.py` reads `control.tar.zst` through the `zstd` binary.
+
 To make `repo.maxleiter.com` self-contained, the X11/font/desktop libraries our
 published packages depend on are mirrored here from Procursus
 (`apt.procurs.us 1900/main iphoneos-arm64`) instead of being resolved live from

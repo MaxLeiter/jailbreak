@@ -68,7 +68,13 @@ ps axww -o pid=,command= | grep -v grep | grep -E "(^|[ /])iosc( |$)" \
       kill -9 "$pid" 2>/dev/null
   done
 if [ -f "$CLOG.pid" ]; then
-  kill -9 "$(cat "$CLOG.pid")" 2>/dev/null
+  # Only while it is still our test client: the pid file outlives the process
+  # and pids are recycled.
+  cpid="$(cat "$CLOG.pid" 2>/dev/null)"
+  case "$cpid" in
+    ""|*[!0-9]*) ;;
+    *) ps -p "$cpid" -o command= 2>/dev/null | grep -q iosc-client && kill -9 "$cpid" 2>/dev/null ;;
+  esac
   rm -f "$CLOG.pid"
 fi
 sleep 1

@@ -1,5 +1,13 @@
 # Desktop audio integration plan
 
+> **Status (2026-10-25): shipped.** Published: `pulseaudio 17.0-7+ios3`,
+> `pulseaudio-utils 17.0-7+ios2`, `libpulse0 17.0-7+ios1`,
+> `xios-audio-server 0.1.2`, `xios-media-server 0.1.1`. `xios-runtime` pulls all of
+> it in, so every flavor has desktop audio. Device smoke saw default sink `xios`
+> and default source `xios_mic`, and recorded from the mic. Still open: the
+> gvc-to-iOS hardware volume direction has no recorded device run, and camera is
+> not solved (see the end).
+
 How GNOME/GTK apps and gnome-shell's volume UI (gvc) get sound on the iPad,
 built on the audio stack that is already verified audible on-device
 (see `audio-plan.md` for that stack's history). This document is the
@@ -127,7 +135,8 @@ uses its read timeout for pacing and immediately wakes again while connected.
 ## Packaging
 
 Same recipe builds everything from one tree (`recipes/pulseaudio.mk`,
-`-Ddaemon=true`), Debian-shaped split, currently `17.0-6+ios1`:
+`-Ddaemon=true`), Debian-shaped split (published revisions are in the status
+note at the top):
 
 | deb | contents |
 | --- | --- |
@@ -232,8 +241,8 @@ Nobody has hit that yet, so the check is unchanged.
 
 Then the desktop: launch the GNOME session, open the shell volume slider
 (gvc), confirm it tracks `pactl get-sink-volume xios` and, with a current
-Xios app foregrounded, changes the iOS hardware volume. The reverse path was
-implemented off-device on 2026-07-04 and still needs on-device validation.
+Xios app foregrounded, changes the iOS hardware volume. That direction has been
+in the code since 2026-07-04 but has no recorded device run.
 
 ## Follow-on work (not this track's blockers)
 

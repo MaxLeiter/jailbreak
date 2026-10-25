@@ -15,7 +15,8 @@
  *     wl_event_loop; strict xcb_flush discipline after every dispatch.
  *   - Intern atoms; own WM_S0 (manager selection) on a dedicated window; select
  *     SubstructureRedirect|SubstructureNotify|PropertyChange on the root; publish
- *     _NET_SUPPORTED and _NET_SUPPORTING_WM_CHECK.
+ *     _NET_SUPPORTED and _NET_SUPPORTING_WM_CHECK; admit the mobile user's
+ *     X clients (si:localuser:mobile, see xwm_grant_local_user).
  *   - Advertise xwayland_shell_v1 + xwayland_surface_v1 as a wl_global, bindable
  *     ONLY by the Xwayland client (pid match recorded at spawn).
  *   - set_serial (double-buffered) + commit-time adoption, matched against the
@@ -32,6 +33,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pwd.h>
 #include <spawn.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -772,6 +774,46 @@ static int xwm_redirect_subwindows(void)
     return 0;
 }
 
+/* Xwayland admits only clients of its own uid: it seeds its host list with
+ * SI:localuser:<the user it runs as> and has no auth cookie. iosc, and so
+ * Xwayland, runs as root, while ioscd starts Home Screen apps as mobile, so
+ * every one of them was refused ("Authorization required, but no
+ * authorization protocol specified"). Grant that one local user what
+ * `xhost +si:localuser:mobile` grants: core ChangeHosts(Insert,
+ * ServerInterpreted, "localuser\0mobile"). Access control stays on and no
+ * network family is added; any other local user is still refused. */
+#define XWM_LOCAL_APP_USER "mobile"
+
+static void xwm_grant_local_user(const char *user)
+{
+    struct passwd *pw = getpwnam(user);
+    if (!pw) {
+        XWM_DBG("no user %s; X access left to %u only\n", user, (unsigned)geteuid());
+        return;
+    }
+    if (pw->pw_uid == geteuid()) return;           /* Xwayland admits its own user */
+
+    static const char type[] = "localuser";
+    uint8_t addr[sizeof(type) + 64];
+    size_t ulen = strlen(user);
+    if (ulen == 0 || ulen > 64) return;
+    memcpy(addr, type, sizeof(type));               /* includes the NUL separator */
+    memcpy(addr + sizeof(type), user, ulen);
+    uint16_t len = (uint16_t)(sizeof(type) + ulen);
+
+    xcb_void_cookie_t c = xcb_change_hosts_checked(xwm.conn, XCB_HOST_MODE_INSERT,
+                                                   XCB_FAMILY_SERVER_INTERPRETED,
+                                                   len, addr);
+    xcb_generic_error_t *err = xcb_request_check(xwm.conn, c);
+    if (err) {
+        XWM_LOG("cannot grant X access to local user %s: X error %d\n",
+                user, err->error_code);
+        free(err);
+        return;
+    }
+    XWM_LOG("X access granted to local user %s (si:localuser)\n", user);
+}
+
 static int setup_wm(void)
 {
     const xcb_setup_t *setup = xcb_get_setup(xwm.conn);
@@ -838,6 +880,10 @@ static int setup_wm(void)
     xcb_change_property(xwm.conn, XCB_PROP_MODE_REPLACE, xwm.root,
                         xwm.atoms[ATOM_NET_SUPPORTED], XCB_ATOM_ATOM, 32,
                         (uint32_t)(sizeof(supported) / sizeof(supported[0])), supported);
+
+    /* Before x11-display is published, so no app sees the display before
+     * it may connect. */
+    xwm_grant_local_user(XWM_LOCAL_APP_USER);
 
     xcb_flush(xwm.conn);
     return 0;

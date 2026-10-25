@@ -1,0 +1,8 @@
+{
+  "name": "ipad-agent",
+  "private": true,
+  "type": "module",
+  "scripts": { "agent": "bun run src/cli.ts", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@anthropic-ai/claude-agent-sdk": "latest" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "latest" }
+}

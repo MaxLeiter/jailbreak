@@ -22,7 +22,7 @@ REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT=/private/tmp/xios-a11y-tools-deb
 STAGE="$STAGEROOT/xios-a11y-tools"
 VER="0.2.17"
-ARCH="iphoneos-arm64"
+ARCH="$XIOS_DEB_ARCH"
 DEB="xios-a11y-tools_${VER}_${ARCH}.deb"
 
 [ -x "$HERE/out/atspi-dump" ] && [ -x "$HERE/out/xios-a11yd" ] || {
@@ -37,12 +37,12 @@ cp "$HERE/out/xios-a11yd" "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
 chmod 0755 "$STAGE$XIOS_PREFIX/usr/local/bin/atspi-dump"
 chmod 0755 "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
 
-if command -v ldid >/dev/null 2>&1; then
-  xsign "$STAGE$XIOS_PREFIX/usr/local/bin/atspi-dump"
-  xsign "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
-fi
+# xsign fails loud without ldid; the old `command -v ldid` guard shipped the
+# binaries unsigned instead.
+xsign "$STAGE$XIOS_PREFIX/usr/local/bin/atspi-dump"
+xsign "$STAGE$XIOS_PREFIX/usr/local/bin/xios-a11yd"
 
-INSTKB=$(du -sk "$STAGE/var/jb" | cut -f1)
+INSTKB=$(du -sk "$STAGE$XIOS_PREFIX/usr" | cut -f1)
 cat > "$STAGE/DEBIAN/control" <<EOF
 Package: xios-a11y-tools
 Name: Xios accessibility tools
@@ -73,8 +73,18 @@ Description: accessibility smoke tools for Xios
  traits, state values, and focused node updates for VoiceOver focus sync smokes.
 EOF
 
-mkdir -p "$OUTDIR" "$REPODEBS"
+if [ "$XIOS_TARGET_ID" != rootless-1900 ]; then
+  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
+fi
+xdeb_refuse_published "$STAGE"
+mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
-cp "$built" "$REPODEBS/${DEB}"
 echo "=== DEB BUILT ==="
-ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
+if [ "$XIOS_TARGET_ID" = rootless-1900 ]; then
+  mkdir -p "$REPODEBS"
+  cp "$built" "$REPODEBS/${DEB}"
+  ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
+else
+  ls -la "$built"
+  echo "target artifact kept out of repo/debs"
+fi

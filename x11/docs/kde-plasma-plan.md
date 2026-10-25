@@ -1,193 +1,111 @@
-# KDE Plasma Mobile on iOS: build roadmap
+# KDE Plasma on iOS: build plan and KF6 audit
 
-> **Current status (2026-07-03): superseded as a status source.** This roadmap captured the
-> original Qt/KF6/KWin/Plasma plan. The Qt6 modules, KF6 subset, KWin first-light layer,
-> `plasma-workspace`, first-light Desktop/Nano/Mobile packages, `xios-session kde`, and the first
-> KDE app batch have since built; several are published/smoked. Use
-> [`docs/handoff/kde-kf6.md`](handoff/kde-kf6.md) for current KDE status and next gates.
+> **Status (2026-10-25): done and shipped.** This was the original roadmap for the KDE
+> flavor. Qt 6, the KF6 subset, KWin (nested, GPU-composited) and Plasma Desktop, Mobile
+> and Nano all ship in production as `xios-kde 0.1.21`. Current state, open items and
+> landmines are in [`handoff/kde-kf6.md`](handoff/kde-kf6.md). This file is kept for the
+> layer K audit (the generator and recipes cite it) and for why the layers were ordered
+> the way they were. Notes marked "later" record where reality moved past the plan.
 
-The KDE flavor of the distribution chooser (see `x11-distribution-chooser` memory and
-`docs/iosc-desktop-env.md`): KWin + Plasma Mobile on Qt 6 / KDE Frameworks 6, all built
-from scratch because Procursus ships no Qt at all. Multi-week track; this doc maps it.
+The KDE flavor is KWin plus Plasma on Qt 6 and KDE Frameworks 6, all built from scratch
+because Procursus ships no Qt at all.
 
-Why this flavor is structurally easier than GNOME, and where it is not:
+Why this flavor was structurally easier than GNOME, and where it was not:
 
-- No JS-JIT wall. QML runs on the QV4 bytecode interpreter (`FEATURE_qml_jit=OFF`);
-  nothing like the mozjs cross-compile saga.
+- No JS JIT wall. QML runs on the QV4 bytecode interpreter (`FEATURE_qml_jit=OFF`).
 - No introspection wall. All Qt codegen (moc, rcc, qmltyperegistrar, qmlcachegen, qsb,
-  qtwaylandscanner) runs on the HOST via `QT_HOST_PATH`; nothing like g-ir-scanner
-  needing to execute target code.
-- The one real wall: Qt-on-GPU means qtwayland's EGL integration on ANGLE-Metal, the
-  same problem the GTK4 gdk-wayland-on-ANGLE shim is working through right now (phase
-  Q4 below). Everything before that wall runs on a software path that is fully useful.
+  qtwaylandscanner) runs on the host via `QT_HOST_PATH`.
+- The one real wall was Qt on the GPU: QtWayland's EGL integration on ANGLE Metal (Q4).
 
 ## Version pins
 
 | Component | Version | Why |
 |---|---|---|
-| Qt | 6.6.3 | qtbase already targeting it; Plasma 6.1 requires Qt >= 6.6.2 |
+| Qt | 6.6.3 | Plasma 6.1 requires Qt >= 6.6.2 |
 | KDE Frameworks | 6.3.x | minimum for Plasma 6.1 |
-| Plasma | 6.1.x | first Plasma 6 series with mobile in decent shape; matches the pins above |
+| Plasma | 6.1.x | first Plasma 6 series with Mobile in decent shape |
 
-Single-version rule: the host Qt and the cross Qt must be the identical version, so any
-bump is a coordinated rebuild of host tools + qtbase + every module.
+Single-version rule: host Qt and cross Qt must be the identical version, so any bump is a
+coordinated rebuild of host tools, qtbase and every module.
 
 ## Layer Q: Qt
 
-### Q1. qtbase round 1 (DONE; historical notes)
+### Q1. qtbase round 1
 
-`recipes/qtbase.mk` + `build-qt.sh`. Dylibs not frameworks, Qt's Darwin platform against
-the iPhoneOS SDK, the `CONDITION MACOS` cmake fix, offscreen default QPA. Deliberately
-minimal: opengl/egl, dbus, icu, xkbcommon, sql, printsupport all OFF.
-Done criteria was `qt6-base` + `qt6-base-dev` debs in `out/`, `Qt6Config.cmake` staged into
-`build_base` for the module builds. This has since been reached and iterated through later Qt
-revisions.
+`recipes/qtbase.mk` + `build-qt.sh`. Dylibs, not frameworks; Qt's Darwin platform against
+the iPhoneOS SDK; the `CONDITION MACOS` CMake fix; offscreen default QPA. Round 1 was
+deliberately minimal (opengl/egl, dbus, icu, xkbcommon, sql and printsupport off).
 
-### Q2. Module ladder (DONE; historical notes)
+### Q2. Module ladder
 
-`recipes/qt6-common.mk` (shared Apple/Darwin flags) plus, in build order:
+`recipes/qt6-common.mk` (shared Apple flags) plus, in build order:
 
-1. `qtshadertools.mk` - qsb + Qt6ShaderTools; qtdeclarative's build dep. Bundled
-   glslang/SPIRV-Cross, no new external deps.
-2. `qtdeclarative.mk` - QML + QtQuick, the big one. JIT off; QtQuick renders via the
-   software scenegraph adaptation until Q4.
-3. `qt5compat.mk` - Qt6Core5Compat (QTextCodec) + `Qt5Compat.GraphicalEffects` QML
-   module. Added on the KF6 K0 audit: KIO 6.3 hard-requires Qt6Core5Compat, and KIO is
-   unavoidable in the KWin-enabling subset (libplasma + kglobalacceld pull it). After
-   qtdeclarative, not qtbase-only: the library needs only qtbase but the GraphicalEffects
-   QML module needs the target Qt6Qml/Quick packages + host qmlcachegen.
-4. `qtwayland.mk` - the wayland QPA, client only (`FEATURE_wayland_server=OFF`).
-   Round 1 is wl_shm buffers; that still exercises xdg-shell, seats, clipboard, DnD
-   against iosc.
-5. `qtsvg.mk` - Breeze icons and Plasma themes are SVG everywhere.
-6. `qtimageformats.mk` - tiff/webp (bundled), tga/icns/wbmp.
+1. `qtshadertools.mk`: qsb + Qt6ShaderTools, qtdeclarative's build dependency.
+2. `qtdeclarative.mk`: QML and QtQuick, JIT off.
+3. `qt5compat.mk`: Qt6Core5Compat (QTextCodec) and the `Qt5Compat.GraphicalEffects` QML
+   module. KIO 6.3 hard-requires Core5Compat. It sits after qtdeclarative because the QML
+   module needs target Qt6Qml/Quick and host qmlcachegen.
+4. `qtwayland.mk`: the Wayland QPA, client only.
+5. `qtsvg.mk`: Breeze icons and Plasma themes are SVG everywhere.
+6. `qtimageformats.mk`: tiff/webp and friends.
 
-Later Qt modules the K0 audit flagged for the KWin/W layer (not part of the initial KF6 wave;
-tracked for the module set's final shape): KWin's `find_package` wants QtConcurrent (in
-qtbase, confirm it builds), Core5Compat (covered here), UiTools (the separate `qttools`
-module, NOT a qtbase component) and Sensors (the separate `qtsensors` module). Add
-`qttools`/`qtsensors` recipes at the W layer; both are qtbase-only cross builds on this
-same pattern. KWin also runs `ecm_find_qmlmodule` for QtQuick.Controls/Layouts/Window,
-all provided by qtdeclarative above.
+KWin also needs `qttools` (UiTools) and `qtsensors`, which are separate modules, not qtbase
+components; QtConcurrent is in qtbase.
 
-Driver: `build-qt-modules.sh` (separate from `build-qt.sh` on purpose). Stage 1 extends the host Qt with host
-qtshadertools, qtdeclarative and qtwayland, because the cross builds resolve qsb,
-qmlcachegen/qmlimportscanner and qtwaylandscanner through `QT_HOST_PATH`. The cross
-qtwayland additionally wants the plain `wayland-scanner` on the host (apt: libwayland-bin)
-and wayland-client staged in build_base (W0 debs; the driver gates on both).
+Driver: `build-qt-modules.sh`. Stage 1 extends the host Qt with host qtshadertools,
+qtdeclarative and qtwayland, because cross builds resolve qsb, qmlcachegen,
+qmlimportscanner and qtwaylandscanner through `QT_HOST_PATH`. Cross qtwayland also wants
+the plain host `wayland-scanner` (apt: libwayland-bin) and wayland-client staged in
+build_base.
 
-Historical on-device validation order for Q2:
-1. `qml -platform offscreen` evaluates a Hello.qml (proves QV4 + type registration).
-2. `qml -platform wayland` with `QT_QUICK_BACKEND=software` shows a window on iosc
-   (proves the QPA end to end: buffers, frame callbacks, input).
-3. A QtWidgets app on wayland (proves raster path + cursor/decoration plugins).
+### Q3. qtbase round 2: dbus, xkbcommon, printsupport, AT-SPI bridge
 
-### Q3. qtbase round 2: +dbus, +xkbcommon, +printsupport, +atspi bridge (DONE enough for KF6)
+Required before KF6:
 
-These were the feature flips required before KF6 work:
-- dbus: KF6 hard-requires QtDBus (KDBusAddons, KGlobalAccel, KNotifications, KWin's own
-  interfaces). The dbus daemon/libdbus debs exist (GNOME track); prefer
-  `FEATURE_dbus_linked=ON` against the staged libdbus over the dlopen-at-runtime mode.
-  Host Qt already ships Qt6DBusTools/qdbusxml2cpp (built dbus-ON), so no host rebuild.
-- xkbcommon: qtwayland keyboard handling follows QtGui's xkbcommon feature; libxkbcommon
-  is already staged in build_base (W0).
-- printsupport: kxmlgui (KF6) links Qt6PrintSupport (K0 audit gate). Risk note: Qt does
-  not officially support printsupport on iOS, and the macOS print engine lives behind
-  the `CONDITION MACOS` blocks our sed disables, so expect a library with no platform
-  print engine (fine: kxmlgui needs link + headers, nobody prints on the iPad desktop).
-  If the module still trips TARGET_OS_IPHONE guards, the fallback moves to the KF6 side:
-  patch kxmlgui's print actions out instead.
-- accessibility_atspi_bridge: the AT-SPI-to-VoiceOver track (docs/a11y-plan.md) needs Qt
-  apps to publish onto the a11y bus, and Qt's AT-SPI bridge requires QtDBus + libatspi.
-  Since dbus flips ON here anyway, the only extra cost is at-spi2-core headers/libs staged
-  in the sysroot (already built for the GNOME track — stage, don't rebuild). Upstream
-  gates the bridge behind Linux-ish conditions; expect a CONDITION un-gate in the same
-  spirit as the fontconfig patch 6.
+- dbus: KF6 hard-requires QtDBus. Linked against the staged libdbus
+  (`FEATURE_dbus_linked=ON`).
+- xkbcommon: QtWayland keyboard handling follows QtGui's xkbcommon feature.
+- printsupport: kxmlgui links Qt6PrintSupport. There is no platform print engine on iOS,
+  which is fine; kxmlgui only needs it to link.
+- `accessibility_atspi_bridge`: lets Qt apps publish onto the a11y bus for the AT-SPI to
+  VoiceOver track (`a11y-plan.md`).
 
-Historical round-2 procedure:
-1. In `qtbase.mk`, flip `FEATURE_dbus=OFF` to ON (+ add `FEATURE_dbus_linked=ON`),
-   `FEATURE_printsupport=OFF` to ON, and add `-DFEATURE_xkbcommon=ON`
-   `-DFEATURE_accessibility_atspi_bridge=ON` (cups stays OFF).
-2. `rm build_work/qtbase/.build_complete`; the build dir is kept, so cmake reconfigures
-   incrementally and ninja rebuilds only what the feature flip touches.
-3. Rebuild + re-stage qtbase, bump `DEB_QTBASE_V` revision (6.6.3-2).
-4. Rebuild the Q2 modules against it (private ABI): `rm build_work/<mod>/.build_complete`
-   for each, re-run `build-qt-modules.sh`, bump their deb revisions.
+A feature flip means: change the flags in `qtbase.mk`, remove
+`build_work/qtbase/.build_complete` (the build dir is kept, so ninja rebuilds only what
+changed), bump `DEB_QTBASE_V`, then rebuild every Q2 module against it (private ABI) and
+bump their revisions. ICU stayed off for Qt.
 
-ICU stays off for now (Qt falls back to its own tables; revisit if text segmentation
-bugs show up in Plasma - the ICU debs exist since the GNOME track built them).
+### Q4. GL on ANGLE (later: shipped)
 
-### Q4. GL on ANGLE: implemented first path, validation pending
-
-Naive ANGLE cannot speak Wayland: the Metal backend has no real Wayland platform, and
-native window surfaces want Apple objects, not `wl_egl_window`. The GTK4 work solved that
-with the iosc EGL shim now packaged as `/var/jb/lib/angle/libEGL.dylib`: clients think
-they are using Wayland EGL, while the shim creates an ANGLE Metal display and swaps
-IOSurface-backed Wayland buffers.
-
-Qt round 3 now takes the same first path instead of starting with a Qt private-ABI plugin:
-`qtbase.mk` enables ES2/EGL against ANGLE, `qtwayland.mk` builds the stock `wayland-egl`
-client buffer integration, and the package metadata depends on `angle`. The detailed
-bring-up and fallback design live in `docs/qtwayland-angle-iosurface.md`.
-
-The concrete EGL bring-up below is transferred VERBATIM from team-lead's on-device P0.1
-validation of the GTK4/gdk-wayland-on-ANGLE path (2026-07-01); it is `xios_egl.c`'s exact
-sequence and must keep matching the shim:
-
-1. Display bring-up (the big one): the CORE `eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE)`
-   returns `EGL_NO_DISPLAY` with `err=SUCCESS` on this ANGLE build — a silent no-op. ONLY
-   the EXT entrypoint works: resolve `eglGetPlatformDisplayEXT` via `eglGetProcAddress`,
-   call it with an `EGLint` attrib list (NOT `EGLAttrib`) =
-   `{EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE}` and
-   `native_display = EGL_DEFAULT_DISPLAY`. Do NOT pass the `wl_display` as the native
-   display — ANGLE cannot make a Metal display from it (also `NO_DISPLAY`). Entrypoint and
-   attrib width are both load-bearing; they are not spec-interchangeable here.
-2. The client may request `EGL_PLATFORM_WAYLAND`, but only against the shim. The shim
-   remaps that to ANGLE Metal. Surfaces come from `wl_egl_window` +
-   `EGL_ANGLE_iosurface_client_buffer` (the one-call pbuffer API, validated on the A10)
-   and are handed to iosc over the existing zero-copy protocol.
-3. Swap barrier: `EGL_KHR_fence_sync` works on the A10 (validated) — use it, not
-   `glFinish`.
-4. Packaging is not optional (this cost team-lead hours): the process needs GPU IOKit
-   entitlements — `AGXDeviceUserClient` + `IOGPUDeviceUserClient` — or
-   `MTLCreateSystemDefaultDevice` returns nil and the ANGLE Metal display creation fails
-   with `NO_DISPLAY`, silently. See the packaging note below; this is baked into the KDE
-   flavor from the start, not bolted on at Q4.
-
-Build side, qtbase round 3: `FEATURE_egl` + `INPUT_opengl=es2` are ON, pointed at
-`/var/jb/lib/angle/{libEGL,libGLESv2}.dylib`. Qt links EGL directly (it does not use
-epoxy), so this is cmake-level lib/include hints plus an LC_RPATH to `/var/jb/lib/angle`.
-
-Fallback if stock QtWayland rejects the shim: build the pinned-Qt-6.6.3 private
-`wayland-graphics-integration-client/iosurface` plugin described in
-`docs/qtwayland-angle-iosurface.md`, moving the same swapchain logic out of the shim and
-behind Qt's client buffer integration ABI.
-
-This phase is not a gate for K/W1/P below; the software path carries them.
+Plain ANGLE cannot speak Wayland. The iosc EGL shim, installed by the `angle` package as
+`/var/jb/lib/angle/libEGL.dylib`, makes clients think they use Wayland EGL while it creates
+an ANGLE Metal display and swaps IOSurface-backed Wayland buffers. Qt round 3 enables
+ES2/EGL against ANGLE and keeps stock QtWayland `wayland-egl`; the private plugin fallback
+was never needed. Details and the load-bearing EGL sequence are in
+[`qtwayland-angle-iosurface.md`](qtwayland-angle-iosurface.md).
 
 ## Layer K: KDE Frameworks 6 (subset)
 
-K0 audit is DONE (2026-07-01). The `find_package` graphs of kwin 6.1.5,
+The K0 audit (2026-07-01) pulled the `find_package` graphs of kwin 6.1.5,
 plasma-nano/plasma-mobile 6.1.5, libplasma 6.1.5 and every KF 6.3.0 framework in their
-closure were pulled from invent.kde.org and reduced to the minimal subset below. The
-result is **40 build units** (33 KF6 frameworks + ECM + 5 Plasma-released libraries +
-plasma-wayland-protocols). Pins: KF 6.3.0, Plasma libs 6.1.5, plasma-wayland-protocols
-1.13.0. Everything is code-generated: `tools/gen-kf6-recipes.py` holds the canonical
-audit TABLE (per-unit deps, feature cuts, patches, packaging) and emits
-`recipes/<unit>.mk` + `build_info/<deb>.control`; `recipes/kf6-common.mk` holds the
-shared flags/macros; `build-kf6.sh` is the driver. Regenerate, don't hand-edit the .mk
-files.
+closure, and reduced them to **40 build units** (33 KF6 frameworks + ECM + 5
+Plasma-released libraries + plasma-wayland-protocols). Pins: KF 6.3.0, Plasma libs 6.1.5,
+plasma-wayland-protocols 1.13.0.
+
+Everything is generated: `tools/gen-kf6-recipes.py` holds the audit TABLE (per-unit deps,
+feature cuts, patches, packaging) and emits `recipes/<unit>.mk` and
+`build_info/<deb>.control`; `recipes/kf6-common.mk` holds shared flags; `build-kf6.sh` is
+the driver. Regenerate, don't hand-edit the `.mk` files.
 
 ### The audited subset (build DAG = wave order)
 
-`build-kf6.sh` runs these in wave order (each wave's deps are all in earlier waves). The
-generator prints the canonical `TARGETS` string; keep the two in sync.
+Each wave's dependencies are all in earlier waves. The generator prints the canonical
+`TARGETS` string; keep `build-kf6.sh` in sync.
 
-- **wave 0 — no KF6 deps** (Qt-only, or self-contained): extra-cmake-modules,
-  plasma-wayland-protocols, kcoreaddons, karchive, kcodecs, kconfig, kwidgetsaddons,
-  kitemviews, kitemmodels, kdbusaddons, kglobalaccel, kguiaddons, kwindowsystem,
-  kidletime, ki18n, solid, sonnet, kirigami, breeze-icons, **kwayland**,
-  **plasma-activities**, **layer-shell-qt**.
+- **wave 0** (Qt-only or self-contained): extra-cmake-modules, plasma-wayland-protocols,
+  kcoreaddons, karchive, kcodecs, kconfig, kwidgetsaddons, kitemviews, kitemmodels,
+  kdbusaddons, kglobalaccel, kguiaddons, kwindowsystem, kidletime, ki18n, solid, sonnet,
+  kirigami, breeze-icons, **kwayland**, **plasma-activities**, **layer-shell-qt**.
 - **wave 1**: kauth, kcrash, kcolorscheme, kservice, kpackage, knotifications,
   kcompletion, **kdecoration**.
 - **wave 2**: kconfigwidgets, kjobwidgets, ksvg.
@@ -195,188 +113,105 @@ generator prints the canonical `TARGETS` string; keep the two in sync.
 - **wave 4**: kxmlgui, kio.
 - **wave 5**: kcmutils, kglobalacceld.
 
-(Bold = Plasma-released, not a `frameworks/` repo.) What each direct consumer forces:
-plasma-nano pulls kwindowsystem/ki18n/kservice/kitemmodels + libplasma + kwayland;
-libplasma pulls the archive/config/globalaccel/guiaddons/i18n/iconthemes/kio/
-windowsystem/notifications/package/kirigami(Platform)/kcmutils/svg set + plasma-activities
-+ plasma-wayland-protocols; kwin pulls auth/colorscheme/config/configwidgets/coreaddons/
-crash/dbusaddons/globalaccel/guiaddons/i18n/idletime/package/service/svg/widgetsaddons/
-windowsystem + kwayland + kdecoration + kglobalacceld (+ notifications, screenlocker
-stubbed). **The widget/KIO chain, not kwin, is what drags the widest frameworks in**:
-kcmutils→kxmlgui+kio→(bookmarks, textwidgets→sonnet, completion, iconthemes, jobwidgets→
-notifications, service, solid, auth). plasma-mobile additionally wants KIO, KirigamiAddons,
-QCoro, KF6Screen, NetworkManagerQt, ModemManagerQt, LibKWorkspace — **deferred to layer P**
-(shell layer), not part of this KWin-enabling KF6 tier.
+(Bold = Plasma-released, not a `frameworks/` repo.) The widget/KIO chain, not KWin, is
+what drags in the widest frameworks: kcmutils pulls kxmlgui and kio, which pull bookmarks,
+textwidgets (sonnet), completion, iconthemes, jobwidgets, notifications, service, solid
+and auth. plasma-mobile's extra wants (KirigamiAddons, QCoro, KF6Screen, LibKWorkspace)
+were left to the shell layer.
 
-### Deliberate exclusions (audited, not oversights)
+### Deliberate exclusions at K0
 
-- **KDeclarative**: kwin references it only under `KWIN_BUILD_KCMS`; we build KCMs off for
-  bring-up, so it drops out of the KWin-enabling set (re-add with the KCM subset in P).
-- **NewStuff, XmlGui-for-KCMs, KScreenLocker**: KCM/store/lock features, off for W1.
-- **KWallet, KDED, KDocTools, kirigami-addons**: not in the KWin closure; KDocTools is
-  hard-disabled everywhere (`CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools`).
-- **PlasmaActivities daemon / KActivities-stats, kglobalaccel daemon extras**: the client
-  libs are in; the daemons wait for layer P.
+- **KDeclarative, NewStuff, KDED, kirigami-addons**: not in the KWin closure. Later: all
+  four were built in the Plasma waves (`kf6-declarative`, `kf6-newstuff`, `kf6-kded`,
+  `kf6-kirigami-addons`).
+- **KWallet**: later built API-only (`BUILD_KWALLETD=OFF`).
+- **KScreenLocker**: still not built.
+- **KDocTools**: hard-disabled everywhere (`CMAKE_DISABLE_FIND_PACKAGE_KF6DocTools`).
 
-### Feature cuts and patches the audit found (baked into the generator TABLE)
+### Feature cuts and patches (in the generator TABLE)
 
-- **karchive**: bzip2/xz backends OFF — zip+gzip is all KPackage/KIconThemes need, and
-  the extra backends would add blind Depends (the libsqlite3-1 naming lesson).
-- **kauth**: FAKE backend — the real one needs polkit-qt6-1 (unbuilt) and the jailbreak
-  has no privilege boundary to broker.
-- **knotifications**: four `-setup` seds — Canberra demoted from REQUIRED (no
-  libcanberra chain; code already guards on the target), the freedesktop/DBus branch
-  forced over the `if(APPLE)` NSUserNotification backend (absent on iPhoneOS), and the
-  two matching src-level blocks (notifybymacosnotificationcenter.mm + the AppKit link)
-  dropped.
-- **ktextwidgets**: `WITH_TEXT_TO_SPEECH=OFF` — ON would pull the whole qtspeech module.
-- **kio**: ACL + KF6DocTools disabled; Darwin spares us LibMount (Linux-guarded) and X11
-  (APPLE-guarded). **Requires Qt6Core5Compat** (QTextCodec) → a qt6-5compat module gap.
-- **kwindowsystem / kguiaddons / kidletime**: X11 forced off, Wayland forced on — and the
-  `if(APPLE)` whack-a-mole is now PRE-STAGED, not phase-2: the v6.3.0 trees were audited
-  and each unit carries `-setup` seds (in the generator TABLE) that keep the wayland
-  option alive through the platform force-off guards and delete the macOS backends
-  (kguiaddons AppKit color-scheme watcher; kidletime Carbon probe + osx poller plugin).
-  All sed targets uniqueness-checked and dry-run against the pinned tarball sources.
-  Note: kguiaddons/kidletime wayland protocol codegen runs the HOST qtwaylandscanner via
-  QT_HOST_PATH — covered by build-qt-modules.sh stage 1, and build-kf6.sh hard-gates on
-  the `${HOSTQT}/libexec/qtwaylandscanner` marker so a pre-modules volume clone fails
-  fast (re-running that stage 1 on a clone is a marker-gated no-op). The host-side
-  wayland-scanner apt trio (libwayland-dev/libwayland-bin/wayland-protocols) was already
-  in build-kf6.sh's prep; wayland.xml + ext-idle-notify ship in libwayland-dev /
-  wayland-protocols (verified in out/). The PLAIN wayland-scanner is a separate trap the
-  Qt ladder proved: the W0 deb stages an arm64-iOS wayland-scanner into build_base and
-  the cross find-root prefers it over /usr/bin ("Exec format error") — KF6_CMAKE_FLAGS
-  pins `-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner` for all units.
-  Wall ledger inherited from the Qt module ladder, for units that rhyme: xpc/os_log
-  shadow headers (in-recipe rm, adopted); ObjC++ frameworks in links (inherited via
-  QT6_MODULE_CMAKE_FLAGS linker vars — and post-sed no KF6 unit compiles .mm anyway);
-  qtbase private headers gated `UNIX AND NOT MACOS` (e.g. qgenericunixthemes) are NOT
-  staged — a KF6 unit including one needs a source patch in its TABLE seds, not a
-  qtbase round.
-- **solid**: backend list pre-patched down to fakehw-only (two `-setup` seds empty the
-  `elseif(APPLE)` IOKit branch — macOS IOKit+DiskArbitration, not on the iPhoneOS SDK).
-  managerbase.cpp verified to gate on `BUILD_DEVICE_BACKEND_*` defines, not Q_OS ifdefs:
-  fake-only compiles clean and yields an empty device list (KIO only needs the lib to
-  link).
-- **breeze-icons**: `BINARY_ICONS_RESOURCE=OFF` (plain files, friendlier to the icon
-  repack pipeline); it's in wave 0 because KIconThemes REQUIREs it at build.
+- **karchive**: bzip2/xz backends off; zip and gzip are all KPackage and KIconThemes need,
+  and the extra backends would add blind Depends.
+- **kauth**: FAKE backend. The real one needs polkit-qt6-1, and there is no privilege
+  boundary to broker here.
+- **knotifications**: Canberra demoted from REQUIRED, the freedesktop/DBus branch forced
+  over the `if(APPLE)` NSUserNotification backend (absent on iPhoneOS), and the matching
+  `.mm` source and AppKit link dropped.
+- **ktextwidgets**: `WITH_TEXT_TO_SPEECH=OFF` (ON pulls the whole qtspeech module).
+- **kio**: ACL and KF6DocTools off. Requires Qt6Core5Compat. Later rebuilds let iOS use
+  KIOCore's Unix QtDBus branch (for the Workspace `desktop:/` worker) while keeping the
+  AppKit `kiod` and DiskArbitration paths off.
+- **kwindowsystem / kguiaddons / kidletime**: X11 forced off, Wayland forced on. Each
+  carries `-setup` seds that keep the Wayland option alive through the platform guards
+  and delete the macOS backends (kguiaddons AppKit colour-scheme watcher, kidletime
+  Carbon probe and osx poller). Their protocol codegen runs the host qtwaylandscanner,
+  and `build-kf6.sh` hard-gates on `${HOSTQT}/libexec/qtwaylandscanner` so a pre-modules
+  volume clone fails fast.
+- **Plain wayland-scanner trap**: the W0 deb stages an arm64 iOS `wayland-scanner` into
+  build_base, and the cross find-root prefers it over `/usr/bin` ("Exec format error").
+  `KF6_CMAKE_FLAGS` pins `-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner`.
+- **qtbase private headers** gated `UNIX AND NOT MACOS` (e.g. qgenericunixthemes) are not
+  staged. A unit that includes one needs a source patch in its TABLE seds, not a qtbase
+  round.
+- **solid**: the K0 cut was fakehw only (the `elseif(APPLE)` IOKit branch is macOS-only).
+  Later: that left PowerDevil reading 0% battery. `solid-ios-fixes.sh` now swaps the
+  Apple branch to the UPower backend, shipped as `kf6-solid 6.3.0+ios2`.
+- **breeze-icons**: `BINARY_ICONS_RESOURCE=OFF` (plain files); wave 0 because KIconThemes
+  requires it at build time.
 
-### Two gates this layer opens against lower layers
+### Gates this layer opened against lower layers
 
-1. **qtbase round 2 is a hard prerequisite** (plan Q3): KF6 needs QtDBus throughout, and
-   **kxmlgui needs QtPrintSupport** — qtbase round 1 built both OFF. So Q3's flag flip is
-   `dbus + xkbcommon + printsupport` (cups stays OFF). `build-kf6.sh` refuses to start if
-   the staged qtbase lacks `Qt6DBusConfig.cmake` / `Qt6PrintSupportConfig.cmake`.
-2. **Qt module gaps for KDE** — the KIO one is CLOSED: qt-modules added `qt5compat.mk`
-   (qt6-5compat, provides Qt6Core5Compat). It sits AFTER qtdeclarative in the ladder, not
-   qtbase-only: the same deb ships the Qt5Compat.GraphicalEffects QML module (used across
-   Plasma/Kirigami themes), which wants Qt6Qml/Quick + host qmlcachegen. So
-   `qt6-5compat Depends: qt6-declarative`; net effect for KIO identical.
-   kwin's other Qt wants, corrected for the W layer (qt-modules audit): Concurrent IS a
-   qtbase component (round 1 covers it); **UiTools and Sensors are NOT — they are the
-   separate qttools and qtsensors modules**, new recipes when we reach KWin (not KF6
-   deps, nothing here gates on them); the QtQuick.Controls/Layouts/Window QML modules
-   kwin probes via ecm_find_qmlmodule all come from qtdeclarative, already in the ladder.
+1. qtbase round 2 is a hard prerequisite: KF6 needs QtDBus throughout and kxmlgui needs
+   QtPrintSupport. `build-kf6.sh` refuses to start if the staged qtbase lacks
+   `Qt6DBusConfig.cmake` or `Qt6PrintSupportConfig.cmake`.
+2. qt6-5compat (Core5Compat for KIO) depends on qt6-declarative because the same deb ships
+   the GraphicalEffects QML module.
 
-### Recipe mechanics (uniform)
+### Recipe mechanics
 
-cmake + ECM, `KF6_CMAKE_FLAGS` (= `QT6_MODULE_CMAKE_FLAGS` + KDE install-dir pins +
-`KF6_HOST_TOOLING`). The one novelty over the Qt module recipes is KDE's **host tooling
-cross mechanism**: kconfig/kcoreaddons/kpackage ship build-time tools
-(kconfig_compiler_kf6, desktoptojson, kpackagetool6) that every downstream cmake runs, so
-`build-kf6.sh` stage 1 builds ECM + those (+ their deps karchive/ki18n) NATIVELY into
-`build_tools/kf6-host` and the cross builds resolve them through `-DKF6_HOST_TOOLING`
-(the same Config.cmake branch Android KDE builds take). Qt host codegen keeps flowing
-through `QT_HOST_PATH`. There is still **no introspection/on-device-scan wall** anywhere
-in the KDE track.
+CMake + ECM with `KF6_CMAKE_FLAGS` (= `QT6_MODULE_CMAKE_FLAGS` + KDE install-dir pins +
+`KF6_HOST_TOOLING`). kconfig, kcoreaddons and kpackage ship build-time tools
+(kconfig_compiler_kf6, desktoptojson, kpackagetool6) that every downstream CMake runs, so
+`build-kf6.sh` stage 1 builds ECM and those (plus karchive and ki18n) natively into
+`build_tools/kf6-host`, and cross builds find them through `-DKF6_HOST_TOOLING`, the same
+branch Android KDE builds take. `kf6-common.mk` pins gettext tools to host `/usr/bin/*` so
+cross builds never execute staged iOS gettext binaries.
 
-## Layer W: KWin (W1 DONE; W2/W3 remain future work)
+## Layer W: KWin
 
-- W1, nested first (**done for first light**): `kwin_wayland` with its wayland backend running as an iosc client,
-  compositing with the QPainter backend (`KWIN_COMPOSE=Q`) over wl_shm. Zero GL, zero
-  DRM. This is the KDE analogue of mutter-on-iosc and the main de-risk gate: once a
-  KWin-managed window shows up inside iosc, everything after is breadth, not depth.
-  Build with X11 support OFF (mutter lesson: keep the xcb closure out of the link or
-  dyld kills the library on device).
-- W2, GL compositing: KWin renders through libepoxy, and our libepoxy0 already
-  dispatches to ANGLE (`1.5.7+angle1`). The nested case then needs the same
-  EGL-on-wayland answer as Q4; reuse the iosurface integration.
-- W3, native backend: modeled on KWin's virtual backend, rendering into an IOSurface
-  via ANGLE and presenting through libxios_glue, parallel to MetaBackendIOS (monitor
-  manager, input from the Xios touch/pencil path, login1 stub reuse). Endgame; nested
-  KWin is a perfectly usable intermediate since iosc stays the root compositor.
-- Expected Linux-isms to patch or stub at W0 audit: libinput (nested KWin takes input
-  from the host compositor; make sure the build can drop libinput), udev, logind
-  (stub exists from the mutter work), libdrm (deb exists from the Xwayland track if a
-  header-level dep survives).
+- **W1, nested** (done): `kwin_wayland` with its Wayland backend as an iosc client. First
+  light was the QPainter scene over a CPU copy of client IOSurfaces, built with X11 off
+  (the mutter lesson: keep the xcb closure out of the link or dyld kills the library).
+- **W2, GL compositing** (done): KWin renders through libepoxy dispatching to ANGLE,
+  imports client IOSurfaces as EGL textures and renders into IOSurface pbuffers. Shipped
+  since `kwin 6.1.5+ios27`.
+- **W3, native backend** (not done, not needed so far): a KWin backend rendering straight
+  into the Xios IOSurface, parallel to MetaBackendIOS. Nested KWin under iosc works well
+  enough that this has not been worth doing.
 
-## Layer P: Plasma Mobile / Desktop (first-light packages built; polish remains)
+libinput, udev and DRM-native paths are trimmed; `libdrm2`, `libgbm1` and
+`libdisplay-info1` exist as shim packages because KWin links them.
 
-- P0 theming/data (**built for first light where needed**): breeze-icons, breeze style, plasma-integration, libplasma,
-  plasma-activities (+ kactivities-stats).
-- P1 plasma-workspace (**built with first-light cuts**). The biggest patch surface of the whole track,
-  treat it like the gnome-shell EDS patch-out: kscreenlocker stubbed (wire to iosc
-  session-lock later), NetworkManager-qt off, PipeWire/screencast off, systemd/logind
-  stubbed, geolocation off, appstream on (recipe exists). Deliverable is plasmashell
-  starting under nested KWin.
-- P2 the mobile shell: plasma-nano + plasma-mobile on top of plasmashell. First-light packages exist; current work is Qt Quick crash/isolation and missing-plugin polish.
-- P3 polish: virtual keyboard, a settings-modules subset, session entry in the
-  chooser with the stamp-minos floor computed over the KDE closure.
-  Keyboard decision is made: NOT qtvirtualkeyboard/maliit. Use the iOS
-  keyboard through a `zwp_input_method_v1` bridge that KWin launches
-  (`--inputmethod`), plus an IM-proxy role on iosc's input socket. Verified
-  design, protocol facts and the v1-vs-v3 enum translation are in
-  osk-plan.md, section "KDE flavor". Today KDE has no OSK at all and typing
-  from the manual Xios toggle is ASCII-only.
+## Layer P: Plasma (done)
 
-## Runtime plumbing (shared with the GNOME track)
+- P0 theming and data: breeze-icons, Breeze, plasma-integration, libplasma,
+  plasma-activities and activities-stats.
+- P1 plasma-workspace: the biggest patch surface of the track. kscreenlocker,
+  NetworkManager-qt, PipeWire and logind are cut; plasmashell runs under nested KWin.
+- P2 shells: the real upstream Plasma Desktop, Plasma Mobile and Plasma Nano.
+- P3 polish: the iOS keyboard reaches KDE through a `zwp_input_method_v1` bridge that KWin
+  launches (`--inputmethod`, `ios-inputd --proxy`), not qtvirtualkeyboard or maliit; see
+  `osk-plan.md`, "KDE flavor". System Settings ships a KCM subset.
 
-dbus deb (built), fontconfig + fonts (xios-desktop-defaults), icon theme repack
-pipeline, XDG_RUNTIME_DIR conventions from iosc, login1 stub, and the chooser gate
-itself (`stamp-minos.py --json` closure floors).
+## GPU entitlements on every GL-touching binary
 
-### GPU entitlements on every GL-touching binary (mandatory, P0.1-validated)
-
-Any process that creates the ANGLE Metal display must be signed with the GPU IOKit
-entitlements (`AGXDeviceUserClient` + `IOGPUDeviceUserClient`; the full client set is
-`x11/wayland/iosc-gpu-client-ent.xml`) and must NOT carry
+Any process that creates the ANGLE Metal display must carry the GPU IOKit user-client
+entitlements (`AGXDeviceUserClient`, `IOGPUDeviceUserClient`) and must not carry
 `com.apple.private.security.no-container`, or `MTLCreateSystemDefaultDevice` returns nil
-and display creation fails silently. Team-lead confirmed the exact model on-device (P0.1,
-kgx): the GPU entitlement went on the EXECUTABLE (`/var/jb/usr/bin/kgx`) while the EGL
-shim and ANGLE dylibs stayed bare `ldid -S`; no bundle re-sign. It lands on executables
-because entitlements are a property of the Mach-O the kernel exec's, and the Procursus
-`SIGN` macro already signs dylibs/bundles with a bare `ldid -S` (no entitlements) while
-signing plain executables with `entitlements/$(2)`. So the Qt/KF6 module recipes need no
-change. The rule of thumb: whatever initializes the QtQuick/QRhi OpenGL context is the
-process that needs the entitlement — for the runtime that is the compositor
-(`kwin_wayland`) and the shell (`plasmashell`), plus the `qml` launcher for smoke tests,
-and any GL-initializing Qt tool/daemon we ship. Practical steps for the W/P recipes: copy
-`iosc-gpu-client-ent.xml` into `build_misc/entitlements/` and call
-`$(call SIGN,<pkg>,iosc-gpu-client-ent.xml)` for the executable's package. Bake this in
-from the first KWin recipe; do not defer it to Q4.
-
-## Risks, ranked
-
-1. plasma-workspace patch surface: breadth risk, likely weeks of whack-a-mole.
-2. qtwayland-on-ANGLE (Q4): the one depth risk; mitigated by the software-first
-   sequencing, the plugin-shaped integration point, and the gdk shim solving the same
-   problem in parallel.
-3. KWin Linux-isms in the native (W3) path: libinput/udev/DRM assumptions.
-4. KF6 repo count: mechanical but long; each unit is small compared to a GNOME module.
-5. Rebuild churn from qtbase feature rounds (Q3, Q4): private ABI forces module
-   rebuilds; batch the feature flips to keep rounds at two.
-
-## Sequencing and rough effort (historical)
-
-Q2 half a week once qtbase lands; Q3 half a week (batch with the Q2 rebuild); K one and
-a half to two weeks; W1 one week; Q4+W2 one to two weeks, parallel to K/W1; P two to
-three weeks. These estimates are retained for context; Qt6/KF6/KWin W1 and the first Plasma
-shell/package wave have since landed.
-
-## Coordination (historical)
-
-procursus-vol-qt belonged to the kde-plasma agent until qtbase was done; the module
-builds took the volume after explicit handoff/cloning. Current coordination and device-test
-state lives in [`docs/handoff/kde-kf6.md`](handoff/kde-kf6.md). Never touch unrelated active
-Procursus volumes from this track.
+and display creation fails silently. The entitlement goes on the executable the kernel
+execs; the Procursus `SIGN` macro signs dylibs and bundles with a bare `ldid -S` and plain
+executables with `entitlements/$(2)`, so library recipes need no change. In practice that
+is `kwin_wayland`, `plasmashell`, `systemsettings`, the `qml` smoke launcher and any
+GL-initializing helper. The shipped recipes use `$(call
+SIGN,<pkg>,iosc-gl-ent.xml,,,nogeneral)`, then the host DER finalizer; see the signing
+section of `handoff/kde-kf6.md`.

@@ -18,10 +18,19 @@ xios_load_target "${XIOS_TARGET:-rootless-1900}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/deploy-env.sh"   # IP/PORT/SSH_OPTS + ssh_/scp_
 
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
 HOST_DIR="$(cd "$HERE/../iosc-host" && pwd)"
-[ -x "$HERE/out/IOSCLaunch" ] || bash "$HERE/build-stub.sh"
-[ -x "$HOST_DIR/out/IOSCHost" ] || bash "$HOST_DIR/build-host.sh"
-[ -f "$HOST_DIR/out/default.metallib" ] || bash "$HOST_DIR/build-host.sh"
+# Rebuild when the sources moved on, not only when a binary is missing.
+if xis_stale "$HERE/out/IOSCLaunch" "$HERE/src/IOSCLaunch.m" "$HERE/launcher-ent.xml"; then
+  bash "$HERE/build-stub.sh"
+fi
+if xis_stale "$HOST_DIR/out/IOSCHost" "$HOST_DIR/Sources" "$HOST_DIR/Resources" \
+     "$HOST_DIR/project.yml" "$HOST_DIR/entitlements.plist" "$HERE/../shared" \
+   || [ ! -f "$HOST_DIR/out/default.metallib" ]; then
+  bash "$HOST_DIR/build-host.sh"
+fi
 
 echo "==> stage sources"
 scp_ "$HERE/src/xios-icon-render.c" "root@$IP:$XIOS_PREFIX/tmp/xios-icon-render.c"

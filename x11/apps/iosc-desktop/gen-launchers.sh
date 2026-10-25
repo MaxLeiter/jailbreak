@@ -45,7 +45,7 @@ while [ $# -gt 0 ]; do
     --out)        OUT="$2";        shift 2 ;;
     --deploy)     DEPLOY=1;        shift ;;
     --native)     NATIVE=1;        shift ;;   # per-app windows (iosc-host), not one Xios window
-    -h|--help)    sed -n '2,30p' "$0"; exit 0 ;;
+    -h|--help)    sed -n '2,22p' "$0"; exit 0 ;;
     *)            DESKTOPS+=("$1"); shift ;;
   esac
 done
@@ -58,12 +58,16 @@ PB=/usr/libexec/PlistBuddy
 if [ "$NATIVE" = "1" ]; then
   # Native flavor: each bundle IS the per-app host, Metal-presenting its own
   # windows in its own UIWindowScene (built by build-host.sh).
-  if [ ! -x "$HOST_DIR/out/IOSCHost" ] || [ ! -f "$HOST_DIR/out/default.metallib" ]; then
-    echo "==> iosc-host prebuilt missing; building it first"
+  # Rebuilt when its sources are newer too: "only if missing" copied a stale
+  # host into every bundle.
+  if xis_stale "$HOST_DIR/out/IOSCHost" "$HOST_DIR/Sources" "$HOST_DIR/Resources" \
+       "$HOST_DIR/project.yml" "$HOST_DIR/entitlements.plist" "$HERE/../shared" \
+     || [ ! -f "$HOST_DIR/out/default.metallib" ]; then
+    echo "==> iosc-host prebuilt missing or stale; building it first"
     bash "$HOST_DIR/build-host.sh"
   fi
-elif [ ! -x "$HERE/out/IOSCLaunch" ]; then
-  echo "==> IOSCLaunch missing; building stubs first"
+elif xis_stale "$HERE/out/IOSCLaunch" "$HERE/src/IOSCLaunch.m" "$HERE/launcher-ent.xml"; then
+  echo "==> IOSCLaunch missing or stale; building stubs first"
   bash "$HERE/build-stub.sh"
 fi
 
@@ -115,12 +119,10 @@ for DESKTOP in "${DESKTOPS[@]}"; do
 
   if [ "$NATIVE" = "1" ]; then
     # Native: the bundle binary IS the per-app host + its compiled shader.
-    EXE=IOSCHost
     cp "$HOST_DIR/out/IOSCHost"        "$BDIR/IOSCHost"
     cp "$HOST_DIR/out/default.metallib" "$BDIR/default.metallib"
     chmod 0755 "$BDIR/IOSCHost"
   else
-    EXE=IOSCLaunch
     cp "$HERE/out/IOSCLaunch" "$BDIR/IOSCLaunch"
     chmod 0755 "$BDIR/IOSCLaunch"
   fi

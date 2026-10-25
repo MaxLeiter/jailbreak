@@ -1,11 +1,10 @@
 # Xwayland on ANGLE-Metal (X11 apps inside the Wayland desktops)
 
-> **Current status (2026-07-03): core plan landed.** Xwayland 23.2.7 packages exist, the
-> glamor/IOSurface path is verified on-device with local `xwayland 23.2.7+ios2`, and rootless
-> XWM integration is built into iosc by default since 0.9.50 (started by xios-session when
-> Xwayland is installed; device proof pending). Use
-> [`docs/handoff/iosc-compositor.md`](handoff/iosc-compositor.md) and
-> [`docs/handoff/wayland-apps.md`](handoff/wayland-apps.md) for current status.
+> **Status (2026-10-25): shipped.** `xwayland 23.2.7+ios5` is published with the glamor
+> IOSurface backend, and rootless Xwayland under iosc's XWM is how X11 apps run (the
+> `xios-x11` flavor; iosc 0.9.51 maps X windows on device). The old software Xios X server
+> was retired on 2026-07-29. Current state: [`handoff/iosc-compositor.md`](handoff/iosc-compositor.md)
+> and [`handoff/wayland-apps.md`](handoff/wayland-apps.md). Below is the original plan.
 
 Run X11-only Linux apps GPU-accelerated as clients of a Wayland compositor
 (iosc now, Mutter/KWin later) on rootless iOS. Path:
@@ -97,14 +96,13 @@ adds `iosurface_backend` to `struct xwl_screen`; hooks `xwl_glamor_init_backends
 `hw/xwayland/meson.build`; and re-ports the rootless popen fix
 (`/bin/sh` -> `/var/jb/bin/sh` in `os/utils.c`, same as the tigervnc build).
 
-## Rootful first was the initial path; rootless XWM now exists locally
+## Rootful first, rootless now
 
-Rootless Xwayland requires the compositor to be an X window manager. The original plan ran
-**rootful** first (whole X screen as one `xdg_toplevel`; an in-server X wm like fluxbox manages
-windows inside it) because iosc had no XWM. That constraint has changed: iosc now has a local
-`iosc_xwm` integration, gated behind `IOSC_BUILD_XWM=1` so the default binary keeps the
-known-good non-XCB link profile. Rootful remains the broad fallback path that works under any
-compositor.
+Rootless Xwayland needs the compositor to be an X window manager, and iosc had none, so the
+first path was **rootful**: the whole X screen as one `xdg_toplevel` with an in-server WM
+(fluxbox) inside it. iosc has had its own XWM since July and builds it by default since
+0.9.50, so rootless is the normal path. Rootful (`run-xwayland.sh`) still works under any
+compositor and is useful for debugging.
 
 For Xwayland 23.2.7, rootful is the default. Use `-geometry`/`-fullscreen` as
 needed; do not pass `-rootful` (this build accepts `-rootless`, but not

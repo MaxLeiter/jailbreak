@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  ipadctld launchd job. Deliberately NOT installed into
+  /var/jb/Library/LaunchDaemons: it is loaded explicitly with `launchctl load`
+  (deploy.sh start) and stays off across reboots until the phase-2 safety layer
+  exists. KeepAlive only matters while the job is loaded.
+-->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.max.ipadctld</string>
+	<key>Program</key>
+	<string>/var/jb/var/root/ipadctl/ipadctld</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/var/jb/var/root/ipadctl/ipadctld</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<!--
+	  Screen capture holds a panel-sized BGRA IOSurface (~14 MB) plus a scaled
+	  surface and, for region crops, a native-resolution rotation buffer, far
+	  above the 6 MB default launchd gives a daemon-category job. launchd ignores
+	  this JetsamMemoryLimit for a third-party job (raising it from the plist
+	  needs a loader entitlement), so the daemon raises its OWN limit at startup
+	  via memorystatus_control (see main.m, needs com.apple.private.memorystatus).
+	  This block documents intent and would apply if a future iOS honored it. MB.
+	-->
+	<key>JetsamProperties</key>
+	<dict>
+		<key>JetsamMemoryLimit</key>
+		<integer>256</integer>
+		<key>JetsamPriority</key>
+		<integer>19</integer>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/var/jb/var/root/ipadctl/ipadctld.out.log</string>
+	<key>StandardErrorPath</key>
+	<string>/var/jb/var/root/ipadctl/ipadctld.err.log</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>OS_ACTIVITY_MODE</key>
+		<string>disable</string>
+	</dict>
+</dict>
+</plist>

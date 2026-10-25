@@ -14,14 +14,16 @@ packages from the freshly generated local index. Everything else on the target
 stays byte-identical to what it was, including packages whose debs are no longer
 on this machine, because their stanzas are reused verbatim rather than recomputed.
 
-Writes Packages, Packages.gz and Release into --repo (a deploy staging copy, not
-the working tree). Sign after this, not before: the Release hashes change.
+Writes Packages, Packages.gz, Release and the Packages.pv/Packages.sha side
+indexes into --repo (a deploy staging copy, not the working tree). Sign after
+this, not before: the Release hashes change.
 
   scope-index.py --repo <deploy>/repo --live https://repo.maxleiter.com/Packages \\
                  --only iosc,xios-session
 """
 import argparse
 import email.utils
+import functools
 import gzip
 import hashlib
 import importlib.util
@@ -56,13 +58,18 @@ def field(stanza, key):
     return ""
 
 
-def compare_deb_versions(a, b):
-    # make-repo.py's dpkg comparison, the one every other repo gate uses.
+@functools.cache
+def _make_repo():
     spec = importlib.util.spec_from_file_location(
         "make_repo", os.path.join(os.path.dirname(os.path.abspath(__file__)), "make-repo.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.compare_deb_versions(a, b)
+    return mod
+
+
+def compare_deb_versions(a, b):
+    # make-repo.py's dpkg comparison, the one every other repo gate uses.
+    return _make_repo().compare_deb_versions(a, b)
 
 
 def main():
@@ -70,7 +77,6 @@ def main():
     ap.add_argument("--repo", required=True, help="deploy copy of repo/ to rewrite")
     ap.add_argument("--live", required=True, help="URL of the index the target serves now")
     ap.add_argument("--only", required=True, help="comma-separated package names to publish")
-    ap.add_argument("--origin", default="", help="Origin/Label/Name for Release (else reuse)")
     ap.add_argument(
         "--allow-noop",
         action="store_true",
@@ -158,6 +164,12 @@ def main():
     open(local_path, "w", encoding="utf-8").write(packages)
     with open(os.path.join(args.repo, "Packages.gz"), "wb") as f:
         f.write(gzip.compress(packages.encode(), 9, mtime=0))
+    # make-repo.py's flat side indexes describe the whole tree it indexed; left
+    # alone they would disagree with the scoped Packages they are deployed beside.
+    with open(os.path.join(args.repo, "Packages.pv"), "w", encoding="utf-8") as f:
+        f.write("".join(f"{n}={field(s, 'Version')}\n" for n, s in kept))
+    with open(os.path.join(args.repo, "Packages.sha"), "w", encoding="utf-8") as f:
+        f.write("".join(f"{field(s, 'Filename')} {field(s, 'SHA256')}\n" for _, s in kept))
 
     # Release: keep the identifying fields the generator wrote, refresh Date and
     # the index hashes. Rewriting rather than regenerating keeps this file's

@@ -52,6 +52,7 @@ warnings and skips what could not be checked. Waivers never cover them.
 """
 from __future__ import annotations
 
+import functools
 import hashlib
 import http.client
 import json
@@ -88,7 +89,8 @@ def parse_index(text: str) -> dict[str, dict[str, str]]:
     return out
 
 
-def compare_versions(a: str, b: str) -> int:
+@functools.cache
+def _make_repo():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -96,7 +98,12 @@ def compare_versions(a: str, b: str) -> int:
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    return mod.compare_deb_versions(a, b)
+    return mod
+
+
+def compare_versions(a: str, b: str) -> int:
+    # Loaded once: this runs per deb, and make-repo.py is a large module.
+    return _make_repo().compare_deb_versions(a, b)
 
 
 def deb_entries(path: str) -> list[tuple[str, bool]]:
@@ -269,8 +276,15 @@ def main() -> int:
 
     for pkg, (ver, path) in sorted(newest.items()):
         if pkg.endswith("-dev"):
+            try:
+                entries = deb_entries(path)
+            except check_failures as exc:
+                # A deb that will not unpack is a check that did not run, not a
+                # traceback that kills the whole gate.
+                check_error(pkg, f"could not list {os.path.basename(path)}: {exc}")
+                entries = []
             bad = [
-                p for p, is_link in deb_entries(path)
+                p for p, is_link in entries
                 if not is_link and VERSIONED_DYLIB_RE.search(p)
             ]
             if bad:

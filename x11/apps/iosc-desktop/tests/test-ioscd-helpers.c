@@ -9,8 +9,15 @@
  *      no longer suppresses it; a live recorded helper is not started twice;
  *      a dead or recycled pid is restarted; a planted symlink is never written
  *      through.
+ *      They run as mobile (the bus daemon's user; here the current user) with
+ *      mobile's HOME, and a dead socket root left at the global sysint name
+ *      is cleared for this bus's sysintd.
  *   2. A SESSION request answers "ERR xios-session is not installed" instead
  *      of SESSION_STARTED when the script is missing.
+ *   3. X11 for launched apps: iosc_x11_display() believes iosc's latched
+ *      x11-display only while the X socket exists; launch_client() passes it
+ *      as DISPLAY with GDK_BACKEND=wayland,x11; ioscd's own iosc start turns
+ *      on IOSC_XWAYLAND when Xwayland is installed, unless IOSC_XWAYLAND=0.
  *
  * As in test-ioscd-fds.c, "mobile" is the current user.
  */
@@ -60,6 +67,9 @@ static int helper_main(void)
     for (int fd = 3; fd < 1024; fd++)
         if (fcntl(fd, F_GETFD) != -1) n++;
     printf("helper inherited fds: %d\n", n);
+    const char *own = getenv("XIOS_SYSINT_SOCK");
+    printf("helper home=%s sysint=%s\n", getenv("HOME") ? getenv("HOME") : "",
+           own ? own : "global");
     fflush(stdout);
     alarm(120);  /* never outlive a crashed test */
     for (;;) pause();
@@ -113,6 +123,19 @@ static void kill_wait(pid_t pid)
 {
     kill(pid, SIGKILL);
     for (int i = 0; i < 100 && kill(pid, 0) == 0; i++) usleep(20 * 1000);
+}
+
+static int make_listener(const char *path)
+{
+    struct sockaddr_un a;
+    memset(&a, 0, sizeof(a));
+    a.sun_family = AF_UNIX;
+    snprintf(a.sun_path, sizeof(a.sun_path), "%s", path);
+    int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    assert(fd >= 0);
+    unlink(path);
+    assert(bind(fd, (struct sockaddr *)&a, sizeof(a)) == 0 && listen(fd, 4) == 0);
+    return fd;
 }
 
 static int connect_ctl(const char *sock)
@@ -180,7 +203,15 @@ static void test_helpers(const char *self)
     for (int i = 0; i < 100 && !is_helper(foreign, "xios-sysintd"); i++) usleep(20 * 1000);
     assert(is_helper(foreign, "xios-sysintd"));
 
+    /* A dead socket at the global sysint name: mobile could not replace it
+     * in the sticky tmp dir, so the guard clears it. */
+    char global[256];
+    snprintf(global, sizeof(global), "%s/xios-sysint.sock", t_tmp);
+    close(make_listener(global));
+
     run_guard();
+    struct stat gst;
+    assert(lstat(global, &gst) != 0);
     for (int i = 0; i < 3; i++) {
         first[i] = wait_pid(k_names[i]);
         assert(is_helper(first[i], k_names[i]));
@@ -191,10 +222,12 @@ static void test_helpers(const char *self)
             usleep(50 * 1000);
         }
         assert(strstr(buf, "helper inherited fds: 0\n") != NULL);
+        assert(strstr(buf, "helper home=/var/mobile sysint=global\n") != NULL);
     }
     assert(first[2] != foreign);
     puts("ioscd-helpers: a helper running for another bus does not block this bus");
     puts("ioscd-helpers: pid files name the helpers; helpers inherit no fds");
+    puts("ioscd-helpers: helpers get mobile's HOME; a dead global sysint socket is cleared");
 
     /* Running and recorded: nothing starts twice. */
     run_guard();
@@ -231,9 +264,25 @@ static void test_helpers(const char *self)
     assert(unlink(path) == 0 && symlink(victim, path) == 0);
     bus_file(path, sizeof(path), k_names[2], ".log");
     assert(unlink(path) == 0 && symlink(victim_log, path) == 0);
+    int live = make_listener(global);   /* a desktop's sysintd owns the global name */
     run_guard();
     pid_t again2 = wait_pid(k_names[2]);
     assert(is_helper(again2, k_names[2]));
+    {
+        char want[300];
+        snprintf(want, sizeof(want), "sysint=%s/xios-sysint.sock\n", t_bus);
+        bus_file(path, sizeof(path), k_names[2], ".log");
+        for (int t = 0; t < 100; t++) {
+            slurp(path, buf, sizeof(buf));
+            if (strstr(buf, "sysint=")) break;
+            usleep(50 * 1000);
+        }
+        assert(strstr(buf, want) != NULL);
+    }
+    assert(lstat(global, &gst) == 0 && S_ISSOCK(gst.st_mode));   /* left alone */
+    close(live);
+    unlink(global);
+    puts("ioscd-helpers: a live global sysint socket gets this bus a socket of its own");
     slurp(victim, buf, sizeof(buf));
     assert(strcmp(buf, "precious\n") == 0);
     slurp(victim_log, buf, sizeof(buf));
@@ -310,13 +359,96 @@ static void test_missing_session(void)
     unlink(log);
 }
 
+static void write_status(const char *body)
+{
+    char dir[256], path[300];
+    snprintf(dir, sizeof(dir), "%s/xios-status.d", t_tmp);
+    mkdir(dir, 01777);
+    snprintf(path, sizeof(path), "%s/iosc.status", dir);
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs(body, f);
+    fclose(f);
+}
+
+static void run_client(const char *self, const char *app_id)
+{
+    char *argv_env[] = { (char *)self, (char *)"--print-x11-env", NULL };
+    pid_t pid = launch_client(app_id, argv_env, 0);
+    assert(pid > 0);
+    while (waitpid(-1, NULL, 0) > 0) {}
+}
+
+static void test_x11(const char *self)
+{
+    char d[32], xsock[256], log[256], buf[8192];
+    snprintf(xsock, sizeof(xsock), "%s/X7", g_x11_unix_dir);
+    snprintf(log, sizeof(log), "%s/ioscd-client.log", t_tmp);
+
+    write_status("pacing\tevent-loop\nx11-display\t:7\n");
+    assert(iosc_x11_display(0, d, sizeof(d)) == 0);       /* no X socket */
+    close(make_listener(xsock));
+    assert(iosc_x11_display(0, d, sizeof(d)) == 0);       /* a dead server's socket */
+    int x = make_listener(xsock);
+    assert(iosc_x11_display(0, d, sizeof(d)) == 1 && strcmp(d, ":7") == 0);
+    assert(iosc_x11_display(1, d, sizeof(d)) == 0);       /* native has its own sidecar */
+    write_status("x11-display\t:7\nx11-display\tnone\n");   /* Xwayland died */
+    assert(iosc_x11_display(0, d, sizeof(d)) == -1);
+    write_status("x11-display\t:7x\n");
+    assert(iosc_x11_display(0, d, sizeof(d)) == 0);
+    puts("ioscd-x11: x11-display is believed only while its X socket answers");
+
+    /* No bus daemon in the scratch prefix, so the client runs straight from
+     * the dbus-run-session fallback (also missing) to its own argv. */
+    setenv("DISPLAY", ":99", 1);                          /* never inherited */
+    write_status("x11-display\t:7\n");
+    run_client(self, "test.x11");
+    slurp(log, buf, sizeof(buf));
+    assert(strstr(buf, "client DISPLAY=:7 GDK_BACKEND=wayland,x11\n") != NULL);
+    close(x);
+    unlink(xsock);
+    run_client(self, "test.nox11");
+    slurp(log, buf, sizeof(buf));
+    assert(strstr(buf, "client DISPLAY= GDK_BACKEND=wayland\n") != NULL);
+    unsetenv("DISPLAY");
+    puts("ioscd-x11: launched apps get DISPLAY + GDK_BACKEND=wayland,x11 only while X is up");
+
+    /* ioscd's own classic iosc start, like xios_session_iosc. */
+    unsetenv("IOSC_XWAYLAND");
+    unsetenv("IOSC_XWAYLAND_BIN");
+    set_iosc_xwayland_env(0);
+    assert(!getenv("IOSC_XWAYLAND"));                     /* not installed */
+    FILE *f = fopen(g_xwayland_bin, "w");
+    assert(f);
+    fputs("#!/bin/sh\n", f);
+    fclose(f);
+    assert(chmod(g_xwayland_bin, 0755) == 0);
+    set_iosc_xwayland_env(1);
+    assert(!getenv("IOSC_XWAYLAND"));                     /* native: left alone */
+    set_iosc_xwayland_env(0);
+    assert(getenv("IOSC_XWAYLAND") && strcmp(getenv("IOSC_XWAYLAND"), "1") == 0);
+    assert(strcmp(getenv("IOSC_XWAYLAND_BIN"), g_xwayland_bin) == 0);
+    setenv("IOSC_XWAYLAND", "0", 1);
+    unsetenv("IOSC_XWAYLAND_BIN");
+    set_iosc_xwayland_env(0);
+    assert(strcmp(getenv("IOSC_XWAYLAND"), "0") == 0 && !getenv("IOSC_XWAYLAND_BIN"));
+    unsetenv("IOSC_XWAYLAND");
+    unlink(g_xwayland_bin);
+    puts("ioscd-x11: ioscd's iosc gets IOSC_XWAYLAND=1 when Xwayland is installed; =0 opts out");
+}
+
 int main(int argc, char **argv)
 {
-    (void)argc;
     char self[PATH_MAX], dir[200], path[256];
     char *base = basename(argv[0]);
     if (strncmp(base, "xios-", 5) == 0)
         return helper_main();
+    if (argc > 1 && strcmp(argv[1], "--print-x11-env") == 0) {
+        printf("client DISPLAY=%s GDK_BACKEND=%s\n",
+               getenv("DISPLAY") ? getenv("DISPLAY") : "",
+               getenv("GDK_BACKEND") ? getenv("GDK_BACKEND") : "");
+        return 0;
+    }
 
     assert(realpath(argv[0], self));
     snprintf(t_root, sizeof(t_root), "/tmp/xios-hlp.XXXXXX");
@@ -325,6 +457,9 @@ int main(int argc, char **argv)
     snprintf(t_jb, sizeof(t_jb), "%s/jb", t_root);
     assert(mkdir(t_tmp, 01777) == 0 && mkdir(t_jb, 0755) == 0);
     const char *parts[] = { "/usr", "/usr/bin", "/usr/libexec", "/usr/local", "/usr/local/bin", NULL };
+    snprintf(dir, sizeof(dir), "%s/x11", t_root);
+    assert(mkdir(dir, 01777) == 0);
+    setenv("XIOS_X11_UNIX_DIR", dir, 1);
     for (int i = 0; parts[i]; i++) {
         snprintf(dir, sizeof(dir), "%s%s", t_jb, parts[i]);
         assert(mkdir(dir, 0755) == 0);
@@ -343,6 +478,7 @@ int main(int argc, char **argv)
 
     test_helpers(self);
     test_missing_session();
+    test_x11(self);
 
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "/bin/rm -rf '%s'", t_root);

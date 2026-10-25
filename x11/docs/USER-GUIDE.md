@@ -14,10 +14,10 @@ flavors, how to start and stop a session, and what to do when something does not
 
 | | |
 |---|---|
-| **Device** | A jailbroken iPad on iOS/iPadOS 16 or newer, rootless (`/var/jb`). GNOME, KDE, and X11 need 16.5; the native flavor needs 16.0. |
+| **Device** | A jailbroken iPad on iPadOS 16.5 or newer, rootless (`/var/jb`). Every flavor declares a 16.5 floor. |
 | **Package manager** | Sileo, Zebra, or `apt` on the device. |
 | **AppSync Unified** | Required. The Xios display app is unsigned, and without AppSync it will not launch. Add `https://cydia.akemi.ai/` as a source and install it first. |
-| **Free space** | Installed size is about 190 MB for GNOME and 610 MB for KDE (which brings every KDE app we ship); the native and X11 flavors are around 55 MB. Procursus dependencies add a little on top. |
+| **Free space** | About 195 MB installed for GNOME and 620 MB for KDE (which brings every KDE app I ship); the native and X11 flavors are around 60 MB. Procursus dependencies add a little on top. |
 
 Nothing here needs a Mac, a VM, or a network hop. Everything is a native arm64 iOS binary
 installed from an apt repo.
@@ -59,14 +59,15 @@ already has configured.
 
 There is no single `xios` package. Install one flavor and it pulls in everything
 else. All flavors share `xios-runtime`; the fullscreen flavors also use
-`xios-core` and the display app.
+`xios-core` and the display app. The exact package closure of each flavor is in
+[`repo-fold-in.md`](repo-fold-in.md).
 
 | Flavor | What you get | Needs | State |
 |---|---|---|---|
-| `xios-gnome` | GNOME Shell 46 on Mutter, full session layer, Adwaita theme | iOS 16.5 | Boots and paints on an A10. Daemon and app concurrency still has rough edges. |
+| `xios-gnome` | GNOME Shell 46 on Mutter, full session layer, Adwaita theme | iOS 16.5 | Boots and runs on an A10. Calendar and the accessibility bridge are off. |
 | `xios-kde` | KWin plus Plasma Desktop, Plasma Mobile, and Plasma Nano, System Settings, PowerDevil, Breeze, and every KDE app we ship (Konsole, Dolphin, Kate, KWrite, KCalc, Okular, Ark, Gwenview) | iOS 16.5 | Experimental. Newer than the GNOME path and less polished. |
-| `xios-native` | No Linux shell at all: each app gets a Home Screen icon and its own iPadOS window | iOS 16.5 | Core path works. Host-window polish in progress. |
-| `xios-x11` | Plain X11 apps through hardware Xwayland inside the compositor | iOS 16.5 | Hardware-only path; the retired bare X server is not installed. |
+| `xios-native` | No Linux shell at all: each app gets a Home Screen icon and its own iPadOS window | iOS 16.5 | Works. Host-window polish is ongoing. |
+| `xios-x11` | X11 apps through rootless Xwayland inside the iosc desktop | iOS 16.5 | Works on the iosc desktop with iosc 0.9.51 or newer. |
 
 GNOME, KDE, and X11 also get the **iosc desktop**: the compositor's own
 tablet-first shell with a panel, dock, overview, and wallpaper. Native mode
@@ -89,12 +90,13 @@ Substitute `xios-kde`, `xios-native`, or `xios-x11`. Every flavor brings in:
 - **`angle`**, OpenGL ES translated to Metal, which is how anything reaches the GPU.
 - **`xios-desktop-defaults`**, fonts, locale, XDG paths, and the retina display profile.
 
-GNOME, KDE, and X11 additionally install **`xios-core`**, **`com.max.xios`**
-(the **X11** display app), **`iosc-shell`**, **`xios-session`**, and
+GNOME, KDE, and X11 additionally install **`xios-core`**, which brings
+**`com.max.xios`** (the **X11** display app), **`iosc-shell`**,
+**`xios-session`** (plus `xios-session-stubs`, its helpers), and
 **`xios-launcher-tools`**, which carries the `ioscd` service the app's desktop
 picker talks to. Native skips the fullscreen pieces and installs
-**`xios-launcher-tools`** for the per-app host payload and its app-ID-only
-`ioscd` launches.
+**`xios-launcher-tools`** for the per-app host and its app-ID-only `ioscd`
+launches, plus the Xios pane in Settings.
 
 Sileo will not auto-install the *recommended* extras. For GNOME those are worth adding by
 hand:
@@ -115,9 +117,10 @@ Open **X11** on the Home Screen and pick a session from the picker. Once a deskt
 
 | Gesture | Does |
 |---|---|
-| Three-finger tap | Switch between running displays |
-| Four-finger tap | Open the session and dimension picker |
-| Pinch | Zoom to fit |
+| Three-finger tap | Open the Xios panel: desktop, screen size, apps (other running displays are under Advanced) |
+| Two-finger tap | Right click |
+| Two-finger drag | Scroll |
+| Pinch | Zoom in and out to fit |
 | Swipe up from the lower edge | Raise the iOS keyboard |
 
 ### From a shell (on device or over SSH), as root
@@ -128,9 +131,13 @@ xios-session gnome           # GNOME session and Shell
 xios-session kde             # KWin plus Plasma Desktop (experimental)
 xios-session kde-mobile      # KWin plus Plasma Mobile (experimental)
 xios-session kde-nano        # KWin plus Plasma Nano (experimental)
+xios-session presets         # the desktops that are installed and can start
 xios-session status          # what the last session did
 xios-session stop            # tear it all down, back to SpringBoard
 ```
+
+Asking for a desktop whose flavor is not installed is refused before anything is torn down,
+so the running desktop stays up and `xios-session status` says what to install.
 
 Launch a single app against whatever compositor is already running, without restarting the
 session:
@@ -168,10 +175,12 @@ Screen icons by itself: pick which apps you want in the Xios pane in Settings, o
 `xios-launcher-sync` to list, enable, dry-run, and apply. Tap an icon and that Linux app
 opens in its own iPadOS window, with Split View and Slide Over as the window manager.
 
-**X11.** The X11 flavor runs clients through rootless Xwayland inside the
-GPU-accelerated `iosc` compositor. The old software-rendered `xios-server` path
-has been removed. See [Appendix A](#appendix-a-x-over-vnc) for the separate
-headless/remote VNC route.
+**X11.** Install `xios-x11` and start the iosc desktop (`xios-session iosc`, or pick it in
+the app). Xwayland starts with iosc and runs rootless, so each X window is an ordinary iosc
+window. Apps started with `xios-session app` (which the picker's app launches also go
+through) get `DISPLAY` set for them; in a terminal, `xios-status x11-display` shows it.
+Only the iosc desktop starts Xwayland, not GNOME or KDE. The old software-rendered Xios X server was retired on 2026-07-29.
+See [Appendix A](#appendix-a-x-over-vnc) for the separate headless/remote VNC route.
 
 ---
 
@@ -187,12 +196,16 @@ up, start one.
 **Nothing on screen and `status` says `compositor-only`.** The compositor is up but the
 shell never painted. Check the log for the flavor you picked.
 
+**Picking a desktop does nothing and `status` says it is not installed.** That flavor's
+package is missing. `xios-session presets` lists the ones that can start; install the
+flavor it names (for example `apt install xios-kde`).
+
 **The picker says "Session request failed: ioscd timed out" (or "ioscd is not running").**
-The app could not reach `ioscd`, the daemon that starts desktops for it. Installs of
-`xios-core` 0.1.11 and older did not bring it in. Install it, which also starts it:
+The app could not reach `ioscd`, the daemon that starts desktops for it. `xios-core` 0.1.11
+and older did not bring it in. Upgrade, which installs and starts it:
 
 ```bash
-apt install xios-launcher-tools
+apt update && apt install xios-core xios-launcher-tools
 ```
 
 If it is installed and the error stays, `ls -l /var/jb/tmp/ioscd.sock` should show the
@@ -203,6 +216,8 @@ socket, and `/var/jb/tmp/ioscd.log` says why it did not start.
 | File | What |
 |---|---|
 | `xios-session.log` | Session bring-up and teardown |
+| `iosc.log` | The iosc compositor (and its Xwayland) |
+| `ioscd.log` | The launch daemon the picker and Home Screen icons talk to |
 | `xios-session-status.json` | Machine-readable state of the last session |
 | `gnome-shell.log` | GNOME Shell output |
 | `kde-plasma.log` | KWin and Plasma output |
@@ -211,8 +226,8 @@ socket, and `/var/jb/tmp/ioscd.log` says why it did not start.
 stale compositors and sockets. It is safe to run at any time.
 
 **"Is it running slowly, or did it deliberately slow down?"** `xios-status`. It prints the
-latched runtime behaviour of the compositor and the display app — the things that change
-by themselves and would otherwise look like a fault:
+latched runtime behaviour of the compositor and the display app: the things that change
+by themselves and would otherwise look like a fault.
 
 ```
 iosc       pacing=vblank fps=30-60/60 interval=16.67ms
@@ -220,7 +235,7 @@ Xios       upscale=1440x1080->2160x1620 metalfx-spatial direct
 ```
 
 `pacing` says whether the repaint is pinned to the display refresh (`vblank`) or falling
-back to the event loop, and the frame-rate range CoreAnimation is allowed to settle in —
+back to the event loop, and the frame-rate range CoreAnimation is allowed to settle in,
 so a 30fps desktop reads as a decision rather than a stutter. `upscale` says whether the
 desktop is being composited below the panel's resolution and scaled up on present; `off`
 is the default. Both keys also appear in the logs as `[status]` lines, and
@@ -233,7 +248,7 @@ desktop does anything, and the 2160x1620 panel is a lot of pixels for them.
 The easiest lever is **Render Scale**, in the Xios panel (three-finger tap, or the status
 bar button). It draws the desktop below the panel's resolution and scales it back up with
 MetalFX on the way to the screen: fewer pixels to draw, slightly softer edges. It applies
-on the next frame — no session restart — because it happens entirely inside the display
+on the next frame, with no session restart, because it happens entirely inside the display
 app, after the desktop is composited. No Linux app can tell.
 
 | Option | What it does |
@@ -242,14 +257,14 @@ app, after the desktop is composited. No Linux app can tell.
 | **Auto** | Only kicks in when the desktop is *already* running below the panel's resolution. On the default session size it correctly does nothing. |
 | **1.25× / 1.5× / 2×** | Always draws at panel ÷ that factor. |
 
-The line under the chips reports what is actually happening, not what you picked — so
+The line under the chips reports what is actually happening, not what you picked, so
 "Auto declined because the desktop is already at full resolution" and "this GPU has no
 MetalFX scaler" both show up there rather than looking like a dead setting.
 
 Off is the default deliberately. At the standard session size the desktop is drawn *above*
 panel resolution and scaled down, which is already sharper than the panel can show;
 sending that through a smaller intermediate first trades real detail for a saving in the
-display app only. It pays off best combined with a smaller desktop — try Screen Size
+display app only. It pays off best combined with a smaller desktop: try Screen Size
 **Compact** or a custom size alongside it.
 
 The same thing is settable per-session for scripted runs, and the panel setting overrides

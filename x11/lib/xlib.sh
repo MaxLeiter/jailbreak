@@ -12,6 +12,8 @@
 # Provides:
 #   xsign   <bin> [ents] [required-marker...]   ldid-sign + verify entitlements
 #   xmkdeb  <staging_dir> <out_dir>               build a .deb
+#   xdeb_refuse_published <staging_dir> [index]   fail if that version is public
+#   xis_stale <output> <source>...                output missing or older than sources
 #   xstage_lagom_fonts <fonts_dir> [cache_dir]    stage Ladybird's text fonts
 #   xdeb_find    <stem> <dir>...                  newest matching iphoneos deb path
 #   xdeb_extract <sysroot> <deb-dir-list> <pkg>... extract dev debs into a sysroot
@@ -28,7 +30,15 @@ XLIB_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 xsign() {
     local bin="$1"; shift || true
     local ents=""
-    if [ $# -gt 0 ] && [ -f "$1" ]; then ents="$1"; shift; fi
+    if [ $# -gt 0 ] && [ -f "$1" ]; then ents="$1"; shift
+    elif [ $# -gt 0 ]; then
+        # A mistyped entitlements path would otherwise be taken for a marker:
+        # the binary got ad-hoc signed and the error blamed a missing marker.
+        case "$1" in
+            *.xml|*.plist|*.entitlements)
+                echo "xsign: ERROR entitlements file not found: $1" >&2; return 1 ;;
+        esac
+    fi
 
     command -v ldid >/dev/null 2>&1 || {
         echo "xsign: ERROR ldid not found (brew install ldid)" >&2; return 1; }
@@ -103,9 +113,9 @@ xmkdeb() {
     [ -f "$ctrl" ] || { echo "xmkdeb: ERROR no DEBIAN/control in $stage" >&2; return 1; }
 
     local pkg ver arch
-    pkg="$(awk -F': ' '/^Package:/{print $2; exit}'      "$ctrl")"
-    ver="$(awk -F': ' '/^Version:/{print $2; exit}'      "$ctrl")"
-    arch="$(awk -F': ' '/^Architecture:/{print $2; exit}' "$ctrl")"
+    pkg="$(_xlib_control_field "$ctrl" Package)"
+    ver="$(_xlib_control_field "$ctrl" Version)"
+    arch="$(_xlib_control_field "$ctrl" Architecture)"
     [ -n "$pkg" ] && [ -n "$ver" ] && [ -n "$arch" ] || {
         echo "xmkdeb: ERROR control missing Package/Version/Architecture" >&2; return 1; }
 
@@ -134,6 +144,53 @@ xmkdeb() {
     fi
 
     echo "$deb"
+}
+
+# xis_stale <output> <source>...
+#   True when <output> is missing or any <source> (a file, or anything under a
+#   directory) is newer than it. For "build it if missing" call sites, which
+#   otherwise keep shipping an old binary after its sources change.
+xis_stale() {
+    local out="$1"; shift
+    [ -e "$out" ] || return 0
+    [ -n "$(find "$@" -newer "$out" -print 2>/dev/null | head -n 1)" ]
+}
+
+_xlib_control_field() {  # _xlib_control_field <control-file> <key>
+    awk -F': ' -v k="$2" '$1 == k { print $2; exit }' "$1"
+}
+
+# xdeb_refuse_published <staging_dir> [index]
+#   Fails when <staging_dir>/DEBIAN/control's Package + Version + Architecture is
+#   already listed in the APT index: that filename is public (production, or the
+#   staging Blob store), and a public .deb's bytes must never change. Bump the
+#   version instead. The index defaults to the working tree's index for the
+#   selected target's repo profile (repo/Packages for rootless), which is also
+#   what a staging publish regenerates. A missing index passes.
+xdeb_refuse_published() {
+    local stage="$1" index="${2:-}" ctrl pkg ver arch
+    ctrl="$stage/DEBIAN/control"
+    [ -f "$ctrl" ] || { echo "xdeb_refuse_published: ERROR no DEBIAN/control in $stage" >&2; return 1; }
+    if [ -z "$index" ]; then
+        case "${XIOS_REPO_PROFILE:-rootless}" in
+            rootless) index="$XLIB_ROOT/../repo/Packages" ;;
+            *)        index="$XLIB_ROOT/../repo/profiles/$XIOS_REPO_PROFILE/Packages" ;;
+        esac
+    fi
+    [ -f "$index" ] || return 0
+    pkg="$(_xlib_control_field "$ctrl" Package)"
+    ver="$(_xlib_control_field "$ctrl" Version)"
+    arch="$(_xlib_control_field "$ctrl" Architecture)"
+    awk -v p="$pkg" -v v="$ver" -v a="$arch" '
+        /^Package: /      { pkg = substr($0, 10) }
+        /^Version: /      { ver = substr($0, 10) }
+        /^Architecture: / { arch = substr($0, 15) }
+        /^$/              { if (pkg == p && ver == v && arch == a) found = 1; pkg = ver = arch = "" }
+        END               { if (pkg == p && ver == v && arch == a) found = 1; exit(found ? 0 : 1) }
+    ' "$index" || return 0
+    echo "ERROR: $pkg $ver ($arch) is already published in $index." >&2
+    echo "       Its filename is public; bump the Version and rebuild." >&2
+    return 1
 }
 
 # ---- Ladybird resource fonts ----------------------------------------------

@@ -42,6 +42,11 @@ kept as the record of what the code did before. Note the two scripts live in `x1
 
 ## ioscd (M2)
 
+ioscd's own helper guard had the same "skip if any instance runs" bug; it became per bus
+(pid files in its bus dir) in `xios-launcher-tools 0.1.12` on 2026-10-25, and its sysintd
+takes a private socket when a desktop already owns the global one. The line numbers below
+predate that change.
+
 - `apps/iosc-desktop/src/ioscd.c`: wire 14-16; policy 42-60, 1505-1602 (`destructive = preset
   != "app" && !slot` at 1523); cooldowns 571-606; `init_paths` 195-310 hardwires wayland-0,
   xios.json, iosc-ddx.sock, iosc-wm.sock, ioscd-bus, active marker; `ensure_iosc` 966;

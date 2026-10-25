@@ -1,5 +1,14 @@
 # Rootless / Rootful / CFVER Migration Plan
 
+> Status (2026-10-25): partly done, no rootful progress since 2026-08-01. The target loader,
+> descriptors, literal audit, template packager and repo profiles exist, and one
+> package ships rootful: `ladybird-app` (`iphoneos-arm`, in `repo/profiles/rootful/`).
+> Everything else is still rootless-only. The Wayland base, GTK 3/4, ANGLE and iosc
+> build for `rootful-1900` but are not published, and nothing has been tested on a
+> rootful device. The software Xios X server this plan originally led with was retired
+> on 2026-07-29, so its steps are gone. The detailed log is under "Immediate Next
+> Patch" at the end.
+
 This is the implementation plan for moving Xios packaging from today's
 rootless-only `/var/jb` target to an explicit target matrix covering rootless,
 rootful, and Procursus CFVER variants.
@@ -159,15 +168,9 @@ Current partial implementation:
 - `packages/x11-xvfb/build.sh` assembles `x11-xvfb` from a target-built `Xvfb`
   binary. It preserves the existing rootless binary fallback, but refuses
   non-rootless packaging until `linux-build/out/targets/<target-id>/Xvfb` exists.
-- `packages/xios-server/build.sh` assembles `xios-server` from a target-built
-  `Xios` binary. It preserves the existing rootless binary fallback, but refuses
-  non-rootless packaging until `linux-build/out/targets/<target-id>/Xios` exists.
 - `linux-build/build-xserver-target.sh` is the target-aware entrypoint for
-  producing patched X server artifacts (`Xvfb`, and currently also `Xios`) under
-  `linux-build/out/targets/<target-id>/`.
-- `linux-build/build.sh` renders the `Xios` entitlement path exceptions from
-  the selected target prefix, so a rootful build does not generate `/var/jb`
-  exceptions in `xios-ent.xml`.
+  producing the patched headless `Xvfb` under `linux-build/out/targets/<target-id>/`.
+  (It also built the software `Xios` server until that was retired on 2026-07-29.)
 - `ladybird-app 0.1.25+ios1` builds its generic arm64 engine/frontend once, then
   `packages/ladybird-app/package-ladybird-app-targets.sh` emits two packages with the same
   package id and version: rootless `iphoneos-arm64` at `/var/jb/Applications/Ladybird.app`
@@ -224,7 +227,7 @@ Inventory every hardcoded path and classify it:
 High-risk hardcoded areas:
 
 - `/var/jb/usr/lib` rpaths in build scripts and recipes.
-- `/var/jb/tmp/xios.json`, `xios-ddx.sock`, Wayland sockets, and capture output.
+- `/var/jb/tmp/xios.json`, `iosc-ddx.sock`, Wayland sockets, and capture output.
 - `/var/jb/bin/sh` fixes in X server / Xwayland source patches.
 - `/var/jb/var/lib/xkb`, D-Bus machine-id, XDG runtime dirs.
 - Entitlement path exceptions for `/var/jb`.
@@ -261,7 +264,6 @@ Move committed rootless payload trees toward templates under:
 
 ```text
 packages/templates/
-  xios-server/
   x11-xvfb/
   x11-fonts-sf/
   xios-desktop-defaults/
@@ -288,8 +290,7 @@ First package set:
 1. `x11-fonts-sf` - template flow verified for rootless/rootful.
 2. `x11-xvfb` - rootless package assembly verified; rootful package is guarded
    pending a target-built rootful `Xvfb` from `linux-build/build-xserver-target.sh`.
-3. `xios-server` - rootless package assembly verified; rootful package is
-   guarded pending a target-built rootful `Xios` from `linux-build/build-xserver-target.sh`.
+3. (`xios-server` was here; the package was retired 2026-07-29.)
 4. `xios-desktop-defaults` - template flow completed for rootless/rootful;
    rootful package has no `/var/jb` payload paths or rendered script literals.
 5. `xios-session` - target-aware package flow implemented; bundled session
@@ -314,8 +315,8 @@ Acceptance criteria:
 
 Start with the smallest useful rootful set.
 
-This list originally led with the X server (`x11-xvfb`, `tigervnc`,
-`xios-server`), which is the wrong order now. The X track is legacy: the desktop
+This list originally led with the X server (`x11-xvfb`, `tigervnc`, and the
+since-retired `xios-server`), which is the wrong order now. The X track is legacy: the desktop
 people actually run is Wayland -- iosc composites to the GPU and the flavors sit
 on top of it -- so a rootful Xvfb would prove very little and block on the X
 server's own rootless-specific patches (the `/var/jb/bin/sh` popen fix exists
@@ -327,7 +328,7 @@ only because rootless has no `/bin/sh`). Do the Wayland path first:
   shipped launchers are all target-aware as of the 2026-07-29 pass
 - `xios-fhs`, once the bridge binaries are built per target
 
-X-track packages (`x11-xvfb`, `xios-server`, `tigervnc-standalone-server`) keep
+X-track packages (`x11-xvfb`, `tigervnc-standalone-server`) keep
 their rootless-only `targets` gates until someone actually wants rootful X.
 
 Rootful-specific fixes likely needed:
@@ -509,7 +510,7 @@ Acceptance criteria:
    `/var/jb/tmp`, and `iphoneos-arm64-rootless`.
 3. Convert one low-risk package to templates: `x11-fonts-sf`.
 4. Convert one binary package: `x11-xvfb`.
-5. Convert `xios-server` and make DDX socket/config paths target-aware.
+5. (Retired: `xios-server`.)
 6. Convert ioscd / Xios.app runtime socket/config/status paths to adaptive
    rootless/rootful handling.
 7. Add repo profile plumbing in dry-run mode.

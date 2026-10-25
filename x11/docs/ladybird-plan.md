@@ -1,59 +1,79 @@
-# Ladybird on iOS — feasibility & phased build plan
+# Ladybird on iOS
 
-Status: **★ M0 DONE 2026-07-03 — Ladybird RENDERS REAL WEB PAGES on the A10 iPad** (example.com + styled data: page, correct fonts/colors/layout; PNGs in `artifacts/device-runs/ladybird-m0-pixels/`; debs `ladybird-headless_0.1.1+ios1` + `libmimalloc_2.2.7+ios1`). Paint fix = in-process CPU raster of the screenshot display list (patches 16-17); Compositor is CPU-capable not GPU-required. Next = build the UIKit `.app` frontend (code-complete). Companion to [`../SCOPE.md`](../SCOPE.md)
+## Current state (checked against `repo/Packages` 2026-10-25)
 
-> **Update 2026-07-02/03 — M0 mostly BUILT.** Full leaf closure (Skia + ICU 78.3 + ~19 leaves,
-> Waves 1-3) built + staged on `procursus-vol-ladybird`. Ladybird itself then **configured 100%
-> clean with NO vcpkg** (all `find_package`/`pkg_check_modules` resolve against the staged
-> `/var/jb` closure) and **cross-compiled clean for arm64**: 28 Lagom libs + Skia + 336 TUs across
-> AK/LibCore/LibJS/LibGfx/LibMedia/LibIPC/LibCrypto/LibWasm/… — which **fully closes open-question
-> #1** (C++23 compiles clean vs the 16.5-SDK libc++ across the whole engine, no cross-headers).
-> **2 of 4 helper binaries linked** (`ImageDecoder`, `RequestServer`, arm64 NOUNDEFS). Integration
-> artifacts: `linux-build/recipes-ladybird/ios-toolchain.cmake` (system-name Darwin + `IOS=TRUE`,
-> clang-19, cctools ld64, `/var/jb` find-root, `-liosexec`, fake xcrun/sw_vers),
-> `ladybird-m0-patches.sh` (idempotent source patch series), `build-ladybird-wave4.sh`.
-> **Four corrections to this plan:**
-> 1. **Rust is a HARD build requirement** (not previously noted): 8 workspace crates
->    (libjs/libweb/libgfx/libunicode/liburl/libregex/libtextcodec/libweb_content_blocker `_rust`)
->    cross-compile to `aarch64-apple-ios` via rustup + cbindgen. Add rust to the toolchain image.
-> 2. **The feared host-tools cross-split mostly evaporated** — modern Ladybird codegen is all
->    Python (runs cross). It reduces to exactly **two** LibJS-AsmInterpreter build-time tools
->    (`gen_asm_offsets` C++/AK, `asmintgen` Rust) that need a native-then-cross host build — the
->    one remaining wall (Wave 4b). Everything downstream is proven to compile.
-> 3. **`check_for_dependencies.cmake` REQUIRES SDL3, ANGLE, libjxl, libavif, libedit at configure**
->    — the deps-plan's M2 deferral of jxl/avif is wrong *for configure*. Handled via stub/headers-
->    only `.pc` + source gates for M0 (real codecs are still M2).
-> 4. **Two dep-recipe fixes:** libpng needs the **APNG patch** (`png_get_acTL`), libwebp needs
->    **`-DWEBP_BUILD_LIBWEBPMUX=ON`** — both rebuilt (`recipes-ladybird/{libpng16,libwebp}.mk`).
-> Other build facts: `-DENABLE_CRANELIFT_JIT=OFF` (Wasm interpreter, `memfd_create` is Linux-only
-> and JIT is forbidden on iOS anyway); off-Mac CMake targets `CMAKE_SYSTEM_NAME=Darwin` + faked
-> `xcrun`/`sw_vers` + forced `IOS=TRUE` (house qtbase pattern); the compiler wrapper appends
-> `-Wno-error` after `"$@"` (clang-19 stricter than upstream).
+Ladybird ships in two flavors, both on `repo.maxleiter.com`:
 
-> **Update 2026-07-02 — wall #1 struck.** clang-19 (from apt.llvm.org, added as a cacheable
-> layer in `linux-build/Dockerfile`, committed) + the **stock iPhoneOS 16.5 SDK libc++**
-> compiles Ladybird's C++23 core cross to `arm64-apple-ios16.0`: **47/49 AK + core-LibCore TUs
-> pass `-fsyntax-only`** (the 2 fails were the probe's own stale dep headers, not compiler/libc++
-> gaps). Zero language-level C++23 errors, zero libc++ library-feature errors. The old SDK libc++
-> is missing `<expected>`/`<print>`/`<source_location>`/`<generator>`/`<stacktrace>` and ships
-> `<format>` incomplete, but AK/LibCore touch none of them (own `ErrorOr`/`String`/`Format`), so
-> **no libc++ cross-headers are needed for the foundation** — open-question #1 resolves in our
-> favor for this layer. `-D__IOS__` gates the macOS bundle path off and sets `AK_OS_IOS` as
-> predicted. **Residual:** only AK/LibCore was probed; spot-check a few **LibJS/LibWeb** TUs
-> against the 16.5 libc++ before declaring the whole engine cross-header-free (folded into the
-> first real M0 partial-build). Build-integration notes: AK needs `Debug.h`/`Backtrace.h`
-> configured from their `.in`, and each Lagom lib emits a generated `Export.h` — both are normal
-> CMake, just don't let the recipe fight them.
->
-> **Update 2026-07-02 — ICU 78.3 built + Ladybird build volume created.** ICU 78.3 EXACT is done
-> (three `+ios1` debs in `out/`, `.pc` = 78.3, Unicode 17.0 — see HAVE/NEED table). The Ladybird
-> track has its own Procursus build volume **`procursus-vol-ladybird`** (cloned from
-> `procursus-vol-gtk`) so the live GNOME/EDS 74.2 stack in other volumes is never clobbered. ICU
-> recipe/control edits are staged uncommitted under `linux-build/`.
-and the desktop-apps track. Scope: can we cross-compile the Ladybird browser
-(`LadybirdBrowser/ladybird`) to native `iphoneos-arm64` and render a real web page on the
-jailbroken iPad (A10, iPadOS 17.6.1, palera1n rootless `/var/jb`), and what is the cheapest
-path to first pixels?
+- `ladybird-app 0.1.25+ios1`: a standalone UIKit app with a Home Screen icon,
+  for rootless and rootful jailbreaks. Six processes (UI, WebContent,
+  WebWorker, RequestServer, ImageDecoder, Compositor), about 200 MB resident on
+  the A10. iPad is tested; iPhone installs but is not tested.
+- `ladybird-wayland 0.1.0+wl5`: the upstream GTK/libadwaita frontend as a
+  Wayland client inside an Xios desktop. It uses its own OpenSSL 3.5 from
+  `ladybird-tls 3.5.3+wl1`, reached through an rpath that
+  `bin/lib/check-ladybird-tls-rpath.py` checks at publish time (wl4 shipped
+  without it and could not start a renderer).
+
+Both run engine commit `92b0257` (upstream main, 2026-07-02). The leaf
+dependencies (ICU 78.3, mimalloc, and the rest) are published as normal dylib
+debs.
+
+Not on main: a rebase onto a newer upstream engine lives on the unmerged
+branch `claude/ladybird-rebase` (ladybird-app `0.1.26+ios1`). Upstream deleted
+`UI/Gtk` on 2026-07-09, so the Wayland flavor stays on the old engine until
+there is a Qt 6.10 frontend lane.
+
+Related docs: `ladybird-deps-plan.md` (leaf closure), `ladybird-skia-recipe.md`
+(Skia), `ladybird-sandbox-confinement.md` (why helpers run unconfined), and
+`handoff/wayland-apps.md` (the Wayland package's runtime fixes).
+
+### Lessons worth keeping
+
+- **Blank page with an all-green pipeline: the visibility state.** The UIKit
+  frontend never called `set_system_visibility_state(Visible)`. The default is
+  `Hidden`, and `update_the_rendering` skips hidden documents, so WebContent
+  never painted and nothing downstream ever fired. Call it after
+  `initialize_client()` and in `didMoveToWindow`.
+- **mimalloc and the A10.** mimalloc emits ARMv8.1 LSE atomics (`casal`), which
+  SIGILL on the A10. `-mcpu=apple-a10` does not remove them (LLVM's model
+  includes `+lse`). Use `MI_OPT_ARCH=OFF` plus
+  `-march=armv8-a -Xclang -target-feature -Xclang -lse`. `llvm-objdump` prints
+  LSE instructions as `.long` unless you pass `--mattr=+lse`, so a naive check
+  passes falsely.
+- **A stale `build_base` shadows a version bump.** ICU 74.2's `libicudata`
+  shadowed the 78.3 stub until it was wiped. Wipe old copies before bumping a
+  library on a reused volume.
+
+### Build facts from M0 (2026-07-02/03)
+
+- Rust is a hard build requirement: eight workspace crates cross-compile to
+  `aarch64-apple-ios` through rustup and cbindgen.
+- Codegen is almost all Python and runs cross. Only two LibJS AsmInterpreter
+  tools (`gen_asm_offsets`, `asmintgen`) need a native-then-cross host build.
+- `check_for_dependencies.cmake` requires SDL3, ANGLE, libjxl, libavif and
+  libedit at configure time, so they need at least stub `.pc` files plus
+  source gates.
+- libpng needs the APNG patch (`png_get_acTL`) and libwebp needs
+  `-DWEBP_BUILD_LIBWEBPMUX=ON` (`recipes-ladybird/`).
+- `-DENABLE_CRANELIFT_JIT=OFF` (`memfd_create` is Linux-only, and no JIT
+  here). CMake targets `CMAKE_SYSTEM_NAME=Darwin` with faked `xcrun`/`sw_vers`
+  and forced `IOS=TRUE`. The compiler wrapper appends `-Wno-error` after `"$@"`.
+- clang-19 with the stock iPhoneOS 16.5 SDK libc++ compiled the whole engine's
+  C++23 with no cross headers. The old libc++ lacks `<expected>`, `<print>` and
+  friends, but Ladybird uses its own `ErrorOr`/`String`/`Format`.
+- The paint path that got first pixels was in-process CPU raster of the
+  display list. Compositor can run on the CPU.
+
+Build entry points: `linux-build/recipes-ladybird/ios-toolchain.cmake`,
+`ladybird-m0-patches.sh` (the source patch series), `build-ladybird-wave4.sh`.
+
+---
+
+## The original feasibility plan (2026-07-02)
+
+Everything below is the plan as written before the port. It is kept for the
+reasoning; where it disagrees with the current state above, the current state
+wins.
 
 Recon was done against a fresh `main` clone (2026-07-02). Line references are to that tree.
 
@@ -400,9 +420,9 @@ the GN special-case are worth owning). Package the final Ladybird tree as **one 
 
 ---
 
-## One-line summary
+## How the phases actually went
 
-A no-JIT, Darwin-clean, statically-linked engine with an in-tree headless renderer — the port
-is real work (a modern clang, a raster Skia, ICU 78.3, and a one-deb package) but has **no
-class of blocker we have not already beaten elsewhere in this project**, and the headless-raster
-M0 reaches a real rendered page without touching Qt, Metal, GPU entitlements, or Wayland.
+M0 (headless page to PNG on the iPad) landed 2026-07-03. M1 became the native
+UIKit app rather than a thin `wl_shm` client, and the GTK frontend became the
+Wayland flavor. GPU painting (M3) is in the app flavor: WebGL works there. The
+Qt frontend (M4) is still waiting on Qt 6.10.

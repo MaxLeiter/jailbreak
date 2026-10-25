@@ -15,7 +15,9 @@ endif
 SUBPROJECTS      += libepoxy
 LIBEPOXY_VERSION := 1.5.7
 # +angle1: EGL/GLES dispatch repointed at the ANGLE deb (/var/jb/lib/angle) — see below.
-DEB_LIBEPOXY_V   ?= 1.5.7+angle1
+# +angle2: desktop GL (OPENGL_LIB) resolved from mesa's libGL.1.dylib instead of the
+#          absent OpenGL.framework, so GTK4-on-X11 (GLX) no longer aborts (patch 0002).
+DEB_LIBEPOXY_V   ?= 1.5.7+angle2
 
 libepoxy-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/libepoxy/$(shell echo $(LIBEPOXY_VERSION) | cut -d. -f-2)/libepoxy-$(LIBEPOXY_VERSION).tar.xz)
@@ -25,7 +27,10 @@ libepoxy-setup: setup
 	# consumers — GTK4's GL/NGL renderer on the Wayland backend — get hardware GLES->Metal/
 	# AGX; keep GLX_LIB on mesa's software libGL for the X11 path. These dlopens are SOFT:
 	# if the angle deb is absent epoxy fails the EGL load gracefully and GTK4 falls back to
-	# GLX/cairo, so there is NO hard package dep on angle. (X11 itself cannot use ANGLE: no
+	# GLX/cairo, so there is NO hard package dep on angle. Desktop GL (OPENGL_LIB) is the
+	# same mesa libGL.1.dylib as GLX_LIB: upstream's Apple block points it at
+	# OpenGL.framework, which iOS lacks, and loads it with abort-on-fail the moment a GLX
+	# context makes its first GL call (patch 0002). (X11 itself cannot use ANGLE: no
 	# EGL_EXT_platform_x11 + CAMetalLayer-only surfaces — see hwgl-plan.md Phase C; the win
 	# is the Wayland backend.)
 	# Repoint epoxy's GLES2 dispatch (Apple block only) at ANGLE's libGLESv2 so GLES2 core
