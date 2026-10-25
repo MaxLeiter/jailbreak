@@ -1,35 +1,103 @@
-# polish — smaller feature tracks (one agent could own several)
+# polish: the smaller integration tracks
 
-These are the smaller, mostly-landed-or-parked tracks. Each has a wire type or a plan already; grouped here since none is a full-time domain. Split further if you want dedicated owners.
+Small tracks that do not need a full-time owner. Most have landed; what is left is
+mostly physical checks a human has to do on the iPad. All input and
+system-integration records are the 32-byte `xios_msg` from
+`apps/shared/XiosProtocol.h` (`XIOS_IN_*` from 0x100). The old small type numbers
+(AXIS 9, OUTPUT 10, HAPTIC 11, ...) and the 24-byte record are gone.
 
-## Touch scroll + gestures (task #20)
-- AXIS wire type 9 landed (iosc decode + Xios `sendScroll`, commit 3ebf085; also fixed BTN_LEFT right-click). Mutter half: `notify_scroll_continuous` + AXIS in virtual-input (build10).
-- Wire (xios_input_socket.h): AXIS x,y = dx,dy in 1/256 output-px fixed point; code=source(0 finger/1 wheel); state bit0=axis_stop; mods=modifier mask (ctrl = pinch-zoom).
-- Current Xios app uses the unified fit transform, so the old stale-fb warning is closed. Open: two-finger scroll feel, long-press right-click, pinch-zoom (ctrl+scroll) end-to-end on-device across iosc and Mutter. Handoff detail: `x11/docs/axis-gestures-handoff.md`.
+## Status at a glance (2026-10-25)
 
-## Clipboard sync Linux↔iOS (task #18)
-- App side and compositor side have both landed on the 32-byte `XMS1` envelope (`XIOS_MSG_CLIPBOARD` 0x04); the old 8-byte clipboard bridge framing is obsolete. Treat this as co-deploy/verify work: Xios.app and iosc must be from the same wire generation. Memory: x11-clipboard-sync.
-- 2026-07-04 device smoke on the packaged `iosc 0.9.9`/rebuilt Xios pair: with `XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0`, holding `wl-copy --foreground` alive and then running `wl-paste` returned `xios-clipboard-smoke` (`rc=0`). This proves the compositor/data-control side is alive.
-- Still open: true UIKit pasteboard round trip (iOS pasteboard -> wl-copy/GTK and wl-copy/GTK -> UIKit pasteboard), large payload behavior, and multi-item/type coverage beyond text. SSH alone did not prove the iOS system pasteboard contents.
+| Track | State | Still open |
+|---|---|---|
+| Scroll and gestures | landed in Xios, iosc-host, iosc and Mutter | physical feel of two-finger scroll, long-press right-click |
+| Clipboard | landed both sides, per-slot socket | UIKit pasteboard round trip on device |
+| Rotation | landed and device-checked | portrait shell layout |
+| Volume, dark mode | landed (`xios-sysintd`) | none known |
+| Brightness | landed, device-checked through powerdevil | Plasma brightness applet still excluded |
+| Haptics | landed (broadcast plus UIKit feedback) | nobody has felt it (the iPad 7 has no Taptic Engine) |
+| AT-SPI to VoiceOver | `xios-a11y-tools 0.2.17` | physical VoiceOver gestures, GTK widget trees |
+| Desktop audio and mic | `xios-audio-server 0.1.2`, `xios-media-server 0.1.1`, PulseAudio 17 | camera for GNOME apps |
+| gsd power/sound/datetime | still dropped from `gnome-settings-daemon` | low priority |
 
-## Rotation (task #21)
-- XIOS_IN_OUTPUT wire type 10 registered (code = wl_output transform; x,y = requested logical WxH). Rotation = resize + present-reconnect.
-- Landed locally and device-validated: Xios.app now allows all orientations when attached to iosc, sends OUTPUT on orientation/layout/adopt, and forces a resend after compositor reconnects. `iosc` handles OUTPUT by reallocating the output IOSurface, rebinding GL, resending `wl_output`/`xdg_output`, and dropping stale app clients so Xios re-adopts. Device smoke ended with `/var/jb/tmp/xios.json` and Xios both at `2160x2880`, `/var/jb/tmp/iosc.log` showing `output resized to 2160x2880`, `iosc_gl: output rebound (2160x2880)`, and `output now 1080x1440 logical transform=1`. Packaged as `iosc 0.9.9`; rebuilt/deployed Xios.app directly.
+## Scroll and gestures
+- `XIOS_IN_AXIS`: dx/dy in 1/256 output-pixel fixed point, source finger or wheel,
+  an axis-stop bit for kinetic scrolling. iosc turns it into `wl_pointer.axis`;
+  Mutter uses `notify_scroll_continuous`. The Xios app and iosc-host both send
+  continuous trackpad frames and discrete wheel frames.
+- Pinch is app zoom only (the old ctrl+scroll pinch path is gone).
 
-## Native-feel bundle (tasks #22, #23) — volume / dark-mode / haptics
-- Wire types 10-13 (OUTPUT/HAPTIC/VOLUME/APPEARANCE) registered. VOLUME(12)+APPEARANCE(13) go to a separate `xios-sysintd` daemon (socket `/var/jb/tmp/xios-sysint.sock`, same framing) so the compositor stays out of audio/theme. OUTPUT(10) and HAPTIC(11) are now compositor-wired: OUTPUT resizes/re-adopts the iosc surface and layer/fullscreen clients, and pointer/touch down on shell/layer UI broadcasts HAPTIC records to input clients. Xios polls haptic broadcasts and fires UIKit feedback; physical haptic feel still needs a human check.
-- Native helper startup is now wired through `xios-session app`, `ioscd` app launches, and KDE's session wrapper. On-device smoke saw `xios-hwbridged`, `xios-sensord`, and `xios-sysintd` start on the shared app bus; `xios-hwbridged` mirrored battery/backlight under `/var/jb/sys`, `xios-sensord` served CoreMotion as SensorProxy, and `xios-sysintd` applied `appearance -> dark` plus `desktop volume -> device ... (1 client)`. KDE helper startup also ran, but its D-Bus-owned helpers exited when the experimental KDE bus disappeared; keep treating KDE as a launcher stability follow-up, not a bridge blocker.
+## Clipboard
+- Compositor half: `wayland/iosc-clipboard-bridge.c`, built into iosc, on a
+  dedicated per-slot socket the compositor advertises in its config
+  (`clipboard_socket`). Mutter has its own strict v1 bridge
+  (`wayland/meta-clipboard-ios.c`). `wlr-data-control` feeds the same selection
+  store, so `wl-copy`/`wl-paste` work without focus.
+- App half: `apps/Xios/Sources/IoscClipboard.c` plus the pasteboard logic in
+  `XScreen.swift`, all off the main thread since 2026-10-01.
+- The Wayland side is proven (`wl-copy --foreground` then `wl-paste` returned the
+  text). The iOS pasteboard leg has no recorded device run. Design, wire and test
+  recipe: `../clipboard-plan.md`.
 
-## AT-SPI → VoiceOver a11y bridge
-- 2026-07-03 local pickup: the default launch behavior is now wired through iOS VoiceOver state. Xios sends `A11Y_STATE\t1|0` to `ioscd`; `ioscd` owns generated `/var/jb/tmp/xios-a11y-enabled`; `xios-session` and ioscd app launches enable AT-SPI when that file, `/var/jb/tmp/xios-a11y-force`, or `XIOS_ENABLE_A11Y=1` is present. Device smoke verified `A11Y_STATE 1/0` over `/var/jb/tmp/ioscd.sock` and a no-force `xios-session app kgx` launch that started `xios-a11yd` plus AT-SPI from the generated state. Physical VoiceOver gesture validation is still open.
-- Design committed `x11/docs/a11y-plan.md`; native-flavor half `x11/docs/native-ipados-a11y.md` has the HostA11y publisher prototype wired to send `bind{appid}` and a smoke-only `/var/jb/tmp/xios-a11y-force` enable gate. Wire schema is the authoritative NDJSON schema in that doc. Shipped Linux-side P0/P1 smoke slices: `xios-session_1.0.15`/ioscd launch paths support opt-in `XIOS_ENABLE_A11Y=1` or force-file a11y, start `at-spi-bus-launcher`, write `IsEnabled` + `ScreenReaderEnabled` true, auto-start `xios-a11yd` when installed, avoid duplicate daemon starts, and kill the daemon on session switch; `xios-session app`, ioscd app launches, and shell launchers now reuse shared session buses so a singleton `xios-a11yd` can see more than the first app. `xios-a11y-tools_0.2.14` installs `atspi-dump` and the snapshot daemon with `/var/jb/tmp/xios-a11y.sock` owned `mobile:mobile` mode 0660 for UIKit hosts. On-device smoke saw `application name="kgx"` / frame `iosc-kgx` on the AT-SPI bus, then socket clients received `hello`/`reset`/`window`/`upsert`; `bind{appid:"org.gnome.Console"}` published the matching app and a non-matching bind published no windows. Follow-up smokes with kgx plus GNOME Text Editor on the shared `xios-session` bus and the shared `ioscd` bus saw both apps in `atspi-dump`; enabled daemon socket clients received two `window` records and 29 `upsert` records (`artifacts/device-runs/20260703-052614/a11y-shared-bus-probe.txt`, `artifacts/device-runs/20260703-053707-ioscd-a11y-shared-bus/ioscd-shared-bus-probe.txt`). Forced native Console smoke then had HostA11y connect, bind, attach scene 3, and publish 12 elements onto the host view. Desktop Xios now has a first app-side unbound publisher (`apps/Xios/Sources/XiosA11y.swift`) that gates on VoiceOver/force-file, mirrors helper frames into UIAccessibilityElements on `XScreenView`, and builds with unsigned Release `iphoneos` xcodebuild; forced Xios smoke deployed the app, launched kgx with the force file present, connected to `/var/jb/tmp/xios-a11y.sock`, received `hello`/`reset`, and published 12 elements for one window (`artifacts/device-runs/20260703-123824/xios-a11y-app.log`). The helper coalesces common AT-SPI object/window/document events into diff-suppressed snapshots, keeps a periodic fallback, and line-buffers app commands as NDJSON with exact `t` dispatch; `0.2.13` Calculator smoke registered 11/11 event listeners and still published 18 upserts with the action node as `traits:["button"]`. It routes `activate`/custom `action` requests to AT-SPI Action.DoAction for published node ids, with synthetic-tap fallback for activate-without-action; `adjust` now routes to AT-SPI Value.SetCurrentValue; `scroll` now routes to AT-SPI Component.ScrollTo; snapshots publish AT-SPI value text/current values, state-derived traits/values, and `focus` messages when AT-SPI exposes a focused node. `atspi-dump` now prints states, action names, and value ranges directly for future smokes; `0.2.12` device dump against Calculator printed frame states including `active`, `sensitive`, `showing`, and `visible`. `0.2.8` device dump printed kgx frame actions including `win.new-tab`/`window.close` and panel action `overview.open`. Direct `0.2.6` probe saw kgx node `1003` expose `actions:["overview.open"]`; stable `0.2.7` Console smoke still published 12 nodes with no socket close but no value-bearing nodes. A fresh native Calculator smoke published 18 elements and one action-rich node, but labels were empty and roles were mostly panel/grouping; a deeper GNOME Text Editor probe on 2026-07-03 also registered but exposed only frame actions plus panel/grouping children (`artifacts/device-runs/20260703-124146-gtk-text-editor-a11y/`), so full GTK widget semantics remain open. Qt validation is much better: Okular under the force gate exposed menu bars/items, push buttons, labels, editable text, lists, check boxes, trees, and actions; `atspi-dump` reported stale-object warnings while walking transient menu objects, but the semantic tree is present (`artifacts/device-runs/20260703-124300-qt-okular-a11y/atspi-qt-okular.txt`). Real VoiceOver action/adjust/scroll gestures are still pending. Default remains `GTK_A11Y=none` unless generated VoiceOver state, `XIOS_ENABLE_A11Y=1`, or the force file enables the a11y path. Still open: real VoiceOver gesture validation, full GTK widget tree validation, optional smaller Qt widget confirmation, PID correlation, geometry correlation for desktop Xios, and GTK3/GNOME Shell ATK version-skew fix. Memory: x11-a11y-voiceover-bridge. The new `vo-focus` browse-without-activation handler is host SDK compile-checked; it is assigned to the next immutable `xios-a11y-tools 0.2.15` build, with packaging/device gesture validation deferred while Docker and the iPad are unavailable.
+## Rotation
+- The app allows all orientations on iosc and sends `XIOS_IN_OUTPUT` on
+  orientation, layout and adopt changes, and again after a compositor reconnect.
+  iosc reallocates the output IOSurface, rebinds GL, resends `wl_output` and
+  `xdg_output`, and the app re-adopts. Device check: default 1440x1080 logical
+  became 1080x1440 logical, a 2160x2880 surface.
 
-## gsd plugins (tasks #15, #25, #26)
-- #15 power: un-drop + Darwin backlight backend (brightness slider); gsd-power backlight is Darwin-ifdef'd-out -> needs a 2-file backend, no udev/logind. Pairs with `packages/xios-fhs` xios-hwbridged (UPower D-Bus shim via IOKit IOPS - closes the battery indicator; synthetic `/var/jb/sys` backlight + BKS brightness). 2026-07-04 smoke saw `/var/jb/sys/class/power_supply/BAT0/capacity=60`, `status=Discharging`, `/var/jb/sys/class/backlight/xios_backlight/actual_brightness=500`, and `/var/jb/sys/bus/iio/devices/iio:device0/name=xios-coremotion` with live accel raw values. Memory: x11-fhs-hwbridge.
-- #15 power, 2026-07-29: the node -> hardware half of that backlight bridge had never actually worked, and two separate bugs hid it. `xios-hwbridged` applied incoming writes only from a `GFileMonitor` on the backlight directory; on iOS `g_file_monitor_directory()` returns a monitor that reports nothing and fails silently, so powerdevil, the Plasma Mobile quicksetting, and a plain `echo 400 > brightness` all landed in the file and stopped there. `brightness_sync_tick` is now bidirectional (a value that is not `last_applied_brightness` is treated as a client request and applied) and runs at 2 Hz rather than every 10s. Shipped in `xios-fhs 1.0.3`.
-- #15 power, still open: **`BKSDisplayBrightnessSet` is inert on iPadOS 17.6.1 outside SpringBoard**, so brightness still does not reach the panel. Probed directly rather than inferred: `BKSDisplayBrightnessGetCurrent`/`Set`/`TransactionCreate` all resolve, the transaction creates non-NULL, the `com.apple.backboardd.*` entitlement is present, and `GetCurrent` never moves off 1.000 -- transaction released immediately, transaction held across a 2s settle, auto-brightness on, and auto-brightness explicitly disabled via `BKSDisplayBrightnessSetAutoBrightnessEnabled(0)`. `GetCurrent` itself reads correctly (it seeds the node), so this is the setter, not the framework. Next route: `UIScreen.brightness` from Xios.app, which is a real app process with a `UIScreen`, with `xios-hwbridged` forwarding requests to it. Until then the Plasma brightness applet stays out of `plasma-workspace` (see `plasma-workspace-ios-fixes.sh`) rather than shipping a slider that moves nothing, and plasma-mobile keeps its QML stand-in for the same QML URI.
-- #25 sound: event sounds + volume feedback via PA. #26 datetime: iOS timezone + simple NTP (low priority).
+## Volume, appearance, brightness, haptics
+- `xios-sysintd` (`wayland/xios-sysintd.c`, shipped in `xios-session-stubs`) takes
+  VOLUME and APPEARANCE so the compositor stays out of audio and theme. App volume
+  sets the `xios` sink; desktop volume goes back to the app, which sets iOS
+  hardware volume. Appearance sets `color-scheme` (and the GTK3 theme unless
+  `XIOS_SYSINT_NO_GTK3=1`).
+- **Brightness:** `BKSDisplayBrightnessSet` is inert on iPadOS 17.6.1 outside
+  SpringBoard (symbols resolve, the transaction creates, the entitlement is there,
+  and `GetCurrent` never moves). Only an app's `UIScreen.brightness` works, so a
+  write to the synthetic backlight node goes `xios-hwbridged` to `xios-sysintd`
+  (`XIOS_IN_BRIGHTNESS`) to the Xios app (`a6a821b6`, 2026-07-29). Verified
+  through powerdevil's D-Bus interface: 400, 850, 250 and 1000 each reached the
+  panel and stuck. Reads still come from `GetCurrent`. The Plasma brightness
+  applet is still left out of `plasma-workspace`, and the comment in
+  `linux-build/recipes/plasma-workspace-ios-fixes.sh` still says the panel hop is
+  missing; that is now out of date.
+- Second landmine on the same path: `g_file_monitor_directory()` on iOS returns a
+  monitor that never reports, so `xios-hwbridged` polls the node at 2 Hz and
+  treats any value it did not write as a request (`xios-fhs 1.0.3`).
+- HAPTIC: pointer or touch down on shell/layer UI broadcasts a record to input
+  clients and the app fires UIKit feedback.
+- Helpers (`xios-hwbridged`, `xios-sensord`, `xios-sysintd`) start per session
+  bus; see `session-launcher.md` for who starts them.
 
-## Audio / media bridge
-- PulseAudio 17 daemon now exposes both desktop-facing endpoints: sink `xios` via `module-xios-sink` -> `xios-audiod`, and source `xios_mic` via `module-xios-source` -> `xios-mediad`. 2026-07-04 rebuilt and installed `libpulse0`, `libpulse-dev`, `pulseaudio`, and `pulseaudio-utils` as `17.0-7+ios1`; copied those new filenames into `repo/debs` without replacing the older `17.0-6+ios1` artifacts. Device smoke: `pactl info` reported default sink `xios` and default source `xios_mic`; `pactl list modules short` showed `module-xios-sink` and `module-xios-source`; `timeout 3 parec --raw --format=float32le --rate=48000 --channels=1 --device=xios_mic` wrote 20480 bytes to `/var/jb/tmp/parec-xios-mic.f32` before the expected timeout. Docs: `docs/audio-desktop-plan.md`.
-- Camera raw path exists through the Xios app broker/media framing, but GNOME-facing camera is not done. 2026-07-04 raw daemon smoke accepted a video client but AVFoundation rejected both front and back cameras from `xios-mediad --daemon-camera` (`Cannot use Front Camera` / `Cannot use Back Camera`), and the device has no `pipewire`, `gst-launch-1.0`, or `xdg-desktop-portal` binary installed. The next credible surface is app-brokered camera frames exported as a PipeWire/xdg-desktop-portal camera or GStreamer source plugin, not raw Xios sockets in apps.
+## AT-SPI to VoiceOver
+- Xios sends `A11Y_STATE\t1|0` to ioscd when VoiceOver changes; ioscd owns
+  `/var/jb/tmp/xios-a11y-enabled`. Launchers enable AT-SPI when that file,
+  `/var/jb/tmp/xios-a11y-force`, or `XIOS_ENABLE_A11Y=1` is present; otherwise apps
+  run with `GTK_A11Y=none`.
+- `xios-a11yd` publishes diff-suppressed NDJSON snapshots on
+  `/var/jb/tmp/xios-a11y.sock` (mobile 0660) and routes activate, adjust, scroll
+  and `vo-focus` back through AT-SPI. Both the desktop app (`XiosA11y.swift`) and
+  the native host (`HostA11y.swift`) publish the elements.
+- Device smokes saw the trees and published elements. Qt (Okular) exposes a rich
+  tree; GTK4 apps expose mostly frames and panels. Real VoiceOver gestures are not
+  validated. Design and the authoritative wire schema: `../a11y-plan.md`.
+
+## Desktop audio and media
+- PulseAudio 17 with sink `xios` (`module-xios-sink` to `xios-audiod`) and source
+  `xios_mic` (`module-xios-source` to `xios-mediad`); device smoke saw both as
+  defaults and recorded from the mic.
+- `xios-audio-server 0.1.2` keeps the output open only while something plays (the
+  old always-open output kept the iPad from sleeping). `xios-media-server 0.1.1`
+  opens the mic only while a client is connected.
+- Camera: the raw broker path exists, but AVFoundation refused both cameras from
+  the daemon in the 2026-07-04 smoke, and there is no PipeWire, GStreamer or
+  xdg-desktop-portal on the device. The next real step is app-brokered frames
+  exported as a portal camera or a GStreamer source. Details:
+  `../audio-desktop-plan.md`.
+
+## gsd plugins
+- `gnome-settings-daemon 46.0+ios1` is a minimal build (a11y-settings,
+  housekeeping, keyboard, screensaver-proxy). GNOME's battery indicator reads
+  UPower from `xios-hwbridged`, so power works without gsd-power. Sound (event
+  sounds) and datetime are low priority and not started.

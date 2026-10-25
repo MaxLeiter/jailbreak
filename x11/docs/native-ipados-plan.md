@@ -1,9 +1,11 @@
 # Native iPadOS flavor: Linux apps as first-class iPad windows
 
-Implementation status: the recommended per-app host topology is now implemented
-behind a runtime native mode and is in device validation. This file remains the
-architecture note and rationale; current status and test steps live in
-`docs/handoff/native-ipados.md`.
+**Status (2026-10-25): built and shipped** as the `xios-native` flavor
+(`xios-launcher-tools` + `com.max.xiosprefs` on top of `xios-runtime`). Variant A
+below (each generated bundle is its own host) is what exists, with fenced
+protocol v1 and launches by app id as `mobile`. This file is the architecture
+and the reasoning; current status, gotchas and open items are in
+`handoff/native-ipados.md`, and the wire is in `native-ipados-protocol.md`.
 
 The idea: instead of one fullscreen Xios window containing a whole Linux desktop
 (the GNOME / KDE / X11 flavors), each Linux app presents as its OWN iPadOS
@@ -197,7 +199,7 @@ explicit `LAUNCH_CLASSIC` is also supported.
 
 ## 4. Input routing
 
-All primitives exist (`IoscInput.c` in the app, the 24-byte record protocol,
+All primitives exist (`IoscInput.c` in the app, the input record protocol,
 iosc's wl_seat with pointer/keyboard/touch/tablet). Two changes:
 
 - **Connection scoping.** The input socket protocol has no window addressing
@@ -205,15 +207,15 @@ iosc's wl_seat with pointer/keyboard/touch/tablet). Two changes:
   `XIOS_IN_BIND` (code = window id), sent once after connect. All subsequent
   events on that connection are window-local: motion coords translate directly
   to that surface, no hit test, and a key event moves wl_keyboard focus to the
-  bound window if it is not already there. The 24-byte framing is untouched
-  (additive type, like TOUCH=6 / TABLET=7 were).
+  bound window if it is not already there. (As built: `XIOS_IN_BIND` in
+  `apps/shared/XiosProtocol.h`, carrying the window in `c`.)
 - **Focus follows iPadOS.** The key scene's host is the only one the user is
   typing into; hosts send `ACTIVATE` on scene key/resign and iosc moves
   keyboard focus accordingly. Two Split View windows both receive touch;
   wl_pointer/wl_touch focus is per-connection anyway.
 
 Per-host forwarding is the existing XScreen code: touches fan out as wl_touch
-(type 6) plus the pointer emulation, Pencil as tablet (type 7), hardware keys
+plus the pointer emulation, Pencil as tablet, hardware keys
 via pressesBegan, OSK via UIKeyInput, trackpad hover via UIPointerInteraction.
 Cursor shapes: iosc already rasterizes cursor-shape-v1; a later nicety is
 mapping those names to UIPointerStyle per scene instead of drawing the cursor
@@ -230,7 +232,7 @@ into the canvas.
 | toplevel unmaps / client exits | `WINDOW_GONE`; host closes that scene, exits when its last scene closes |
 | scene resized (Split View drag, rotation, Stage Manager) | `RESIZE`; iosc sends configure, client acks + commits, canvas reallocates, host letterboxes the one transitional frame |
 | scene swiped away in the switcher | `CLOSED`; iosc sends xdg_toplevel.close; GTK apps quit or prompt; if the client ignores it, ioscd can escalate (SIGTERM) after a grace period |
-| host backgrounded | host pauses CADisplayLink (existing behavior); iosc stops firing that window's frame callbacks, so the client throttles itself, the standard Wayland occlusion mechanism. The Linux process keeps running root-side, untouched by iOS app lifecycle |
+| host backgrounded | host pauses CADisplayLink (existing behavior); iosc stops firing that window's frame callbacks, so the client throttles itself, the standard Wayland occlusion mechanism. The Linux process keeps running (as `mobile`), untouched by iOS app lifecycle |
 | host jetsammed | Linux app unaffected; re-tap re-binds (section 3, step 6) |
 | device rotates | just a resize |
 
@@ -292,100 +294,33 @@ What does carry over:
    just the catalog floor; no DE stack to install, so it is the lightest
    flavor and likely the default suggestion on non-M1 hardware).
 
-## 7b. Implementation scoping against current iosc (2026-07-01 recon, updated 2026-07-03)
+## 7b. As built
 
-Re-verified against the real tree so the compositor work is anchored to exact
-functions, not the sketch above. Findings that change the estimate downward:
+P0 and most of P1 are done. The 2026-07-01 scoping notes (exact functions to
+change) were removed once the code landed; the result is:
 
-- **The typed record already carries `window_id`.** `xios_surface.h`'s `xios_msg`
-  has a `window_id` field (0 = the single/default surface) and DIRTY is defined
-  as per-window already (`XIOS_MSG_DIRTY ... window_id`). Native DIRTY is a value
-  change, not a wire change. Codes 0x40-0x5f are already reserved for native.
-- **The GL compositor can already retarget.** `iosc_gl_resize(output_iosurface,
-  w, h)` (iosc_gl.h) tears down and rebinds the output pbuffer/texture/FBO to a
-  NEW IOSurface while keeping the EGL context, shaders, and client-texture cache.
-  Per-window rendering = call a factored-out `iosc_gl_bind_target(canvas, w, h)`
-  (the inner half of `iosc_gl_resize`) once per dirty window, then the existing
-  `iosc_gl_begin` / `composite_one` / `iosc_gl_end` unchanged.
-- **The mach hand-off is one surface argument away from general.**
-  `deliver_surface_port(pid, portname)` in xios_surface.c hardcodes the global
-  `s_surface`. Generalized: `deliver_canvas_port(reply_port, canvas)` —
-  identical `IOSurfaceCreateMachPort` + `mach_port_extract_right` + timed
-  `mach_msg`, but the surface is a per-window canvas and the destination port
-  comes from BIND's `d` field (the receive-port name) instead of a per-connection
-  hello. iosc still `task_for_pid`s the host (BIND carries its pid via socket
-  peer creds, same as today's hello). The blocking Mach hand-off now happens on
-  the native reader/delivery path, not the compositor's Wayland event-loop.
+- `wayland/xios_canvas.{c,h}`: the N-canvas registry, the `iosc-native.sock` BIND
+  server, and `deliver_canvas_port` on the reader thread (never the Wayland
+  thread, so a suspended host cannot stall other windows).
+- `wayland/iosc_gl.c`: `iosc_gl_bind_target()` split out of `iosc_gl_resize()`,
+  called once per dirty canvas.
+- `wayland/iosc.c`: native mode maps each toplevel to a canvas on map, frees it on
+  unmap, composites per window, and honors `XIOS_IN_BIND` in the input reader.
+- `apps/iosc-host/`: `IOSCHost` with `NativeClient.c`, per-scene Metal
+  presentation, the fenced `XIOS_MSG_NATIVE_FRAME` path, key-window keyboard
+  handling, and the wrapper lifecycle.
+- `apps/iosc-desktop/`: ioscd `LAUNCH_NATIVE`/`LAUNCH_CLASSIC`, separate native
+  socket/Wayland/config namespace, `gen-launchers.sh --native`, and the on-device
+  `xios-launcher-sync`.
 
-### The concrete changes, by file
+Not built: the v2 direct-buffer fast path (2.4), UIPointerStyle mapping, per-app
+default sizes.
 
-1. **`xios_surface.c` — 1 surface -> N canvases (separable, non-frozen).**
-   New registry: canvases keyed by `window_id`, each an `IOSurfaceCreate` at a
-   toplevel's configured size via the exact align path `xios_surface_create`
-   uses. New `iosc-native.sock` listener with the BIND handshake (app_id +
-   reply-port name) alongside the existing ddx socket (byte-identical for other
-   flavors). `deliver_canvas_port` as above. The native socket is restricted to
-   root/mobile style permissions, not world-writable. `xios_notify_dirty` gains a
-   window-scoped variant that stamps the canvas's `window_id`. This is a new
-   translation unit (`xios_canvas.c`) so most native rendezvous behavior stays
-   out of the compositor monolith.
+## 8. Open questions
 
-2. **`iosc.c` — per-window compositing (implemented).**
-   - `surface_map`: on a TOPLEVEL map in native mode, allocate its
-     canvas, register the `window_id <-> canvas <-> host(app_id)` binding, emit
-     `WINDOW_NEW` + deliver the canvas port. `surface_unmap` emits
-     `WINDOW_GONE` and frees the canvas.
-   - `recomposite_now`: native mode iterates mapped toplevels instead of
-     the single output. For each, `iosc_gl_bind_target(canvas)`, composite that
-     toplevel + its popups/subsurfaces (they already carry `parent` + rel_x/y),
-     `iosc_gl_end`, `xios_notify_dirty(window_id)`. The `g_mapped[]` z-order and
-     `composite_one` are reused verbatim per window.
-   - Title/app_id already tracked on `iosc_surface` (title[256]/app_id[256]);
-     `WINDOW_TITLE` piggybacks the existing foreign-toplevel title path.
-   - xdg_positioner constraint to window bounds for popups (section 5).
+Settled: Variant A (one host process per Linux app) was chosen and built, and
+there was no interim step. Still open:
 
-3. **`iosc_gl.c` — factor `iosc_gl_bind_target` out of `iosc_gl_resize`.**
-   Mechanical: the resize body already does exactly this; split the target
-   rebind from the "forget old output" bookkeeping. Small, and it can land
-   pre-refactor (pure addition, no behavior change for the single-output path).
-
-4. **Input scoping — `XIOS_IN_BIND=8`** in the shared `xios_input_socket.h`
-   (iosc-protocols owns it) + honored in iosc's input reader. The host already
-   sends it (IoscInput.c). Additive record type, like TOUCH=6 / TABLET=7.
-
-5. **ioscd native mode** — DONE (explicit `LAUNCH_NATIVE`/`LAUNCH_CLASSIC`,
-   separate native socket/Wayland/config namespace, skip `foreground_xios`,
-   gen-launchers `--native`).
-
-### Build -> demo path / validation status
-
-1. `xios_canvas.c`: N-canvas registry + `iosc-native.sock`
-   BIND server + async `deliver_canvas_port`.
-2. `iosc_gl_bind_target` split.
-3. iosc.c native-mode `recomposite`/`surface_map` wiring.
-4. `XIOS_IN_BIND=8` into the shared header + iosc reader.
-5. `IOSCHost` `NativeClient` wired to the real ports; `build-host.sh` passes.
-6. On-device: `gen-launchers.sh --native`,
-   tap a GTK4 app icon (kgx/gnome-console), validate it opens as its own iPad
-   window, type into it, home out, confirm the app-switcher card.
-
-### Blockers
-
-- **Remaining validation:** basic native launch has been reported working, but
-  keep a checklist pass for scene resize, per-window touch transform, keyboard
-  hint replay, close, coexistence with classic Xios, and host relaunch replay.
-
-## 8. Open questions for Max
-
-- **Q1 (the gate): confirm scene-per-app hosting, Variant A.** Each generated
-  launcher bundle becomes a real host app that presents its Linux app's
-  windows; one UIKit process per running Linux app. Variant B (one shared
-  host, N scenes) stays possible but demotes the flavor to "windows of one
-  app". Confirm A before any code.
-- **Q2: interim step or straight to P0?** The chooser memory mentions a
-  simpler interim (launch into the one Xios window). That already exists
-  today as the iosc-desktop flow, so the recommendation is to skip any new
-  interim work and go straight at the per-window mode.
 - **Q3: Stage Manager expectations.** The dev iPad (A10, iPad 7) has no Stage
   Manager; it needs M1 iPads (or A12X/A12Z iPad Pros, capped at 4 windows) on
   iPadOS 16.1+. On the dev device this flavor means fullscreen + app switcher
@@ -394,7 +329,7 @@ functions, not the sketch above. Findings that change the estimate downward:
   optional floating-window mode there? (Testing actual Stage Manager behavior
   needs hardware we do not have.)
 - **Q4: background policy.** Backgrounded hosts suspend; Linux apps keep
-  running root-side and burning CPU/battery invisibly (frame callbacks stop,
+  running and burning CPU/battery invisibly (frame callbacks stop,
   so renderers idle, but the process lives). Keep running (real desktop
   semantics, instant resume) or have ioscd SIGSTOP clients whose host has been
   background for N minutes? Recommend: keep running for v1, revisit with data.

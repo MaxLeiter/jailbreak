@@ -1,6 +1,16 @@
 # Xios v2: several desktops at once, launcher-first
 
-Status: approved 2026-10-06 ("just ship it"); open questions resolved with the proposed defaults, see Decisions.
+Status: approved 2026-10-06; open questions resolved with the proposed defaults, see Decisions.
+
+Where it stands (2026-10-25):
+
+- **M0 (coexistence): shipped** in `xios-session 1.0.81`, `xios-session-stubs 0.2.12`,
+  `xios-a11y-tools 0.2.17`, `iosc 0.9.49`, `iosc-shell 0.9.14` (all on production). Details in
+  `handoff/session-launcher.md`.
+- **M1 (new app): written, not merged.** The rewritten app (`com.max.xios 0.2.0`) lives on the
+  `claude/xios-v2-app` and `claude/xios-v2-ship` branches. Production still serves
+  `com.max.xios 0.1.12`, the pre-rewrite app.
+- **M2 and M3: not started.**
 
 Goals, in Max's words: run several sessions at once, be much more robust, launcher-first UI,
 and redesign the socket protocol if that is a real improvement.
@@ -211,6 +221,5 @@ numbers are fixed.
 
 ## Investigation notes
 
-Session scratchpad: protocol inventory, concurrency + memory report, app responsibility map
-and the 64-item invariant list. They will be folded into `x11/apps/Xios/INVARIANTS.md` and the
-relevant handoff docs as the work lands.
+The file-level findings and the memory measurements are in `xios-v2-notes.md`. The invariant
+list is `x11/apps/Xios/INVARIANTS.md`.

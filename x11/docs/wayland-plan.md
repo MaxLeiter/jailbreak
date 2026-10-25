@@ -1,13 +1,16 @@
-# Wayland on iOS — feasibility & plan
+# Wayland on iOS: feasibility and plan (June 2026)
 
-Status: **Historical feasibility baseline; iosc/Wayland is now an active implementation.** Companion to
-[`../SCOPE.md`](../SCOPE.md). Scope: can we stand up Wayland on the jailbroken iPad
-alongside the working native X server (Xios), and is it worth it?
+> Status (2026-10-25): historical. This is the feasibility study that started the Wayland
+> track, written when the software Xios X server was the working desktop. Since then iosc
+> became the compositor every flavor runs on, the X server was retired (2026-07-29), and X11
+> apps run under rootless Xwayland managed by iosc's XWM (built in by default since
+> `iosc 0.9.50`). The analysis below still explains why iosc is a custom compositor rather
+> than a wlroots/Weston port. For current state read
+> [`handoff/iosc-compositor.md`](handoff/iosc-compositor.md) and
+> [`handoff/wayland-apps.md`](handoff/wayland-apps.md).
 
-> **Current status (2026-07-03): superseded as a status source.** The Wayland stack moved well
-> past research: iosc is the in-tree compositor, Wayland apps are being packaged/smoked, and
-> Xwayland-on-iosc is active. Use [`docs/handoff/iosc-compositor.md`](handoff/iosc-compositor.md)
-> and [`docs/handoff/wayland-apps.md`](handoff/wayland-apps.md) for current state.
+Companion to [`../SCOPE.md`](../SCOPE.md). The original question: can we stand up Wayland
+on the jailbroken iPad alongside the native X server (Xios), and is it worth it?
 
 ---
 
@@ -39,10 +42,8 @@ Two findings change the risk profile from "speculative" to "tractable":
    drop-in for iOS, but it is a near-complete design template (and partial code donor) for the
    Wayland glue we'd otherwise write from scratch.
 
-**Historical recommendation:** pursue as a parallel *research/prototype* track while keeping X11
-usable. That prototype has since become the active iosc/Wayland track, including Wayland app
-packaging and Xwayland integration work. The rationale below still explains why iosc exists, but
-it is no longer a future-only proposal.
+**Recommendation at the time:** pursue as a parallel research/prototype track while keeping X11
+usable. That prototype became iosc.
 
 ---
 

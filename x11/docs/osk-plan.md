@@ -4,9 +4,16 @@ Goal: tap a text field in any Linux app and the iPad keyboard slides up,
 already in the right layout (number pad for a PIN field, URL keyboard in a
 browser bar, secure entry for passwords). Tap elsewhere and it slides down.
 Typing lands in the focused field with full UTF-8 (autocorrect, emoji,
-dictation). Status 2026-07-01: the signal chain and the typing path are live;
-the missing piece is the responder policy that actually raises and lowers the
-keyboard, specified here.
+dictation).
+
+**Status (2026-10-25): shipped on all three fullscreen flavors and the native
+host.** iosc and the native host use text-input-v3 TRAITS directly, GNOME gets
+them from the Mutter patch, and KDE gets them through the `ios-inputd`
+input-method proxy (device-verified both directions on 2026-07-29, published in
+`iosc` and `xios-session` since). Return and Tab are sent as keys. Still open:
+a real pass with the iOS keyboard itself (autocorrect, dictation, split keyboard)
+on KDE, and keyboard occlusion (v2, below). The rest of this file is the design
+and the landmines.
 
 ## Signal chain (already built, commits 2a03a5c + b818503)
 
@@ -15,7 +22,7 @@ keyboard, specified here.
    text-input-manager-v3 (iosc.c, "text input" section).
 2. iosc tracks per-client text-input state. Every `text_input.commit` and
    every keyboard-focus change calls `input_clients_send_traits()`
-   (iosc.c:4763), which broadcasts one fixed 24-byte record on the app input
+   (iosc.c), which broadcasts one 32-byte `xios_msg` record on the app input
    socket (`iosc-input.sock` for classic, `iosc-native-input.sock` for native)
    to every connected host:
    `XIOS_IN_TRAITS { code = content_hint, state = content_purpose,
@@ -178,11 +185,11 @@ override func resignFirstResponder() -> Bool {
 HostScreenView.swift carries the same policy against its `applyTraits`
 (landed, built clean via build-host.sh), with two host-specific twists: the
 user-dismiss latch keys off dismiss-key resigns (no chrome button, no
-toggle method), and because TRAITS are not window-scoped yet (XIOS_IN_BIND still
-proposed), every scene hears every broadcast, so the auto-pop is gated on
-`window?.isKeyWindow` and only the scene the user is in raises the
-keyboard. When BIND lands in iosc's reader, drop the gate in favor of
-per-window routing.
+toggle method). When this was written TRAITS were not window-scoped, so every
+scene heard every broadcast and the auto-pop was gated on
+`window?.isKeyWindow`. `XIOS_IN_BIND` has since landed and native-mode TRAITS
+follow the focused window, but the key-window gate is still in the code as a
+second guard.
 
 ## Server-side contract (for the iosc maintainer)
 
@@ -238,11 +245,10 @@ cover the focused field itself. The pieces already exist:
   known caret rect is under the keyboard frame, pan the view up; restore on
   hide. Needs iosc to broadcast the caret rect: one new record
   `XIOS_IN_CARET { x, y, code=w, state=h }` in output pixels, sent on the
-  same commits as TRAITS. Additive, old apps ignore unknown types.
-  Numbering note: this is the INPUT socket's XIOS_IN_* space (24-byte
-  records; next free type is 8), NOT the typed app-socket xios_msg core
-  range (32-byte records, where CLIPBOARD took 0x04 and 0x05-0x0f remain;
-  see clipboard-plan.md). iosc-protocols owns allocations in both spaces.
+  same commits as TRAITS. Numbering note: it would take the next free
+  `XIOS_IN_*` value in `apps/shared/XiosProtocol.h` (0x110 today). Unknown
+  types are fatal on the v1 wire, so the app and compositor must ship it
+  together; it is not additive the way the old 24-byte records were.
 - v2 (compositor-assisted): report the keyboard's occluded height to iosc
   (new app->server record) and let iosc scroll/resize the focused toplevel
   like a layer-shell exclusive zone. Better for the shell flavor; do it
@@ -270,10 +276,8 @@ Do not build either until first-pixels UX shows which one the desktop needs.
 
 Investigated 2026-07-29 by reading the kwin 6.1.5 sources (the version
 recipes/kf6-common.mk pins), not from memory. Every claim below has a
-file:line in that tarball. Status: all three pieces are implemented and
-build clean for arm64 (build-iosc.sh, 0 errors); NOT yet device-tested, so
-treat the end-to-end behaviour as unproven. What that test looks like is in
-"Open items".
+file:line in that tarball. Status: all three pieces are implemented, and both
+directions were verified on the device on 2026-07-29 (see "Device run" below).
 
 ### Why the mutter patch does not port
 
@@ -438,12 +442,10 @@ broken feature.
   to KWin's stderr, so the KDE session log carries "proxy mode" and
   "registered as input-method proxy"; `KDE_AUTO_KEYBOARD=0` turns the whole
   thing off for A/B.
-- SHIPPING: the change is TWO packages and they must ship together, because
-  run-kde-plasma.sh lives in xios-session while ios-inputd lives in iosc.
-  Both are packaged: iosc 0.9.32 and xios-session 1.0.61, the latter with
-  Depends: iosc (>= 0.9.32) so the pairing is enforced rather than remembered.
-  Neither is published yet (the shared checkout was mid-publish for unrelated
-  work: GIMP ports, KDE metas, repo metadata).
+- Shipping: the change spans two packages, because run-kde-plasma.sh lives in
+  xios-session while ios-inputd lives in iosc. It first shipped as iosc 0.9.32
+  and xios-session 1.0.61 (with `Depends: iosc (>= 0.9.32)`); both have been
+  superseded on the repo (iosc 0.9.51, xios-session 1.0.82).
 - Confirmed source-side that our kwin deb has the globals:
   src/wayland/CMakeLists.txt:284 lists inputmethod_v1.cpp unconditionally and
   kwin-ios-fixes.sh only appends to that file. Still worth one
@@ -462,12 +464,12 @@ broken feature.
 | traits -> UITextInputTraits mapping     | apps/Xios/Sources/XScreen.swift, apps/iosc-host/Sources/HostScreenView.swift | landed |
 | typing return path (UIKeyInput -> TEXT) | apps/Xios/Sources/XScreen.swift           | landed |
 | per-record TRAITS poll                  | apps/Xios/Sources/IoscInput.c, apps/iosc-host/Sources/IoscInput.c | landed (b80cd60) |
-| responder policy (auto pop/hide)        | apps/Xios/Sources/XScreen.swift           | landed (6f51c1e, xios-app); staged, awaiting batched redeploy |
+| responder policy (auto pop/hide)        | apps/Xios/Sources/XScreen.swift           | landed (6f51c1e), shipped |
 | responder policy, native host           | apps/iosc-host/Sources/HostScreenView.swift | landed (key-window gated); builds clean |
 | server contract pinned in code          | wayland/iosc.c input_clients_send_traits  | landed (23d70ef, comment-only) |
 | caret rect / occlusion                  | iosc.c + app                              | deferred (v2) |
 | GNOME TRAITS broadcast                  | linux-build/patches/mutter/meta-wayland-text-input-osk-ios.patch | landed (applied by integrate-ios-backend.sh) |
-| KDE bridge, IM-proxy socket role        | wayland/xios_input_socket.{c,h} (XIOS_IN_IMPROXY, _send_improxy, _has_improxy) + xios-glue-stub.h twin | built clean, not device-tested |
-| KDE bridge, iosc side                   | wayland/iosc.c (proxy traits latch, TEXT routing, disable-on-proxy-loss) | built clean, not device-tested |
-| KDE bridge, input-method-v1 client      | wayland/ios-inputd.c proxy mode + protocols/input-method-unstable-v1.xml + build-iosc.sh | built clean, not device-tested |
-| KDE bridge, launch hook                 | wayland/run-kde-plasma.sh (`--inputmethod`, KDE_AUTO_KEYBOARD) | not device-tested |
+| KDE bridge, IM-proxy socket role        | wayland/xios_input_socket.{c,h} (XIOS_IN_IMPROXY, _send_improxy, _has_improxy) + xios-glue-stub.h twin | shipped, device-verified 2026-07-29 |
+| KDE bridge, iosc side                   | wayland/iosc.c (proxy traits latch, TEXT routing, disable-on-proxy-loss) | shipped, device-verified 2026-07-29 |
+| KDE bridge, input-method-v1 client      | wayland/ios-inputd.c proxy mode + protocols/input-method-unstable-v1.xml + build-iosc.sh | shipped, device-verified 2026-07-29 |
+| KDE bridge, launch hook                 | wayland/run-kde-plasma.sh (`--inputmethod`, KDE_AUTO_KEYBOARD) | shipped, device-verified 2026-07-29 |

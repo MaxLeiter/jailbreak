@@ -1,5 +1,13 @@
 # Audio plan
 
+> **Status (2026-10-25): done, and this is the early design note.** The shipped
+> stack is PulseAudio 17 with `module-xios-sink` / `module-xios-source` in front of
+> `xios-audiod` (`xios-audio-server 0.1.2`) and `xios-mediad`
+> (`xios-media-server 0.1.1`). How desktop apps reach it, packaging and the
+> on-device checks are in `audio-desktop-plan.md`; current status is in
+> `handoff/polish.md`. Keep this file for the reasoning (why userspace, why not a
+> kernel driver).
+
 Goal: make X11/GTK apps running under Xios able to play sound on the iPad speakers or
 current iOS audio route, without writing a kernel driver.
 
@@ -21,7 +29,7 @@ subsystem launched with the session.
 
 ## Status (verified on device)
 
-A1 is live and confirmed on the iPad (iPad7,12, iPadOS 17.6.1, palera1n rootless):
+A1 is live and confirmed on the iPad (iPad7,12, iPadOS 17.6.1, rootless):
 
 - `xios-audiod` opens `kAudioUnitSubType_RemoteIO` from a fakesigned userspace daemon and
   plays audible PCM out the speaker. No GPU-style entitlement wall like Metal had; the
@@ -31,16 +39,18 @@ A1 is live and confirmed on the iPad (iPad7,12, iPadOS 17.6.1, palera1n rootless
   before opening RemoteIO, so audio ignores the hardware mute switch and survives screen
   lock. AVAudioSession is reachable from a non-app, fakesigned process.
 - The render callback is confirmed to be serviced by the HAL: `SIGUSR1` dumps render stats
-  (`render_calls` / `render_frames`) which climb at ~48 kHz whether or not a client is
-  connected.
+  (`render_calls` / `render_frames`). In this first version they climbed at ~48 kHz
+  whether or not a client was connected; since `xios-audio-server 0.1.2` the daemon
+  opens the output only while something plays and closes it about 5 s after the
+  sound stops, because an always-open output kept the iPad from ever sleeping.
 - `xios-audio-play` (the native smoke-test sine client) routes PCM into the daemon over
   `/var/jb/tmp/xios-audio.sock`.
 - Lifecycle: `SIGTERM`/`SIGINT` shut the daemon down cleanly and unlink the socket
   (handlers installed via `sigaction` without `SA_RESTART`; lifecycle signals blocked in
   client threads so the main accept loop receives them).
 
-Still untested on device in this early note: a real GTK/XFCE app. The current desktop
-audio path is the real PulseAudio daemon described in `audio-desktop-plan.md`.
+Real desktop apps reach it through the PulseAudio daemon described in
+`audio-desktop-plan.md`.
 
 ## What already exists
 
@@ -75,7 +85,7 @@ permissions before we touch desktop compatibility.
 
 ### A1: ship a small Xios audio daemon [implemented]
 
-Add `xios-audiod`, a tiny daemon launched beside the X server. It owns the CoreAudio
+Add `xios-audiod`, a tiny daemon launched with the session. It owns the CoreAudio
 RemoteIO unit and exposes a Unix-domain socket under `/var/jb/tmp`, for example:
 
 ```
@@ -89,7 +99,7 @@ Acceptance:
 
 - multiple short-lived clients can connect without wedging audio;
 - one active output stream plays with low enough latency for UI sounds/video;
-- daemon restart does not require restarting the X server.
+- daemon restart does not require restarting the display server.
 
 ### A2: expose Linux app audio [implemented through PulseAudio]
 

@@ -1,88 +1,77 @@
-# Xios / X11-on-iOS — team handoff index
+# Xios handoff index
 
-One file per domain. Each is a self-contained charter for an independent agent: ownership, current state, key files/commits/gotchas, open items, and how to verify on-device. Spin up one agent per file and point it at that file; use the per-domain timestamps as the status authority.
+One file per domain. Each starts with its current state (checked against `repo/Packages`,
+which is what production serves), then gotchas, then a short history. Point one agent at one
+file. When a doc and the index disagree, the index wins; fix the doc.
+
+Last full pass: 2026-10-25.
 
 ## Device
-- iPad7,12 / A10 / iOS 17.6.1, rootless jailbreak (/var/jb).
+
+- iPad7,12 (A10), iPadOS 17.6.1, Dopamine rootless (`/var/jb`), Procursus.
 - SSH: `ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 root@MaxsiPad.local`
-- Repo: /Users/max/Documents/jailbreak/x11 (this dir).
-- Agent harness: prefer `bin/xios-device` for SSH status checks, session
-  launch/switch, input injection, screenshots, and evidence collection. See
-  `docs/device-testing.md`.
+- Prefer `x11/bin/xios-device` for status, session launch and switch, input injection,
+  screenshots and evidence. See `docs/device-testing.md`. Check whether someone else is
+  using the device (apt history, file mtimes) before trusting a test.
 
 ## The product
-"Install one `xios` meta-package → pick your desktop flavor": iosc (lightweight Wayland shell, WORKS today) · GNOME Shell/Mutter · KDE Plasma · native-iPadOS per-window. Chooser = Sileo + the in-app Xios panel (three-finger tap, or the status bar button); switching between already-running X/Wayland displays lives under Advanced in that panel.
 
-## Domains (files here)
-1. **xios-app.md** — the Xios iOS app (Metal present + touch/keyboard input + IOSurface adopt). Scale/tap/sized-session path is verified; rotation/polish remain.
-2. **iosc-shell.md** — the iosc lightweight shell (panel/dock/overview/wallpaper) + the tablet-DE redesign vision.
-3. **iosc-compositor.md** — the iosc Wayland compositor (iosc.c) + the wire protocol (input/present/clipboard/native/XWM/etc).
-4. **mutter.md** — MetaBackendIOS (Mutter on iOS, = GNOME Shell's compositor).
-5. **gnome-session.md** — GNOME session layer + the shell boot. First light achieved; current work is packaging/persistence/polish.
-6. **gtk4-typelibs.md** — on-device GObject-Introspection typelibs. The boot-critical scan work is packaged as `xios-gnome-typelibs 0.2.0`; ATK/AT-SPI version alignment remains.
-7. **kde-kf6.md** — Qt6 modules + KF6 + KWin first-light package work.
-8. **native-ipados.md** — the native per-window iPad flavor. Runtime-coexists with the fullscreen desktop.
-9. **session-launcher.md** — the flavor switcher (CLI + daemon + in-app picker).
-10. **svg-loader.md** — real `librsvg`/GdkPixbuf SVG loader audit for GTK/GNOME icon themes.
-11. **polish.md** — smaller tracks: touch-scroll/gestures, clipboard sync, rotation, native-feel (volume/dark/haptics), gsd plugins.
-12. **wayland-apps.md** — the ported desktop app wave (terminal/viewers/media/utilities), why some don't yet map a window in iosc + the fixes (foot PTY, GTK3 wayland backend, mpv EGL shim, hitori schema), the on-device capture/debug tooling, and the app TODO.
-13. **wayland-extra-apps.md** — the next requested standalone app wave: swaybg, tofi, waybar, swayimg, yad, nwg-look, Geary/WebKitGTK, Gnumeric, and Transmission.
-14. **xfce.md** — the previously stranded XFCE 4.16 recipe chain, its new reproducible build lane, and the gates before it can become a supported session flavor.
-15. **loose-ends-audit.md** — repository-wide 2026-07-18 closure ledger: completed host work, immutable package queue, intentional shims, real port blockers, and deferred device proof.
-16. **games.md** — SDL2/SDL3 strategy-game wave: OpenTTD, Warzone 2100, Battle for Wesnoth, and 0 A.D.; shared dependencies, packaging, and isolated device proof.
-17. **openjdk.md** — full OpenJDK 21 HotSpot JRE/JDK lane, rootless package split, iOS code-cache behavior, and A10 device proof.
-18. **amethyst-minecraft.md** — native UIKit/LWJGL graphical Minecraft launcher, rootless/rootful packaging, system OpenJDK integration, and physical GUI proof gate.
-19. **audit-2026-10-01.md** — what the 2026-10-01 audit and its follow-ups left open: ship-together and version-bump queue, device test focus, and remaining decisions.
+Install one flavor from Sileo and open the X11 icon. The flavor table (what each meta
+installs, versions, floors) is in `docs/repo-fold-in.md`; the user-facing version is
+`docs/USER-GUIDE.md`.
 
-## Current headline status
-- **OpenJDK 21.0.12 HotSpot is built, packaged, and running on the A10 iPad
-  (2026-07-30):** the rootless `openjdk-21-jre-headless` and
-  `openjdk-21-jdk-headless` packages provide the complete headless runtime,
-  compiler/tool suite, JFR/JVMCI, and C1/C2 rather than a Zero-only VM. Device
-  proof covers 30/30 cold starts, tier-4 compilation, ProcessBuilder, ImageIO,
-  HTTPS, JFR, `jlink`, interpreted mode, and the optional mirrored code cache.
-  Native AWT windows remain a separate XAWT/Wayland peer milestone; see
-  **openjdk.md**.
-- **Full desktop input is implemented locally (2026-07-19):** both the fullscreen Xios app and
-  native per-window host now consume raw Game Controller HID keyboard transitions, preserve
-  held keys/chords, map Command to Super, forward Caps/Num lock, support hover plus five mouse
-  buttons, and distinguish continuous trackpad scrolling from discrete wheel scrolling. iosc
-  also honors pointer lock/confinement and client cursor surfaces; Mutter's iOS backend consumes
-  the same stateful key/modifier wire. Release iPhoneOS builds and host keymap tests pass. The iPad
-  is offline, so physical Magic Keyboard/mouse/trackpad proof remains the release gate.
-- **iosc desktop WORKS interactive on-device**: GPU-composited, panel with launchers, GNOME apps launch as windows, auto-keyboard + typing.
-- **The prior stale-scale/tap-offset bug is fixed on the app path:** Xios now re-adopts/re-syncs IOSurface geometry, resets zoom on adopt, and maps input through the current fit transform. Keep checking `/var/jb/tmp/xios-touch.log` when changing present/input code.
-- **Portrait/rotation path exists now:** the in-app Desktop Session picker can still launch portrait-sized sessions, and the clean packaged compositor now includes the native-feel OUTPUT resize path. Verified default `1440x1080` logical iosc -> OUTPUT transform 1 -> `1080x1440` logical / `2160x2880` framebuffer on-device with `iosc 0.9.9` and the rebuilt Xios app. Latest Xios build removes visible debug chrome: three-finger tap opens the one Xios panel (desktop, size, apps; displays and diagnostics under Advanced), pinch app-zooms in/out to fit, lower-screen one-finger swipe opens the keyboard.
-- **Native iPadOS per-window mode is implemented and runtime-gated, not build-time-gated.** Classic and native can coexist: ioscd accepts explicit `LAUNCH_CLASSIC`/`LAUNCH_NATIVE`; native uses `wayland-native-0`, `iosc-native-input.sock`, and `xios-native.json`.
-- **App launching is app-ID-only and unprivileged.** ioscd resolves trusted,
-  root-owned desktop entries itself and starts clients/session D-Bus as
-  `mobile`; socket clients cannot supply executable text. The package split is
-  `xios-runtime` (shell-independent compositor/GPU/D-Bus/audio/FHS bridges),
-  `xios-core` (fullscreen Xios app/shell/session), and `xios-native` (runtime +
-  launcher tools + Settings, no fullscreen shell).
-- **Native-feel bridges are mostly live:** volume/dark-mode helpers, battery/backlight/sysfs, SensorProxy/CoreMotion, haptic broadcast plumbing, and PulseAudio sink+mic source are deployed/validated in pieces. Physical haptic feel, true UIKit pasteboard round trip, real VoiceOver gestures, and GNOME-facing camera portal/GStreamer remain follow-ups; see `polish.md`.
-  - Battery is genuinely live as of 2026-07-29 (`kf6-solid 6.3.0+ios2` — KDE reads batteries via Solid, not UPower, and ours shipped no real backend). **Backlight is only half live:** reads work, writes reach the sysfs node and go no further, because `BKSDisplayBrightnessSet` is inert outside SpringBoard. Details in `kde-kf6.md` and `polish.md` #15.
-- **GNOME Shell 46 is up on-device with `gnome-shell 46.0+ios3`**: `xios-session gnome` and
-  `xios-session -d gnome` now route through the packaged full-session `launch-gnome-session.sh`
-  and the latest daemon smoke reached `gnome/up` with `xios-session 1.0.46` +
-  `xios-session-stubs 0.2.4`; the old direct Shell runner is no longer shipped or present on-device.
-  Gvc/volume no longer blocks first paint, and Quick Settings no longer hits the
-  `get_accessible`/`_output` JS errors. Offline candidates `xios-session-stubs 0.2.5`,
-  `libgtop-2.0-11 2.41.3+ios2`, and `xios-desktop-stublibs 0.1.1` close the remaining behavioral
-  shim gaps but still need device smoke. Later stop/KDE requests can supersede GNOME by design.
-- **KDE/KF6 has a clean-built real KWin ANGLE/Metal + IOSurface backend (`kwin +ios5`), QtWayland/ANGLE IOSurface smoke, `xios-session kde`/`kde-desktop` launching the real upstream Plasma Desktop shell, a live KIO `desktop:` worker, real KScreen/System Settings/KCM packages, Breeze/plasma-integration styling, real Milou search, Xios/iOS-backed Plasma Mobile providers, a stable detached KWin/plasmashell launcher path, and a published/smoked first app batch (`ark`, `gwenview`, `kwrite`).** The installed device baseline is still `kwin +ios2`; `+ios5` and `xios-kde 0.1.9` are live in staging, and the next gate is an isolated GPU/effects smoke once the device returns, then System Settings/KScreen and app-launch checks.
-- **Wayland app ecosystem is now broad enough for daily smoke testing**:
-  wl-clipboard/mpv/foot/imv/slurp/fuzzel/grim/dunst/GTK3 apps and the rootless
-  Xwayland XWM work are on local commits and have on-device evidence in classic
-  `iosc`. The package repo output is very dirty; coordinate before publishing.
-  See **wayland-apps.md** for per-app status, the launch-in-iosc fixes (foot PTY,
-  GTK3 wayland backend, mpv EGL shim, hitori schema, fuzzel worker defaults,
-  imv native GLES renderer + Xwayland wrapper), and the `bin/iosc-capture*`
-  debug tooling. Remaining app-wave work is Max-gated publish/rollout of newer
-  local candidates.
+- `xios-gnome`: GNOME Shell 46 on Mutter's iOS backend.
+- `xios-kde`: KDE Plasma (Desktop, Mobile, Nano) as KWin nested in iosc, plus 8 KDE apps.
+- `xios-x11`: X11 apps through rootless Xwayland on the iosc desktop.
+- `xios-native`: no desktop; each Linux app is its own iPadOS window.
 
-## Key cross-cutting gotchas (all domains touching the app/device)
-- **Deploy the Xios app**: it is a PACKAGE (`com.max.xios`), pulled in by `xios-core`, so the shipping path is `bin/package-app.sh x11/apps/Xios` → `dpkg -i` the deb. Bump `MARKETING_VERSION` in `x11/apps/Xios/project.yml` first or apt sees no upgrade. The deb keeps perms and the ldid signature (`package-app.sh` signs with `entitlements.plist` before staging) and its postinst runs `uicache -p`, so none of the scp landmines below apply. They still apply to the `bin/install-app.sh` iteration loop: `scp -r` DROPS the exec bit AND the bundle `_CodeSignature`, so `chmod +x Xios.app/Xios` then re-sign `ldid -e Xios.app/Xios > ents; ldid -S<ents> Xios.app/Xios` (keeps GPU entitlements); `scp -r` into an existing bundle NESTS → `rm -rf` the dest first; `uicache -p` after.
-- **FrontBoard relaunch throttle**: rapidly killing+relaunching the app trips it (0 procs, empty status, no crash log). `sbreload` clears it. The app needs the screen AWAKE + foreground to launch (nil Metal when backgrounded). A home-screen icon TAP is far more reliable than SSH `uiopen -b`.
-- **Zombie surfaces**: fixed since `iosc 0.9.4` by cleaning compositor surfaces on client disconnect; the current host-built/indexed candidate is `iosc 0.9.18` (device smoke deferred). If stale panels reappear, first verify the installed package/hash and inspect `/var/jb/tmp/iosc.log`; restarting iosc still clears any residual state during diagnosis.
-- **Per-compositor geometry**: iosc's output IOSurface is variable (logical×scale); the next Mutter `+ios3` build also honors requested startup geometry and replaces its IOSurface on rotation. Anything mapping fb↔screen must still read `/var/jb/tmp/xios.json`, never a fallback constant.
+The first three sit on `xios-core` (the Xios app, iosc, iosc-shell, `xios-session`,
+`xios-launcher-tools`). All four sit on `xios-runtime` (iosc, ANGLE, D-Bus, audio, FHS
+bridges). Several desktops can run at once as slots; the in-app panel (three-finger tap)
+picks and switches them.
+
+## Domains
+
+| file | current state (2026-10-25) |
+|---|---|
+| `xios-app.md` | `com.max.xios 0.1.12` published. The 10-25 ioscd error-message change needs a `MARKETING_VERSION` bump to ship. Hardware input matrix still needs a device run. |
+| `iosc-compositor.md` | `iosc 0.9.51` published: fenced triple-buffered output, XWM built in, X windows map on device, one X display per slot. Open: wider XWM coverage, `DISPLAY` on ioscd and shell launches. |
+| `iosc-shell.md` | `iosc-shell 0.9.14` published; launches run as `mobile`. Server-side decorations not built. |
+| `session-launcher.md` | `xios-session 1.0.82`, `xios-launcher-tools 0.1.12` published: desktops coexist, preflight before teardown, `presets`, per-bus ioscd helpers. The last three are host-tested only. |
+| `native-ipados.md` | `xios-native 0.1.8` published; launches by app id work on device. Raw touch and per-bus helpers have no recorded device run. |
+| `gnome-session.md` | GNOME Shell 46 (`gnome-shell 46.0+ios3`, `xios-gnome 0.1.12`) boots and runs as a slot. Open: atk-bridge off, calendar off, unpublished gnome-desktop/ibus fixes. |
+| `mutter.md` | `libmutter-14-0 46.0+ios11` published. Touch, scroll, IM text and clipboard work. Open: a real Pencil tablet tool. |
+| `gtk4-typelibs.md` | Done, packaged as `xios-gnome-typelibs 0.2.0`. Rescans are still a device job. |
+| `svg-loader.md` | Done (`librsvg 2.56.5`, pulled in through `xios-desktop-theme`). |
+| `kde-kf6.md` | Plasma Desktop, Mobile and Nano plus 8 apps ship as `xios-kde 0.1.21` on `kwin +ios33`. Open: `kwin +ios34` built but unpublished, brightness applet, Nano is first-light only. |
+| `polish.md` | Rotation, volume, dark mode, brightness, haptics, clipboard and audio landed. Open: physical checks (UIKit clipboard leg, VoiceOver gestures) and camera. |
+| `wayland-apps.md` | First app wave all published and smoke-tested in iosc; the imv wrapper still prefers X11. |
+| `wayland-extra-apps.md` | Second wave all published and smoke-tested; waybar is a minimal build, Transmission's GTK client is not built. |
+| `geary-webkitgtk.md` | WebKitGTK 2.44.4 and Geary 46 published on an end-of-life engine, with security notices. The multiprocess WebKit smoke is still open. |
+| `games.md` | OpenTTD, Warzone 2100 and Crispy Doom run on the device; Wesnoth has never run there; 0 A.D. dropped. Nothing published. |
+| `openjdk.md` | Headless OpenJDK 21.0.12+ios1 published and working on the device. Rootful and AWT `+ios2` builds unpublished. |
+| `amethyst-minecraft.md` | Host build only; unpublished; never run on the device. |
+| `xfce.md` | Only Thunar and its libraries are published. There is no XFCE session. |
+| `audit-2026-10-01.md` | The audit's rebuild wave shipped. Still unbumped: waybar, angle, basu, kf6-i18n, KitchenHub, KioskMode, XiosPrefs. Open decisions listed. |
+| `loose-ends-audit.md` | Intentional shims (do not "fix" them), remaining port work, and physical checks no one has recorded. |
+
+## Cross-cutting gotchas
+
+- **The Xios app is a package** (`com.max.xios`, pulled in by `xios-core`). Ship it with
+  `bin/package-app.sh x11/apps/Xios` and install the deb. Bump `MARKETING_VERSION` in
+  `x11/apps/Xios/project.yml` first or apt sees no upgrade. The deb keeps the exec bit and
+  the ldid signature, and its postinst runs `uicache -p`. The `bin/install-app.sh` dev loop
+  does not: `scp -r` drops the exec bit and `_CodeSignature`, and copying into an existing
+  bundle nests it, so `rm -rf` the destination, `chmod +x`, re-sign with the existing
+  entitlements, then `uicache -p`.
+- **Host-signed binaries can be killed on the device** (exit 137), and installing from a deb
+  does not always avoid it. Re-sign on the device when that happens.
+- **FrontBoard.** Killing and relaunching the app quickly trips a throttle (no process, no
+  crash log); `sbreload` clears it. The app needs the screen awake and unlocked to present.
+  A Home Screen tap is more reliable than `uiopen -b` over SSH.
+- **Geometry comes from `/var/jb/tmp/xios.json`** (or `xios-<slot>.json`), never a constant.
+  iosc's output is logical size times scale and changes on rotation.
+- **ioscd and the Xios app ship together.** Picker launches send desktop-file ids, and each
+  package Breaks the other's older versions.
+- **Public deb filenames are immutable.** Bump the version, never replace bytes. See
+  `AGENTS.md` for the publish procedure.

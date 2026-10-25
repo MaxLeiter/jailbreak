@@ -1,19 +1,90 @@
-# session-launcher — the flavor switcher (CLI + ioscd + in-app picker)
+# session-launcher: the flavor switcher (CLI, ioscd, in-app picker)
 
-## Ownership
-Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SESSION` request path, and the in-app ⧉ picker's backend. Reuses the real iosc/Mutter bring-up scripts and the packaged GNOME session launcher (does not reinvent them).
+Owns how a desktop gets picked, started, switched and stopped on the iPad: the
+`xios-session` CLI and its shell library, ioscd's `SESSION` request path, and the backend
+of the picker in the Xios app. It reuses the real bring-up scripts (`run-shell.sh`,
+`run-mutter.sh`, `run-kde-plasma.sh`) and the packaged GNOME launcher instead of
+reinventing them. The design overview is `docs/session-launcher.md`; the multi-desktop
+design is `docs/xios-v2-design.md`.
 
-## Key files (all under `x11/apps/iosc-desktop/`)
-- `xios-session-lib.sh` — single source of truth: ONE teardown for the non-slot session (recorded process groups first, then a pattern fallback that skips everything a slot owns; see "M0 coexistence") + a slot stop that reaps only that slot + preset fns that CALL `run-shell.sh`/`run-mutter.sh`; normal switches preserve the Xios display app, while explicit `stop` also terminates it. GNOME resolves the packaged `launch-gnome-session.sh` from `xios-session-stubs`. Resolver normally prefers the installed owner script (`/var/jb/usr/local/bin`, then `/var/jb/usr/bin`) over the pinned libexec copy, but slot mode prefers the packaged libexec copy first so stale live owner scripts cannot drop slot-specific env/argv. Switch operations serialize with atomic `/var/jb/tmp/xios-session.lock`; `app <name>` deliberately stays off that lock so a slow GUI launch cannot block desktop controls. The launcher records daemon session process groups, validates that a live group still contains a known Xios session process before signaling it, and uses `/var/jb/tmp/xios-session.request-seq` so stale queued switch requests skip instead of running after a newer pick.
-- `xios-session` — CLI: `xios-session iosc|mutter|gnome|kde|app <name>|stop|status|presets`. Works over SSH (no daemon needed). Installed at `/var/jb/usr/local/bin/xios-session` (not on the default SSH PATH — use the full path over SSH, or bare on an on-device terminal). `-d/--via-daemon` talks to ioscd's Unix socket via `nc`, `socat`, then Python; it now falls through to the next transport if an installed `nc` exists but cannot handle the socket.
-- `package-session.sh` → current device-tested package is `xios-session 1.0.67`
-  (immutable deb in `linux-build/out/` and top-level `repo/debs/`; not a production
-  publication claim). This package carries the KDE Qt platformtheme/Breeze env bridge,
-  KDE color-scheme app-data bridge, Desktop fullscreen outer-KWin placement, guarded
-  stale Desktop state migration, Mobile sizing/wallpaper/Folio setup, non-foregrounding
-  slot sessions, slot cleanup, and the 2026-07-29 responsiveness fixes.
-- `ioscd` — socket daemon. For `SESSION`, it now invokes `/var/jb/usr/bin/bash /var/jb/usr/local/bin/xios-session ...` instead of `execve`ing the shell script directly; direct script exec from launchd returned `ENOENT` before the script reached its own log. The daemon logs untracked child exit/signal status and now logs each `SESSION` request's peer pid/uid/path plus payload before launch, so parallel CLI/app-picker requests are attributable in `/var/jb/tmp/ioscd.log`.
-- In-app picker: ⧉ button → modal; sends `SESSION` over `/var/jb/tmp/ioscd.sock`. Status line polls `/var/jb/tmp/xios-session-status.json`.
+## Current state (2026-10-25)
+
+- Production serves `xios-session 1.0.82`, `xios-session-stubs 0.2.12`,
+  `xios-launcher-tools 0.1.12` (ioscd), `com.max.xios 0.1.12`, `iosc 0.9.51` and
+  `iosc-shell 0.9.14`. `xios-core 0.1.13` pulls all of them in; the flavor table is in
+  `docs/repo-fold-in.md`.
+- Desktops coexist (Xios v2 M0): several slots can run at once, each torn down on its own.
+  Device-verified on 2026-10-06 (see "M0 coexistence").
+- `xios-session` and `xios-launcher-tools` both depend on `xios-session-stubs` now, so
+  every fullscreen flavor and every ioscd app launch has `xios-sysintd` (volume and dark
+  mode bridge) and `xios-setsid`. Before 1.0.82 only `xios-gnome` brought them, so KDE and
+  X11 sessions ran without the bridge and without process-group isolation.
+- A flavor that is not installed is refused before the running desktop is touched, and
+  `xios-session presets` lists what can start. Host-tested; no device run yet.
+- ioscd starts its app-launch helpers per bus, not "once anywhere", and gives its own
+  sysintd a private socket when a desktop already serves the global
+  `/var/jb/tmp/xios-sysint.sock` (03da4e55). Host-tested; no device run yet.
+- With `xios-x11` installed, the iosc preset starts Xwayland (rootless, under iosc's XWM)
+  and `xios-session app` hands clients `DISPLAY` plus `GDK_BACKEND=wayland,x11`. Device
+  proof and the XWM itself are in `iosc-compositor.md`.
+- Not done: the app still lists every preset instead of asking `presets`, and the app does
+  not yet send appearance changes to every slot's sysintd (M1 work, see
+  `docs/xios-v2-design.md`). No meta ships a standalone `mutter`, so the `mutter` preset
+  only works on a dev install.
+
+## Key files (under `x11/apps/iosc-desktop/` unless noted)
+
+- `xios-session-lib.sh`: the one implementation. Presets call the bring-up scripts;
+  `xs_preset_check` knows what each flavor needs; teardown is ownership-based (recorded
+  process groups first, then exact slot needles, never a blind pattern over another
+  slot). Normal switches keep the Xios app alive; `stop` with no slot alive also ends it.
+- `xios-session`: the CLI. `xios-session iosc|mutter|gnome|kde|kde-desktop|kde-mobile|kde-nano|app <name>|resize|stop [all]|status|presets`,
+  plus `--slot <name>` and `-d/--via-daemon`. Installed at `/var/jb/usr/local/bin/xios-session`,
+  which is not on the default SSH `PATH`, so use the full path over SSH. Without `-d` it
+  runs the library directly and needs no daemon; `-d` sends the same request the picker
+  sends, over `nc`, then `socat`, then Python.
+- `src/ioscd.c`: the root daemon behind `/var/jb/tmp/ioscd.sock` (`com.max.ioscd`,
+  packaged in `xios-launcher-tools`). `SESSION` runs `/var/jb/usr/bin/bash
+  /var/jb/usr/local/bin/xios-session ...`; optional fields carry width/height/dpi (exported
+  as `IOSC_LOGICAL`) and a slot name (exported as `XIOS_SESSION_SLOT`). App launches take
+  only an app id: ioscd resolves a trusted, root-owned desktop entry and starts the client
+  and its session bus as `mobile`. Each `SESSION` request is logged with the peer
+  pid/uid/path in `/var/jb/tmp/ioscd.log`, so you can tell who asked for a switch.
+- `x11/wayland/run-iosc.sh`, `x11/apps/iosc-shell/run-shell.sh`, `x11/wayland/run-mutter.sh`,
+  `x11/wayland/run-kde-plasma.sh`: bring-up scripts. They refuse to start over a live
+  compositor of the same name instead of killing it.
+- Runtime files in `/var/jb/tmp`: `xios-session-status.json` (non-slot lifecycle; the
+  picker polls it), `xios-session-<slot>.json`, `xios-displays.d/<slot>.json` (registry the
+  app lists), `xios-app-launch-status.json` (additive app launches, kept apart from the
+  lifecycle record), `xios-session.lock`, `xios-session.request-seq`,
+  `xios-session.pgids`, `xios-active-session[-<slot>]`.
+- Host tests: `test-session-slots.sh`, `test-session-state.sh`, `test-session-preflight.sh`,
+  `test-session-x11.sh`, `test-session-bus.sh`, `test-ioscd-helpers.sh` and
+  `test-ioscd-fds.sh` (the last two run by `build-stub.sh`).
+
+## How a switch works
+
+1. Preflight: `xs_preset_check` refuses a flavor that cannot start (exit 69) before anything
+   is stopped.
+2. Lock: every state-changing command takes `xios-session.lock` (atomic `mkdir`, since iOS
+   has no `flock`), waiting up to `XIOS_SESSION_LOCK_WAIT` (45 s) and reaping an owner older
+   than `XIOS_SESSION_LOCK_STALE` (180 s). `app <name>` stays off the lock so a slow GUI
+   launch cannot block desktop controls.
+3. Supersede: switch requests bump `xios-session.request-seq` before waiting; a queued
+   request that sees a newer one exits 75. The newest explicit request wins by design, so
+   if a desktop "disappears", check `ioscd.log` for who asked.
+4. Teardown, then settle (`XIOS_SESSION_SETTLE`, 2 s) so the kernel reclaims the old
+   compositor's IOSurface and Metal context before the next one allocates. Without the
+   settle the GPU memory spike jetsammed the Xios app.
+5. Start, wait for the compositor surface, foreground or relaunch the app, write `up`.
+   Status states: `stopping | starting | waiting | relaunching | up | error | stopped |
+   compositor-only | down`. Teardown, the KDE exit monitor and ioscd write `down` when a
+   live session dies, so the picker never shows a stale `up`.
+
+Slot sessions do not foreground Xios unless `XIOS_SLOT_FOREGROUND=1`, so a test can start
+a slot without stealing the screen. The stale-slot sweep (`xs_sweep_stale_slot_registry`,
+off with `XIOS_SESSION_SWEEP_SLOTS=0`) drops registry entries with no socket, no config and
+no live process, once per operation and under the lock.
 
 ## 2026-10-25: uninstalled flavors are refused before teardown (host-tested, not on device)
 
@@ -44,98 +115,7 @@ Letting the user pick/switch desktop flavors from the iPad: the CLI, ioscd's `SE
 - Test: `apps/iosc-desktop/test-session-preflight.sh` (scratch prefix, fake live KDE,
   `xios-session gnome` must exit 69 and leave KDE, its status and pgids alone).
 
-## M0 coexistence (2026-10-06): desktops run side by side
-
-Xios v2 milestone M0 (`docs/xios-v2-design.md`). `xios-session 1.0.81`,
-`xios-session-stubs 0.2.12`, `xios-a11y-tools 0.2.17`, `iosc 0.9.49`, `iosc-shell 0.9.14`.
-No app change, no wire change. Verified on the iPad with KDE, GNOME and the iosc shell up at
-the same time (see "Device results").
-
-**Rules the launcher now follows**
-
-- Nothing is killed by pattern when it can be proven to belong to someone else. Ownership is,
-  in order: a recorded process group (`xios-session.pgids`, validated against a live session
-  process before it is signalled), then an argv needle that names the slot exactly
-  (`xs_slot_regex`: `wayland-<slot>`, `kwin-<slot>`, `iosc-<slot>-ddx.sock`, ... each ends at a
-  character that cannot continue a slot name, so `kde` never matches `kde-2`).
-- A non-slot teardown (switching or stopping the non-slot session) reaps its recorded groups,
-  then subtracts every slot-owned pid (`xs_slot_protected_pids`: slot pgids, needle matches, the
-  rest of those groups, and all descendants) from its fallback pattern before sending a signal.
-  It no longer touches the shared audio services (`xios-audiod`, `xios-mediad`, `pactl`, `mpv`):
-  only an everything-stops teardown does.
-- `--slot X stop` reaps the slot's recorded groups, then its named processes, then the shell
-  clients recorded in `<client>-wayland-<slot>.pid`, then removes its sockets, session bus
-  (`xios-session-bus-<slot>`, stopped by the pid in `bus.pid`), runtime dirs and markers
-  (`xs_stop_slot_named`). A group recorded for more than one owner is never signalled as a
-  group (the needle pass handles that slot); this is the safety net for two sessions started
-  from one script. The CLI also re-execs itself as its own process-group leader through
-  `xios-setsid` for state-changing presets, so chained commands no longer share a group.
-- `xios-session stop` now means the non-slot session. The Xios app and the shared services go
-  with it only when no slot is alive. `xios-session stop all` stops every slot, the non-slot
-  session, shared services and the app (CLI only; ioscd's `SESSION` request has no `all`).
-- GNOME: `launch-gnome-session.sh` writes the group id of the session it re-parents through
-  `xios-setsid` to `xios-gnome[-<slot>].pgid` (`XIOS_GNOME_PGID_FILE`); the launcher records it.
-  Mutter slots are recorded by needle (`--wayland-display wayland-<slot>`). The stale-slot sweep
-  asks `xs_slot_has_live_process`: a recorded group with a live session process, or an exact
-  needle. It prunes the pgid rows of slots with no registry entry and nothing alive.
-- The kill blocks in `run-kde-plasma.sh` and `run-mutter.sh` are gone (they now refuse to start
-  over a live compositor of the same name). `run-iosc.sh` is slot-aware (`XIOS_SESSION_SLOT` or
-  `WAYLAND_DISPLAY=wayland-<slot>`), stops only the compositor named by its own `-s` argument
-  and no longer kills the Xios app. `run-shell.sh` tracks ioscbg/ioscbar/ioscdock per compositor
-  (pid files, per-slot logs); before, the second desktop's shell was skipped as "already running".
-- Every slot has its own active marker (`xios-active-session-<slot>`), so `app <name>` in a slot
-  finds that slot's compositor instead of the non-slot one.
-
-**Per-slot helpers and endpoints**
-
-| helper | slot socket | notes |
-|---|---|---|
-| `xios-sysintd` | `xios-<slot>-sysint.sock` | via `XIOS_SYSINT_SOCK`; one per session bus (KDE, GNOME, standalone app bus). The old "skip if any instance runs" guards are gone. |
-| `xios-a11yd` | `xios-<slot>-a11y.sock` | now honors `XIOS_A11Y_SOCK` (it hardcoded the path). Started by the first `app` launch in the slot, inside that slot's session bus. |
-
-Both paths are advertised as `sysint_socket` and `a11y_socket` in `xios-displays.d/<slot>.json`
-and `xios-session-<slot>.json` (the non-slot status file carries the global defaults). The
-compositor-written `xios-<slot>.json` is unchanged. The socket may not exist yet (a11yd starts
-lazily, sysintd after the session bus is up); the app should check before connecting.
-Per-slot logs: `xios-sysintd-<slot>.log`, `xios-a11yd-<slot>.log`, `xios-atspi-<slot>.log`.
-
-**Volume routing with several sysintds (decision: volume and appearance apply to every desktop).**
-PulseAudio stays one shared daemon. `module-xios-sink` (desktop volume to the iPad) and
-`xios-hwbridged` (brightness) hardcode `/var/jb/tmp/xios-sysint.sock`. While no non-slot
-session owns that path the launcher keeps it as a symlink to a live slot's sysintd
-(`xs_publish_default_sysint_link` on `up`, re-pointed when that slot stops), and a real
-sysintd binding the default path simply replaces the link. So desktop-to-iPad volume reaches
-whichever slot's sysintd the link names; iPad-to-desktop volume goes through the app to the
-sysintd it is connected to, which applies it to the shared PulseAudio, so every desktop hears
-the same level. Appearance (light/dark) is applied per session bus by that session's sysintd,
-so the app has to send it to every slot's `sysint_socket` to theme all desktops (the app's job
-in M1). If a later milestone wants a single relay, give `module-xios-sink` its `sysint_socket`
-argument instead of the default.
-
-**iosc status producer.** `iosc` now publishes as `iosc-<slot>` (from `XIOS_SESSION_SLOT`, else
-from `-s wayland-<slot>`; `wayland-0` stays `iosc`), so two iosc instances stop overwriting
-`xios-status.d/iosc.status`. `-clipboard-sock` and `-wm-sock` are honored by the current source and
-by the 0.9.49 binary (verified on device: `iosc-<slot>-clipboard.sock` and `iosc-<slot>-wm.sock`
-exist, the global names are not bound).
-
-**Device results (iPad7,12, iPadOS 17.6.1, 2026-10-06).** KDE slot, GNOME slot and iosc shell
-slot up together; stopping the shell left KDE and GNOME running; a non-slot `iosc` start, a
-non-slot `kde-desktop` start (through `run-kde-plasma.sh`) and a non-slot `mutter` start each
-left the slots alone; `xios-session stop` with slots up killed only the non-slot session;
-`--slot gnome stop` removed the whole GNOME group, its session bus, sysintd, hwbridged and
-files while the non-slot KDE stayed up; `stop all` left no session process. Three mutters
-(GNOME slot, a raw-mutter slot and a non-slot mutter) started from one ssh line stopped
-independently. Footprints are in `docs/xios-v2-notes.md`.
-Regression test: `apps/iosc-desktop/test-session-slots.sh` (fake processes, scratch `XS_TMP`).
-
-**Status.** The five packages are on staging (dev.repo.maxleiter.com) and in `repo/Packages` on the
-`claude/xios-v2-m0` branch; production is not published. Publish with `bin/publish-repo.sh --only
-xios-session,xios-session-stubs,xios-a11y-tools,iosc,iosc-shell` once the PR merges (the committed
-index is what ships). Install the five together: `xios-session 1.0.81` Breaks `xios-session-stubs`
-older than 0.2.12 (the old GNOME launcher writes no pgid file, so the new sweep could not see a live
-GNOME slot). `xios-a11y-tools` older than 0.2.17 ignores `XIOS_A11Y_SOCK` and binds the global path.
-
-## ioscd helpers per bus, honest SESSION reply (2026-10-25, xios-launcher-tools 0.1.12, unpublished)
+## ioscd helpers per bus, honest SESSION reply (2026-10-25, xios-launcher-tools 0.1.12, published)
 
 - ioscd's app-launch helper guard was still the old "skip if any `xios-hwbridged`/`xios-sensord`/
   `xios-sysintd` runs anywhere" ps grep, so once a desktop ran its own helpers, Home Screen and
@@ -153,182 +133,66 @@ GNOME slot). `xios-a11y-tools` older than 0.2.17 ignores `XIOS_A11Y_SOCK` and bi
   the GNOME flavor pulled it in before. hwbridged/sensord still come from `xios-fhs`.
 - Host test: `apps/iosc-desktop/test-ioscd-helpers.sh` (run by `build-stub.sh`).
 
-## Current state — package-installed 2026-07-29, CLI/daemon works
+## M0 coexistence (2026-10-06): desktops run side by side
 
-- `xios-session 1.0.72` removes a process-substitution deadlock from capability
-  profile collection and launches apps into the active GNOME compositor's
-  private runtime directory/session bus. The GNOME startup gate now treats
-  Shell process exit and main-entry/GPU errors as fatal without mistaking
-  unrelated helper-service JS warnings for a compositor failure.
-- `ioscd` app launches now use a separate strict contract from `SESSION`:
-  launchers send only an app id, the daemon resolves a trusted installed
-  desktop entry, and the client/session bus run as `mobile`. The daemon still
-  owns compositor and session lifecycle as root. `xios-launcher-tools 0.1.5`
-  carries this implementation and no longer hard-depends on `xios-session`, so
-  the native flavor can remain shell-free.
-- 2026-07-29 responsiveness/device closure (`xios-session 1.0.67`):
-  normal switches no longer terminate Xios in either the shared teardown or the
-  nested KDE/Mutter bring-up scripts; explicit `stop` retains the full-kill behavior.
-  Xios liveness uses `ps` because procps/`pgrep` is not installed. Client app launches
-  no longer take the global switch lock, so a deliberately slow `xios-session app kgx`
-  left the lock absent while an iosc switch completed normally.
-- PGID records now use `-` for the global/non-slot field. The former empty tab field
-  was collapsed by Bash, causing timestamps to be mistaken for slot names and
-  protecting stale global compositors from both reapers. Legacy records are normalized,
-  and PGIDs are signaled only if the live group still contains a recognized Xios
-  session process, preventing recycled PGIDs from touching unrelated work. Device
-  validation reaped two stale iosc groups, compacted the historical file to one current
-  `kde` record, and restored a nonblank desktop.
-- End-to-end proof retained Xios PID `77756` through iosc/KDE switches, finished
-  `kde/up` with no lock and no new Xios analytics report, and captured a nonblank
-  2880x2160 desktop in
-  `artifacts/device-runs/xios-responsiveness-final-20260729-kde/`.
-- 2026-07-29 dangling-process closure: overlapping slot/KDE work left a dead
-  iosc slot's panel/dock/background spinning, 20 orphaned PowerDevil processes,
-  three orphaned `kded6` processes, disconnected Ladybird/native clients, and a
-  hung OpenCode version probe. Targeted cleanup lowered one-minute load from
-  about 134 to 2.27 while the live `codexthunar` slot remained up. The KDE
-  monitor now traps every exit/signal and TERM/KILL/waits PowerDevil,
-  `kactivitymanagerd`, and `kded6`; the shared session reaper recognizes
-  PowerDevil-only process groups; and `install-xios-session.sh` now preserves
-  the `/var/jb` prefix in generated mkdir/chmod commands. The scripts were
-  deployed live over installed `xios-session 1.0.72`; package script `1.0.73`
-  remains the next immutable artifact. Evidence:
-  `artifacts/device-runs/dangling-cleanup-before-20260729-2330/` and
-  `artifacts/device-runs/dangling-cleanup-after-20260729-2337/`.
+Shipped in `xios-session 1.0.81` with `xios-session-stubs 0.2.12`, `xios-a11y-tools 0.2.17`,
+`iosc 0.9.49` and `iosc-shell 0.9.14`, all on production. No app or wire change. The old
+GNOME launcher writes no pgid file and older `xios-a11y-tools` ignores `XIOS_A11Y_SOCK`, so
+`xios-session` depends on `xios-session-stubs (>= 0.2.12)` and Breaks
+`xios-a11y-tools (<< 0.2.17)`.
 
-Host follow-up on 2026-07-18: the teardown path and KDE monitor now rewrite a
-previously-live session to `state=down` instead of leaving a stale `up` in the
-picker. A synthetic teardown smoke passed for `kde-desktop/up -> down`, and the
-next immutable package version is `xios-session 1.0.55`. Packaging and device
-validation are deferred until Docker and the iPad are available; 1.0.54 remains
-the currently published package.
-- Presets: iosc (works), mutter (up), gnome (verified full GNOME session path), kde (host-prepped experimental KWin + plasmashell nested on iosc), app <name> (launch a client, no teardown), stop (→ SpringBoard).
-- Multi-display slot groundwork: `xios-session --slot <name> <preset>` now switches the launcher into a namespaced desktop slot instead of the legacy one-at-a-time global session. Slot mode writes status to `/var/jb/tmp/xios-session-<slot>.json`, registry entries to `/var/jb/tmp/xios-displays.d/<slot>.json`, and compositor config to `/var/jb/tmp/xios-<slot>.json`. iosc/KDE slot paths use `wayland-<slot>`, `iosc-<slot>-ddx.sock`, `iosc-<slot>-input.sock`, `iosc-<slot>-clipboard.sock`, `iosc-<slot>-wm.sock`, and `kwin-<slot>`. `stop` with `--slot` reaps only the recorded slot process group and removes that slot's rendezvous files; unqualified `stop` remains stop-everything.
-- 2026-07-28 stale-slot sweep: a slot's `xios-displays.d` entry is only deleted on a clean `stop`, so a slot that dies any other way (crash, jetsam, a killed bring-up, a reboot that left `/tmp` behind) left its entry there forever and the Xios app kept listing a display nothing could reach — the iPad had accumulated eight, the oldest two days old. `xs_sweep_stale_slot_registry` now runs once per session operation, right after `xs_acquire_session_lock`, and drops entries with no Wayland socket, no display config, and no processes named for the slot, plus that slot's orphaned `xios-session-<slot>.json`. Anything still serving is left alone, as is the slot the current invocation is bringing up; holding the lock means it cannot race another `xios-session` writing an entry. `XIOS_SESSION_SWEEP_SLOTS=0` disables it. Verified host-side across six cases (dead / live-by-socket / live-by-config / mid-start-with-live-process / same-slot / process-dies-then-swept) and on-device against the deployed lib in a sandboxed `XS_TMP`, with the live KDE session untouched. Deployed to `/var/jb/libexec/xios-session/xios-session-lib.sh`; not yet folded into a package bump.
-- Slot sessions do not foreground Xios by default, so parallel agents can collect compositor evidence without stealing the active device display. Set `XIOS_SLOT_FOREGROUND=1` only when intentionally presenting a slot in the app. `xios-session 1.0.45` also reaps slot-named child processes (`wayland-<slot>`, `iosc-<slot>-*`, `kwin-<slot>`) on `--slot <name> stop`; the cleanup proof used `codex-clean` and left `after=0` matching slot processes with evidence in `artifacts/device-runs/slot-cleanup-20260705-2338/`.
-- `ioscd` `SESSION` requests accept an optional seventh tab field for the slot name and export it as `XIOS_SESSION_SLOT` before execing `xios-session`. Older six-field app/CLI requests remain valid.
-- Mutter/GNOME slot plumbing is present but still needs on-device proof under concurrency: MetaBackendIOS now honors `XIOS_DDX_SOCKET` and `XIOS_JSON_PATH`, and the run scripts/full-session launcher pass slot-specific `WAYLAND_DISPLAY`, output json, ddx socket, input socket, and log paths. Confirm whether the installed `mutter`/`gnome-shell` accepts `--wayland-display <name>` before relying on concurrent GNOME/Mutter slots.
-- GNOME success signal keys off "GNOME Shell started at" in the active shell log (slot mode uses `gnome-shell-<slot>.log`, not the legacy global log). IOSC_PANEL_OPACITY forwarded.
-- 2026-07-04 23:15 PDT full-session GNOME validation: installed `xios-session 1.0.22` and
-  `xios-session-stubs 0.2.3`; direct `xios-session gnome` and daemon `xios-session -d gnome` both
-  reached `{"preset":"gnome","state":"up","message":"GNOME Shell started"}` through
-  `launch-gnome-session.sh`. Xios adopted the `2160x1620` Mutter IOSurface with mutter input
-  connected. Evidence bundle: `artifacts/device-runs/20260704-231534/` (logs/status; the separate
-  screenshot attempt at `artifacts/device-runs/20260704-231559/` only logged `failed to create
-  display`, expected for the non-iosc capture path). A later explicit `stop` and KDE launch replaced
-  GNOME; that is newest-request-wins behavior, not a GNOME launch failure.
-- 2026-07-06 12:59 PDT GNOME direct-runner removal validation: installed state is
-  `xios-session 1.0.46` plus `xios-session-stubs 0.2.4`; the device has no
-  `run-gnome-shell.sh*` under `/var/jb/libexec/xios-session`, `/var/jb/usr/bin`, or
-  `/var/jb/usr/local/bin`. Daemon `xios-session -d gnome` reaped a stale KDE app-launch lock,
-  switched from `kde-desktop`, and reached `{"preset":"gnome","state":"up","message":"GNOME Shell started"}`.
-  Xios adopted the `2160x1620` Mutter IOSurface with mutter input connected. Evidence bundle:
-  `artifacts/device-runs/20260706-125913/`.
-- 2026-07-04 native-helper bridge: `xios-session app` and `ioscd` app launches now start `xios-hwbridged`, `xios-sensord`, and `xios-sysintd` on the shared app bus, and app client env sets both `DBUS_SESSION_BUS_ADDRESS` and `DBUS_SYSTEM_BUS_ADDRESS` to that bus. `run-kde-plasma.sh` starts the same helpers inside KDE's session bus. Package contents verified in `xios-session_1.0.22`; device smoke saw the helpers start, battery/backlight/sensor sysfs mirrors populate, and `xios-sysintd` apply dark appearance plus desktop-volume-to-device.
-- 2026-07-04 slot audit: `xios-session --slot audit-iosc --via-daemon iosc` reached slot
-  `state=up` while the global `kde` session stayed active. It created
-  `/var/jb/tmp/xios-session-audit-iosc.json`, `/var/jb/tmp/xios-displays.d/audit-iosc.json`,
-  `/var/jb/tmp/xios-audit-iosc.json`, `wayland-audit-iosc`, `iosc-audit-iosc-ddx.sock`, and
-  `iosc-audit-iosc-input.sock`; `grim` wrote `/var/jb/tmp/audit-iosc.png` against
-  `WAYLAND_DISPLAY=wayland-audit-iosc`. After SSH returned, the PNG and slot state were copied to
-  `artifacts/device-runs/20260704-214818-slot-audit-cleanup/`; the PNG is a valid nonblank
-  2880x2160 compositor screenshot. Cleanup ran `xios-session --slot audit-iosc stop`, removing
-  the slot config/socket files and leaving only the normal stopped status/registry record.
-- Slot caveat from the same audit: the installed `iosc` binary accepted the slot-specific
-  `-clipboard-sock`/`-wm-sock` argv but still bound `/var/jb/tmp/iosc-clipboard.sock` and
-  `/var/jb/tmp/iosc-wm.sock`. The local `wayland/iosc.c` source parses those flags correctly, so
-  verify/redeploy the current `iosc` package before claiming clipboard/WM socket isolation for
-  concurrent slots.
-- 2026-07-03 rootless package validation: installed
-  `x11-fonts-sf_1.0.0`, `xios-desktop-defaults_1.1.7`,
-  `x11-xvfb_1.20.11+rootless1`, and `xios-session_1.0.15` from local
-  target-aware artifacts. `xios-session` now owns
-  `/var/jb/usr/local/bin/xios-start-a11y` via `Replaces: iosc-shell (<= 0.9.9)`.
-  `xios-session status` and `--help` load from the packaged files, Xvfb stayed
-  running for a short `:88` smoke, and the active iosc session reports
-  `iosurface-zerocopy 2880x2160 [metal]` with input connected. Evidence bundle:
-  `artifacts/device-runs/20260703-123110/`.
-- Local pickup: ioscd parses optional `width`/`height`/`dpi` fields on `SESSION` requests and exports `IOSC_LOGICAL=WxH` before calling the shared launcher, so the in-app ⧉ picker can choose the next desktop dimensions.
-- KDE pickup: `run-kde-plasma.sh` is in the session manifest. It starts outer `iosc` with `IOSC_FRAME_PULSE=1`, launches `kwin_wayland` on `kwin-ios-test`, then starts `plasmashell` on that KWin socket under the same `dbus-run-session`. As of `xios-session 1.0.45`, the desktop preset defaults to the real upstream `org.kde.plasma.desktop` shell, exports the KDE Qt platformtheme/Breeze style when installed, seeds Breeze Dark defaults, bridges KPackage app-data paths including `color-schemes`, migrates stale Desktop favorites/configs, and keeps Desktop on `IOSC_LOGICAL=1440x1080`/KWin `1360x1000` so the panel is not clipped after iosc output rotation. Mobile uses a portrait KWin viewport (`1080x1440` for default `IOSC_LOGICAL=1440x1080`), pre-foregrounds Xios so KWin binds after the app has rotated the output to `2160x2880`, fullscreen-configures the outer KWin toplevel, seeds Mobile wallpaper/Folio app-grid config, and suppresses `wl_output` transform advertising to avoid KWin rendering into a rotated square. The old `org.kde.plasma.xios` first-light shell is no longer shipped by the session package. Desktop proof after the UI style/layout pass: `artifacts/device-runs/kde-ui-style-clean-layout-final-20260705-194801/`. Mobile clean-home proof after the transform/sizing fix: `artifacts/device-runs/kde-mobile-final-clean-20260705-2152/` has a full-frame `2160x2880` Mobile home capture; current Mobile proof with `plasma-mobile 6.1.5+ios13` and the exact repo-byte `plasma-desktop 6.1.5+ios5` is `artifacts/device-runs/kde-mobile-ios13-ios5-finalrepo-20260706-002750/`, with live iOS-backed status providers, no activitypager mainscript warning, and no MobileShell provider type-resolution cycle. A concurrent `--slot codex-desktop kde-desktop` smoke started KWin/plasmashell without foregrounding Xios, but the slot iosc exited under the extra nested KDE load while the main device session was active; use lightweight iosc slots for parallel capture, and reserve full KDE slot smokes for lower device load.
+**Rules the launcher follows**
 
-## Active display ownership — FIXED in 1.0.4
-- `xios-session-lib.sh` records the owner in `/var/jb/tmp/xios-active-session` when launching `iosc`, `mutter`, or `gnome`, and clears it on `stop`.
-- `ioscd` and the classic `iosc` binary respect that owner: direct/classic iosc is refused while the active owner is another session, with `IOSC_IGNORE_ACTIVE_SESSION=1` as an explicit diagnostic override. Native iosc remains allowed.
-- Verified with Mutter active: `/var/jb/usr/local/bin/iosc` exited 2, logged `iosc: refusing classic output because active session is mutter`, and left Mutter's `xios.json` unchanged.
-- Installed on-device during the latest GNOME full-session smoke: `dpkg-query` reported
-  `xios-session 1.0.46` and `xios-session-stubs 0.2.4`. Direct CLI and daemon-triggered
-  session picks start Mutter/GNOME with active ownership. Newer switch requests still win by design;
-  if a later request replaces GNOME, use ioscd's peer/payload request log to identify the requester.
+- Nothing is killed by pattern when it can be shown to belong to someone else. Ownership is,
+  in order: a recorded process group (`xios-session.pgids`, checked against a live session
+  process before it is signalled), then an argv needle that names the slot exactly
+  (`xs_slot_regex`: `wayland-<slot>`, `kwin-<slot>`, `iosc-<slot>-ddx.sock`, ... each ends at a
+  character that cannot continue a slot name, so `kde` never matches `kde-2`).
+- A non-slot teardown reaps its recorded groups, then subtracts every slot-owned pid
+  (`xs_slot_protected_pids`) from its fallback pattern before signalling. Shared audio
+  (`xios-audiod`, `xios-mediad`) is only stopped by an everything-stops teardown.
+- `--slot X stop` reaps that slot's groups, its named processes, its shell clients
+  (`<client>-wayland-<slot>.pid`), sockets, session bus (`xios-session-bus-<slot>`), runtime
+  dirs and markers. A group recorded for more than one owner is never signalled as a group.
+  The CLI re-execs itself through `xios-setsid` for state-changing presets so chained
+  commands do not share a group.
+- `xios-session stop` means the non-slot session; the app and shared services go with it
+  only when no slot is alive. `xios-session stop all` stops everything (CLI only; ioscd's
+  `SESSION` has no `all`).
+- GNOME: `launch-gnome-session.sh` writes the group id of the session it re-parents through
+  `xios-setsid` to `xios-gnome[-<slot>].pgid`. Mutter slots are found by needle
+  (`--wayland-display wayland-<slot>`).
+- Every slot has its own active marker (`xios-active-session-<slot>`), so `app <name>` in a
+  slot finds that slot's compositor.
 
-## One-at-a-time session reaper — ADDED in 1.0.14
-- Every non-status `xios-session` command takes `/var/jb/tmp/xios-session.lock` before doing work. The lock is atomic `mkdir`, so it works without `flock` on iOS.
-- If another request is active, later requests wait up to `XIOS_SESSION_LOCK_WAIT` seconds (default 45) instead of starting overlapping teardown/bring-up work. A stale lock owner older than `XIOS_SESSION_LOCK_STALE` seconds (default 180) is reaped.
-- Daemon-launched sessions (`ioscd` uses `setsid`) record their process group in `/var/jb/tmp/xios-session.pgids`; the next teardown kills that whole group first, then falls back to the pattern reaper. The pattern now includes KDE wrappers, `kactivitymanagerd`, Xios audio/media/sysint helpers, and known stuck `pactl`/`mpv` session leftovers.
+**Per-slot helpers and endpoints**
 
-## Queued Switch Supersede — ADDED in 1.0.18
-- Switch presets (`iosc`, `mutter`, `gnome`, KDE flavors, `resize`, `stop`) write a monotonic
-  `/var/jb/tmp/xios-session.request-seq` marker before waiting on the session lock. A waiting older
-  request exits with code 75 and logs `session request '<preset>' superseded while waiting` when a
-  newer switch request appears.
-- Device smoke used an artificial lock, queued `iosc`, then queued `gnome`; both skipped when a newer
-  `kde-mobile` request appeared. This proves stale queued requests no longer run after a later pick,
-  but also confirms the intended behavior: the newest explicit requester wins.
+| helper | slot socket | notes |
+|---|---|---|
+| `xios-sysintd` | `xios-<slot>-sysint.sock` | via `XIOS_SYSINT_SOCK`; one per session bus (KDE, GNOME, the app bus). |
+| `xios-a11yd` | `xios-<slot>-a11y.sock` | honors `XIOS_A11Y_SOCK`; started by the first `app` launch in the slot. |
 
-## Shared app bus — ADDED in 1.0.15
-- `xios-session app <name>` now creates/reuses one `/var/jb/tmp/xios-session-bus/session-bus` with `dbus-daemon --session --fork` instead of wrapping every client in a fresh `dbus-run-session`.
-- The per-app environment still uses the same `XDG_RUNTIME_DIR`, Wayland socket, GTK/Qt Wayland settings, memory gsettings, and a11y prefix. If direct bus creation is unavailable, it falls back to the old `dbus-run-session` wrapper.
-- Device smoke on 2026-07-03 launched kgx plus GNOME Text Editor under the force-a11y gate; one session bus, one AT-SPI bus, and one `xios-a11yd` served both apps. Probe transcript:
-  `artifacts/device-runs/20260703-052614/a11y-shared-bus-probe.txt`.
-- ioscd now mirrors the same app-bus model at `/var/jb/tmp/ioscd-bus/session-bus`.
-  Direct `LAUNCH_CLASSIC` smoke with kgx plus GNOME Text Editor produced one
-  AT-SPI bus and an enabled daemon snapshot with two windows / 29 upserts:
-  `artifacts/device-runs/20260703-053707-ioscd-a11y-shared-bus/ioscd-shared-bus-probe.txt`.
+Both paths are advertised as `sysint_socket` and `a11y_socket` in `xios-displays.d/<slot>.json`
+and `xios-session-<slot>.json`. The socket may not exist yet (a11yd starts lazily, sysintd
+after the session bus), so the app must check before connecting. Per-slot logs:
+`xios-sysintd-<slot>.log`, `xios-a11yd-<slot>.log`, `xios-atspi-<slot>.log`.
 
-## VoiceOver a11y state gate — LOCAL 2026-07-03
-- Xios sends `A11Y_STATE\t1|0` to `/var/jb/tmp/ioscd.sock` when iOS VoiceOver state changes. `ioscd` persists VoiceOver-on as `/var/jb/tmp/xios-a11y-enabled` and removes only that generated file on VoiceOver-off; `/var/jb/tmp/xios-a11y-force` remains the manual smoke override.
-- `xios-session-lib.sh` treats either generated state, force file, or `XIOS_ENABLE_A11Y=1` as the enable gate. A fresh device smoke with no force file set `A11Y_STATE 1`, launched `xios-session app kgx`, and saw `xios-a11yd`, `at-spi-bus-launcher`, `dbus-daemon`, and `at-spi2-registryd` running from the shared app bus.
-- Deploy note: `install-xios-session.sh` copies the updated `xios-session-lib.sh` through the shared manifest. During this smoke an early install appeared to leave a stale remote copy, so the lib was force-copied once before the passing run; a later installer rerun checksum-matched local and remote copies.
+**Volume and appearance with several sysintds.** PulseAudio stays one shared daemon.
+`module-xios-sink` and `xios-hwbridged` hardcode `/var/jb/tmp/xios-sysint.sock`; while no
+non-slot session owns it, the launcher keeps it as a symlink to a live slot's sysintd
+(`xs_publish_default_sysint_link`), and a real sysintd binding that path replaces the link.
+Volume therefore applies to every desktop. Appearance is applied per session bus, so the app
+has to send it to every slot's `sysint_socket` (M1). If a single relay is ever wanted, give
+`module-xios-sink` its `sysint_socket` argument.
 
-## Flavor-switch jetsam — FIXED in 1.0.2 (needs on-device deploy + verify)
-Max hit it: switching iosc→mutter jetsammed the Xios app (took two tries). Root cause: killing the old compositor (~30MB GPU IOSurface + Metal/ANGLE ctx) while a new one immediately allocates spikes GPU memory past the foreground-app limit. `xios-session_1.0.2` (repo/debs + linux-build/out) applies all three fixes in `xios-session-lib.sh`:
-1. **Settle** (`xs_settle`, `XIOS_SESSION_SETTLE` default 2s): switching presets now do teardown → settle → start (nothing holds stale GPU state during the settle; kernel reclaims the old surface first). Stacks with run-*.sh's own 1s for ~3s margin.
-2. **Per-step status** in `xios-session-status.json`: `stopping → starting <preset> → waiting for compositor surface → relaunching display → up` (or error/compositor-only) with a human `message` for the picker/CLI.
-3. **Relaunch-if-dead** (`xs_ensure_xios`): after the new surface exists, `uiopen -b` the app if it isn't running (status "relaunching display"); else foreground.
-Verified host-side (bash -n, simulated the transition sequence). **DEPLOY:** `bash x11/apps/iosc-desktop/install-xios-session.sh` (or install the 1.0.2 deb), then test a switch on-device.
-- GREENLIT (xios-app 8a94860 LANDED release-on-loss): the app now releases the dead IOSurface promptly on ddx-socket EOF, survives the switch, and re-adopts the new compositor's surface on its own — so you can DROP the app-kill from teardown for SWITCHES (keep it only for `stop`) to make switching fully flash-free (no SpringBoard flash). Co-confirm on device first: kill the compositor with the app foreground → expect the status banner (not a jetsam) then auto re-adopt. The 8a94860 build also polls `xios-session-status.json` for the live banner, so the per-step status (fix #2) now shows on-screen during a switch.
+**iosc status producer.** iosc publishes as `iosc-<slot>` (from `XIOS_SESSION_SLOT` or
+`-s wayland-<slot>`; `wayland-0` stays `iosc`), and binds `iosc-<slot>-clipboard.sock` and
+`iosc-<slot>-wm.sock`.
 
-## Note
-The `app <preset>` (launch app onto the running compositor) does NOT teardown → it's safe + works. Only the SESSION-SWITCH presets jetsam. The session-switch crash (renderTestPattern buffer overflow) was separately fixed in xios-app 923e92f; the remaining issue is the memory-peak jetsam + the missing progress UI.
-
-## 2026-07-30 additive-launch/status repair — PRODUCTION + DEVICE VERIFIED
-- The observed dead-KDE state had three contradictory records: no
-  `kwin_wayland`/`plasmashell`, `xios-active-session=kde`, and global status
-  `preset=app,state=error`. Root cause: `xios-session app` used the display
-  lifecycle file for additive client progress. Once overwritten, KDE's exit
-  monitor correctly refused to replace a status owned by another preset, so the
-  dead display stayed advertised.
-- `xios-session 1.0.78` keeps app submission state in
-  `xios-app-launch-status.json`, preserves the desktop lifecycle record on both
-  accepted and rejected launches, passes the active-owner path to KDE, and
-  clears that marker when the owning KWin/Plasma session exits. Its installed
-  capability-profile helper now infers `/var/jb` instead of trying to source the
-  unshipped `//linux-build/target-lib.sh`. Empty environment arrays use the
-  Bash-3-safe expansion form.
-- `xios-launcher-tools 0.1.8` makes ioscd reject an app request immediately when
-  no classic compositor socket is live, repairs stale active markers during
-  health checks, and marks the matching steady session down. Host regression
-  `apps/iosc-desktop/test-session-state.sh`, shell syntax, desktop-entry tests,
-  signed ioscd build, and both package builds pass.
-- Production now serves `xios-session 1.0.78`, `xios-launcher-tools 0.1.8`,
-  and `com.max.xios 0.1.9`; live payload fetch-back matched the indexed SHA256
-  values. The same versions are installed on the iPad. Starting KWrite through
-  the additive path preserved the global `kde/up` lifecycle record and wrote
-  `kwrite/submitted` only to `xios-app-launch-status.json`. Terminating the exact
-  KWin PID then produced `kde/down`, removed the active marker, and stopped the
-  KDE process set. A subsequent KDE launch succeeded. Physical UIKit tap-through
-  is still not claimed because Xios foreground adoption remained at
-  `holding-frame` / `input-not-connected` during this verification.
+**Device results (2026-10-06).** KDE, GNOME and the iosc shell up as slots at once; stopping
+one left the others; non-slot `iosc`, `kde-desktop` and `mutter` starts left the slots alone;
+`--slot gnome stop` removed GNOME's group, bus, sysintd, hwbridged and files while a non-slot
+KDE stayed up; `stop all` left no session process. Footprints are in `docs/xios-v2-notes.md`.
 
 ## 2026-10-25 (later): ioscd helpers as mobile, X11 for Home Screen launches (xios-launcher-tools 0.1.13, unpublished, device-tested)
 
@@ -369,3 +233,41 @@ The `app <preset>` (launch app onto the running compositor) does NOT teardown �
   root in an iosc slot and as mobile once X admits mobile (both Xwayland 24.1.13+ios2 and
   23.2.7+ios5). The "0.00 CPU, state ?" was this device's `ps`, which shows that for every
   process (KWin too). It ships no `.desktop`, so no launcher can list it.
+
+## Gotchas
+
+- **ioscd must exec bash, not the script.** Exec'ing `xios-session` directly from launchd
+  returned `ENOENT` before the script logged anything.
+- **The screen must be awake and unlocked**, or FrontBoard suspends the Xios app and it
+  presents black. Rapid kill/relaunch of the app trips FrontBoard's throttle; `sbreload`
+  clears it.
+- **Never write app progress into the lifecycle status file.** Before 1.0.78, `app` launches
+  overwrote `xios-session-status.json`, KDE's exit monitor then (correctly) refused to touch
+  a record owned by another preset, and a dead KDE stayed advertised as up.
+- **Bash collapses an empty tab field.** pgid records use `-` for the non-slot field; an empty
+  field once made timestamps parse as slot names and protected stale compositors from both
+  reapers.
+- **Recycled pgids.** A pgid is only signalled if the live group still contains a known Xios
+  session process.
+- **`pgrep` is not installed** (no procps). Liveness checks use `ps`.
+- **KDE leaves strays if killed badly.** The KDE monitor traps every exit and stops
+  PowerDevil, `kactivitymanagerd` and `kded6`; before that, overlapping runs left 20 orphaned
+  PowerDevil processes and a load average over 100.
+- **A full KDE slot next to a live desktop can exhaust the device.** The slot's iosc exited
+  under the extra nested load. Use light iosc slots for parallel testing.
+- **`install-xios-session.sh` is the dev loop.** It copies the session manifest over SSH; check
+  checksums afterwards, since one early run left a stale lib on the device.
+
+## History (short)
+
+- 1.0.2 to 1.0.18 (early July): settle between teardown and start, per-step status, the
+  lock, the shared app bus (one `dbus-daemon` per app bus instead of `dbus-run-session` per
+  client), queued-request supersede, active-session owner (classic iosc refuses to start
+  over another owner unless `IOSC_IGNORE_ACTIVE_SESSION=1`).
+- 1.0.45 to 1.0.72 (July): slots, KDE Desktop and Mobile presets through
+  `run-kde-plasma.sh`, the GNOME full-session launcher (the direct Shell runner is gone),
+  VoiceOver gate (`A11Y_STATE` to ioscd creates `xios-a11y-enabled`), app launches by id as
+  `mobile`.
+- 1.0.78 (2026-07-30): app launch status split out of the lifecycle record.
+- 1.0.81 (2026-10-06): M0 coexistence.
+- 1.0.82 (2026-10-25): preflight, `presets`, Xwayland with iosc, depends on the stubs.
