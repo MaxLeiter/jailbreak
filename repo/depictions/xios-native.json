@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**xios-native** is the flavor with no desktop environment at all: every Linux app is a regular iPadOS window. Each app gets its own home screen icon, opens in its own window, and multitasks with Split View and Slide Over like any other iPad app.\n\nThis package installs the ioscd launch daemon and the per-app host that puts each app's window on screen. Tap a Linux app icon on the home screen and it opens; iPadOS itself is the window manager.\n\nIt is the lightest flavor. The GNOME and KDE apps in this repo all work as launchable apps here.\n\nRequires iOS 16.0+."
+          "markdown": "**xios-native** is the flavor with no desktop environment at all: every Linux app is a regular iPadOS window. Each app gets its own home screen icon, opens in its own window, and multitasks with Split View and Slide Over like any other iPad app.\n\nThis package installs the shared runtime (iosc, ANGLE, D-Bus, audio), the ioscd launch daemon and the per-app host from **xios-launcher-tools**, and the Xios Settings pane. It doesn't install the fullscreen Xios app. Tap a Linux app icon on the home screen and it opens; iPadOS itself is the window manager.\n\nIt is the lightest flavor. The GNOME and KDE apps in this repo all work as launchable apps here.\n\nRequires iOS 16.5+."
         },
         {
           "class": "DepictionSeparatorView"
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.1.0  \u00b7  2026-07-01\n- First release: ioscd launch daemon + per-app iPadOS window host"
+          "markdown": "## 0.1.8  \u00b7  2026-10-25\n- Requires the fixed xios-launcher-tools (0.1.12): apps launched from the Home Screen get their helpers even while a desktop is running\n\n## 0.1.0  \u00b7  2026-07-01\n- First release: ioscd launch daemon + per-app iPadOS window host"
         }
       ]
     }

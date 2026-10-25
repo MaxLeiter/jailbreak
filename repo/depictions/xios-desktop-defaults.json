@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Installs the ambient desktop defaults for the Xios X11 environment.\n\nIt sets up Xios shell and XDG environment defaults, native iPad retina display profiles, Xft antialiasing and DPI resources, GTK3/GTK4 settings, UTF-8 locale defaults, touch-friendly cursor sizing, and runtime directories used by X11/GTK/Xfce/GNOME apps.\n\n- Native profile: 2160x1620 at 264 DPI\n- Comfy profile: 1440x1080 at 176 DPI\n- Debug/VNC profile: 1024x768 at 96 DPI\n- Ships a minimal real hicolor icon-theme index, so the GTK icon theme setting points at something installed\n- Refreshes fontconfig, GSettings schemas, icon, MIME, and desktop databases when the relevant tools are present"
+          "markdown": "Installs the shared defaults the Xios desktops start from:\n\n- Rootless `PATH`, XDG directories and UTF-8 locale in `/var/jb/etc/profile.d/xios.sh`, which the launchers source\n- GTK 3 and GTK 4 settings, plus a GNOME gsettings override for the monospace font and dark mode\n- SF Mono as the system monospace font through fontconfig, so terminals follow the San Francisco stack\n- KDE input defaults: KWin tablet mode on and a cursor size that matches the iPadOS pointer\n- APT pins that keep this repo's builds and the ICU 74 family preferred over Procursus downgrades\n- Refreshes fontconfig, GSettings schemas, icon, MIME and desktop databases when those tools are present\n\nYou normally don't install this directly. The Xios flavors pull it in."
         },
         {
           "class": "DepictionSeparatorView"
