@@ -222,6 +222,13 @@ IOSC_LOGICAL_H="$(size_h "$IOSC_LOGICAL")"
 [ -x "$IOSC_BIN" ] || { echo "!! $IOSC_BIN missing/not executable"; exit 1; }
 [ -x "$KWIN_BIN" ] || { echo "!! $KWIN_BIN missing/not executable"; exit 1; }
 [ -x "$PLASMA_BIN" ] || { echo "!! $PLASMA_BIN missing/not executable"; exit 1; }
+# iosc and the KWin session each start as their own process-group leader. Use the
+# packaged xios-setsid (xios-session-stubs, the same helper the GNOME launcher and
+# the xios-session CLI use); setsid(1) is only a fallback for hand runs, since
+# neither it nor python3 is guaranteed on a device.
+SETSID="$LIBEXEC/xios-setsid"
+[ -x "$SETSID" ] || SETSID="$(command -v setsid || true)"
+[ -n "$SETSID" ] || { echo "!! $LIBEXEC/xios-setsid missing — install xios-session-stubs"; exit 1; }
 [ -n "$IOSC_LOGICAL_W" ] && [ -n "$IOSC_LOGICAL_H" ] || {
   echo "!! invalid IOSC_LOGICAL=$IOSC_LOGICAL, expected WxH"
   exit 2
@@ -763,23 +770,6 @@ fi
 
 PULSE_PROFILE="$(jb_path /etc/profile.d/xios-pulse.sh)"
 [ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
-
-SETSID="$(command -v setsid || true)"
-if [ -z "$SETSID" ]; then
-  SETSID="$TMP/xsetsid"
-  cat > "$SETSID" <<PYEOF
-#!$XS_PREFIX/bin/python3
-import os, sys
-try:
-    os.setsid()
-except OSError:
-    if os.fork() > 0:
-        os._exit(0)
-    os.setsid()
-os.execvp(sys.argv[1], sys.argv[1:])
-PYEOF
-  chmod +x "$SETSID"
-fi
 
 echo "==> start iosc output compositor (logical $IOSC_LOGICAL) -> $IOSC_LOG"
 nohup "$SETSID" env \
