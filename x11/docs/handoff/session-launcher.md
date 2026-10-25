@@ -329,3 +329,43 @@ The `app <preset>` (launch app onto the running compositor) does NOT teardown â†
   KDE process set. A subsequent KDE launch succeeded. Physical UIKit tap-through
   is still not claimed because Xios foreground adoption remained at
   `holding-frame` / `input-not-connected` during this verification.
+
+## 2026-10-25 (later): ioscd helpers as mobile, X11 for Home Screen launches (xios-launcher-tools 0.1.13, unpublished, device-tested)
+
+- **Helpers on ioscd's bus never worked.** `ioscd-bus`'s dbus-daemon runs as `mobile`, and its
+  default policy admits only its own uid: a root client authenticates, then is disconnected
+  after `BEGIN` (reproduced with `gdbus` as root vs `sudo -u mobile`). hwbridged exited ("lost
+  org.freedesktop.UPower"); sensord and sysintd stayed up with no bus. The helpers need nothing
+  root-only (IOKit battery, backboardd, CoreMotion go by entitlement; `/var/jb/sys` is mobile's;
+  PulseAudio admits mobile), so `ensure_native_helpers_for_bus` now drops to mobile (HOME, USER
+  too) after closing every fd but its pid/log fds. It no longer runs `xios_pulse_start` there
+  (ensure_audio already ran it as root). A recorded helper that runs as another uid (root, from
+  an older ioscd) is SIGTERMed, waited for, and replaced. A dead socket or dangling link at the
+  global `xios-sysint.sock` is unlinked by root first, since mobile cannot replace it in the
+  sticky tmp dir. Device: UPower, SensorProxy and the gsd Power shim all owned on `ioscd-bus`,
+  `gdbus` as mobile reads the battery percentage. The a11y path (`start_a11y_for_busdir` on
+  ioscd's bus) still runs as root and has the same refusal; not fixed (root-owned leftovers
+  `ioscd-bus/at-spi` and `ioscd-bus/dconf` would also need migrating).
+- **DISPLAY for LAUNCH/LAUNCH_CLASSIC.** `launch_client` reads `x11-display` from
+  `xios-status.d/iosc.status` (`iosc-native.status` for native) and passes `DISPLAY` +
+  `GDK_BACKEND=wayland,x11` only while `/tmp/.X11-unix/X<N>` accepts a connection (stronger than
+  the lib's `-S`: a SIGTERMed iosc leaves both the sidecar and the socket). ioscd's own classic
+  iosc start sets `IOSC_XWAYLAND=1` + `IOSC_XWAYLAND_BIN` when Xwayland is installed (=0 opts
+  out), unlinks the stale sidecar first, and waits up to 6 s for `x11-display`, so the launch
+  that started iosc gets its DISPLAY too (without the wait the first xterm logged "DISPLAY is
+  not set"). Depends now `iosc (>= 0.9.52)` (the X access grant below).
+- Host test: `test-ioscd-helpers.sh` gained mobile-HOME, stale/live global sysint, x11-display,
+  DISPLAY-in-launch and IOSC_XWAYLAND cases.
+- Device proof: ioscd `LAUNCH` from a mobile peer of a test `xterm` desktop entry: ioscd started
+  wayland-0 iosc with Xwayland on `:0`, xterm ran as mobile with `DISPLAY=:0` and mapped
+  (grim capture). Evidence: `x11/artifacts/device-runs/x11-gaps-20261025/` (main checkout).
+- **Landmine found the hard way:** dropping a new `.desktop` file into
+  `/var/jb/usr/share/applications` while Plasma runs crashed plasmashell (SIGSEGV in
+  `libkickerplugin` `QObject::disconnectImpl` from a timer, right after a burst of
+  `QKqueueFileSystemWatcherEngine::addPaths` errors), and the KDE monitor took KWin down with
+  it. Any package install that adds a desktop entry can do the same. Report:
+  `CrashReporter/plasmashell-2026-10-25-162754.ips`.
+- xterm: the installed `xterm 368` is Procursus's (apt.procurs.us), not ours, and it works: as
+  root in an iosc slot and as mobile once X admits mobile (both Xwayland 24.1.13+ios2 and
+  23.2.7+ios5). The "0.00 CPU, state ?" was this device's `ps`, which shows that for every
+  process (KWin too). It ships no `.desktop`, so no launcher can list it.
