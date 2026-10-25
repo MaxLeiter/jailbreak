@@ -17,34 +17,42 @@
 #   panel-ent.xml     the (non-GPU) client entitlement set
 # Output: iosc-shell_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
 # Env: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME=rootless|rootful (default rootless).
+#      A rootful deb takes the rootful-1900 target's arch (iphoneos-arm) and
+#      stays in linux-build/out/targets/rootful-1900 (repo/debs is the rootless repo).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
 . "$_x/lib/xlib.sh"
+. "$XLIB_ROOT/linux-build/target-lib.sh"
 OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 STAGEROOT=/private/tmp/iosc-shell-deb
 STAGE="$STAGEROOT/iosc-shell"
 VER="0.9.14"
-ARCH="iphoneos-arm64"
-IMG="procursus-xbuild:bookworm-arm64"
 SCHEME="${IOSC_PACKAGE_SCHEME:-${THEOS_PACKAGE_SCHEME:-rootless}}"
 
 case "$SCHEME" in
   rootless)
+    xios_load_target rootless-1900
     DEB_PREFIX=/var/jb
     VERSION_SUFFIX="${IOSC_VERSION_SUFFIX:-}"
     ;;
   rootful)
+    # Procursus names rootful debs iphoneos-arm; this used to ship them as
+    # iphoneos-arm64 (the rootless arch) and copy them into the rootless repo.
+    xios_load_target rootful-1900
     DEB_PREFIX=
     VERSION_SUFFIX="${IOSC_VERSION_SUFFIX:-+rootful}"
+    OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
     ;;
   *)
     echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless or rootful (got $SCHEME)" >&2
     exit 1
     ;;
 esac
+# Our own package: no +iosN marker, so the target's version_suffix is not used.
+ARCH="$XIOS_DEB_ARCH"
 
 PKG_VER="${VER}${VERSION_SUFFIX}"
 DEB="iosc-shell_${PKG_VER}_${ARCH}.deb"
@@ -96,8 +104,13 @@ fi
 cp "$HERE/run-shell.sh" "$BIN/run-shell.sh"
 chmod 0755 "$BIN/run-shell.sh"
 
-# 3. shipped icon set: SVG preferred, PNG retained for raster-only apps.
+# 3. shipped icon set: SVG preferred, PNG retained for raster-only apps. An empty
+#    set used to be skipped silently, shipping a shell with no app icons.
 cp "$HERE"/out/icons/*.svg "$HERE"/out/icons/*.png "$ICONS/" 2>/dev/null || true
+ls "$ICONS"/*.svg "$ICONS"/*.png >/dev/null 2>&1 || {
+  echo "ERROR: no icons in $HERE/out/icons (run gen-shell-icons.sh first)" >&2
+  exit 1
+}
 chmod 0644 "$ICONS"/*.{svg,png} 2>/dev/null || true
 
 # 4. the entitlement set, for reference / re-signing if ever needed
@@ -148,7 +161,14 @@ ldid -e "$BIN/ioscbar" | grep -E "no-container|get-task-allow|absolute-path" | s
 
 # 6. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
 #    macOS host, or directly when already running as root inside one.
+xdeb_refuse_published "$STAGE"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
-cp "$built" "$REPODEBS/${DEB}"
 echo "=== DEB BUILT ==="
-ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
+if [ "$SCHEME" = rootless ]; then
+  mkdir -p "$REPODEBS"
+  cp "$built" "$REPODEBS/${DEB}"
+  ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
+else
+  ls -la "$built"
+  echo "rootful artifact kept out of repo/debs"
+fi

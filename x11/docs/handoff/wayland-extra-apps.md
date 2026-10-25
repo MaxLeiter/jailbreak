@@ -1,23 +1,94 @@
-# Handoff: Wayland extra app wave
+# Handoff: second Wayland app wave
 
-Owner scope: the second wave of standalone Wayland/GTK desktop apps requested
-after the first app-wave smoke: swaybg, tofi, waybar, swayimg, yad, nwg-look,
-Geary/WebKitGTK, Gnumeric, and Transmission. Keep this separate from
-`wayland-apps.md`, which owns the already-smoked foot/imv/mpv/fuzzel/dunst/grim
-batch and its runtime fixes.
+Scope: the second batch of standalone Wayland/GTK apps (swaybg, tofi, waybar,
+swayimg, yad, nwg-look, Geary/WebKitGTK, Gnumeric, Transmission) and the
+libraries they pulled in. The first batch and its runtime fixes are in
+`wayland-apps.md`. Geary and WebKitGTK have their own file,
+`geary-webkitgtk.md`.
 
-Last touched: 2026-07-29.
+Last checked against `repo/Packages`: 2026-10-25.
 
-## Build Driver
+## Current state
 
-Use `linux-build/build-wayland-extra-apps.sh`. It is opt-in and defaults to the
-tractable native batch:
+Every app below is published on `repo.maxleiter.com` and has at least one
+green on-device capture in `iosc`.
+
+| Package (indexed) | What it is | Notes |
+|---|---|---|
+| `swaybg 1.2.2+ios1` | wallpaper | |
+| `tofi 0.9.1+ios1` | launcher/menu | `wl_seat` bind clamped to v5; keymap double-cleanup fixed |
+| `waybar 0.15.0+ios1` | layer-shell bar | minimal build: clock and custom modules only |
+| `swayimg 5.4+ios1` | image viewer | needs `luajit 2.1.1782726002+ios1` |
+| `yad 15.0+ios1` | GTK dialogs | |
+| `nwg-look 1.1.1+ios1` | GTK settings UI | Go 1.25 cgo for `ios/arm64`; `xcur2png` optional |
+| `gnumeric 1.12.61+ios1` | spreadsheet | with `libgsf-1-114`, `libgoffice-0.10-10`, `libxslt1.1` |
+| `transmission 4.1.3+ios1` | BitTorrent daemon + CLI + web UI | GTK client not built |
+| `geary 46.0+ios1` | mail | see `geary-webkitgtk.md` |
+
+Supporting libraries, all indexed: the gtkmm3 stack (`libsigc++-2.0-0v5`,
+`libglibmm-2.4-1v5`, `libcairomm-1.0-1v5`, `libpangomm-1.4-1v5`,
+`libatkmm-1.6-1v5`, `libgtkmm-3.0-1v5 3.24.9+ios1`), `libgtk-layer-shell0
+0.9.2+ios1`, and the Geary leaves (`libgmime-3.0-0`, `libstemmer0d`,
+`libytnef0`, `libgspell-1-2`, `libpeas-1.0-0`, Folks, gcr-3/gck-1, the GOA
+client library).
+
+Open, none of it blocking:
+
+- waybar ships only the minimal surface. Sway/River/Hyprland/taskbar, tray,
+  audio and Bluetooth modules stay off until someone actually needs them.
+- Transmission's GTK client is still disabled. It was waiting on gtkmm, which
+  now exists, so it is unblocked but not attempted.
+
+## Port notes
+
+- **Transmission** builds daemon, CLI, utilities and web UI. The patch stack
+  turns off Darwin install-time RPATH relinking for the bundled NAT helpers and
+  avoids the Foundation-backed UTF-8 helper on iPhoneOS.
+- **Gnumeric** needed `libgsf`, `libxslt` and `goffice`. The driver installs
+  host `intltool` and `xmllint`, routes autotools through `cross-pkg-config`,
+  forces host `glib-compile-resources`, uses `zlib-ng` as the zlib provider, and
+  defines the `lgamma_r` prototype this SDK lacks.
+- **swayimg** uses LuaJIT built through upstream's `TARGET_SYS=iOS`, plus a
+  Meson 1.0 compatibility patch for `meson_options.txt`, iOS libc++ flags, a
+  header-only fmt shim for the missing `std::format`, a filesystem hash shim,
+  and a `pipe2` fallback.
+- **GTK3** was rebuilt (`+ios2`, now `+ios3`) to export the Wayland GDK headers
+  and `.pc` files, with a runtime `libxcomposite1` dependency. The driver
+  invalidates stale GTK3 caches when `gdk/gdkwayland.h` or
+  `gdk-wayland-3.0.pc` is missing.
+- **waybar** gets Darwin fallbacks for `pipe2`, `wordexp`, realtime signals
+  and inotify, plus a portal fallback for when there is no session bus. Its
+  upstream fallback subprojects (`fmt`, `spdlog`, `jsoncpp`) can leave stale
+  static libraries in `build_base`; the recipe scrubs them so later packages
+  don't link them by accident.
+- **libpeas** stages the published `libgirepository-1.0-1`/`-dev` debs instead
+  of rebuilding the whole GI and target-Python toolchain. gspell links ICU 78.
+- **GOA is client-only.** Manual IMAP/SMTP is the credible iOS path for Geary.
+  The Linux provider daemon and browser OAuth are not claimed.
+
+## Gotchas
+
+- **A "Broken pipe" mid-smoke is usually a session switch.** The yad
+  `Error reading events from display: Broken pipe` and the Gnumeric
+  invalidation were both a concurrent `xios-session` switch removing
+  `wayland-0`. Both apps were fine on a clean rerun. Run smokes in a dedicated
+  slot.
+- **Long-running layer-shell clients** (waybar) need process state plus a
+  screenshot, not just a command exit status.
+- **`build-gnome.sh` still relinks all of `/out`**, so a narrow run through it
+  scans the whole local package cache. `build-wayland-extra-apps.sh` instead
+  stages collected debs in a temp dir and relinks only those.
+
+## Build
+
+`linux-build/build-wayland-extra-apps.sh` is opt-in. Its default `TARGETS` is
+the native batch:
 
 ```sh
 TARGETS="swaybg-package tofi-package yad-package libgsf-package libxslt-package goffice-package gnumeric-package transmission-package"
 ```
 
-Run it on a GTK/Wayland-warmed Procursus volume, for example:
+Run it on a GTK/Wayland-warmed Procursus volume:
 
 ```sh
 docker run --rm --platform linux/arm64 --cpus=4 \
@@ -31,329 +102,18 @@ docker run --rm --platform linux/arm64 --cpus=4 \
   procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
 ```
 
-## Target Status
+Other target groups used: `luajit-package libsigcplusplus-package
+glibmm-package cairomm-package pangomm-package atkmm-package gtkmm3-package`,
+`swayimg-package`, `gtk+3.0-package gtk-layer-shell-package waybar-package`,
+`gspell-package libpeas-package` (copy the published `libgirepository-1.0-*`
+debs into `linux-build/out/` first), and, through `build-gnome.sh`,
+`libstemmer-package libytnef-package gmime-package`. The nwg-look target
+installs a pinned Go 1.25 toolchain into the volume, enables cgo for
+`ios/arm64`, and signs the binary with the GPU-client profile.
 
-| Target | Intended lane | Status |
-|---|---|---|
-| swaybg | native Wayland wallpaper utility | recipe/control/patch stack added; `swaybg_1.2.2+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed |
-| tofi | native Wayland launcher/menu | recipe/control/patch stack added; `tofi_0.9.1+ios1_iphoneos-arm64.deb` built; focused on-device `iosc` slot capture passed after clamping `wl_seat` binds to v5 and fixing iOS keymap cleanup |
-| waybar | layer-shell status bar | recipe/control/patch stack added; GTK3 Wayland `+ios2`, gtkmm3, and `gtk-layer-shell` built; `waybar_0.15.0+ios1_iphoneos-arm64.deb` installed and focused on-device `iosc` slot capture passed with the minimal clock/custom config |
-| swayimg | native Wayland image viewer | recipe/control/patch stack added; `swayimg_5.4+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed |
-| yad | GTK dialog utility | recipe/control added; `yad_15.0+ios1_iphoneos-arm64.deb` built; on-device classic `iosc` capture passed (2026-07-08) after a clean re-run with no competing session switch — the earlier "Broken pipe" was a concurrent `xios-session` switch nuking `wayland-0`, not a yad bug |
-| nwg-look | GTK settings UI | pinned Go 1.25 `ios/arm64` cgo path added; rootless data lookup fixed; `nwg-look_1.1.1+ios1_iphoneos-arm64.deb` host-built and its full settings UI mapped on-device |
-| Geary | GNOME mail client | Geary 46 and its dependency closure package; the iPad runtime owns `org.gnome.Geary` and exports a mapped GTK window with gnome-keyring providing Secret Service |
-| WebKitGTK | browser/webview platform | 2.44.4 API 4.1 builds/splits for rootless iOS with X11 and Wayland enabled; JavaScriptCore executes on-device; production published 2026-07-30; final rebuilt-package Wayland multiprocess device smoke remains; WebGL is deferred |
-| Gnumeric | GTK spreadsheet | recipe/control added with `libgsf`, `libxslt`, and `goffice`; `gnumeric_1.12.61+ios1_iphoneos-arm64.deb` built and installed; on-device classic `iosc` capture passed (2026-07-08) — full spreadsheet UI renders with the CSV loaded; the earlier invalidation was a session switch losing `wayland-0`, now confirmed clean |
-| Transmission | CLI/daemon BitTorrent client | recipe/control/patch stack added; `transmission_4.1.3+ios1_iphoneos-arm64.deb` built; CLI tools passed on-device; GTK UI deferred until gtkmm |
+## Verify on device
 
-## Added Files
-
-- `linux-build/recipes/swaybg.mk`
-- `linux-build/recipes/tofi.mk`
-- `linux-build/recipes/swayimg.mk`
-- `linux-build/recipes/waybar.mk`
-- `linux-build/recipes/yad.mk`
-- `linux-build/recipes/nwg-look.mk`
-- `linux-build/recipes/libgsf.mk`
-- `linux-build/recipes/libxslt.mk`
-- `linux-build/recipes/goffice.mk`
-- `linux-build/recipes/gnumeric.mk`
-- `linux-build/recipes/transmission.mk`
-- `linux-build/recipes/luajit.mk`
-- `linux-build/recipes/libsigcplusplus.mk`
-- `linux-build/recipes/glibmm.mk`
-- `linux-build/recipes/cairomm.mk`
-- `linux-build/recipes/pangomm.mk`
-- `linux-build/recipes/atkmm.mk`
-- `linux-build/recipes/gtkmm3.mk`
-- `linux-build/recipes/gtk-layer-shell.mk`
-- `linux-build/recipes/gmime.mk`
-- `linux-build/recipes/libstemmer.mk`
-- `linux-build/recipes/libytnef.mk`
-- `linux-build/recipes/gspell.mk`
-- `linux-build/recipes/libpeas.mk`
-- matching controls under `linux-build/build_info/`
-- patch stacks under `ports/swaybg/`, `ports/tofi/`, `ports/swayimg/`,
-  `ports/waybar/`, and `ports/transmission/`
-- `docs/handoff/geary-webkitgtk.md`
-- `bin/iosc-extra-apps-smoke`
-
-## Built Packages
-
-Host/container builds completed on 2026-07-06 and 2026-07-07 and copied these debs to
-`linux-build/out/`:
-
-- `swaybg_1.2.2+ios1_iphoneos-arm64.deb`
-- `tofi_0.9.1+ios1_iphoneos-arm64.deb`
-- `swayimg_5.4+ios1_iphoneos-arm64.deb`
-- `yad_15.0+ios1_iphoneos-arm64.deb`
-- `transmission_4.1.3+ios1_iphoneos-arm64.deb`
-- `libgsf-1-114_1.14.58+ios1_iphoneos-arm64.deb`
-- `libgsf-1-dev_1.14.58+ios1_iphoneos-arm64.deb`
-- `libxslt1.1_1.1.43+ios1_iphoneos-arm64.deb`
-- `libxslt1-dev_1.1.43+ios1_iphoneos-arm64.deb`
-- `libgoffice-0.10-10_0.10.61+ios1_iphoneos-arm64.deb`
-- `libgoffice-0.10-dev_0.10.61+ios1_iphoneos-arm64.deb`
-- `gnumeric_1.12.61+ios1_iphoneos-arm64.deb`
-- `luajit_2.1.1782726002+ios1_iphoneos-arm64.deb`
-- `luajit-dev_2.1.1782726002+ios1_iphoneos-arm64.deb`
-- `libsigc++-2.0-0v5_2.10.3+ios1_iphoneos-arm64.deb`
-- `libsigc++-2.0-dev_2.10.3+ios1_iphoneos-arm64.deb`
-- `libglibmm-2.4-1v5_2.66.7+ios1_iphoneos-arm64.deb`
-- `libglibmm-2.4-dev_2.66.7+ios1_iphoneos-arm64.deb`
-- `libcairomm-1.0-1v5_1.14.5+ios1_iphoneos-arm64.deb`
-- `libcairomm-1.0-dev_1.14.5+ios1_iphoneos-arm64.deb`
-- `libpangomm-1.4-1v5_2.46.4+ios1_iphoneos-arm64.deb`
-- `libpangomm-1.4-dev_2.46.4+ios1_iphoneos-arm64.deb`
-- `libatkmm-1.6-1v5_2.28.3+ios1_iphoneos-arm64.deb`
-- `libatkmm-1.6-dev_2.28.3+ios1_iphoneos-arm64.deb`
-- `libgtkmm-3.0-1v5_3.24.9+ios1_iphoneos-arm64.deb`
-- `libgtkmm-3.0-dev_3.24.9+ios1_iphoneos-arm64.deb`
-- `libgtk-3-0_3.24.38+ios2_iphoneos-arm64.deb`
-- `libgtk-3-dev_3.24.38+ios2_iphoneos-arm64.deb`
-- `gtk-3-bin_3.24.38+ios2_iphoneos-arm64.deb`
-- `libgtk-layer-shell0_0.9.2+ios1_iphoneos-arm64.deb`
-- `libgtk-layer-shell-dev_0.9.2+ios1_iphoneos-arm64.deb`
-- `waybar_0.15.0+ios1_iphoneos-arm64.deb`
-- `libstemmer0d_2.2.0+ios1_iphoneos-arm64.deb`
-- `libstemmer-dev_2.2.0+ios1_iphoneos-arm64.deb`
-- `libytnef0_2.1.2+ios1_iphoneos-arm64.deb`
-- `libytnef-dev_2.1.2+ios1_iphoneos-arm64.deb`
-- `libgmime-3.0-0_3.2.7+ios1_iphoneos-arm64.deb`
-- `libgmime-3.0-dev_3.2.7+ios1_iphoneos-arm64.deb`
-
-The Geary leaf lane was extended on 2026-07-19 with fresh packages in
-`linux-build/out/`:
-
-- `libgspell-1-2_1.12.2+ios1_iphoneos-arm64.deb`
-- `libgspell-1-dev_1.12.2+ios1_iphoneos-arm64.deb`
-- `libpeas-1.0-0_1.36.0+ios1_iphoneos-arm64.deb`
-- `libpeas-1.0-dev_1.36.0+ios1_iphoneos-arm64.deb`
-
-The runtime dylibs are signed arm64 Mach-O payloads. `libgspell-1.2.dylib`
-links ICU 78.3 and `libgtkintl`; `libpeas-1.0.0.dylib` links the published
-libgirepository 1.78 runtime and `libgtkintl`. Adding the four package stanzas
-to the current local package universe passed the repo solvability check across
-564 packages. The repaired runtime packages subsequently loaded on-device and
-the four packages were published to production in the scoped 2026-07-30 wave.
-
-The 2026-07-29 repair pass rebuilt those four packages from clean
-`procursus-vol-gtk-calc` artifacts, restoring the intended ICU 78 and
-GObject-Introspection dependencies. Their runtime packages were then installed
-and loaded on the iPad. It also produced the final rootless-data-fixed
-`nwg-look_1.1.1+ios1_iphoneos-arm64.deb` with SHA-256
-`fb9f1d479db8d8e1317b7cb5f52d0a07eebb6a426bb9c8886971656cb1c2e35d`.
-The nwg-look driver installs a pinned Go 1.25 toolchain in the persistent
-Procursus volume, enables cgo for `ios/arm64`, routes C compilation and
-pkg-config through the iPhoneOS wrappers, and signs the GTK3 binary with the
-GPU-client entitlement profile. `xcur2png` remains optional.
-
-## Port Notes
-
-- Transmission 4.1.3 builds the daemon, CLI, utilities, and web UI with the GTK
-  client disabled until gtkmm exists. The iOS patch stack disables Darwin
-  install-time RPATH relinking for bundled NAT helper external projects and
-  avoids the Foundation-backed UTF-8 helper on iPhoneOS.
-- Gnumeric needed `libgsf`, `libxslt`, and `goffice` packages. The build driver
-  installs host `intltool` and `xmllint`, routes autotools recipes through
-  `cross-pkg-config`, forces host `glib-compile-resources`, uses `zlib-ng` as
-  the local zlib provider, and defines the existing `lgamma_r` prototype path
-  for this iOS SDK.
-- LuaJIT 2.1 builds through upstream's `TARGET_SYS=iOS` path and satisfies
-  swayimg's Lua dependency. swayimg 5.4 now builds with a Meson-1.0 compatibility
-  patch for `meson_options.txt`, explicit iOS libc++ cross flags, a header-only
-  fmt shim for missing `std::format`, a filesystem hash shim, and a `pipe2`
-  fallback for Darwin.
-- The gtkmm3 stack now packages through `libsigc++`, `glibmm`, `cairomm`,
-  `pangomm`, `atkmm`, and `gtkmm3`. GTK3 was rebuilt as `3.24.38+ios2` with
-  the Wayland GDK headers/pkg-config files exported and a runtime
-  `libxcomposite1` dependency. The extra-app build driver invalidates stale
-  GTK3 caches when `gdk/gdkwayland.h` or `gdk-wayland-3.0.pc` is missing.
-- `gtk-layer-shell` now builds against that GTK3 Wayland payload. Waybar 0.15.0
-  builds a minimal iOS-first surface with clock/custom modules, Linux
-  integrations disabled, Darwin fallbacks for `pipe2`, `wordexp`, realtime
-  signals, and inotify, plus a no-session-D-Bus portal fallback.
-- Waybar's upstream fallback subprojects (`fmt`, `spdlog`, `jsoncpp`) can leave
-  stale static artifacts in `build_base`; the build driver and recipe scrub
-  those after install so later packages do not link against accidental fallback
-  libraries.
-- tofi maps under `iosc` after clamping its `wl_seat` bind to the compositor's
-  advertised v5 support. The iOS keymap crash was a real double-cleanup path in
-  `wl_keyboard_keymap`; the patch keeps a single shared `munmap`/`close`.
-- The Geary dependency lane has packaged `gmime`, `libstemmer`, `libytnef`,
-  `gspell`, `libpeas`, Folks 0.15.9, gcr-3/gck-1 3.41.1, and the GOA 3.46
-  client API. For libpeas, the extra-app driver stages the already published
-  `libgirepository-1.0-1` and `-dev` debs instead of rebuilding the full
-  gobject-introspection/target-Python toolchain. The gspell runtime tracks ICU
-  78, and all new runtime packages load on-device. GOA is intentionally
-  client-only: manual IMAP/SMTP setup is the credible iOS path; the Linux
-  provider daemon and browser-based OAuth UI are not claimed.
-- On-device classic `iosc` smoke installed the local extra-app debs and passed
-  package state, Transmission CLI, `swaybg`, and `swayimg`. Focused follow-up
-  slot smokes now also pass for `tofi` and `waybar`. `yad` and `gnumeric` were
-  re-run on 2026-07-08 on a clean `iosc` session with no competing
-  `xios-session` switch and both captured green (see
-  `artifacts/device-runs/extra-apps-smoke-20260708-193938/`): the earlier `yad`
-  "Broken pipe" and `gnumeric` invalidation were both the same failure mode — a
-  concurrent session switch nuking `wayland-0` mid-run — not app bugs.
-
-## Blocked / Opt-In Targets
-
-- `yad`/`gnumeric` runtime smoke: RESOLVED 2026-07-08. Both captured green on a
-  clean classic `iosc` session with no competing `xios-session` switch
-  (`artifacts/device-runs/extra-apps-smoke-20260708-193938/`). The prior `yad`
-  `Error reading events from display: Broken pipe` and `gnumeric` invalidation
-  were both caused by a concurrent session switch tearing down `wayland-0`
-  mid-run, not by the apps.
-- `waybar` broader feature surface: the current package intentionally ships the
-  minimal bar surface. Sway/River/DWL/Hyprland/Wayfire/taskbar, tray, audio,
-  Bluetooth, and other Linux/session-manager integrations remain disabled until
-  a target user workflow needs them.
-- `nwg-look-package`: RESOLVED on-device 2026-07-29. The Go+cgo iPhoneOS path,
-  GTK3/rootless linkage, signing, package assembly, rootless language-data
-  lookup, and full settings-window mapping all pass. Evidence:
-  `artifacts/device-runs/nwg-look-ios1-rootless2-20260729/`.
-- `geary-package`: built and device-launched. Geary remains alive, owns its
-  application bus name, and exports a mapped window in an isolated GNOME slot.
-  gnome-keyring provides the real Secret Service. The exact debs are published
-  in production. The remaining closure gate is a multiprocess device smoke of
-  the final Wayland-capable WebKit bytes when the iPad is reachable.
-
-## Policy
-
-- Keep app recipes additive and opt-in until each app has at least one on-device
-  launch smoke.
-- Disable Linux/session-manager integrations before adding new stub packages.
-- Keep both notification-daemon options opt-in. `mako` now builds through the
-  Darwin basu port, while `dunst` remains the already-smoked default.
-- Publish only after copying the exact smoked debs into top-level `repo/debs/`
-  and running the normal repo audit/publish flow.
-- The 2026-07-30 Geary/WebKitGTK promotion was an explicit exception: the final
-  Wayland rebuild passed host build/package/audit checks, but its device smoke
-  was unavailable because the iPad was offline. Production publication was
-  explicitly requested with that gate still open.
-
-## Verification
-
-Host/container verification completed on 2026-07-06 and 2026-07-07:
-
-```sh
-bash -n linux-build/build-wayland-extra-apps.sh
-docker run --rm --platform linux/arm64 --cpus=4 \
-  -v procursus-vol-gtk-calc:/work/Procursus \
-  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="swaybg-package tofi-package yad-package transmission-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
-docker run --rm --platform linux/arm64 --cpus=4 \
-  -v procursus-vol-gtk-calc:/work/Procursus \
-  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="libgsf-package libxslt-package goffice-package gnumeric-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
-docker run --rm --platform linux/arm64 --entrypoint bash \
-  -v "$PWD/linux-build/out:/out:ro" \
-  procursus-xbuild:bookworm-arm64 \
-  -lc 'for f in /out/swaybg_1.2.2+ios1_iphoneos-arm64.deb /out/tofi_0.9.1+ios1_iphoneos-arm64.deb /out/yad_15.0+ios1_iphoneos-arm64.deb /out/transmission_4.1.3+ios1_iphoneos-arm64.deb /out/gnumeric_1.12.61+ios1_iphoneos-arm64.deb; do dpkg-deb -I "$f"; done'
-docker run --rm --platform linux/arm64 --cpus=4 \
-  -v procursus-vol-gtk-calc:/work/Procursus \
-  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="luajit-package libsigcplusplus-package glibmm-package cairomm-package pangomm-package atkmm-package gtkmm3-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
-docker run --rm --platform linux/arm64 --cpus=4 \
-  -v procursus-vol-gtk-calc:/work/Procursus \
-  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="swayimg-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
-docker run --rm --platform linux/arm64 --cpus=4 \
-  -v procursus-vol-gtk-calc:/work/Procursus \
-  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="gtk+3.0-package gtk-layer-shell-package waybar-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
-docker run --rm --platform linux/arm64 --cpus=2 \
-  -v procursus-vol-gtk:/work/Procursus \
-  -v "$PWD/linux-build/build-gnome.sh:/work/build-gnome.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/vapi:/work/vapi:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="libstemmer-package libytnef-package gmime-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-gnome.sh
-```
-
-The 2026-07-19 gspell/libpeas refresh used:
-
-```sh
-cp ../repo/debs/libgirepository-1.0-{1,dev}_1.78.0+ios1_iphoneos-arm64.deb linux-build/out/
-docker run --rm --platform linux/arm64 --cpus=4 \
-  -v procursus-vol-gtk-calc:/work/Procursus \
-  -v "$PWD/linux-build/build-wayland-extra-apps.sh:/work/build-wayland-extra-apps.sh:ro" \
-  -v "$PWD/linux-build/recipes:/work/recipes:ro" \
-  -v "$PWD/ports:/work/ports:ro" \
-  -v "$PWD/linux-build/build_info:/work/build_info:ro" \
-  -v "$PWD/linux-build/out:/out" \
-  -e TARGETS="gspell-package libpeas-package" \
-  procursus-xbuild:bookworm-arm64 /work/build-wayland-extra-apps.sh
-```
-
-`swayimg_5.4+ios1_iphoneos-arm64.deb` metadata and payload were checked with
-`dpkg-deb -f` / `dpkg-deb -c`; SHA-256 is
-`7020d32850957ba46a73d1e3d568bbc92192fa82eac57ba02ce122de7d6ab760`.
-`aarch64-apple-darwin-otool -L` shows the expected runtime links:
-`libiosexec`, `fontconfig`, `freetype`, `luajit`, `wayland-client`,
-`libxkbcommon`, `libjpeg`, `libpng16`, `libc++`, and `libSystem`.
-
-The final focused follow-up package hashes are:
-
-- `tofi_0.9.1+ios1_iphoneos-arm64.deb`:
-  `731f40023d84783a14e27510da53a4185204383e70d3ab0b220606b3cbdf9516`
-- `libgtk-3-0_3.24.38+ios2_iphoneos-arm64.deb`:
-  `e0a2e1f8ba01c7537d7dc488cb2fa4522fac74142fa06a9a3eb41d20469c5f7b`
-- `libgtk-3-dev_3.24.38+ios2_iphoneos-arm64.deb`:
-  `73d0bee9b59c80466de4a857214709d48606d83086cadc8f1171dd5459ba54b3`
-- `gtk-3-bin_3.24.38+ios2_iphoneos-arm64.deb`:
-  `bdf0cbe4043c04a4878476973be1046fa9c3264681a56dcdb506cd2b9e5c7171`
-- `libgtk-layer-shell0_0.9.2+ios1_iphoneos-arm64.deb`:
-  `2beebfa0375c6c6dfc18f6c54d96ad79ecb0af6bd5e658845a2bd41af677785d`
-- `libgtk-layer-shell-dev_0.9.2+ios1_iphoneos-arm64.deb`:
-  `56772daee28ce47399cfd3bff4048db586b7f0cf8155828114582f5538130ce3`
-- `waybar_0.15.0+ios1_iphoneos-arm64.deb`:
-  `957e99dfe356124aecd2d40b1e2d4a3a157297bf8c4d56423318ed41bb229f79`
-
-`dpkg-deb -f` checks confirmed `waybar` depends on `libgtk-3-0`,
-`libwayland0`, `libxkbcommon0`, `libglib2.0-0`, `libgtkmm-3.0-1v5`, and
-`libgtk-layer-shell0`; `libgtk-3-0 3.24.38+ios2` depends on `libxcomposite1`.
-
-The driver now stages collected debs in a fresh temp directory, runs the shared
-`libgtkintl` relink pass only on those staged artifacts, then copies them into
-`linux-build/out/`. This avoids rewriting unrelated cached GNOME/KDE packages
-when running a narrow target.
-
-`build-gnome.sh` still runs its older broad `/out` relink pass. The
-2026-07-06 `libstemmer`/`libytnef`/`gmime` collection therefore scanned the
-large local `linux-build/out` cache before exiting successfully.
-
-For graphical Wayland clients, start in classic `iosc` mode and reuse the
-existing capture helper:
+Start the classic desktop and reuse the capture helper from the first wave:
 
 ```sh
 x11/bin/xios-device session iosc
@@ -362,51 +122,33 @@ x11/bin/iosc-capture-remote.sh tofi bash -lc "printf 'one\ntwo\n' | tofi --promp
 x11/bin/iosc-capture-remote.sh swayimg swayimg /var/jb/tmp/xios-imv-smoke.png
 ```
 
-Waybar and other long-running layer-shell clients should be checked with
-process state plus a compositor screenshot rather than only command exit
-status. The focused Waybar smoke used a dedicated slot and a 5-second capture:
+For waybar, use a slot so nothing else touches the socket:
 
 ```sh
 bin/xios-device session --slot codexwaybar iosc
-IOSC_CAP_LOCAL=artifacts/device-runs/waybar-slot-20260706-1955 \
-  WAYLAND_DISPLAY=/var/jb/tmp/wayland-codexwaybar \
-  XDG_RUNTIME_DIR=/var/jb/tmp \
-  IOSC_CAP_WAIT=5 \
-  bin/iosc-capture-remote.sh waybar-ios3 \
+WAYLAND_DISPLAY=/var/jb/tmp/wayland-codexwaybar XDG_RUNTIME_DIR=/var/jb/tmp IOSC_CAP_WAIT=5 \
+  bin/iosc-capture-remote.sh waybar \
     env GDK_BACKEND=wayland WAYLAND_DISPLAY=/var/jb/tmp/wayland-codexwaybar \
       XDG_RUNTIME_DIR=/var/jb/tmp waybar --log-level trace
-bin/xios-device status --slot codexwaybar
 ```
 
-The successful artifacts are
-`artifacts/device-runs/tofi-ios3-slot-20260706-1844/cap-tofi-ios3.png` and
-`artifacts/device-runs/waybar-slot-20260706-1955/cap-waybar-ios3.png`; the
-Waybar slot was stopped afterward and active session returned to `iosc`.
-
-The second-wave batch also has a repeatable host-side helper:
+The batch helper:
 
 ```sh
 x11/bin/iosc-extra-apps-smoke --install
-x11/bin/iosc-extra-apps-smoke --only packages,transmission
+x11/bin/iosc-extra-apps-smoke --only packages,yad,gnumeric,shot
 ```
 
-`--install` stages the exact local runtime debs from `linux-build/out/` onto the
-device, installs them with `dpkg -i --force-overwrite`, runs `apt-get check`,
-then captures `swaybg`, `tofi`, `swayimg`, `yad`, and `gnumeric` while checking
-Transmission's CLI tools. The install set includes `luajit` for `swayimg`. When
-a Wayland guard, capture, or final screenshot step fails, the helper writes a
-`diagnostics-*.log` with active-session state, geometry, compositor/session
-logs, sockets, and a focused process snapshot.
+`--install` copies local runtime debs from `linux-build/out/` to the device,
+installs them with `dpkg -i --force-overwrite`, runs `apt-get check`, then
+captures swaybg, tofi, swayimg, yad and gnumeric and checks Transmission's CLI.
+On a failed step it writes a `diagnostics-*.log` with session state, geometry,
+logs, sockets and a process snapshot. Now that everything is published, prefer
+installing from the repo over `--install` unless you are testing a rebuild.
 
-Device verification is now green for the graphical batch. On 2026-07-06 PDT,
-`bin/iosc-extra-apps-smoke --install` wrote artifacts to
-`artifacts/device-runs/extra-apps-smoke-20260706-173431/`: install,
-`apt-get check`, package queries, Transmission CLI, `swaybg`, and `swayimg`
-passed. `tofi` and `waybar` passed in focused slot smokes after the client
-patches above. `yad` and `gnumeric` — the last two published-but-unverified
-apps — passed on 2026-07-08 PDT via
-`bin/iosc-extra-apps-smoke --only packages,yad,gnumeric,shot` on a clean
-classic `iosc` session with no competing `xios-session` switch; artifacts are in
-`artifacts/device-runs/extra-apps-smoke-20260708-193938/` (`cap-yad.png`,
-`cap-gnumeric.png`, `results.txt` = all PASS, no `diagnostics-*.log`). The whole
-second-wave graphical batch now has at least one green on-device capture.
+## History
+
+Built 2026-07-06 and 07-07, device-smoked through 2026-07-08 (yad and Gnumeric
+last, after the session-switch false failures), nwg-look finished 2026-07-29,
+and the gspell/libpeas leaves were rebuilt against ICU 78 on 2026-07-29. The
+whole wave reached production by the scoped 2026-07-30 publish.

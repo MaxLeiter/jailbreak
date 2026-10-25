@@ -1,5 +1,7 @@
 # xios-app — the Xios iOS app (Metal present + input + IOSurface adopt)
 
+> The 0.2.0 Sileo depiction text (description + changelog) is in commit 8da1c171 of `claude/xios-v2`; repo/meta/com.max.xios.json keeps the published 0.1.12 text until 0.2.0 is staged.
+
 ## Ownership
 The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the iPad via Metal, streams UIKit touch/keyboard back over a unix socket, and hosts the in-app session picker. This is the MOST ACTIVE bug area.
 

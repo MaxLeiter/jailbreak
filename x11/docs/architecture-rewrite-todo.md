@@ -1,7 +1,32 @@
 # Xios Architecture Rewrite TODO
 
-Status owner: keep this file as the cross-cutting architecture backlog. Use the
-handoff files for subsystem-specific state and device evidence.
+Cross-cutting architecture backlog from July 2026. Subsystem state and device
+evidence live in the handoff files.
+
+Status (2026-10-25), by track:
+
+- **#1 iosc split:** ongoing. `iosc_render_plan`, `iosc_xwm`, `iosc_kde_output`,
+  `iosc_screencopy` and others are out; `iosc.c` is still ~7,500 lines
+  (`refactor-plan.md`).
+- **#2 render plan:** the seam exists (`wayland/iosc_render_plan.{h,c}`); draw-op
+  classification beyond damage is not done.
+- **#4 IOSurface protocol:** went the other way. The July "version 2 with a
+  capabilities event" was collapsed on 2026-07-29 (`40324352`) into a single
+  `iosc_iosurface` version 1 where every commit carries a mandatory MTLSharedEvent
+  fence (`wayland/iosc-iosurface.xml`). The third slice below is history.
+- **#5 single session supervisor:** superseded by the Xios v2 plan
+  (`xios-v2-design.md`): ioscd as session manager is its milestone M2, not started.
+- **#6 Xios.app host split:** the slices below landed on main; the full rewrite is
+  Xios v2 M1, on the unmerged `claude/xios-v2-app` branch.
+- **#7 native backend boundary:** see `handoff/native-ipados.md`.
+- **#8 capability profiles:** `apps/iosc-desktop/xios-capability-profiles.sh` exists and
+  ships in `xios-session`; only `xios-session-lib.sh` sources it so far. The bring-up
+  scripts (`run-kde-plasma.sh`, `launch-gnome-session.sh`) and ioscd still set their own env.
+- **#9 entitlement pipeline:** `linux-build/resign-graphics-packages.py` validates
+  hardware profiles at publish time. Host DER signing is still not trustworthy for every
+  GPU binary (`device-testing.md`, the host-signing landmine).
+
+The slice log below is kept as written.
 
 ## Selected Tracks
 

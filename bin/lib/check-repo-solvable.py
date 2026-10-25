@@ -20,7 +20,6 @@ names that live outside our repo (firmware, the Procursus base, etc.).
 Usage: bin/lib/check-repo-solvable.py [repo/Packages]   (default: repo/Packages)
 Exit 0 = clean, 1 = at least one unresolvable dependency.
 """
-import json
 import os
 import re
 import sys
@@ -279,33 +278,7 @@ def main():
                     reason = "no such package"
                 problems.append((s["Package"], text, reason))
 
-    # Known-broken pairs that predate this check (see the file's own _comment).
-    # They are reported every run but do not fail the publish, so the gate can be
-    # enforcing for NEW breakage without first requiring a 48-package cleanup.
-    baseline = {}
-    base_path = os.path.join(REPO, "bin", "lib", "solvable-baseline.json")
-    if os.path.exists(base_path):
-        with open(base_path, encoding="utf-8") as fh:
-            baseline = {k: v for k, v in json.load(fh).items() if not k.startswith("_")}
-
-    fatal, known = [], []
-    for pkg, dep, reason in problems:
-        (known if dep in baseline.get(pkg, {}) else fatal).append((pkg, dep, reason))
-
-    if known:
-        print(f"KNOWN-BROKEN, not failing ({len(known)}):", file=sys.stderr)
-        for pkg, dep, _ in sorted(known):
-            print(f"  {pkg}  ->  {dep}", file=sys.stderr)
-
-    # A baseline entry that no longer fires has been fixed -- say so, so the file
-    # shrinks instead of quietly accumulating waivers for problems that are gone.
-    live = {(p, d) for p, d, _ in problems}
-    stale = [(p, d) for p, deps in baseline.items() for d in deps if (p, d) not in live]
-    if stale:
-        print(f"\nSTALE baseline entries ({len(stale)}) -- fixed, drop them from "
-              f"{os.path.relpath(base_path, REPO)}:", file=sys.stderr)
-        for pkg, dep in sorted(stale):
-            print(f"  {pkg}  ->  {dep}", file=sys.stderr)
+    fatal = problems
 
     lonely = missing_companions(stanzas)
     if lonely:
@@ -331,8 +304,7 @@ def main():
             file=sys.stderr,
         )
         return 1
-    print(f"OK: all Depends/Pre-Depends resolvable across {len(stanzas)} packages"
-          + (f" ({len(known)} known-broken ignored)." if known else "."))
+    print(f"OK: all Depends/Pre-Depends resolvable across {len(stanzas)} packages.")
     return 0
 
 

@@ -101,14 +101,12 @@ def forced_deb_adds(cmd):
     return hits
 
 
-if tool == "Bash":
-    # No Bash rule is active. The one that lived here blocked a bare
-    # sync-packages-to-repo.py back when it applied by default and deleted debs;
-    # the script is now dry-run by default and refuses --apply without --only.
-    # A rule added here should match against `cmd`, never the raw command.
-    cmd = strip_heredocs(tool_input.get("command") or "")
-
-elif tool in ("Edit", "Write", "NotebookEdit"):
+# No command-text rule is active for Bash besides the forced-add check below. The
+# one that lived here blocked a bare sync-packages-to-repo.py back when it applied
+# by default and deleted debs; the script is now dry-run by default and refuses
+# --apply without --only. A new Bash rule should match against
+# strip_heredocs(command), never the raw command.
+if tool in ("Edit", "Write", "NotebookEdit"):
     path = tool_input.get("file_path") or ""
     # Each profile (repo/profiles/<name>/, e.g. rootful) is its own generated
     # tree with the same layout as the rootless one at repo/.

@@ -1,10 +1,21 @@
-# Shared iOS/GPU glue lib — the cut lines (design for iosc-input)
+# Shared iOS/GPU glue lib: the cut lines (design, June 2026)
 
-Status: **design only.** Hands the cut lines to `iosc-input` (the iosc maintainer) to route once
-`iosc.c` settles. Do NOT start the iosc-side refactor here — `iosc.c` is a live file. Grounded in
-the actual sources read 2026-06-30: `x11/wayland/iosc_gl.{c,h}`, `x11/wayland/iosc_input.{c,h}`,
-`x11/linux-build/patches/xios/xios_surface.{c,h}`, `x11/wayland/iosc-iosurface.xml`, and mutter
-46's cogl winsys (`cogl/cogl/winsys/cogl-winsys-egl{,-x11}.c`). Companion to
+> Status (2026-10-25): built. `libxios_glue` is produced by `wayland/build-xios-glue.sh`
+> from `linux-build/patches/xios/xios_surface.c`, `wayland/xios_egl.c`,
+> `wayland/xios_metal_sync.m`, `wayland/xios_input_socket.c` and
+> `wayland/xios_glue_defaults.c`, and both iosc and Mutter's MetaBackendIOS use it. Two
+> differences from the plan below: `iosc_input.c` (the xkb keymap) stayed iosc-only
+> because Mutter maps keysyms through Clutter, and the Metal shared-event fence broker
+> (`xios_metal_sync.m`) was added. `xios_surface.c` still lives under `patches/xios/`
+> because it started as part of the retired software Xios X server; it includes no X
+> server headers and is now the compositor-side output IOSurface, app rendezvous (the
+> ddx socket) and client IOSurface import. The header
+> `wayland/xios-glue-stub.h` is the API boundary.
+
+Grounded in the sources read 2026-06-30: `x11/wayland/iosc_gl.{c,h}`,
+`x11/wayland/iosc_input.{c,h}`, `x11/linux-build/patches/xios/xios_surface.{c,h}`,
+`x11/wayland/iosc-iosurface.xml`, and mutter 46's cogl winsys
+(`cogl/cogl/winsys/cogl-winsys-egl{,-x11}.c`). Companion to
 [`mutter-on-iosc.md`](mutter-on-iosc.md).
 
 ## Why a shared lib

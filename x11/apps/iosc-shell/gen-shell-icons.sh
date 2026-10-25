@@ -84,9 +84,12 @@ for desktop in "$APPS"/*.desktop; do
   esac
   src="$(resolve "$icon")" || true
   [ -n "${src:-}" ] || { echo "  -- $icon: no source"; continue; }
+  # panel-icons.h strips an extension from Icon= before it looks for
+  # <name>.svg/.png, so Icon=foo.png must be shipped as foo.png, not foo.png.png.
+  name="${icon%.png}"; name="${name%.svg}"; name="${name%.xpm}"
   case "$src" in
-    *.svg) cp "$src" "$OUT/${icon}.svg" && { echo "  OK $icon (svg)"; n=$((n+1)); } ;;
-    *.png) cp "$src" "$OUT/${icon}.png" && { echo "  OK $icon (png)"; n=$((n+1)); } ;;
+    *.svg) cp "$src" "$OUT/${name}.svg" && { echo "  OK $icon (svg)"; n=$((n+1)); } ;;
+    *.png) cp "$src" "$OUT/${name}.png" && { echo "  OK $icon (png)"; n=$((n+1)); } ;;
     *)     echo "  -- $icon: unsupported $src" ;;
   esac
 done

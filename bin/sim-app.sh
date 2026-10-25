@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build KitchenHub for the iOS Simulator, launch it, and grab a screenshot — so
+# Build an app (default KitchenHub) for the iOS Simulator, launch it, and grab a screenshot — so
 # the design can be iterated visually without the device. Uses an iPad Pro 13"
 # (4:3, same aspect as the iPad 7) by default.
 #
@@ -10,9 +10,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_DIR="${1:-$REPO_ROOT/apps/KitchenHub}"
-APP_NAME="KitchenHub"
-BUNDLE_ID="com.max.kitchenhub"
+APP_DIR="$(cd "${1:-$REPO_ROOT/apps/KitchenHub}" && pwd)"
+# Name and bundle id come from the app dir, as in bin/install-app.sh: they used to
+# be hardcoded to KitchenHub, so any other app dir built the wrong scheme.
+APP_NAME="$(basename "$APP_DIR")"
+BUNDLE_ID="$(grep -E 'PRODUCT_BUNDLE_IDENTIFIER' "$APP_DIR/project.yml" 2>/dev/null | head -1 | sed 's/.*: *//' | tr -d '"' || true)"
+[ -n "$BUNDLE_ID" ] || BUNDLE_ID="com.max.$(echo "$APP_NAME" | tr 'A-Z' 'a-z')"
 SIM_NAME="${SIM_NAME:-iPad Pro 13-inch (M4)}"
 OUT="${SHOT:-$APP_DIR/.preview.png}"
 

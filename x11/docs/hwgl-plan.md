@@ -1,12 +1,27 @@
-# Hardware-accelerated GL on iOS — plan
+# Hardware-accelerated GL on iOS (plan, June 2026)
 
-Research deliverable for the "real GL driver" ask. Today the stack is **software GL only**
-(Mesa `llvmpipe`/`swrast`, already built); the only thing touching the GPU is the Xios
-compositor (Metal). This file evaluates the realistic ways to get **hardware GL** and
-recommends a path.
+> Status (2026-10-25): done; this is the research record. The recommendation below
+> (GLES via ANGLE's Metal backend) shipped as the `angle` package
+> (`2.1.0+git20260630.a32d31d+es3-16` today, `/var/jb/lib/angle`). Everything that draws
+> on the GPU goes through it: iosc, Mutter, KWin, GTK4 and Qt clients on Wayland, and
+> Xwayland's glamor (`xwayland 23.2.7+ios5`). The build is reproducible from
+> `ports/angle/build-angle.sh` plus `ports/angle/patches/` (the dispatch patch below became
+> `0002-dylib-dispatch-jb-path.patch`), packaged by `ports/angle/package-angle-es3.sh`. The
+> `scratchpad/hwgl/` probe paths mentioned below were never committed. The "Xios compositor"
+> and "Stage 2 DDX" here are the software Xios X server, retired 2026-07-29.
+>
+> The lasting lessons: iOS forbids ANGLE's component build; ANGLE ships `.framework`
+> bundles that need flattening and a dispatch-path patch for CLI consumers; the library
+> carries no entitlements, so every GPU-using binary must be signed with the AGX/IOSurface
+> IOKit set; and ANGLE has no EGL config that can back an X11 window, so GTK4's GPU path
+> is Wayland, not X11 (Phase C).
 
-**Device reality:** iPad7,12 (A10), iPadOS 17.6.1, palera1n rootless `/var/jb`, Procursus.
-Apple GPU, **Metal/AGX only** — no Vulkan, no DRM/KMS, no DRI. See [[x11-on-ios-project]].
+Research deliverable for the "real GL driver" ask. At the time the stack was software GL
+only (Mesa `llvmpipe`/`swrast`); the only thing touching the GPU was the Xios app's Metal
+present. This file evaluates the realistic ways to get hardware GL and recommends a path.
+
+**Device:** iPad7,12 (A10), iPadOS 17.6.1, rootless `/var/jb`, Procursus.
+Apple GPU, **Metal/AGX only**: no Vulkan, no DRM/KMS, no DRI.
 
 ---
 
@@ -68,7 +83,7 @@ llvmpipe** — which already works and is fine for light use.
 **Cost/risk:** ANGLE builds with its *own* toolchain (depot_tools + GN + ninja, on **macOS +
 Xcode** for the Metal shader compiler) — **separate from our Procursus/Debian-Docker
 `linux-build/` pipeline**. De-risk first with a prebuilt/fork build + a tiny EGL triangle
-test before committing to the upstream GN build. **No heavy build started — awaiting your go.**
+test before committing to the upstream GN build. 
 
 ---
 
@@ -344,28 +359,13 @@ path is a dead end and the answer must be Wayland or the compositor.
 
 Probes/scripts: `scratchpad/hwgl/run-gtk-angle.sh` (+ `run.log` evidence on device, since cleaned).
 
-### Phase C-real / D — first real consumer (recommended next)
-- Wire the **Xios compositor** to render via ANGLE EGL + `EGL_ANGLE_iosurface_client_buffer`
-  on the existing per-window IOSurfaces (folds into Stage 2/3). Validates the IOSurface
-  interop on real workload — and is the lowest-risk way to put the A10 GPU under the desktop.
-- In parallel, the **GTK4-on-Wayland-on-ANGLE** path above (needs W0 + the epoxy fix).
+### What happened next
 
-### Phase D — broaden
-- A `kmscube`-style surfaceless GLES demo → an entitled GLES app (mpv/SDL2) → then evaluate
-  the Wayland-compositor + GTK4 paths.
-
----
-
-## Open questions for the coordinator
-
-1. **GTK3 vs GTK4:** hardware GL barely helps the GTK3 build that's in flight; the real GPU
-   payoff is GTK4 (forced GL renderer + GLES). Is GTK4 in scope, or is GTK3 fixed?
-2. **Per-binary entitlement policy:** are we comfortable ldid-signing every GPU-using client
-   binary with the AGX entitlement (fine on a jailbreak), or do we want GPU rendering
-   centralized in the entitled compositor only?
-3. **Scope of "real driver":** is the goal "GPU for the compositor + select GLES apps"
-   (clean, near-term) or "GPU for arbitrary X clients" (the latter largely needs the Wayland
-   pivot, since GLX-over-Metal isn't happening)?
+Phases C-real and D happened, in a different shape than planned: the Wayland pivot made
+iosc the GPU compositor (ANGLE + `EGL_ANGLE_iosurface_client_buffer`), GTK4 went GPU on
+Wayland through the `libepoxy0 +angle1` repoint, and per-binary GPU signing became the
+policy (see `scripts.md` on DER signing and `device-testing.md` for the host-signing
+landmine). Current state lives in `handoff/iosc-compositor.md`.
 
 ---
 

@@ -15,7 +15,14 @@ xios_load_target "${XIOS_TARGET:-rootless-1900}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/deploy-env.sh"   # IP/PORT/SSH_OPTS + ssh_/scp_ (loads device.env)
 
-[ -x "$HERE/out/ioscd" ] || bash "$HERE/build-stub.sh"
+_x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname "$_x")"; done
+. "$_x/lib/xlib.sh"
+
+# Rebuild when the sources moved on, not only when the binary is missing: the
+# old "build if absent" test deployed whatever out/ioscd an earlier build left.
+if xis_stale "$HERE/out/ioscd" "$HERE/src" "$HERE/sdk" "$HERE/ioscd-ent.xml" "$HERE/build-stub.sh"; then
+  bash "$HERE/build-stub.sh"
+fi
 
 echo "==> copy ioscd -> $XIOS_PREFIX/usr/local/bin"
 scp_ "$HERE/out/ioscd" "root@$IP:$XIOS_PREFIX/usr/local/bin/ioscd"

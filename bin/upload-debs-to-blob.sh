@@ -78,18 +78,6 @@ if [ -n "${VERCEL_OIDC_TOKEN:-}${BLOB_STORE_ID:-}" ] &&
   unset VERCEL_OIDC_TOKEN BLOB_STORE_ID
 fi
 
-UPLOAD_ARGS=(
-  --access public
-  --cache-control-max-age "$CACHE_CONTROL_MAX_AGE"
-  --content-type application/x-debian-package
-  --no-color
-  --non-interactive
-)
-
-if [ -n "${BLOB_READ_WRITE_TOKEN:-}" ]; then
-  UPLOAD_ARGS+=(--rw-token "$BLOB_READ_WRITE_TOKEN")
-fi
-
 blob_status() {
   local url="$1"
   curl -sSI --connect-timeout 5 --max-time "$HEAD_TIMEOUT" "$url" | tr -d '\r'
@@ -129,7 +117,14 @@ process_deb() {
       echo "==> skip existing $pathname"
       return 0
     fi
-    if [ -n "$status" ] && [ "$status" != "404" ]; then
+    # No status at all (timeout, DNS) is not "absent": uploading then skips the
+    # size check, and `blob put` reporting an existing blob would be counted as
+    # a skip without anyone comparing the bytes.
+    if [ -z "$status" ]; then
+      echo "ERROR: could not HEAD $url (network?); rerun, or set BLOB_SKIP_EXISTING=0 deliberately" >&2
+      exit 1
+    fi
+    if [ "$status" != "404" ]; then
       echo "ERROR: unexpected Blob status for $pathname: HTTP $status" >&2
       exit 1
     fi
@@ -185,10 +180,8 @@ if [ -n "$ONLY" ]; then
     }
     printf '%s\n' "$deb"
   done > "$LIST"
-  expected="$(awk -F, '{ print NF }' <<EOF
-$ONLY
-EOF
-)"
+  # Distinct, non-empty names: "a," or "a,a" selects one payload, not two.
+  expected="$(printf '%s\n' "$ONLY" | tr ',' '\n' | sed '/^$/d' | sort -u | wc -l | tr -d '[:space:]')"
   selected="$(wc -l < "$LIST" | tr -d '[:space:]')"
   [ "$selected" = "$expected" ] || {
     echo "ERROR: scoped Blob upload selected $selected payload(s), expected $expected: $ONLY" >&2

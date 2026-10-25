@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cross-builds Xwayland 23.2 (GPU-accelerated via ANGLE-Metal glamor -> IOSurface ->
+# Cross-builds Xwayland 24.1 (GPU-accelerated via ANGLE-Metal glamor -> IOSurface ->
 # iosc_iosurface) + its new dep libxcvt, for rootless iOS. See recipes/xwayland.mk,
 # recipes/libxcvt.mk, recipes/ports/xwayland/patches, recipes/build_info/xwayland-glamor-iosurface.c.
 # Run on a volume that already has the wayland stack + libepoxy+angle (procursus-vol-gtk or
@@ -164,12 +164,17 @@ XW=build_work/$XIOS_TRIPLE/xwayland
 XS=build_stage/$XIOS_TRIPLE/xwayland
 XF="$XW/.xios_patch_series.sha256"
 NEW_FP="$(sha256sum \
+  /work/recipes/xwayland.mk \
   /work/ports/xwayland/patches/series \
   /work/ports/xwayland/patches/*.patch \
   /work/ports/libepoxy/patches/series \
   /work/ports/libepoxy/patches/*.patch \
   /work/recipes/build_info/xwayland-glamor-iosurface.c \
   /work/x11/wayland/iosc-iosurface.xml \
+  /work/x11/wayland/xios_metal_sync.m \
+  /work/x11/wayland/xios_metal_sync.h \
+  /work/x11/apps/shared/XiosMetalEventBroker.m \
+  /work/x11/apps/shared/XiosMetalEventBroker.h \
   /work/x11/apps/shared/XiosProtocol.h | sha256sum | awk '{print $1}')"
 OLD_FP="$(cat "$XF" 2>/dev/null || true)"
 if [ -d "$XW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then

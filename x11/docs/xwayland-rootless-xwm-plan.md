@@ -1,11 +1,12 @@
-# Rootless Xwayland XWM for iosc (`iosc_xwm`) — plan + resume-here
+# Rootless Xwayland XWM for iosc (`iosc_xwm`): plan and integration notes
 
-> **Current status (2026-07-03): integration is no longer pending.** `iosc_xwm` and
-> `xwayland-shell-v1` are wired locally into iosc. **2026-10-25:** the XWM is built by default
-> (iosc 0.9.50, `IOSC_BUILD_XWM=0` opts out), start-up no longer blocks on `-displayfd` (that
-> deadlocked against Xwayland's init round-trips), and xios-session starts it when Xwayland is
-> installed; see `handoff/iosc-compositor.md`. The checklist below is retained as historical
-> implementation notes and as a useful summary of the integration contract.
+> **Status (2026-10-25): shipped.** The XWM is built into iosc by default since 0.9.50
+> (`IOSC_BUILD_XWM=0` opts out) and stays dormant unless `IOSC_XWAYLAND` is set, which
+> `xios-session` does for the iosc preset when Xwayland is installed. 0.9.51 added the root
+> subwindow redirect without which no X window ever appeared, opaque compositing for
+> non-32-bit visuals, and per-slot X display selection. `glxgears` maps on device; wider app
+> coverage is still open. Current state and landmines: `handoff/iosc-compositor.md`. The
+> checklists below are the original implementation notes, kept for the integration contract.
 
 Goal: make **rootless** Xwayland work under the iosc Wayland compositor, so each
 X11 window becomes an **individual iosc surface** (toplevel or popup), instead of
@@ -216,10 +217,12 @@ unset.
 
 ## Runtime / device bring-up (after integration)
 
-- Launch iosc, then the Xios app (as in `run-xwayland.sh`), then run iosc with
-  `IOSC_XWAYLAND=1` — the XWM spawns Xwayland itself (do NOT also start the
-  rootful Xwayland from `run-xwayland.sh`). X clients are launched with the
-  `DISPLAY` the module sets (`:N`), e.g. `DISPLAY=:1 xterm`.
+- Normally `xios-session iosc` does this: it sets `IOSC_XWAYLAND=1` when
+  `Xwayland` is installed, the XWM spawns Xwayland itself, iosc publishes the display
+  as `x11-display` in its `xios-status.d` sidecar, and `xios-session app` passes it on
+  as `DISPLAY`. By hand: run iosc with `IOSC_XWAYLAND=1` and do NOT also start the
+  rootful Xwayland from `run-xwayland.sh`; then `DISPLAY=:N xterm` with the display
+  from `xios-status x11-display`.
 - Debug: `IOSC_XWM_DEBUG=1` traces association/adopt; `IOSC_XWAYLAND_BIN`
   overrides the Xwayland path.
 
