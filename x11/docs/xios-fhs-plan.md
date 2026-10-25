@@ -1,5 +1,27 @@
 # xios-fhs: a unix-y filesystem + hardware bridge for the Xios desktop
 
+> **Status (2026-10-25): shipped as `xios-fhs 1.0.6`**, pulled in by `xios-runtime`
+> (so every flavor has it). Battery (UPower shim), the synthetic sysfs tree, the
+> SensorProxy/IIO bridge and the torch node all work. Two things changed from the
+> design below, both found on the device:
+>
+> - **Brightness writes do not go through BackBoardServices.**
+>   `BKSDisplayBrightnessSet` is inert on iPadOS 17.6.1 outside SpringBoard (it
+>   resolves, the transaction creates, the entitlement is present, and `GetCurrent`
+>   never moves). `xios-hwbridged` now sends write requests to `xios-sysintd`
+>   (`XIOS_IN_BRIGHTNESS`), which relays them to the Xios app, and the app sets
+>   `UIScreen.brightness`. Reads still use `BKSDisplayBrightnessGetCurrent`.
+> - **No file monitors.** `g_file_monitor_directory()` on iOS returns a monitor
+>   that never reports anything, so the daemon polls the node at 2 Hz and treats
+>   any value it did not write as a request (`1.0.3`).
+>
+> Also: KDE reads batteries through Solid, not UPower directly; `kf6-solid
+> 6.3.0+ios2` builds Solid's UPower backend so it reaches this shim. powerdevil
+> drives the same backlight node through `XiosBacklightDetector`
+> (`powerdevil-ios-fixes.sh`). `xios-sensord` runs the sensors only while a client
+> holds a claim (`1.0.6`; the old always-on 10 Hz poll wrote about 29 GB a day to
+> flash). Current status lives in `handoff/polish.md`.
+
 Goal: desktop software (GNOME today, KDE later) finds screen brightness, battery state and
 standard paths where it expects them, without per-app hacks. Rootless constraint: we cannot
 touch the real `/`, `/sys` or `/proc`; everything lives under `/var/jb`, and every consumer is
@@ -58,11 +80,11 @@ Verified against upstream 46.0 `plugins/power/gsd-backlight.c`:
 
 ### KDE (later, flavor K)
 
-- Battery: Solid talks the same `org.freedesktop.UPower` D-Bus API — served for free by the
-  shim.
+- Battery: Solid talks the same `org.freedesktop.UPower` D-Bus API, but only if its UPower
+  backend is built (`kf6-solid 6.3.0+ios1` had only fakehw and Plasma read 0%; `+ios2`
+  fixed it).
 - Brightness: powerdevil uses its own KAuth helper on `/sys/class/backlight` (plus ddcutil).
-  Needs its own small patch against the same synthetic tree when we get there. Out of scope
-  now; noted so the tree layout is chosen with it in mind.
+  Done as `XiosBacklightDetector` in `powerdevil-ios-fixes.sh`, against the same tree.
 
 ### Static paths (what already exists vs missing)
 
@@ -146,18 +168,17 @@ D-Bus surface (all that UpClient 1.90 + gnome-shell 46 + gsd-power 46 consume):
         actual_brightness current hardware value, daemon-refreshed
         type              "raw"
 
-- `xios-hwbridged` watches `brightness` with a GFileMonitor **on the directory** (survives
-  the atomic-rename writes `g_file_set_contents()` does) and applies value/1000.0 via
-  BackBoardServices: `BKSDisplayBrightnessSet(level, 1)` inside a
-  `BKSDisplayBrightnessTransactionCreate` transaction (the Activator/flipswitch-proven
-  pattern; resolved via dlopen of the private framework). A 10 s timer re-reads
-  `BKSDisplayBrightnessGetCurrent()` and refreshes `actual_brightness` (+ `brightness`, so
-  the gsd slider tracks Control Center changes). Re-applying a value the daemon itself wrote
-  is idempotent, so no loop-breaking state is needed.
+- As built: `xios-hwbridged` polls `brightness` at 2 Hz (GFileMonitor reports nothing on
+  iOS). A value that is not the one it last applied is a client request, and it goes to
+  the Xios app through `xios-sysintd` as `XIOS_IN_BRIGHTNESS`; the app sets
+  `UIScreen.brightness`. The same tick re-reads `BKSDisplayBrightnessGetCurrent()` into
+  `actual_brightness` (and `brightness`, so sliders track Control Center changes). The
+  original design here applied the value with `BKSDisplayBrightnessSet` inside a
+  transaction; that call is inert from a daemon on 17.6.1, see the status note.
 - **Shell slider WITHOUT gsd-power:** the daemon also claims
   `org.gnome.SettingsDaemon.Power` on the session bus and serves the `...Power.Screen`
   interface (readwrite `Brightness` percent, `StepUp`/`StepDown`/`Cycle`, XML copied
-  verbatim from gsd 46) mapped onto the same BKS path. gnome-shell's quick-settings slider
+  verbatim from gsd 46) mapped onto the same node. gnome-shell's quick-settings slider
   shows whenever `Brightness >= 0`, so brightness UX does not depend on porting gsd-power
   at all. Context: the gsd-power port stalled on a real wall — its non-Linux backlight path
   IS gnome-rr, which our GTK4 gnome-desktop drops, plus a GTK-skeleton include — so the
@@ -207,10 +228,9 @@ There is no libudev or hardware LED node on iOS, so:
 
 ### Risks / open validation
 
-- `BKSDisplayBrightnessSet` from a fakesigned standalone daemon is the standard jailbreak
-  route but unverified on 17.6.1 from OUR daemon; build script signs with
-  `com.apple.backboard.client` + platform-application entitlements. Fallbacks if backboardd
-  refuses: IOMobileFramebuffer brightness, or a SpringBoard-side helper via notify tokens.
+- Resolved: `BKSDisplayBrightnessSet` from our daemon is inert on 17.6.1 (see the status
+  note); the app-side `UIScreen.brightness` relay replaced it and is device-verified
+  through powerdevil (400, 850, 250, 1000 each reached the panel and stuck).
 - IOPS on iOS reports percent granularity only (no energy/rate); `TimeToEmpty` is often -1
   early after state changes — clients handle 0 (unknown) fine.
 - Torch: `AVCaptureDevice` torch control from a headless fakesigned session daemon is
@@ -254,7 +274,7 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
 - [x] Sensor bridge added: `xios-sensord` serves `net.hadess.SensorProxy` and synthetic IIO
       accel/gyro/magnetometer nodes from CoreMotion
 - [x] Build daemons in the Procursus image and package them (`xios-fhs 1.0.2`)
-- [x] Device validation: IOPS battery state, BKS-backed brightness mirror, live
+- [x] Device validation: IOPS battery state, brightness read mirror, live
       CoreMotion/IIO values, and shell helper startup. See `docs/handoff/polish.md`
       for the captured 2026-07-04 values and remaining physical-gesture polish.
 - [x] Darwin gsd-backlight backend patch (patches/gnome-settings-daemon/0001-...) — DORMANT:
@@ -268,4 +288,7 @@ manufacturer,scope}`, `AC0/{type,online}`, refreshed on the same poll.
       (plasma-mobile-ios-fixes.sh). The daemon and Plasma packages were rebuilt;
       physical torch validation remains hardware-gated because the target iPad
       does not expose a rear torch LED.
-- [ ] Flavor-K follow-up: powerdevil backlight patch against the same tree
+- [x] Flavor-K follow-up: powerdevil backlight (`XiosBacklightDetector`) and Solid's
+      UPower backend (`kf6-solid 6.3.0+ios2`)
+- [x] Brightness writes through the app (`UIScreen.brightness`), 2026-07-29
+- [x] `xios-sensord` on demand only (`1.0.6`)

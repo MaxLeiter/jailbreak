@@ -1,21 +1,20 @@
-# iosc per-window rendezvous (native iPadOS flavor) — implementation spec
+# iosc per-window rendezvous (native iPadOS flavor): protocol spec
 
-Audience: the iosc maintainer (iosc-protocols). This specifies the compositor
-half of the native flavor's per-window presentation. The client half is already
-written and type/compile-checked:
+**Status (2026-10-25): implemented and shipped** (`iosc`, `xios-launcher-tools`).
+This is the compositor-side contract for the native flavor's per-window
+presentation. The code that implements it:
 
-- `x11/apps/iosc-host/Sources/iosc_native_proto.h` — the wire contract (shared).
-- `x11/apps/iosc-host/Sources/NativeClient.c` — the reference client.
-- `x11/apps/iosc-host/Sources/IoscInput.c` — input, with the new `XIOS_IN_BIND`.
+- `x11/apps/shared/XiosProtocol.h`: the one authoritative wire registry.
+  `x11/apps/iosc-host/Sources/iosc_native_proto.h` includes it.
+- `x11/wayland/xios_canvas.{c,h}` and `x11/wayland/iosc.c`: the compositor half.
+- `x11/apps/iosc-host/Sources/NativeClient.c`: the host half.
+- `x11/apps/iosc-host/Sources/IoscInput.c`: input, including `XIOS_IN_BIND`.
 
 Design rationale and the iPadOS-side lifecycle are in
 `x11/docs/native-ipados-plan.md`. This doc is only the iosc-side contract.
 
-Scope note: this protocol is now implemented by `wayland/xios_canvas.c`,
-`wayland/iosc.c`, and `apps/iosc-host/Sources/NativeClient.c`; remaining work is
-device validation and polish. FRAMING IS AGREED (2026-07-01, iosc-protocols):
-the shared 32-byte `xios_msg` record ('XMS1'), core codes 0x01-0x0f owned by
-iosc-protocols (HELLO/DIRTY/CURSOR), range 0x40-0x5f reserved for native.
+Framing: the shared 32-byte `xios_msg` record ('XMS1'), core codes 0x01-0x0f
+(HELLO, DIRTY, CURSOR, ...), range 0x40-0x5f for native.
 Protocol v1 uses native `XIOS_MSG_NATIVE_FRAME` rather than core DIRTY. Every
 frame carries exactly one 32-byte broker token and a non-zero shared-event
 value; there is no unfenced variant or older-version branch. This spec and the
@@ -192,18 +191,21 @@ pixels. `window_id` is COMPOSITOR-assigned (a monotonic u32, stored on
   `xdg_toplevel.close` to `window_id`'s client. If the client ignores it, ioscd
   may SIGTERM after a grace period (host-side policy, not iosc's concern).
 
-### iosc -> host (native codes 0x50+, plus core DIRTY/CURSOR)
+### iosc -> host (native codes 0x50+, plus core CURSOR)
 
 - `XIOS_MSG_WINDOW_NEW` (0x50): a toplevel matched this host and mapped. `a`=w,
   `b`=h, `c`=stride, `d`=flags (`XIOS_NWIN_MAXIMIZED`/`FULLSCREEN`); payload =
   title. Canvas mach_msg follows (§5). Assign `window_id` here.
 - `XIOS_MSG_WINDOW_GEOM` (0x51): canvas reallocated after a RESIZE. `a`=w, `b`=h,
   `c`=stride. Fresh canvas mach_msg follows. Release the old canvas after the host
-  has had a chance to swap (a frame later, or on the next DIRTY).
-- core `XIOS_MSG_DIRTY` (0x02) with `window_id`: that canvas changed; sent after
-  each per-canvas repaint (§4). `a,b,c,d` = damage rect (all 0 = whole canvas);
-  the current host re-presents the whole canvas either way. Coalesce like the
-  output DIRTY byte.
+  has had a chance to swap (a frame later, or on the next frame record).
+- `XIOS_MSG_NATIVE_FRAME` (0x54) with `window_id`: that canvas has a new frame.
+  `length` = the broker token size, with the token as payload; `a`/`b` = the low
+  and high 32 bits of the non-zero `MTLSharedEvent` value the host must wait on
+  before sampling. Only the latest frame per canvas is kept, and it is replayed
+  only to a canvas of the same generation, so a resize or reconnect never pairs a
+  fence with the wrong IOSurface. (The 2026-07-01 draft used core DIRTY here,
+  unfenced; that shape no longer exists.)
 - `XIOS_MSG_WINDOW_TITLE` (0x52): payload = new title. Fire from the existing
   `xt_set_title` path (which already stores title on `struct iosc_surface`) when
   the surface belongs to a bound host.
@@ -224,15 +226,15 @@ pixels. `window_id` is COMPOSITOR-assigned (a monotonic u32, stored on
 iosc's input reader (`xios_input_socket.c` + the `handle_*` paths in iosc.c)
 currently hit-tests one shared coordinate space. Native input is already
 per-window: each UIWindowScene's `HostScreenView` opens its own
-`iosc-native-input.sock` connection and sends one `XIOS_IN_BIND` record (type 8,
-`code` = window id) before any event (`IoscInput.c` in iosc-host). Classic Xios
+`iosc-native-input.sock` connection and sends one `XIOS_IN_BIND` record (0x107,
+window id in `c`) before any event (`IoscInput.c` in iosc-host). Classic Xios
 desktop input continues to use `iosc-input.sock`, so both compositor namespaces
 can be live on-device.
 
 Implemented in iosc's input reader:
 
-1. `XIOS_IN_BIND 8u` is defined in the authoritative header
-   `x11/wayland/xios_input_socket.h` and its `xios-glue-stub.h` twin.
+1. `XIOS_IN_BIND` is defined in `x11/apps/shared/XiosProtocol.h`, which
+   `xios_input_socket.h` includes.
 2. The shared reader tags each input client connection with its bound window.
    Unbound connections keep output-wide hit-testing; `XIOS_IN_BIND` stores the
    target window on that connection.
@@ -302,16 +304,14 @@ Native reuses the typed app-socket record iosc-protocols designed for the
 cursor-overlay work. The agreed division:
 
 - ONE symmetric 32-byte header (`xios_msg`, magic 'XMS1') both directions on both
-  sockets. `iosc_native_proto.h` mirrors it; iosc-protocols' header in the
-  compositor tree is authoritative — when it lands, either include it from the
-  shared glue or keep the mirror byte-identical (same twin discipline as
-  `xios-glue-stub.h`).
-- Core codes 0x01-0x0f are iosc-protocols': HELLO (0x01), DIRTY (0x02), CURSOR
-  (0x03). Native REUSES DIRTY and CURSOR with `window_id` set rather than
-  defining per-window variants; that is the payoff of the shared envelope.
-- 0x40-0x5f is RESERVED for native lifecycle codes; current assignments are §6
-  (0x40-0x43 host to compositor, 0x50-0x53 compositor to host). Codes 0x44-0x4f
-  and 0x54-0x5f are free for native growth.
+  sockets, defined once in `apps/shared/XiosProtocol.h`; every endpoint includes
+  it, so there is no mirror to keep in sync any more.
+- Core codes 0x01-0x0f: HELLO (0x01), DIRTY (0x02), CURSOR (0x03), CLIPBOARD
+  (0x04), and so on. The 2026-07-01 agreement had native reuse DIRTY with
+  `window_id` set; protocol v1 replaced that with the fenced
+  `XIOS_MSG_NATIVE_FRAME` (0x54), and CURSOR is still shared.
+- 0x40-0x5f is for native lifecycle codes: 0x40-0x43 host to compositor,
+  0x50-0x54 compositor to host (§6). 0x44-0x4f and 0x55-0x5f are free.
 - Separate socket confirmed: iosc-native.sock is typed from byte 0.
 - iosc-protocols flags any field change when the cursor-overlay implementation
   lands; expected stable.
@@ -326,6 +326,6 @@ receives WINDOW_NEW + a canvas whose center pixel matches what a known client
 painted (readback via `IOSurfaceLock`, same as the M-series probes). Then the real
 path: `ioscd` in native mode + one generated host bundle (`gen-launchers.sh
 --native`) + a GTK app, tap the icon, confirm the app appears in its own scene and
-in the app switcher. Basic native launch has been reported working; keep logging
+in the app switcher. That path works on the device; keep logging
 resize/focus/text/close/coexistence/jetsam-replay results in
-`docs/handoff/native-ipados.md`. On-device photons are the lead's confirm.
+`docs/handoff/native-ipados.md`.

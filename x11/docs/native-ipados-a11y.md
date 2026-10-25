@@ -1,8 +1,12 @@
 # Native-flavor accessibility: per-app hosts publishing UIAccessibility trees
 
-Status: spec ACKED + host-side prototype (compile-clean) + helper-side bound
-snapshot support with unchanged-publish suppression and first action routing +
-forced native-host smoke. This is the native-iPadOS half of
+**Status (2026-10-25):** the host publisher (`HostA11y.swift`) ships in
+`xios-launcher-tools`, and `xios-a11yd` (`xios-a11y-tools 0.2.17`) supports `bind`,
+multiple connections, and activate/action/adjust/scroll routing. A forced smoke on
+2026-07-03 had a native Console host bind, attach scene 3 and publish 12 elements.
+Not built yet: the ioscd `spawn{appid,pid}` correlation feed and the helper side of
+`attach`/`detach` (hosts already send those; the helper ignores them). Real
+VoiceOver gestures are not validated. This is the native-iPadOS half of
 `a11y-plan.md`, which owns the bridge design and the helper (`xios-a11yd`).
 Every addition below is folded into a11y-plan.md's authoritative wire schema;
 this doc explains the native rationale. Host-side code lives in
@@ -129,7 +133,7 @@ Focus sync, announcements, and modality are exactly the Xios spec: `focus` ->
 `.layoutChanged`, `announce` -> `.announcement`, MODAL -> a container element
 with `accessibilityViewIsModal` (scoped to that scene's view only).
 
-## Host implementation (prototype, this repo)
+## Host implementation
 
 `HostA11y.swift`, one `HostA11yClient` per host process (mirrors NativeManager's
 shape: background reader thread, main-actor apply):
@@ -175,50 +179,19 @@ or a new field with a safe default.
 
 ## Phasing (hooks into a11y-plan.md phases)
 
-- P1 (read-only browse): a11y-plan.md now ENDORSES the native host as the first
-  P1 publisher. Helper-side `bind` + multi-connection exists, and
-  `HostA11yClient` now sends both app id and exec. On-device forced smoke on
-  2026-07-03: generated/deployed a native Console bundle, created
-  `/var/jb/tmp/xios-a11y-force`, launched it, and saw HostA11y connect to
-  `/var/jb/tmp/xios-a11y.sock`, bind `org.gnome.Console`/`kgx`, attach scene 3,
-  and publish 12 elements onto the host view. A follow-up `xios-a11y-tools_0.2.4`
-  smoke kept the same counts after an idle wait, confirming unchanged snapshot
-  republishes are suppressed. `xios-a11y-tools_0.2.6` also routes the existing
-  HostA11y `activate` and custom `action` messages back to AT-SPI Action.DoAction
-  for currently published node ids, with a synthetic-tap fallback for activation
-  when no AT-SPI action is available. On-device direct socket probe saw kgx node
-  `1003` expose `actions:["overview.open"]`. A fresh native Calculator smoke
-  connected and published 18 elements, but the tree still lacked useful labels
-  and was mostly `panel`/`grouping`, so it does not close the full-widget GTK
-  acceptance gate. `xios-a11y-tools_0.2.7` also routes HostA11y adjustable
-  increment/decrement messages to AT-SPI Value.SetCurrentValue and publishes
-  value text/current values in snapshots; the stable Console smoke had no
-  value-bearing nodes, so this still needs a slider/spinbutton target. Real
-  VoiceOver gesture validation is still pending. `atspi-dump` in
-  `xios-a11y-tools_0.2.8` now prints actions and value ranges so future native
-  smokes can identify suitable control targets quickly; the first `0.2.8` dump
-  printed kgx frame/window actions and panel `overview.open`. `0.2.9` hardens
-  the helper client parser to line-buffered NDJSON, so native hosts and test
-  clients can split or batch commands without relying on socket read boundaries;
-  split-write device smoke across `bind`/`enable` still published kgx. `0.2.10`
-  also dispatches helper commands by exact `t` type instead of substring matches.
-  `0.2.11` adds polling-based state mirroring: upserts include state-derived
-  traits/values and snapshots append `focus` when AT-SPI exposes a focused node.
-  `0.2.12` makes `atspi-dump` print high-signal states alongside actions/values.
-  `0.2.13` registers common AT-SPI object/window/document event families and
-  coalesces them into snapshots while keeping a periodic fallback. `0.2.14`
-  routes HostA11y `scroll{id,dir}` commands to AT-SPI `Component.ScrollTo`
-  for targets that expose a component interface.
-  The spawn feed hardens correlation in P2. It supplements, not replaces, the
-  desktop P1 acceptance.
-  Gates: the Linux-side P0 items (at-spi-bus-launcher in session, GTK_A11Y=none
-  gate removed from ioscd, IsEnabled property write, atspi-dump smoke test)
-  gate this path exactly as they gate the desktop one. Accept: VoiceOver swipes
-  through gnome-console (kgx) running in its own host scene. Use a GTK4 app for
-  acceptance — GTK3 apps stay dark until the gtk3 atk-bridge rebuild.
-- P2 (interaction): activate/adjust/custom actions + the spawn feed.
-- P4: attach/detach traffic muting, local wheel synth, same-app Split View test,
-  popup (xdg_popup) extents once the desktop flavors solve them.
+- **P1 (read-only browse):** the native host is the first publisher a11y-plan.md
+  endorses, because it needs no geometry feed and no window correlation. Done up to
+  forced smokes: Console published 12 elements and stayed quiet when idle
+  (unchanged snapshots are suppressed); Calculator published 18 with actions but
+  no useful labels and mostly `panel`/`grouping` roles, so GTK widget semantics
+  are not there yet. Accept: VoiceOver swipes through gnome-console in its own host
+  scene. Use a GTK4 app for acceptance; GTK3 apps stay dark until the gtk3
+  atk-bridge rebuild.
+- **P2 (interaction):** activate, custom actions, adjust and scroll are routed by
+  the helper. The ioscd spawn feed for deterministic correlation is not built.
+- **P4:** attach/detach traffic muting in the helper, local wheel synthesis, a
+  same-app Split View test, popup (xdg_popup) extents once the desktop flavors
+  solve them.
 
 ## Resolved questions (answered by the a11y owner, 2026-07-01)
 
@@ -230,7 +203,7 @@ or a new field with a safe default.
 4. attach/detach: wire messages from day one (hosts send unconditionally);
    helper behavior (traffic muting) lands in P4.
 
-## Residual gap — RESOLVED (a11y owner, 2c4f90a)
+## Residual gap: modal dialogs (resolved, 2c4f90a)
 
 Modal dialogs: the traits vocabulary is thirteen strings; the thirteenth is
 `modal`, carried on the dialog's container element. The
