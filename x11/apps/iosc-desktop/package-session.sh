@@ -107,13 +107,14 @@ EOF
 
 # 2b. prerm — the iOS-app desktop entries are generated at runtime, so dpkg does
 # not own them and would otherwise leave ~60 dead launchers behind on removal.
-cat > "$STAGE/DEBIAN/prerm" <<'EOF'
+# The helper's path follows the target prefix (a rootful deb has no /var/jb).
+cat > "$STAGE/DEBIAN/prerm" <<EOF
 #!/bin/sh
 set -e
-case "$1" in
+case "\$1" in
   remove|purge)
-    [ -x /var/jb/usr/local/bin/xios-ios-apps ] \
-      && /var/jb/usr/local/bin/xios-ios-apps clean >/dev/null 2>&1 || true
+    [ -x ${XIOS_PREFIX}/usr/local/bin/xios-ios-apps ] \\
+      && ${XIOS_PREFIX}/usr/local/bin/xios-ios-apps clean >/dev/null 2>&1 || true
     ;;
 esac
 exit 0
@@ -129,6 +130,7 @@ fi
 
 # 3. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
 #    macOS host, or directly when already running as root inside one.
+xdeb_refuse_published "$STAGE"
 mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
 if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then

@@ -206,20 +206,10 @@ if [ "$STAGE_ONLY" = 1 ]; then
   exit 0
 fi
 
-INDEX="$X11DIR/../repo/Packages"
-[ "$XIOS_REPO_PROFILE" = rootless ] || INDEX="$X11DIR/../repo/profiles/$XIOS_REPO_PROFILE/Packages"
-control_field() { awk -F': ' -v k="$1" '$1 == k { print $2; exit }' "$STAGE/DEBIAN/control"; }
-if [ -f "$INDEX" ] && awk -v p="$(control_field Package)" -v v="$(control_field Version)" -v a="$(control_field Architecture)" '
-    /^Package: /      { pkg = substr($0, 10) }
-    /^Version: /      { ver = substr($0, 10) }
-    /^Architecture: / { arch = substr($0, 15) }
-    /^$/              { if (pkg == p && ver == v && arch == a) found = 1; pkg = ver = arch = "" }
-    END               { if (pkg == p && ver == v && arch == a) found = 1; exit(found ? 0 : 1) }
-  ' "$INDEX"; then
-  echo "$PKG $(control_field Version) ($(control_field Architecture)) is already published in ${INDEX#"$X11DIR/../"}." >&2
-  echo "Its filename is public; bump Version in templates/$PKG and the package dir, then rebuild." >&2
+xdeb_refuse_published "$STAGE" || {
+  echo "Bump Version in templates/$PKG and the package dir it mirrors." >&2
   exit 2
-fi
+}
 
 mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
