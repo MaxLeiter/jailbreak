@@ -34,19 +34,16 @@ The main checkout's staged AbbrTap files are byte-identical to `claude/abbrtap-s
 
 ## Safe to remove (fully merged, no real uncommitted work)
 
-Run this from a checkout whose HEAD contains origin/main, so `-d` checks against the right base. It never uses `-D` or `--force`. The `restore`/`clean` lines discard only regenerated repo output and stale edits, which were checked in this audit.
+Every command is pinned to this repo with `git -C`, and `R` is a checkout whose HEAD contains origin/main, so `-d` checks against the right base (local `main` is stale). It never uses `-D` or `--force`. The `restore`/`clean` lines discard only regenerated repo output and stale edits, which were checked in this audit.
 
 ```bash
+R=/Users/max/Documents/jailbreak/.claude/worktrees/common-library-mod-96159a   # HEAD contains origin/main
 W=/Users/max/Documents/jailbreak/.claude/worktrees
-git worktree remove $W/doom
-git worktree remove $W/kde-plasma-session-timeout-fe4d86   # claude/audit-followups, PR #6 merged
-git worktree remove $W/shadow-prune
-git worktree remove $W/sharp-burnell-99dfb4                # ipad-pages-organize, 0 ahead
-git worktree remove $W/untrack-repo-debs
-git worktree remove $W/repo-x11-packages-0406aa            # xios-v2-m0, PR #10 merged
+for p in doom kde-plasma-session-timeout-fe4d86 shadow-prune sharp-burnell-99dfb4 untrack-repo-debs repo-x11-packages-0406aa; do
+  git -C "$R" worktree remove "$W/$p"
+done
 for p in practical-torvalds-3a2d5b slopwiki-xios-audit-49654c repo-fhs-pulse-publish strange-fermi-9d536d; do
-  git -C $W/$p restore . && git -C $W/$p clean -fdq       # generated repo/ output and stale edits only
-  git worktree remove $W/$p
+  git -C "$W/$p" restore . && git -C "$W/$p" clean -fdq && git -C "$R" worktree remove "$W/$p"   # generated repo/ output and stale edits only
 done
 for b in claude/doom claude/audit-followups claude/shadow-prune claude/ipad-pages-organize-120cbc \
   claude/untrack-repo-debs claude/xios-v2-m0 claude/practical-torvalds-3a2d5b \
@@ -57,7 +54,7 @@ for b in claude/doom claude/audit-followups claude/shadow-prune claude/ipad-page
   claude/analytics-package-tracking-ca17fd claude/security-sweep-de8157 \
   claude/iosc-desktop-ipad-bug-047979 claude/wonderful-jennings-65df30 \
   backup/main-pre-origin-sync-20260730 backup/origin-main-pre-sync-20260730 games-to-main tmp-main; do
-  git branch -d "$b"
+  git -C "$R" branch -d "$b"
 done
 ```
 
