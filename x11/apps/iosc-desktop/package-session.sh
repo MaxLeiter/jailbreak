@@ -107,7 +107,7 @@ EOF
 
 # 2b. prerm — the iOS-app desktop entries are generated at runtime, so dpkg does
 # not own them and would otherwise leave ~60 dead launchers behind on removal.
-# The helper's path follows the target prefix (a rootful deb has no /var/jb).
+# The helper path follows the target prefix (rootful has no jailbreak prefix).
 cat > "$STAGE/DEBIAN/prerm" <<EOF
 #!/bin/sh
 set -e

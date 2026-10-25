@@ -44,7 +44,7 @@ def find_icon(name, roots):
     if os.path.isabs(name):
         if os.path.isfile(name):
             return name
-        # A device path (Icon=/var/jb/usr/share/pixmaps/foo.png): the roots are
+        # A device path (Icon=<prefix>/usr/share/pixmaps/foo.png): the roots are
         # host mirrors of that share/ dir, so look for the same relative path.
         # Falling through to the theme lookup joined an absolute path onto each
         # root, which never matches.
