@@ -47,13 +47,13 @@ The app was rewritten for Xios v2 (see `x11/docs/xios-v2-design.md`, `x11/apps/X
 ## v2 M1 status (2026-10-06): built, NOT yet device-tested
 Branch `claude/xios-v2-app`, `com.max.xios 0.2.0`. Builds Release-iphoneos clean; host checks pass.
 Waiting on the iPad (M0 owns it): the device plan below. Known follow-ups for M2:
-- ioscd `app` with a slot is accepted, but `xios-session app` picks the compositor from the GLOBAL
-  `xios-active-session` marker, so an app opened into a slot whose preset differs from the global
-  owner can land in the wrong compositor. Needs a slot-scoped marker.
+- (Resolved by M0: every slot has its own active marker, so `app` into a slot finds that slot's
+  compositor.)
 - APPS_LIST ids are `app_id` (StartupWMClass when set), while the `app` verb takes the desktop-FILE
   id. They match for most entries; ioscd should accept the app id or list the file id.
 - "Change size" restarts the slot's preset at the new size (`SESSION <preset> ... <slot>`); the
   `resize` verb restarts whatever owns the global marker, which is wrong for a slot.
+- Skipped on purpose: M1 review finding 12 (pre-existing in v1, not a regression); see the PR description.
 - Hidden desktops are not paused yet (M2): switching away detaches the app, but the compositor
   keeps rendering.
 
