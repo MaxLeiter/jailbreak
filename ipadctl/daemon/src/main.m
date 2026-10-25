@@ -16,6 +16,7 @@
 #import "token.h"
 
 #include <errno.h>
+#include <signal.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -48,6 +49,9 @@ static void emit(id obj) {
 int main(int argc, char **argv) {
     @autoreleasepool {
         raise_jetsam_limit(300);  // before any capture surface is allocated
+        // A client hanging up mid-response must not kill the daemon. The HTTP
+        // layer also sets SO_NOSIGPIPE per socket; this covers stdout/stderr.
+        signal(SIGPIPE, SIG_IGN);
 
         if (!spi_load()) {
             fprintf(stderr, "ipadctld: private symbol resolution failed (see above)\n");
@@ -71,7 +75,7 @@ int main(int argc, char **argv) {
         emit(@{@"event" : @"startup", @"port" : @(kPort), @"hid_ready" : @(hid_ready), @"selftest" : selftest});
 
         NSString *serr = nil;
-        if (!ipc_http_serve(kPort, dispatch_get_main_queue(), ipc_server_handler(token), &serr)) {
+        if (!ipc_http_serve(kPort, dispatch_get_main_queue(), ipc_server_authorizer(token), ipc_server_handler(token), &serr)) {
             fprintf(stderr, "ipadctld: cannot start HTTP server: %s\n", serr.UTF8String);
             ipc_log_note([NSString stringWithFormat:@"FATAL http server: %@", serr]);
             return 1;

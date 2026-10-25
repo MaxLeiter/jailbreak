@@ -4,11 +4,13 @@
 #include <errno.h>
 #include <netinet/in.h>
 #include <string.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
 static const NSUInteger kMaxHeaderBytes = 64 * 1024;
-static const NSUInteger kMaxBodyBytes = 8 * 1024 * 1024;
+// The largest legitimate body is a 20-action batch with 4000-char `type` texts.
+static const NSUInteger kMaxBodyBytes = 1024 * 1024;
 
 @implementation IPCHTTPRequest
 - (NSString *)header:(NSString *)name {
@@ -113,22 +115,46 @@ static IPCHTTPRequest *parse_head(NSData *headData) {
     return req;
 }
 
-static void handle_conn(int fd, dispatch_queue_t work, IPCHTTPHandler handler) {
-    struct timeval tv = {.tv_sec = 20, .tv_usec = 0};
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+// Whole-request deadline. SO_RCVTIMEO bounds each read(); this bounds the
+// sum, so a client trickling one byte per timeout cannot hold a slot forever.
+static const double kRequestDeadlineSec = 15;
+// Concurrent connections. Excess connections are closed immediately rather
+// than each pinning a GCD worker thread and up to kMaxBodyBytes of memory.
+static const long kMaxConnections = 8;
 
+static double mono_sec(void) {
+    return (double)clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW) / 1e9;
+}
+
+static void send_error(int fd, int status, NSString *code, NSString *message) {
+    send_response(fd, [IPCHTTPResponse json:@{@"error" : @{@"code" : code, @"message" : message}} status:status]);
+}
+
+static void handle_conn(int fd, dispatch_queue_t work, IPCHTTPAuthorizer authorize, IPCHTTPHandler handler) {
+    struct timeval tv = {.tv_sec = 5, .tv_usec = 0};
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    struct timeval stv = {.tv_sec = 20, .tv_usec = 0};
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &stv, sizeof(stv));
+    // A client that hangs up before the response (for example the MCP side
+    // timing out during a long batch) must not SIGPIPE the daemon.
+    int one = 1;
+    setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &one, sizeof(one));
+
+    const double deadline = mono_sec() + kRequestDeadlineSec;
     NSMutableData *buf = [NSMutableData data];
     NSRange sep = {NSNotFound, 0};
     uint8_t chunk[16 * 1024];
-    const char term[] = "\r\n\r\n";
+    NSData *term = [NSData dataWithBytes:"\r\n\r\n" length:4];
 
     // Read until end of headers.
     while (true) {
-        sep = [buf rangeOfData:[NSData dataWithBytes:term length:4] options:0 range:NSMakeRange(0, buf.length)];
+        // Only rescan the tail that could contain a new terminator.
+        NSUInteger from = buf.length > 3 + sizeof(chunk) ? buf.length - 3 - sizeof(chunk) : 0;
+        sep = [buf rangeOfData:term options:0 range:NSMakeRange(from, buf.length - from)];
         if (sep.location != NSNotFound) break;
-        if (buf.length > kMaxHeaderBytes) { close(fd); return; }
+        if (buf.length > kMaxHeaderBytes || mono_sec() > deadline) { close(fd); return; }
         ssize_t n = read(fd, chunk, sizeof(chunk));
+        if (n < 0 && errno == EINTR) continue;
         if (n <= 0) { close(fd); return; }
         [buf appendBytes:chunk length:(NSUInteger)n];
     }
@@ -137,7 +163,14 @@ static void handle_conn(int fd, dispatch_queue_t work, IPCHTTPHandler handler) {
     NSUInteger bodyStart = sep.location + 4;
     IPCHTTPRequest *req = parse_head([buf subdataWithRange:NSMakeRange(0, headEnd)]);
     if (!req) {
-        send_response(fd, [IPCHTTPResponse json:@{@"error" : @{@"code" : @"invalid", @"message" : @"malformed request"}} status:400]);
+        send_error(fd, 400, @"invalid", @"malformed request");
+        close(fd);
+        return;
+    }
+
+    // Authenticate before reading the body or touching the work queue.
+    if (!authorize(req)) {
+        send_error(fd, 401, @"unauthorized", @"missing or invalid bearer token");
         close(fd);
         return;
     }
@@ -147,7 +180,7 @@ static void handle_conn(int fd, dispatch_queue_t work, IPCHTTPHandler handler) {
     if (cl) {
         long long v = cl.longLongValue;
         if (v < 0 || (unsigned long long)v > kMaxBodyBytes) {
-            send_response(fd, [IPCHTTPResponse json:@{@"error" : @{@"code" : @"invalid", @"message" : @"body too large"}} status:400]);
+            send_error(fd, 400, @"invalid", @"body too large");
             close(fd);
             return;
         }
@@ -156,9 +189,17 @@ static void handle_conn(int fd, dispatch_queue_t work, IPCHTTPHandler handler) {
 
     NSMutableData *body = [[buf subdataWithRange:NSMakeRange(bodyStart, buf.length - bodyStart)] mutableCopy];
     while (body.length < contentLength) {
+        if (mono_sec() > deadline) break;
         ssize_t n = read(fd, chunk, sizeof(chunk));
+        if (n < 0 && errno == EINTR) continue;
         if (n <= 0) break;
         [body appendBytes:chunk length:(NSUInteger)n];
+    }
+    if (body.length < contentLength) {
+        // Never hand a truncated body to the handler.
+        send_error(fd, 400, @"invalid", @"request body incomplete");
+        close(fd);
+        return;
     }
     if (body.length > contentLength) body.length = contentLength;
     req.body = body;
@@ -176,7 +217,8 @@ static void handle_conn(int fd, dispatch_queue_t work, IPCHTTPHandler handler) {
     close(fd);
 }
 
-bool ipc_http_serve(int port, dispatch_queue_t work, IPCHTTPHandler handler, NSString **err) {
+bool ipc_http_serve(int port, dispatch_queue_t work, IPCHTTPAuthorizer authorize, IPCHTTPHandler handler,
+                    NSString **err) {
     int fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (fd < 0) { if (err) *err = [NSString stringWithFormat:@"socket: %s", strerror(errno)]; return false; }
 
@@ -202,18 +244,28 @@ bool ipc_http_serve(int port, dispatch_queue_t work, IPCHTTPHandler handler, NSS
 
     dispatch_queue_t accept_q = dispatch_queue_create("com.max.ipadctld.accept", DISPATCH_QUEUE_SERIAL);
     dispatch_queue_t conn_q = dispatch_queue_create("com.max.ipadctld.conn", DISPATCH_QUEUE_CONCURRENT);
+    dispatch_semaphore_t slots = dispatch_semaphore_create(kMaxConnections);
     IPCHTTPHandler h = [handler copy];
+    IPCHTTPAuthorizer auth = [authorize copy];
     dispatch_async(accept_q, ^{
         while (true) {
             int c = accept(fd, NULL, NULL);
             if (c < 0) {
-                if (errno == EINTR) continue;
-                break;
+                // Never let one failed accept (ECONNABORTED, EMFILE, ...)
+                // end the loop: the process would stay up but stop serving,
+                // and launchd's KeepAlive would never notice.
+                if (errno != EINTR && errno != ECONNABORTED) usleep(100 * 1000);
+                continue;
+            }
+            if (dispatch_semaphore_wait(slots, DISPATCH_TIME_NOW) != 0) {
+                close(c);  // at capacity
+                continue;
             }
             dispatch_async(conn_q, ^{
                 @autoreleasepool {
-                    handle_conn(c, work, h);
+                    handle_conn(c, work, auth, h);
                 }
+                dispatch_semaphore_signal(slots);
             });
         }
     });

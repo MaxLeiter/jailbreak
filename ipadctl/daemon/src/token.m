@@ -12,11 +12,16 @@ NSString *ipc_token_load_or_create(NSString *dir, NSString **err) {
         if (err) *err = [NSString stringWithFormat:@"cannot create %@: %@", dir, e.localizedDescription];
         return nil;
     }
+    // createDirectoryAtPath only applies the mode when it creates the directory.
+    chmod(dir.fileSystemRepresentation, 0700);
     NSString *path = [dir stringByAppendingPathComponent:@"token"];
 
     NSString *existing = [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];
     existing = [existing stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    if (existing.length >= 32) return existing;
+    if (existing.length >= 32) {
+        chmod(path.fileSystemRepresentation, 0600);  // in case it was copied in with a wider mode
+        return existing;
+    }
 
     // Generate 32 random bytes -> 64 hex chars.
     uint8_t raw[32];

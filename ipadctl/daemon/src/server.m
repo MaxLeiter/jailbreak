@@ -104,6 +104,20 @@ static bool num(id v, double *out) {
     return true;
 }
 
+// Clamp a client-supplied duration before it reaches an int: the serial work
+// queue is blocked for the whole gesture, so an unbounded value would wedge
+// the daemon (and hold a finger on the glass) for as long as the client asked.
+static int clamp_ms(double v, int lo, int hi) {
+    if (!(v >= lo)) return lo;  // also catches NaN
+    if (v > hi) return hi;
+    return (int)v;
+}
+
+// Longest `type` text accepted (matches the MCP schema). Typing runs at roughly
+// 50 ms per character on the work queue, so this also bounds how long one
+// action can hold it.
+static const NSUInteger kMaxTypeChars = 4000;
+
 static bool nonempty(id v, NSString **out) {
     if (![v isKindOfClass:NSString.class]) return false;
     NSString *s = v;
@@ -175,6 +189,8 @@ static NSDictionary *run_action(NSDictionary *a) {
     } else if ([type isEqualToString:@"type"]) {
         NSString *text = nil;
         if (!nonempty(a[@"text"], &text)) return logret(@"invalid", errd(@"invalid", @"type needs text", nil));
+        if (text.length > kMaxTypeChars)
+            return logret(@"invalid", errd(@"invalid", [NSString stringWithFormat:@"type text is longer than %lu characters", (unsigned long)kMaxTypeChars], nil));
         detail = [NSString stringWithFormat:@"chars=%lu", (unsigned long)text.length];
     } else if ([type isEqualToString:@"key"]) {
         NSString *key = nil;
@@ -200,6 +216,11 @@ static NSDictionary *run_action(NSDictionary *a) {
     // Device checks (same order as the contract): locked, then app match.
     if (f.lockstate != 0 || f.blanked == 1)
         return logret(@"locked", errd(@"locked", @"device is locked or the screen is off", nil));
+    // Without the SpringBoardServices symbol the frontmost app is unknown and
+    // frontmost_bundle() would report SpringBoard, which would let a claimed
+    // "SpringBoard" match whatever app is really on screen. Fail closed.
+    if (!f.frontmost_ok)
+        return logret(@"internal", errd(@"internal", @"frontmost app unknown; refusing to act without the app check", nil));
     if (is_pointer && !orient_ok)
         return logret(@"internal", errd(@"internal", @"interface orientation unknown; refusing to map the touch", nil));
     if (!app_matches(app, fm))
@@ -217,15 +238,16 @@ static NSDictionary *run_action(NSDictionary *a) {
     } else if ([type isEqualToString:@"long_press"]) {
         double ms = 800;
         num(a[@"duration_ms"], &ms);
-        ipc_hid_longpress(&g, CGPointMake(x, y), (int)ms);
+        ipc_hid_longpress(&g, CGPointMake(x, y), clamp_ms(ms, 0, 10000));
     } else if ([type isEqualToString:@"swipe"]) {
         double ms = 300;
         num(a[@"duration_ms"], &ms);
-        ipc_hid_swipe(&g, CGPointMake(x, y), CGPointMake(x2, y2), (int)ms);
+        ipc_hid_swipe(&g, CGPointMake(x, y), CGPointMake(x2, y2), clamp_ms(ms, 0, 10000));
     } else if ([type isEqualToString:@"scroll"]) {
         double amount = 5;
         num(a[@"amount"], &amount);
-        if (amount < 1) amount = 1;
+        if (!(amount >= 1)) amount = 1;
+        if (amount > 50) amount = 50;
         NSString *dir = a[@"direction"];
         double dist = amount * 120;
         double maxspan = ([dir isEqualToString:@"left"] || [dir isEqualToString:@"right"]) ? g.view_pt_w * 0.8 : g.view_pt_h * 0.8;
@@ -326,8 +348,12 @@ static IPCHTTPResponse *handle_screenshot(IPCHTTPRequest *req) {
         double rx, ry, rw, rh;
         if (![region isKindOfClass:NSDictionary.class] || !num(((NSDictionary *)region)[@"x"], &rx) ||
             !num(((NSDictionary *)region)[@"y"], &ry) || !num(((NSDictionary *)region)[@"w"], &rw) ||
-            !num(((NSDictionary *)region)[@"h"], &rh) || rx < 0 || ry < 0 || rw <= 0 || rh <= 0)
-            return [IPCHTTPResponse json:@{@"error" : errd(@"invalid", @"region needs x>=0, y>=0, w>0, h>0", nil)} status:400];
+            !num(((NSDictionary *)region)[@"h"], &rh) || rx < 0 || ry < 0 || rw <= 0 || rh <= 0 ||
+            rx >= g.view_pt_w || ry >= g.view_pt_h)
+            return [IPCHTTPResponse json:@{@"error" : errd(@"invalid", @"region needs 0<=x<width, 0<=y<height, w>0, h>0", nil)} status:400];
+        // Keep the values small before the capture code rounds them to int.
+        if (rw > g.view_pt_w - rx) rw = g.view_pt_w - rx;
+        if (rh > g.view_pt_h - ry) rh = g.view_pt_h - ry;
         jpeg = ipc_capture_region_jpeg(c, CGRectMake(rx, ry, rw, rh), q / 100.0, &st, &err);
     } else {
         jpeg = ipc_capture_jpeg(c, q / 100.0, &st, &err);
@@ -406,6 +432,15 @@ static IPCHTTPResponse *handle_actions(IPCHTTPRequest *req) {
 }
 
 // ---- dispatch -------------------------------------------------------------
+
+IPCHTTPAuthorizer ipc_server_authorizer(NSString *token) {
+    NSString *tok = [token copy];
+    return ^bool(IPCHTTPRequest *req) {
+        NSString *auth = [req header:@"authorization"];
+        NSString *bearer = [auth hasPrefix:@"Bearer "] ? [auth substringFromIndex:7] : @"";
+        return ipc_ct_equal(bearer, tok);
+    };
+}
 
 IPCHTTPHandler ipc_server_handler(NSString *token) {
     NSString *tok = [token copy];
