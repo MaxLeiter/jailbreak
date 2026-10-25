@@ -170,6 +170,10 @@ NEW_FP="$(sha256sum \
   /work/ports/libepoxy/patches/*.patch \
   /work/recipes/build_info/xwayland-glamor-iosurface.c \
   /work/x11/wayland/iosc-iosurface.xml \
+  /work/x11/wayland/xios_metal_sync.m \
+  /work/x11/wayland/xios_metal_sync.h \
+  /work/x11/apps/shared/XiosMetalEventBroker.m \
+  /work/x11/apps/shared/XiosMetalEventBroker.h \
   /work/x11/apps/shared/XiosProtocol.h | sha256sum | awk '{print $1}')"
 OLD_FP="$(cat "$XF" 2>/dev/null || true)"
 if [ -d "$XW" ] && [ "$NEW_FP" != "$OLD_FP" ]; then
