@@ -135,6 +135,24 @@ index is what ships). Install the five together: `xios-session 1.0.81` Breaks `x
 older than 0.2.12 (the old GNOME launcher writes no pgid file, so the new sweep could not see a live
 GNOME slot). `xios-a11y-tools` older than 0.2.17 ignores `XIOS_A11Y_SOCK` and binds the global path.
 
+## ioscd helpers per bus, honest SESSION reply (2026-10-25, xios-launcher-tools 0.1.12, unpublished)
+
+- ioscd's app-launch helper guard was still the old "skip if any `xios-hwbridged`/`xios-sensord`/
+  `xios-sysintd` runs anywhere" ps grep, so once a desktop ran its own helpers, Home Screen and
+  picker launches got none on `ioscd-bus`. It now uses the shell lib's rule: one per bus,
+  recorded in `<busdir>/<name>.pid` (`"<pid>\n"`), running while that pid is alive and its
+  process name matches. Because the bus dir is mobile's and the helpers start as root, the pid
+  files and `<name>.log` are unlinked and recreated through the dir fd (O_EXCL|O_NOFOLLOW) and
+  bash writes through those fds, never by name. An empty pid file under 30 s old counts as a
+  start in progress, so two quick launches do not double-start during `xios_pulse_start`.
+- `SESSION` used to answer `SESSION_STARTED` even with no xios-session installed (bash just
+  exited 127 in `ioscd.log`). ioscd now checks the script with `access(R_OK)` before forking
+  and answers `ERR xios-session is not installed`. The `/usr/bin/xios-session` fallback exec
+  was unreachable (the first exec is bash, which only fails if bash is missing) and is gone.
+- The package now Depends on `xios-session-stubs (>= 0.2.12)`, which ships `xios-sysintd`; only
+  the GNOME flavor pulled it in before. hwbridged/sensord still come from `xios-fhs`.
+- Host test: `apps/iosc-desktop/test-ioscd-helpers.sh` (run by `build-stub.sh`).
+
 ## Current state — package-installed 2026-07-29, CLI/daemon works
 
 - `xios-session 1.0.72` removes a process-substitution deadlock from capability
