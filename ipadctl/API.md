@@ -3,7 +3,7 @@
 Contract between `ipad-mcp` (Mac) and `ipadctld` (iPad root daemon). The fake daemon in `mcp/fake-daemon/server.ts` implements it.
 
 - Base: `http://<host>:8790/v1/...`, JSON unless noted.
-- Auth: `Authorization: Bearer <token>` on every request. Wrong or missing token gives `401`.
+- Auth: `Authorization: Bearer <token>` on every request. Wrong or missing token gives `401`, decided from the headers alone before any body is read. Bodies are capped at 1 MiB, and a body shorter than its `Content-Length` is `400 invalid`.
 - All coordinates are in **point space** of the current orientation, origin top-left. A screenshot is also in point space (1080x810 in landscape on this iPad), so a pixel in a screenshot is the tap coordinate. No scaling.
 - Errors: HTTP 4xx/5xx with `{"error": {"code", "message", "details"?}}`. Codes: `locked`, `app_mismatch`, `target_mismatch`, `app_blocked`, `invalid`, `unauthorized`, `internal`.
 
@@ -41,7 +41,7 @@ There is no `max_edge`: downscaling would break the "pixel = point" rule.
 
 Request: `{"actions": [Action, ...], "screenshot": {"quality"?: 70}}`. `screenshot` is optional; when present the daemon takes a screenshot after the last executed action (after a short settle delay) and returns it.
 
-Actions run in order and stop at the first failure.
+Actions run in order and stop at the first failure. The daemon enforces its own bounds whatever the client sends: `duration_ms` is clamped to 0 to 10000, `amount` to 1 to 50, `wait` to 10000 ms, and `type` text over 4000 characters is `invalid`.
 
 | type | fields |
 | --- | --- |
