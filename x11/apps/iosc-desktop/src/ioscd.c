@@ -1253,6 +1253,16 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
     }
     close(dfd);
 
+    /* sysintd binds the global xios-sysint.sock unless told otherwise. When a
+     * desktop's sysintd already answers there, the iPad's volume and appearance
+     * belong to that desktop, so this bus's sysintd gets its own socket instead
+     * of taking the global one over. With no desktop up (native mode) it keeps
+     * the global path, which is what the native host connects to. */
+    char global_sysint[PATH_MAX], own_sysint[PATH_MAX] = "";
+    snprintf(global_sysint, sizeof(global_sysint), "%s/xios-sysint.sock", g_tmp);
+    if (start[NHELPERS - 1] /* sysintd, last in bins */ && wayland_sock_live(global_sysint))
+        snprintf(own_sysint, sizeof(own_sysint), "%s/xios-sysint.sock", busdir);
+
     pid_t pid = fork();
     if (pid == 0) {
         char cmd[4096], closes[128] = "";
@@ -1263,6 +1273,7 @@ static void ensure_native_helpers_for_bus(const char *busdir, const char *bus_ad
         setenv("DBUS_SESSION_BUS_ADDRESS", bus_addr, 1);
         setenv("DBUS_SYSTEM_BUS_ADDRESS", bus_addr, 1);
         setenv("XIOS_HWBRIDGE_BUS", "session", 1);
+        if (*own_sysint) setenv("XIOS_SYSINT_SOCK", own_sysint, 1);
         setenv("HOME", g_home, 1);
         set_rootless_path(1);
         /* The fds reach bash; a started helper inherits none of them. */
