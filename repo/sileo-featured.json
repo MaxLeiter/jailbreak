@@ -64,6 +64,11 @@
       "url": "https://repo.maxleiter.com/banners/bun-preflight.png"
     },
     {
+      "title": "ca-certificates",
+      "package": "ca-certificates",
+      "url": "https://repo.maxleiter.com/banners/ca-certificates.png"
+    },
+    {
       "title": "AutoLockPicker",
       "package": "com.max.autolockpicker",
       "url": "https://repo.maxleiter.com/banners/com.max.autolockpicker.png"

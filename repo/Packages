@@ -250,6 +250,27 @@ SileoDepiction: https://repo.maxleiter.com/depictions/bun-preflight.json
 Native Depiction: https://repo.maxleiter.com/depictions/bun-preflight.json
 Homepage: https://repo.maxleiter.com
 
+Package: ca-certificates
+Version: 20261020+ios1
+Architecture: all
+Multi-Arch: foreign
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Utilities
+Priority: optional
+Installed-Size: 204
+Description: Common CA certificates (Mozilla bundle of 2026-10-20)
+Filename: debs/ca-certificates_20261020+ios1_all.deb
+Size: 114548
+MD5sum: f2715491798df4dc1f08d5c04b026092
+SHA1: 1093fa48bb325fb462b5efede742432ddb782e9f
+SHA256: 642fd3a4de0fc49b4e7088d8f7a93afe2aca3f448bce59b572ecefd97a920911
+Icon: https://repo.maxleiter.com/icons/ca-certificates.png
+Depiction: https://repo.maxleiter.com/depictions/ca-certificates.html
+SileoDepiction: https://repo.maxleiter.com/depictions/ca-certificates.json
+Native Depiction: https://repo.maxleiter.com/depictions/ca-certificates.json
+Homepage: https://repo.maxleiter.com
+
 Package: com.max.autolockpicker
 Name: AutoLockPicker
 Description: Replace the Auto-Lock preset list with a configurable time picker (Display & Brightness).
