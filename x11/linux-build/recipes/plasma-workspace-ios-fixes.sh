@@ -1548,4 +1548,73 @@ else:
     todo("calendar.cpp resetToToday body not found")
 PY
 
+# ios-wallpaper-unknown-provider (+ios16): rotating the iPad while plasmashell started
+# (2 of ~8 starts, 2 of 3 in a start+rotate loop) left the desktop at its old size with
+# no panel and everything idle. The wallpaper is incubated asynchronously, so a
+# Qt.callLater(loadImage) queued by a property change can run before MediaProxy's
+# componentComplete() has classified the source; providerType is still Unknown and
+# loadImage() falls back to MediaProxy::useSingleImageDefaults(). That clears m_source
+# first and only then looks for the default wallpaper package, which this device does
+# not have (no /usr/share/wallpapers), so it returned with the configured image gone,
+# nothing ever loaded, WallpaperItem.loading stayed true, the desktop containment never
+# became uiReady and ShellCorona::checkAllDesktopsUiReady() never created the waiting
+# panels. Only wedged sessions log "The backend got an unknown wallpaper provider type".
+# Keep the configured source when there is no default to fall back to (it is classified
+# again on componentComplete), and never leave the wallpaper loading when giving up.
+python3 - "$src/wallpapers/image/plugin/utils/mediaproxy.cpp" "$src/wallpapers/image/imagepackage/contents/ui/ImageStackView.qml" <<'PY'
+import sys
+from xios_fixlib import Path, todo
+
+p = Path(sys.argv[1])
+t = p.read_text()
+old = """void MediaProxy::useSingleImageDefaults()
+{
+    m_source.clear(); // BUG 460692
+
+    auto package = DefaultWallpaper::defaultWallpaperPackage();
+
+    if (!package.isValid()) {
+        return;
+    }
+"""
+new = """void MediaProxy::useSingleImageDefaults()
+{
+    auto package = DefaultWallpaper::defaultWallpaperPackage();
+
+    // ios-wallpaper-unknown-provider: without a default package there is nothing to fall
+    // back to; clearing first lost a configured image that just was not classified yet.
+    if (!package.isValid()) {
+        return;
+    }
+
+    m_source.clear(); // BUG 460692
+"""
+if old in t:
+    p.write_text(t.replace(old, new))
+else:
+    todo("mediaproxy.cpp useSingleImageDefaults head not found")
+
+p = Path(sys.argv[2])
+t = p.read_text()
+old = """            mediaProxy.useSingleImageDefaults();
+            return;
+        }
+
+        doesSkipAnimation"""
+new = """            mediaProxy.useSingleImageDefaults();
+            // ios-wallpaper-unknown-provider: still nothing to show. A wallpaper left
+            // loading keeps the desktop from becoming uiReady, and with it every panel.
+            if (mediaProxy.providerType == Wallpaper.Provider.Unknown) {
+                wallpaperInterface.loading = false;
+            }
+            return;
+        }
+
+        doesSkipAnimation"""
+if old in t:
+    p.write_text(t.replace(old, new))
+else:
+    todo("ImageStackView.qml unknown-provider fallback not found")
+PY
+
 printf '%s\n' "$self_sha" > "$stamp"
