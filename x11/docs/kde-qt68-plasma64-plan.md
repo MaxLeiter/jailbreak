@@ -161,6 +161,9 @@ Mode B (clang 19 with LLVM 19 libc++ headers against the system libc++ dylib) is
 - plasma-desktop: several `PORT-TODO`s in the build log (taskmanager parentPid, pager X11 branch) are 6.1-path leftovers; the 6.7 equivalents compiled without them.
 
 ### Still to do before any device test
+(2026-10-25: done on `claude/kde-67` except the device run itself: control fixes, `Breaks` on the new
+`qt6-base`, the `xios-kde 0.1.23` meta, host DER re-sign, minos dry run. The device test plan is in
+`x11/docs/handoff/kde-kf6.md`, last section. The `upstream-version-policy.json` tracks landed with 63e8fee5.)
 Control files for debs changed after build (kf6-prison Depends libqrencode4; qcoro6 description now includes QML), `Breaks` on old qt6/kf6/plasma packages, the xios-kde meta, host DER re-sign, minos audit, `upstream-version-policy.json` tracks, and a rebuild of qtwayland consumers.
 
 ### KWin GPU port (ANGLE Metal into IOSurface), 6.7 shape

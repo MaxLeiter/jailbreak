@@ -284,3 +284,159 @@ All of this runs in Docker on the `procursus-vol-kf6` volume (cloned from the Qt
   bug, already fixed.
 - 2026-10-25: `xios-kde 0.1.21` pins `xios-core 0.1.13` and `xios-session 1.0.82` (which now
   depends on `xios-session-stubs`, so KDE sessions get `xios-sysintd` and `xios-setsid`).
+
+## Qt 6.10 / KF6 6.30 / Plasma 6.7 lane: device test plan (2026-10-25)
+
+Branch `claude/kde-67` (draft PR) carries the lane from `claude/update-plans` onto
+`origin/main`, minus the WebKitGTK commits. Plan and port notes: `x11/docs/kde-qt68-plasma64-plan.md`
+(sections 9 and 10). Nothing here is published and nothing has run on the iPad yet.
+
+### What gets installed
+The staged set is the 200 `.deb`s listed in `x11/linux-build/out/KDE67-STAGED.txt` in the
+`claude/kde-67` worktree on the build Mac (`/Users/max/Documents/jailbreak/.claude/worktrees/agent-a61ed2a7976e087b4`;
+name, version, SHA256, file; `KDE67-STAGED.paths` is
+the same list as paths). Superseded duplicates were moved to `out/superseded-kde67/`; anything else
+in `out/` is a seed copy of a published dependency and is not part of the test. It is the whole lane: Qt 6.10.3, KF6 6.30.0, Plasma 6.7.5,
+Gear 26.08.1, poppler 25.11.0, plus `libwayland0`/`libwayland-dev 1.24.0+ios2` (KWayland 6.7
+imports `_wl_fixes_interface`, a 1.24-only symbol; the recipe is `claude/upd-wave-core`'s,
+cherry-picked here) and `xios-kde 0.1.22`, which pins every lane runtime unit with `>=` so the
+upgrade is one transaction. Everything GPU-entitled in it has been through
+`resign-graphics-packages.py` on the Mac (a second dry run reports 0 changes), so the bytes are
+what a publish would ship. Runtime pieces published elsewhere that this stack runs on: `angle`
+`es3-16`, `libepoxy` `+angle2` (main's 2026-10-25 release), `libdrm2`, `libgbm1`; every
+`_drm*`/`_gbm*`/`_wl_*` import of the new `libkwin` resolves against the published dylibs
+(`_wl_fixes_interface` from KWayland is the one 1.24-only symbol in the set).
+
+Not rebuilt, stays at the published version: `gwenview 24.08.0+ios1` (26.08 needs Qt
+Multimedia; this is the one Qt 6.6 / KF6 6.3-built binary left in the closure) and
+`qt-wayland-gl-smoke 0.1.0` (not in `xios-kde`; it links `libQt6WaylandClient`, which now comes
+from `qt6-base`). `libpoppler-glib8 25.11.0+ios1` replaces the published 24.08 build for the GNOME
+users of it too (papers, zathura-pdf-poppler, gimp); same soname.
+
+### Built vs rebuilt in this pass
+Reused unchanged from the 2026-10-02 build in `procursus-vol-kde610` (their cache fingerprints
+still match the committed recipes): the Qt 6.10.3 modules, most of KF6 6.30, and most of Plasma
+and Gear. Rebuilt on that volume: `kwin` (main's two fix-script corrections), `kf6-kio`
+(`-DUSE_DBUS=ON`: the 6.30 build had silently lost kiod6/kioexec/KDirNotify), `kf6-i18n`
+(the libgtkintl relink had pointed at the wrong directory), `layer-shell-qt`, `libplasma`,
+`plasma-workspace`, `plasma-mobile`, `powerdevil`, `kwrite` (stale fingerprints), and
+`kf6-kirigami-addons 1.3.0+ios2` / `phonon4qt6 4.12.0+ios2` (the lane had rebuilt them against
+Qt 6.10 under the published `+ios1` version). Repackaged only: `qt6-base` (new `Breaks:` on
+pre-6.10 Qt modules and the KDE units that use Qt private API), `kwayland`
+(`libwayland0 (>= 1.24.0)`), `okular` (`libpoppler154`, the control still named 140).
+
+### Preconditions
+1. Nobody else owns the device: `tail -n 40 /var/jb/var/log/apt/history.log`, `ls -lt /var/jb/tmp | head`,
+   `xios-session status`. If another session is up, stop and ask; do not clear its lock.
+2. Snapshot for rollback (the stack does not upgrade partially, so the rollback is all or nothing):
+   ```sh
+   ssh root@$IP 'mkdir -p /var/jb/tmp/kde67-rollback && cd /var/jb/tmp/kde67-rollback &&
+     dpkg --get-selections > selections.txt &&
+     dpkg-query -W -f="\${Package}=\${Version}\n" > versions.txt'
+   ```
+   The rollback debs are the published ones (`repo.maxleiter.com`, every version in
+   `versions.txt` is still served; production `.deb`s are immutable). Fetch them before
+   installing: `apt-get download $(grep -E "^(qt6-|kf6-|plasma|kwin|kdecoration|kwayland|kglobalacceld|layer-shell-qt|libplasma|libkscreen|kscreen|breeze|milou|powerdevil|systemsettings|kactivitymanagerd|qcoro6|phonon4qt6|libpoppler|libwayland|libdisplay-info|konsole|dolphin|kate|kwrite|kcalc|okular|ark|xios-kde)" versions.txt)`.
+
+### Install (one dpkg transaction, no apt resolver)
+```sh
+ssh root@$IP 'mkdir -p /var/jb/tmp/kde67'
+scp $(cat x11/linux-build/out/KDE67-STAGED.paths) root@$IP:/var/jb/tmp/kde67/   # from the claude/kde-67 worktree root
+ssh root@$IP 'cd /var/jb/tmp/kde67 && shasum -a 256 *.deb > got.sha256'   # compare with KDE67-STAGED.txt
+ssh root@$IP 'dpkg -i /var/jb/tmp/kde67/*.deb && apt-get check'
+```
+One `dpkg -i` with every file lets dpkg order the unpack itself. No `apt-get -f`, no
+`dist-upgrade`. If `dpkg -i` reports an unmet dependency, stop: the staged set is wrong, the
+fix is on the build side. `apt-get check` must print nothing. Then
+`dpkg -l | grep -E "^ii +(qt6-base|kwin|plasma-workspace|kf6-kio|libwayland0|xios-kde) "` shows
+`6.10.3-2+ios1`, `6.7.5+ios1`, `6.7.5+ios14`, `6.30.0+ios1`, `1.24.0+ios2`, `0.1.22`.
+
+### AMFI / signature check (before starting a session)
+A host-signed binary can be SIGKILLed with zero output (exit 137); see `x11/docs/device-testing.md`.
+Run each GPU-entitled binary once outside a session and look for exit 137 (any other non-zero
+exit, e.g. "no Wayland display", is fine: the binary ran):
+```sh
+for b in /var/jb/Applications/KDE/kwin_wayland.app/kwin_wayland \
+         /var/jb/Applications/KDE/kwin_wayland_wrapper.app/kwin_wayland_wrapper \
+         /var/jb/Applications/KDE/plasmashell.app/plasmashell \
+         /var/jb/Applications/KDE/systemsettings.app/systemsettings \
+         /var/jb/Applications/KDE/konsole.app/konsole /var/jb/Applications/KDE/dolphin.app/dolphin \
+         /var/jb/Applications/KDE/kate.app/kate /var/jb/Applications/KDE/kwrite.app/kwrite \
+         /var/jb/Applications/KDE/okular.app/okular /var/jb/Applications/KDE/ark.app/ark \
+         /var/jb/Applications/KDE/kcalc.app/kcalc \
+         /var/jb/usr/libexec/xdg-desktop-portal-kde.app/xdg-desktop-portal-kde \
+         /var/jb/usr/libexec/org_kde_powerdevil.app/org_kde_powerdevil \
+         /var/jb/usr/libexec/kscreen_osd_service.app/kscreen_osd_service; do
+  "$b" --version >/dev/null 2>&1; echo "$? $b"
+done
+```
+Any `137` is an AMFI reject: re-sign that binary on the device with its own entitlements
+(`ldid -e "$b" > /var/jb/tmp/e.xml && ldid -S/var/jb/tmp/e.xml "$b"`), note which one, and
+report it. The full list is under "Signing coverage" below.
+
+### Session and what proves success
+```sh
+ssh root@$IP 'IOSC_EGL_DEBUG=1 QT_LOGGING_RULES="kwin_wayland_backend.info=true" xios-session kde'
+x11/bin/xios-kde-smoke --no-session desktop --out .artifacts/kde67-desktop
+```
+Pass criteria, all from the device:
+1. **KWin on the GPU path.** `/var/jb/tmp/kde-plasma.log` contains `ios-gpu: ANGLE Metal EGL initialized`
+   from `kwin_wayland` and no `Could not initialize ANGLE Metal EGL`, `IOSurface pbuffer failed`,
+   `failed to export mandatory Metal acquire fence`, or a fallback to QPainter compositing.
+   With `IOSC_EGL_DEBUG=1`, the kwin_wayland pid logs `ANGLE Metal display = 0x... (err 0x3000)`
+   and `eglInitialize -> ok=1`, and no `display creation failed` / `EGL not available`.
+2. **plasmashell up.** `pgrep -x plasmashell`, `pgrep -x kwin_wayland`, `pgrep kactivitymanagerd`
+   alive after 60 s; `xios-session status` says `kde-desktop`/`up`; the smoke capture is
+   non-black with the bottom panel and wallpaper. plasmashell logs `bound iosc_iosurface` and a
+   3-buffer window surface (its QtQuick runs on ANGLE, not software).
+3. **Scale contract.** KWin still launches with `--scale 2` host scale and Plasma at 2.75
+   (the 6.1.5 behaviour, see the 2026-07-29 snapshot above); the panel is about 50 points tall.
+4. **Apps open.** `x11/bin/xios-kde-smoke --no-session desktop --app konsole`, then the same for
+   `dolphin`, `kate`, `systemsettings`, `okular`, `gwenview` (the one Qt 6.6-built app left).
+   Each window maps, draws, and the process is still alive 10 s later. Kickoff search:
+   `--launcher kickoff --query kwrite --activate`.
+5. **Mobile and Nano.** `x11/bin/xios-kde-smoke mobile --drawer` and `... nano` reach a
+   non-black capture with kwin_wayland and plasmashell alive.
+6. **No AMFI rejects.** No exit 137 from step "AMFI", and
+   the device log shows no AMFI/amfid denial naming these paths (iOS has no `log show`: use
+   `idevicesyslog` from the Mac during the launch and grep for `AMFI`/`amfid` plus the binary
+   name).
+7. `kiod6` starts on demand (`pgrep kiod6` after opening Dolphin) — KIO is back to DBus
+   (prod 6.3 had it; the first 6.30 build silently lost it).
+
+Things expected to differ from 6.1.5 (do not chase in the first run): the desktop:/ KIO
+worker and notification sounds are compiled out, the Print portal is gone, Plasma Mobile's
+record tile and flashlight helper are dropped, polkit-kde-agent-1 is not built.
+
+### Rollback
+`dpkg -i` the debs fetched in step 2 of the preconditions (all of them in one command), then
+`apt-get check`. Do not `apt-get remove` the new packages: the old set replaces them in place.
+Packages that exist only in the new lane (`libpoppler154`, `libdisplay-info2`, `knighttime`,
+`qt6-positioning`, `qt6-location`, `kf6-prison`, `kf6-holidays`, `libqrencode4`,
+`vulkan-headers`, `kde-cli-tools`, `xdg-desktop-portal-kde`) can stay; nothing old links them.
+`libwayland0` goes back to 1.23.1, which the old KWayland is fine with.
+
+### Signing coverage (host side)
+Every binary whose entitlements carry a GPU/IOSurface marker was re-signed by
+`resign-graphics-packages.py` (44 binaries, 15 packages), with the same profiles as the
+published 6.1.5 / 24.08 builds:
+
+- platform-gl (`iosc-gl-ent.xml`): kwin (`kwin_wayland`, `kwin_wayland_wrapper`,
+  `kwin-applywindowdecoration`), plasma-workspace (`plasmashell`, `plasmawindowed`,
+  `plasma-shutdown`, `ksmserver-logout-greeter`, `kcolorschemeeditor`, `plasma-apply-*` x4,
+  `plasma-changeicons`), powerdevil (`org_kde_powerdevil` and the three kauth helpers),
+  systemsettings, xdg-desktop-portal-kde.
+- gpu-client (`iosc-gpu-client-ent.xml`, now with the `com.max.xios.metal-event-broker`
+  mach-lookup): ark, dolphin (+ `servicemenuinstaller`, two kconf_update helpers), kate, kwrite,
+  kcalc, konsole, okular, kscreen_osd_service, kde-cli-tools (11 tools), qt6-declarative-dev
+  (`qml`, `qmlscene`, `qmleasing`).
+
+Nothing that was GPU-entitled in production lost its entitlements. Two previously entitled
+binaries are gone upstream (`power_profile_osd_service`; `kiod6.app` is now a plain
+`libexec/kf6/kiod6`, matching its DBus service file). Executables that open no window
+(`kded6`, `kglobalacceld`, `knighttimed`, `kactivitymanagerd`, `kcmshell6`, ...) keep the
+Procursus `general.xml` set, as in production. Qt/KDE plugins are dylibs loaded into these
+processes and carry no entitlements of their own.
+
+The host-ldid AMFI landmine bit `iosc` only, but `kwin_wayland` and `plasmashell` carry the
+same `iosc-gl-ent.xml` set, so the AMFI step above is not optional.
