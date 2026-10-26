@@ -90,5 +90,7 @@
 
   "libgnome-desktop-dev": {"devlib": "KNOWN BUG — libgnome-bg/rr runtime dylibs must move into libgnome-desktop-4-2 (removing this -dev broke GNOME Shell 2026-07-08); task open, REMOVE this waiver when 44.1+ios2 lands"},
   "libepoll-shim-dev": {"devlib": "libepoll-shim-interpose is a preload/interpose helper; revisit whether it belongs in the runtime deb"},
-  "libglibmm-2.4-dev": {"devlib": "generate_extra_defs is a codegen helper library, dev-only by design"}
+  "libglibmm-2.4-dev": {"devlib": "generate_extra_defs is a codegen helper library, dev-only by design"},
+
+  "ca-certificates": {"version": "Deliberate security update (2026-10-25): Procursus still ships the 20240604 Mozilla bundle, which trusts emSign ECC Root CA - G3 and Comodo AAA Services root, the signer and cross-signer of the eMudhra intermediates whose private keys were recovered in October 2026. This is curl's extract of the Mozilla store as of 2026-10-20 (sha256 796f1389...3cbe, published by curl.se). Data only, no dylibs; same files and symlinks as the Procursus package (dpkg-deb -c). A later Procursus bundle (a later date) supersedes it."}
 }

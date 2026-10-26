@@ -1,0 +1,17 @@
+Package: ca-certificates
+Version: 20261020+ios1
+Architecture: all
+Multi-Arch: foreign
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Section: Utilities
+Priority: optional
+Installed-Size: 204
+Description: Common CA certificates (Mozilla bundle of 2026-10-20)
+ The certificate authorities shipped with Mozilla's browser, as extracted by curl
+ (https://curl.se/ca/cacert-2026-10-20.pem), for OpenSSL, GnuTLS, curl and apt.
+ .
+ Replaces Procursus's 20240604 bundle, which still trusts emSign ECC Root CA - G3
+ and Comodo AAA Services root, the roots behind the eMudhra intermediates whose
+ private keys were recovered in October 2026. Mozilla removed both from its store.
+ Same files and paths as the Procursus package; a later Procursus bundle replaces it.
