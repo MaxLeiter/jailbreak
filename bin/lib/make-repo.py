@@ -36,9 +36,8 @@ import argparse, functools, os, io, gzip, json, hashlib, tarfile, html, shutil, 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
 
-# Rootless is the only profile. A rootful profile (repo/profiles/rootful/) was
-# dropped on 2026-10-25; that directory is still served but is frozen: nothing in
-# this file reads, writes or prunes anything under repo/profiles/.
+# Rootless is the only profile. The rootful profile (repo/profiles/rootful/) was
+# dropped from the tooling on 2026-10-25 and taken off the live site on 2026-10-26.
 PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
 if PROFILE != "rootless":
     raise SystemExit(f"ERROR: unsupported repo profile {PROFILE!r}: rootless is the only "

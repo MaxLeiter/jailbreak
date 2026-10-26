@@ -289,20 +289,6 @@ sign_index() {
   fi
 }
 
-# repo/profiles/<name>/ holds retired suites (rootful, dropped 2026-10-25) that
-# are still live. Nothing regenerates, audits or re-signs them any more; they ride
-# along in the static deployment exactly as they sit on disk. Say so, so a missing
-# Release/InRelease in a fresh checkout is not a surprise on the live URL.
-note_frozen_profiles() {
-  local d
-  [ -d "$REPO_ROOT/repo/profiles" ] || return 0
-  for d in "$REPO_ROOT"/repo/profiles/*/; do
-    [ -d "$d" ] || continue
-    echo "==> NOTE: ${d#"$REPO_ROOT"/}: retired profile, deployed as-is (no longer regenerated or re-signed)"
-    [ -s "${d}InRelease" ] || echo "   WARNING: ${d#"$REPO_ROOT"/}InRelease is absent here; the live copy of that suite will break if this tree is deployed" >&2
-  done
-}
-
 deploy_static_repo() {
   local project="$1" config_name="$2" domain="$3" mode="${4:-prod}"
   local deploy_root index_dir published_path
@@ -514,7 +500,6 @@ fi
 
 echo "==> Signing the index (InRelease + Release.gpg)"
 sign_index "$PROFILE_REPO_DIR"
-note_frozen_profiles
 
 if [ "$SOURCE" = debs ]; then
   AFTER_SIGN="$(snapshot_debs)"
