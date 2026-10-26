@@ -40,7 +40,10 @@ exists in the Procursus index:
             packages -- removing the -dev must never break a runtime consumer
             (libgnome-desktop-dev shipping libgnome-bg-4.2.dylib killed GNOME Shell).
 
-Waivers live in bin/lib/shadow-waivers.json: {"package": {"rule": "reason"}}.
+Waivers live in bin/lib/shadow-waivers.json: {"package": {"rule": "reason"}}. A symbols
+waiver should name what it excuses: {"symbols": {"reason": "...", "allow":
+{"libfoo.1.dylib": ["_sym", ...]}}} excuses only those exports, so a later rebuild that
+drops one more still fails. A plain-string symbols waiver excuses the whole rule.
 Procursus debs and verdicts are cached in ~/.cache/xios-shadow-check/.
 
 A check that cannot run FAILS the gate, it does not pass it: the Procursus index
@@ -384,7 +387,22 @@ def main() -> int:
                     check_error(pkg, f"nm could not read the exports of {', '.join(unread)}")
                 else:
                     verdicts[skey] = json.dumps(dropped)
+            # A symbols waiver may be an object with a per-dylib allow list:
+            # {"reason": "...", "allow": {"libfoo.1.dylib": ["_sym", ...]}}. Then only
+            # the listed symbols are excused, and any other dropped export still
+            # fails, so the waiver cannot vouch for more than someone checked.
+            sym_waiver = waivers.get(pkg, {}).get("symbols")
             for lib, gone in sorted(dropped.items()):
+                if isinstance(sym_waiver, dict):
+                    allowed = set(sym_waiver.get("allow", {}).get(lib, []))
+                    rest = [s for s in gone if s not in allowed]
+                    if not rest:
+                        waived += 1
+                        continue
+                    errors.append(f"{pkg} [symbols]: {lib} drops {len(rest)} symbol(s) "
+                                  "Procursus exports that its waiver does not list: "
+                                  + ", ".join(rest[:4]) + (" ..." if len(rest) > 4 else ""))
+                    continue
                 violation(pkg, "symbols",
                           f"{lib} drops {len(gone)} symbol(s) Procursus exports: "
                           + ", ".join(gone[:4]) + (" ..." if len(gone) > 4 else ""))
