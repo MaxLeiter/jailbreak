@@ -1,10 +1,16 @@
-# QtWayland ANGLE/IOSurface Bring-Up
+# QtWayland on ANGLE and IOSurface
+
+> **Status (2026-10-25): shipped.** This is how every Qt Wayland client in the KDE flavor
+> renders (`qt6-base 6.6.3-5+ios1`, `qt6-wayland 6.6.3-1+ios3`, both depending on
+> `angle`). Stock QtWayland `wayland-egl` worked against the shim, so the private plugin
+> fallback at the end of this file was never built. KDE status lives in
+> `handoff/kde-kf6.md`.
 
 This is the accelerated Qt path for Plasma on iosc:
 
 `QtQuick/QRhi OpenGL -> QtWayland wayland-egl -> /var/jb/lib/angle/libEGL.dylib -> iosc EGL shim -> ANGLE Metal -> IOSurface wl_buffer -> iosc GPU compositor`.
 
-## Current Implementation
+## Implementation
 
 - `qtbase` round 3 enables `INPUT_opengl=es2` and `FEATURE_egl=ON`, with EGL/GLES resolved from the staged ANGLE package under `/var/jb/lib/angle`.
 - `qtwayland` now keeps its stock `wayland-egl` client buffer integration. The ANGLE package installs the iosc EGL shim as `libEGL.dylib`, so Qt's normal Wayland EGL calls are intercepted and translated to ANGLE Metal plus IOSurface buffers.
@@ -21,9 +27,11 @@ The shim must continue to match the path already validated for GTK4/GSK:
 4. `eglCreate*WindowSurface` allocates an IOSurface swapchain and exposes it as pbuffers via `EGL_ANGLE_iosurface_client_buffer`.
 5. `eglSwapBuffers` fences with EGL sync, attaches the released IOSurface-backed `wl_buffer`, commits the `wl_surface`, and rotates to the next released buffer.
 
-## Validation
+6. One ANGLE Metal display per process. ANGLE answers a second Metal display request with `EGL_NO_DISPLAY` and leaves `eglGetError()` at `EGL_SUCCESS`, and Qt then reports `EGL not available` and drops QtQuick to software. KWin hit this because its backend and Qt's QPA each asked for one; the shim now caches the process display and hands it to both (4ef068ab).
 
-Run these on device after rebuilding `angle`, `qt6-base`, `qt6-wayland`, and `qt6-declarative` against the round-3 base:
+## Checking a Qt client on the device
+
+Use this after rebuilding `angle`, `qt6-base`, `qt6-wayland` or `qt6-declarative`:
 
 ```sh
 export DYLD_LIBRARY_PATH=/var/jb/usr/lib:/var/jb/lib/angle
@@ -52,7 +60,7 @@ That should still paint through wl_shm, preserving the software bring-up path.
 
 ## Private QtWayland Plugin Fallback
 
-Only build a custom `wayland-graphics-integration-client/iosurface` plugin if stock `wayland-egl` rejects the shim during validation. The plugin should not invent new graphics plumbing; it should move the existing `iosc_egl_shim.c` swapchain logic behind QtWayland's private graphics-integration ABI:
+Not built, and not needed so far. Only build a custom `wayland-graphics-integration-client/iosurface` plugin if stock `wayland-egl` ever stops working with the shim. The plugin should not invent new graphics plumbing; it should move the existing `iosc_egl_shim.c` swapchain logic behind QtWayland's private graphics-integration ABI:
 
 - create the ANGLE Metal display with the exact EXT/EGLint path above;
 - create IOSurface pbuffers with `EGL_ANGLE_iosurface_client_buffer`;

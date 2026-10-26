@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "**xios-core** is the foundation package for the Xios desktop. It installs the pieces every flavor needs: the Xios display app (Home Screen icon **X11**), the iosc Wayland compositor, the ANGLE GPU stack (OpenGL ES on Metal), the D-Bus message bus, desktop audio, and the distro defaults for fonts, locale, and paths.\n\nYou normally do not install this package directly. Pick a flavor instead and it pulls xios-core in automatically:\n\n- **xios-gnome**: GNOME Shell on Mutter\n- **xios-kde**: KDE Plasma Desktop and Plasma Mobile on KWin\n- **xios-native**: Linux apps as regular iPadOS windows\n- **xios-x11**: the classic X11 server path\n\nThe display app is unsigned, so it needs **AppSync Unified** (from the https://cydia.akemi.ai/ repo) to launch."
+          "markdown": "**xios-core** is the shared base for the fullscreen Xios desktops. It installs the Xios display app (Home Screen icon **X11**), the iosc compositor and iosc-shell, `xios-session` (which starts, stops and switches desktops), and **xios-launcher-tools**, whose ioscd daemon is what the in-app desktop picker talks to. Through **xios-runtime** it also brings the ANGLE GPU stack (OpenGL ES on Metal), the D-Bus message bus, desktop audio, and the defaults for fonts, locale, and paths.\n\nYou normally do not install this package directly. Pick a flavor instead and it pulls xios-core in:\n\n- **xios-gnome**: GNOME Shell on Mutter\n- **xios-kde**: KDE Plasma Desktop, Mobile and Nano on KWin\n- **xios-x11**: X11 apps through rootless Xwayland on the iosc desktop\n\n**xios-native** (Linux apps as regular iPadOS windows) does not use xios-core.\n\nThe display app is unsigned, so it needs **AppSync Unified** (from the https://cydia.akemi.ai/ repo) to launch."
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,7 +22,7 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.13"
+          "text": "0.1.14"
         },
         {
           "class": "DepictionTableTextView",
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.1.1  \u00b7  2026-07-29\n- Installs the Xios display app (com.max.xios): no more sideloading it by hand\n- Every flavor now brings its own display: install one package and open X11 on the Home Screen\n\n## 0.1.0  \u00b7  2026-07-01\n- First release: iosc + ANGLE + D-Bus + audio + desktop defaults as one base package"
+          "markdown": "## 0.1.13  \u00b7  2026-10-25\n- Requires the fixed xios-session (1.0.82) and xios-launcher-tools (0.1.12)\n\n## 0.1.12  \u00b7  2026-10-25\n- Installs xios-launcher-tools again. 0.1.6 through 0.1.11 left it out, so on a clean install there was no ioscd and every desktop pick in the app failed with \"ioscd timed out\" (GitHub issue #11)\n\n## 0.1.1  \u00b7  2026-07-29\n- Installs the Xios display app (com.max.xios): no more sideloading it by hand\n- Every flavor now brings its own display: install one package and open X11 on the Home Screen\n\n## 0.1.0  \u00b7  2026-07-01\n- First release: iosc + ANGLE + D-Bus + audio + desktop defaults as one base package"
         }
       ]
     }

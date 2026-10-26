@@ -1,133 +1,101 @@
-# mutter — MetaBackendIOS (Mutter on iOS = GNOME Shell's compositor)
+# mutter: MetaBackendIOS (Mutter on iOS, which is GNOME Shell's compositor)
 
-## Ownership
-The Mutter 46 backend for iOS: renders its Clutter stage to an IOSurface via Cogl-on-ANGLE/Metal, and pumps the Xios app's input into Clutter. GNOME Shell IS Mutter (links libmutter-14, runs its own MetaBackendIOS), so this backend = the GNOME flavor's compositor.
-
-## Key files
-- `x11/wayland/meta-input-ios.c` — the input pump (kqueue drain of the app's input socket → ClutterVirtualInputDevice → notify_absolute_motion/notify_button/etc).
-- MetaBackendIOS backend pieces (winsys/monitor-mgr/IOSurface-buffer/login1-stub) — compile against Mutter 46 ABI off-device; build check `build-backend-check.sh`. Backend selected by `gnome-shell --wayland` (compositor-TYPE branch → create_ios_backend, no argv check).
-- `x11/linux-build/out/libmutter-14-0_46.0+ios*.deb`; `+ios7` is the current
-  immutable build and includes the iPad touch-mode seat property. `mutter` thin
-  exe is separate; the fixes are in libmutter.
-- Run: `x11/wayland/run-mutter.sh` (smoke); GNOME boots through the packaged `launch-gnome-session.sh` via `xios-session gnome`.
-- Output IOSurface defaults to 2160×1620, honors session-picker `IOSC_LOGICAL=WxH` at startup, and is replaced on `XIOS_IN_OUTPUT` rotation/resize. Input always ratio-maps through live `xios_output_geometry()`.
-
-## build10 fixes (all landed)
-- Route-A MetaRendererIOS (IOSurface FBO 0 via ANGLE, not pbuffer).
-- Cogl config-attribs overflow fix (shrink to SURFACE_TYPE).
-- Frame-clock PENDING_PRESENTED (was warning-looping on IDLE).
-- Y-flip override (is_y_flipped→TRUE; onscreen pbuffer never swaps).
-- Input pump: kqueue fd not GLib-pollable → 8ms g_timeout drain; coord ratio-map to stage size; button uses last-commanded position (not stale seat state).
+Owns the Mutter 46 backend for iOS: Clutter renders into the Xios output IOSurface through Cogl on
+ANGLE/Metal, and the Xios app's input socket feeds Clutter. GNOME Shell links libmutter-14 and runs
+this backend, so it is the GNOME flavor's compositor. The session side is in
+[gnome-session.md](gnome-session.md); the original design record is
+[../mutter-on-iosc.md](../mutter-on-iosc.md).
 
 ## Current state
-- **First-pixels VALIDATED** on-device (GNOME apps GPU-composited via mutter earlier).
-- **Input transport VALIDATED**: `/var/jb/tmp/mutter-input.sock` events move the compositor cursor and reach a Wayland client in the app-bypass probe.
-- **Dispatch machinery VERIFIED SOUND**: `_clutter_event_push` → `clutter_stage_pick_and_update_device` repicks the actor at the event coords + updates pointer focus → dispatches to the Wayland client, PROVIDED the window actor is mapped and coords are in-bounds.
-- **Mutter-side click dispatch fix identified and patched**: the first xdg-shell buffer commit must call `meta_window_update_visibility(window)` before setting `first_buffer_attached`, or the window actor remains unmapped and unpickable.
-- App-side coord offset was also real and is fixed in xios-app (a7da822 + follow-up geometry sync). Keep using `/var/jb/tmp/xios.json` as the authority for fb size.
-- **2026-07-18 host closure:** touch/tablet/output input cases compile-checked against Mutter 46 before Docker failed. The output handler now calls `xios_surface_resize()` before monitor reload, so the rebuilt renderer view binds the replacement IOSurface instead of only changing logical monitor metadata. Initial `IOSC_LOGICAL` sizing and the canonical glue-contract check were added afterward; rebuild/package as `libmutter 46.0+ios3` once Docker recovers, then run the rotation smoke on-device.
-- **2026-07-29 touch-mode closure:** `MetaSeatIOS` now overrides ClutterSeat's
-  read-only `touch-mode` property to `TRUE`. This is separate from creating the
-  physical `CLUTTER_TOUCHSCREEN_DEVICE`: GNOME Shell uses the property to select
-  touch-first behavior even when a mouse or keyboard is also attached. A clean
-  build/package produced `libmutter-14-0 46.0+ios7`
-  (`7bbbe0b2f538c4ce842fa179a1e32673c575404669669ee1efd9e68856297ae4`);
-  direct install upgraded the iPad from `+ios6`. Raw Mutter and full GNOME both
-  created their IOSurfaces, stayed running, and connected Xios input. For the
-  exact in-process proof, GNOME Shell was launched once with Mutter's diagnostic
-  `--unsafe-mode`, and its guarded evaluator returned
-  `MetaClutterBackendIOS`, `MetaSeatIOS`, and `"touchMode":true` from
-  `Clutter.get_default_backend().get_default_seat()`. The package-owned launcher
-  was immediately restored byte-for-byte (SHA256
-  `4df2cf14f28141ebbc56d48d14e1548c3168551b9a6af897b81ab00f01915524`);
-  unsafe mode is not part of the shipped change.
 
-## 2026-07-01 follow-up
-- Codex installed the staged `/var/jb/tmp/libmutter-b10.deb` on device; `/var/jb/usr/lib/libmutter-14.dylib` now contains the expected `MetaInputIOS: motion out(...) -> stage(...)` mapping diagnostic.
-- Re-ran `wayland/run-mutter.sh`: Mutter started, Xios adopted the IOSurface, `/var/jb/tmp/xios.json` advertised `2160x1620` and `input_socket=/var/jb/tmp/mutter-input.sock`.
-- Direct injection with `/var/jb/usr/local/bin/iosc-input-test --mutter -c 1080 810` connected to `/var/jb/tmp/mutter-input.sock` and logged:
-  `motion out(1080,810)/2160x1620 -> stage(1080.0,810.0) in 2160x1620`.
-  This proves the app-bypass socket path and Mutter ratio mapping are correct/identity for the center click.
-- A quick `kgx` keyboard marker and `iosc-dnd-test --no-drag` pointer probe did not produce a positive client-dispatch marker before the session switched back to iosc; don't over-interpret that as a regression. The strong verified result is coordinate mapping + transport. If client dispatch still matters, restart Mutter with a purpose-built pointer logger and inspect pick/focus after `_clutter_event_push`.
-- At the end of that historical 2026-07-01 pass the device was switched back to iosc; do not treat that sentence as current device state.
+- Published: `libmutter-14-0` / `libmutter-14-dev` **46.0+ios11** (2026-10-01 audit wave).
+  `xios-gnome 0.1.12` requires `>= 46.0+ios10`. The thin `mutter` executable used by
+  `xios-session mutter` is not shipped by any meta package; `xios-session presets` reports it as
+  missing on a normal install.
+- Live compositor on device: Shell paints, GNOME apps map as windows, input works. It runs as a
+  Xios v2 slot next to other desktops.
+- Output IOSurface defaults to 2160x1620 (scale 2), honors `IOSC_LOGICAL=WxH` at startup, and is
+  replaced on `XIOS_IN_OUTPUT` rotation/resize (`xios_surface_resize()` runs before the monitor
+  reload, so the new view binds the new IOSurface).
+- Input (`x11/wayland/meta-input-ios.c`): MOTION, BUTTON, KEY, AXIS (smooth and wheel scroll),
+  TOUCH (a real virtual touchscreen), TABLET, OUTPUT and TEXT. `MetaSeatIOS` reports
+  `touch-mode = TRUE`, so the Shell picks touch-first behavior even with a keyboard attached.
+  Non-ASCII soft-keyboard text is committed through the Shell's input method. Keys carry real
+  keycodes and modifiers. When an input client drops, its held buttons, keys, touches and Pencil are
+  released.
+- The Pencil (TABLET) is mapped onto the pointer: pressure and tilt are dropped. A real tablet tool
+  is the open item in [../gnome-touch-ux.md](../gnome-touch-ux.md) Phase 4.
+- Clipboard: `meta-clipboard-ios.c` bridges the strict v1 clipboard wire.
+- Text-input focus broadcasts TRAITS so the Xios app can raise the iOS keyboard
+  (`linux-build/patches/mutter/meta-wayland-text-input-osk-ios.patch`).
 
-## 2026-07-01 evening validation
-- Rebuilt and installed a libmutter package with `meta_window_update_visibility()` triggered on the first xdg-shell buffer commit (`linux-build/patches/mutter/meta-wayland-xdg-first-buffer-showing.patch`).
-- App-bypass pointer test is now GREEN:
-  ```
-  env XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 mutter-pointer-test
-  iosc-input-test --socket /var/jb/tmp/mutter-input.sock -c 540 405
-  ```
-  The probe logged `ENTER`, `MOTION`, `BUTTON` and wrote `/var/jb/tmp/mutter-pointer-hit`.
-- Root cause of the remaining Mutter-side dispatch failure: xdg-shell's first buffer set `first_buffer_attached` but did not recompute `MetaWindow` visibility, leaving the `MetaWindowActorWayland` unmapped (`mapped=0 visible=0`). Calling `meta_window_update_visibility(window)` before setting `first_buffer_attached` maps the actor; repick then lands on `MetaSurfaceActorWayland`, focus is set, and button events reach the Wayland client.
-- `meta-wayland-pointer-ios-debug.patch` was useful for this diagnosis but is intentionally **not** in the default integration stack now. Keep it as an opt-in diagnostic patch if pick/focus regresses.
+## Key files
 
-## 2026-07-01 Xwayland smoke
-- The earlier "no X display" observation was because `xwayland` was not installed on the device. Installed local packages: `xwayland_23.2.7`, `libxcvt0`, `libdrm2`, and rebuilt `libxshmfence1`.
-- Fixed `linux-build/recipes/libxshmfence.mk`: the runtime package must ship both `libxshmfence.1.dylib` and its real target `libxshmfence.1.0.0.dylib`; previously it installed a dangling symlink and Xwayland failed dyld load.
-- Started rootful Xwayland manually under Mutter:
-  ```
-  XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 \
-    Xwayland :1 -geometry 1080x810 -retro -noreset
-  ```
-  `-rootful` is not a valid flag in this build; rootful is the default.
-- That 2026-07-01 smoke predated the hardware-only Xwayland port. Current builds
-  require ANGLE/IOSurface glamor and brokered fences.
+- `x11/wayland/meta-backend-ios.c`, `meta-renderer-ios.c`, `meta-onscreen-ios.c`,
+  `meta-stage-ios.c`, `meta-monitor-manager-ios.c`, `meta-seat-ios.c`,
+  `meta-virtual-input-device-ios.c`, `meta-input-ios.c`, `meta-wayland-iosurface.c`,
+  `meta-clipboard-ios.c`: the backend.
+- `x11/linux-build/patches/mutter/`: the integration patches (`meson-ios-backend.patch`,
+  `meta-context-main-ios-backend.patch`, `meta-wayland-buffer-iosurface.patch`, ...).
+  `meta-wayland-pointer-ios-debug.patch` is an opt-in diagnostic, not in the default stack.
+- `x11/linux-build/recipes/mutter.mk`, `x11/linux-build/build-mutter.sh`; compile check
+  `x11/linux-build/build-backend-check.sh`.
+- Smoke without the Shell: `x11/wayland/run-mutter.sh` (or `xios-session mutter` if you install the
+  `mutter` binary yourself).
+- Probes: `x11/wayland/iosc-input-test.c` (`--mutter`, `--socket PATH`),
+  `x11/wayland/mutter-pointer-test.c`.
 
-## 2026-07-01 late socket/cursor validation
-- Mutter now defaults its app-input socket to `/var/jb/tmp/mutter-input.sock` instead of the old generic `/var/jb/tmp/xios-input.sock`; the env override remains `XIOS_INPUT_SOCKET`.
-- Rebuilt/deployed libmutter and Xios.app. `wayland/run-mutter.sh` now advertises:
-  ```
-  "socket":"/var/jb/tmp/mutter-ddx.sock","input_socket":"/var/jb/tmp/mutter-input.sock"
-  ```
-  and Xios reports:
-  ```
-  iosurface-zerocopy 2160x1620 [metal]
-  input-connected mutter(wayland)
-  ```
-- Direct injection with `/var/jb/usr/local/bin/iosc-input-test --mutter -c 1080 810` connected to `/var/jb/tmp/mutter-input.sock`; Mutter logged the expected motion/button records.
-- Cursor state: Mutter uses a no-paint cursor renderer, `meta-input-ios.c` emits `xios_notify_cursor()` on app-input motion, and Xios draws the present-side overlay for `compositor_id=mutter-ios`. This removes the big stuck compositor cursor and leaves the right-sized moving cursor.
-- Raw dylib smoke deploys no longer need ad-hoc postprocess commands: use `linux-build/tools/postprocess-mutter-dylib.sh <libmutter-14.0.dylib>`. The real package path already does the same libgtkintl rewrite + X11/XCB weak-link pass in `linux-build/recipes/mutter.mk`.
-- Coexistence framing: separate sockets are correct (`mutter-ddx.sock`/`mutter-input.sock` vs `iosc-ddx.sock`/`iosc-input.sock`), but not sufficient for both compositors to be "live" in the app. `/var/jb/tmp/xios.json` is still the single active-display pointer; whichever compositor last writes it wins the Xios view. During testing, the old request-file watcher resurfaced and restarted iosc, which overwrote the app view even though Mutter's sockets were distinct. True coexistence needs an active-display/session selection layer (and separate Wayland display names if both compositors run at once), not just unique socket names.
+## How rendering works (route A)
 
-## 2026-07-01 packaged/session validation
-- Built a clean non-debug Mutter package from the default patch stack (`MUTTER_CLEAN=1 TARGETS="mutter mutter-package"`). The default stack includes `meta-wayland-xdg-first-buffer-showing.patch` and intentionally does **not** apply `meta-wayland-pointer-ios-debug.patch`.
-- Fresh packages:
-  ```
-  linux-build/out/libmutter-14-0_46.0_iphoneos-arm64.deb
-  linux-build/out/libmutter-14-dev_46.0_iphoneos-arm64.deb
-  ```
-  They were also copied into `repo/debs/`.
-- Installed on-device over the raw/debug dylib, together with `xios-session_1.0.4`. `dpkg -s` reports `xios-session 1.0.4` and `libmutter-14-0 46.0`.
-- Re-launched via the session path:
-  ```
-  /var/jb/usr/local/bin/xios-session mutter
-  ```
-  Result: `xios.json` stayed on `2160x1620`, `socket=/var/jb/tmp/mutter-ddx.sock`, `input_socket=/var/jb/tmp/mutter-input.sock`, active owner file contains `mutter`, and Xios status is `input-connected mutter(wayland)`.
-- Deployed `mutter-pointer-test` to `/var/jb/usr/local/bin` and verified app-bypass client dispatch:
-  ```
-  XDG_RUNTIME_DIR=/var/jb/tmp WAYLAND_DISPLAY=wayland-0 mutter-pointer-test
-  iosc-input-test --mutter -c 540 405
-  ```
-  The probe logged `ENTER`, `MOTION`, and `BUTTON`, and wrote `/var/jb/tmp/mutter-pointer-hit`.
-- Confirmed the packaged library/logs are clean of the opt-in pointer debug patch: `strings /var/jb/usr/lib/libmutter-14.0.dylib` and `/var/jb/tmp/mutter.log` contain no `MetaWaylandPointerIOS`.
-- Active-display ownership guard validated: direct classic `/var/jb/usr/local/bin/iosc` while active owner is `mutter` exits 2 with `iosc: refusing classic output because active session is mutter`, and leaves Mutter's `xios.json` unchanged.
+The output IOSurface is the default framebuffer (FBO 0) of a CoglOnscreen whose EGLSurface is an
+ANGLE IOSurface pbuffer. ANGLE-Metal cannot render to an IOSurface-backed EGLImage
+(`eglCreateImageKHR(GL_TEXTURE_2D)` fails `0x3000`) and the Mutter cogl fork dropped the
+foreign-texture wrap, so there is no offscreen. Client IOSurface buffers are aliased into Cogl
+textures the same way (pbuffer plus `eglBindTexImage`). Present is a brokered shared-event signal
+plus a fenced dirty notification; nothing waits on the CPU. The display, context and pbuffer share
+one EGLConfig (`xios_egl_config()`), or `eglMakeCurrent` fails with `EGL_BAD_MATCH`.
 
-## Open items
-1. **Regression test (run when Mutter is up + Max is at a stopping point — do NOT inject into a live session Max is driving without asking):** inject KNOWN output-px directly into the input socket (bypass the app) to isolate app-coords vs dispatch:
-   ```
-   iosc-input-test --mutter -c 1080 810
-   # or, from a host without the rebuilt tester installed yet:
-   python3 -c "import socket,struct,time; s=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM); s.connect('/var/jb/tmp/mutter-input.sock'); \
-     s.send(struct.pack('<IiiIII',1,1080,810,0,0,0)); time.sleep(.1); \
-     s.send(struct.pack('<IiiIII',2,0,0,0,1,0)); time.sleep(.05); s.send(struct.pack('<IiiIII',2,0,0,0,0,0))"
-   ```
-   `iosc-input-test` now auto-detects `/var/jb/tmp/mutter-input.sock` (Mutter), then the legacy `/var/jb/tmp/xios-input.sock`, before `/var/jb/tmp/iosc-input.sock` (iosc), and also accepts `--mutter`, `--iosc`, or `--socket PATH` for explicit routing.
-   Then read `/var/jb/tmp/mutter.log` for `MetaInputIOS: motion out(X,Y)/WxH -> stage(x,y) in WxH`. Expect W×H to equal the live `xios.json` geometry and stage == out in the default physical-layout mode. For the purpose-built probe, expect `/var/jb/tmp/mutter-pointer-hit` plus `ENTER/MOTION/BUTTON` in `/var/jb/tmp/mutter-pointer-test.log`.
-   NOTE the input socket path should be `mutter-input.sock` (mutter), not `iosc-input.sock` (iosc). If an old local build is still installed it may advertise the legacy `xios-input.sock`; use the tester's printed `connected to ...` line to confirm it.
-2. **App-coord fix keys off xios.json per-compositor size** (guardrail): the app must use the advertised live framebuffer, never the 2160×1620 fallback constant. Confirmed aligned with xios-app; revalidate after the new Mutter rotation path is packaged.
-3. Xwayland rootful works as a manual smoke. Next packaging pass should reinstall the rebuilt `libxshmfence1` deb wherever the old broken one was published, and `run-xwayland.sh` now omits the invalid `-rootful` flag.
-4. Session coexistence is partially handled by active ownership now: distinct sockets plus `/var/jb/tmp/xios-active-session` prevent direct classic iosc from stealing the app view while Mutter owns the session. Longer term, `/var/jb/tmp/xios.json` should become an explicit active-display selection/registry so multiple compositors can be alive and switchable instead of last-writer-wins.
+## Landmines
 
-## Note
-GNOME Shell inherits this path because it is the same MetaBackendIOS and xdg-shell window mapping logic.
+- **The first xdg-shell buffer must update window visibility.** Without
+  `meta_window_update_visibility()` before `first_buffer_attached` is set, the window actor stays
+  unmapped and unpickable: clicks reach the stage but never the client
+  (`meta-wayland-xdg-first-buffer-showing.patch`).
+- **X11 cannot be compiled out of Mutter 46.** `have_x11` is hardcoded and `core/frame.c` /
+  `core/keybindings.c` use X11 unconditionally. The package weak-links the X11/xcb closure
+  (`x11/linux-build/tools/macho-weaken.py`, run by `mutter.mk`). On chained-fixups binaries that is a two-stage
+  edit: flip `LC_LOAD_DYLIB` to weak AND set `weak_import` on every chained-fixups import from those
+  libs, or dyld fails at symbol bind instead of library load. Weak-linking only helps when the
+  library is absent; a present library still loads and processes its own strong load commands.
+  `x11/linux-build/tools/weaken-deb.sh` repacks any closure deb the same way.
+- **Cogl dlopens Linux sonames** (`libGLESv2.so.2`, `libEGL.so.1`). The `angle` package ships those
+  links now and the GNOME launcher checks for them.
+- **GSettings schemas must be in the deb.** An early package dropped `share/`, and Mutter aborted on
+  `org.gnome.mutter` not installed. `mutter-package` copies `share/` and the postinst compiles
+  schemas.
+- **`libwayland-server0` is a virtual name.** `libwayland0` provides it. Installing libmutter before
+  libwayland0 with plain `dpkg -i` leaves it unconfigured, and `apt --fix-broken` may then remove
+  libmutter. Install through apt or keep the order.
+- **The pid you launched is not always the compositor.** Under GNOME it is the
+  `gnome-shell --wayland` child of `xios-gnome-session-client`.
+- **Map coordinates from the live geometry.** Anything converting framebuffer to screen must read
+  the advertised `xios.json` (or `xios-<slot>.json`), never the 2160x1620 default.
+
+## Debugging recipes
+
+- App-bypass input: `iosc-input-test --mutter -c 1080 810` and look for
+  `MetaInputIOS: motion out(X,Y)/WxH -> stage(x,y) in WxH` in `/var/jb/tmp/mutter.log`; W x H should
+  match the live `xios.json`.
+- Client dispatch: run `mutter-pointer-test` under the compositor's `WAYLAND_DISPLAY`, inject a
+  click, expect `ENTER/MOTION/BUTTON` and `/var/jb/tmp/mutter-pointer-hit`.
+- Ask before injecting into a session Max is using.
+
+## History (short)
+
+- 2026-06-30: Mutter 46 cross-built; Cogl-on-ANGLE smoke (`iosc-cogl-smoke.c`) passed on the A10
+  the next day; backend pieces written against the real 46.0 tree.
+- 2026-07-01: first pixels, input transport proven, the xdg first-buffer fix.
+- 2026-07-02: GNOME Shell first light on this backend.
+- 2026-07-18 to 07-29: touch, tablet, output resize, `touch-mode = TRUE` (+ios7), strict v1
+  clipboard.
+- 2026-10-01: input fixes from the audit (+ios11).

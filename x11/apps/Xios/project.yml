@@ -11,7 +11,7 @@ settings:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "2"          # iPad
     PRODUCT_BUNDLE_IDENTIFIER: com.max.xios
-    MARKETING_VERSION: "0.1.12"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGNING_ALLOWED: "NO"
     CODE_SIGNING_REQUIRED: "NO"
@@ -22,11 +22,11 @@ settings:
     CODE_SIGN_ENTITLEMENTS: entitlements.plist
     ENABLE_BITCODE: "NO"
     ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-    SWIFT_OBJC_BRIDGING_HEADER: Sources/Xios-Bridging-Header.h
-    # IOSurface backs the zero-copy framebuffer (XSurface.c does the mach-port
+    SWIFT_OBJC_BRIDGING_HEADER: Sources/C/Xios-Bridging-Header.h
+    # IOSurface backs the zero-copy framebuffer (C/XSurface.c does the mach-port
     # hand-off + IOSurfaceLookupFromMachPort).
     #
-    # MetalFX is WEAK-linked: present-side spatial upscaling (XiosUpscale.swift) is
+    # MetalFX is WEAK-linked: present-side spatial upscaling (Present/XiosUpscale.swift) is
     # opt-in, and a device without the framework must degrade to the direct present
     # rather than fail to launch. Every use is gated on NSClassFromString +
     # MTLFXSpatialScalerDescriptor.supportsDevice, so a null class is never touched.
@@ -55,7 +55,7 @@ targets:
       path: Resources/Info.generated.plist
       properties:
         CFBundleDisplayName: X11
-        CFBundleShortVersionString: "0.1.12"
+        CFBundleShortVersionString: "0.2.0"
         UILaunchScreen: {}
         UIRequiresFullScreen: true
         UIStatusBarHidden: true
@@ -64,8 +64,8 @@ targets:
         NSCameraUsageDescription: Xios exposes the iPad camera to desktop media clients.
         NSMicrophoneUsageDescription: Xios exposes the iPad microphone to desktop media clients.
         NSPhotoLibraryUsageDescription: Xios lets you choose a photo as the iosc desktop background.
-        # Runtime-gated in XServerViewController: compositor sessions can rotate
-        # and resize their IOSurface.
+        # Every desktop can rotate and resize its IOSurface; RootViewController
+        # allows all orientations.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown

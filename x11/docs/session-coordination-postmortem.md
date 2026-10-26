@@ -1,5 +1,10 @@
 # Multi-Agent Coordination & Session-Recovery Bug Report
 
+> Historical (June 2026). This is about the Claude Code agent harness, not the X11
+> project: how background agents, messages and shutdowns behaved during one long
+> coordinator session. Nothing here describes the state of the repo. The project-side
+> rules that came out of it are in `agent-brief-checklist.md`.
+
 **Session:** `8f77b91d-5b45-4d97-ba93-6ea26bda597f` ("x11 coordinator")
 **Transcript:** `~/.claude/projects/-Users-max-Documents-jailbreak-x11/8f77b91d-5b45-4d97-ba93-6ea26bda597f.jsonl` (6,220 records, 15 MB)
 **Client version:** 2.1.195 · **All timestamps below are UTC** (as recorded in the transcript)

@@ -48,21 +48,6 @@ xdeb_extract "$SYS" "$DEB_DIRS" \
   dbus \
   libatspi2.0-0 at-spi2-core-dev
 
-if [ ! -f "$SYS$XIOS_PREFIX/usr/lib/pkgconfig/dbus-1.pc" ]; then
-  mkdir -p "$SYS$XIOS_PREFIX/usr/lib/pkgconfig"
-  cat > "$SYS$XIOS_PREFIX/usr/lib/pkgconfig/dbus-1.pc" <<'PC'
-prefix=$XIOS_PREFIX/usr
-includedir=${prefix}/include
-libdir=${prefix}/lib
-
-Name: dbus
-Description: D-Bus message bus
-Version: 1.14.10
-Libs: -L${libdir} -ldbus-1
-Cflags: -I${includedir}/dbus-1.0 -I${libdir}/dbus-1.0/include
-PC
-fi
-
 mkdir -p "$SYS$XIOS_PREFIX/usr/lib/dbus-1.0/include/dbus"
 cat > "$SYS$XIOS_PREFIX/usr/lib/dbus-1.0/include/dbus/dbus-arch-deps.h" <<'EOF'
 #if !defined (DBUS_INSIDE_DBUS_H) && !defined (DBUS_COMPILATION)

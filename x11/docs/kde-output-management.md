@@ -1,5 +1,17 @@
 # KDE output-management in iosc
 
+> **Status (2026-10-25):** shipped in iosc since 0.9.16 (2026-07-08) and device-checked
+> then: all four globals advertised, and the KDE desktop fills the whole output at the
+> saved KWin scale. Published iosc is 0.9.51. The code lives in
+> `wayland/iosc_kde_output.c` (split out of `iosc.c` in 79c43704).
+>
+> In the shipped KDE session the Plasma clients talk to nested KWin, not to iosc, so
+> System Settings' Display page changes KWin's output. What made that work on the iPad
+> was the combination of this file's fullscreen stretch, the
+> `KWIN_XIOS_HOST_OUTPUT_SCALE` contract and the fractional-scale input patch in KWin;
+> see `handoff/kde-kf6.md`. The iosc protocols matter for kscreen-doctor or libkscreen
+> pointed straight at iosc's socket.
+
 iosc implements the KDE output-management protocol family so kscreen-doctor,
 libkscreen and Plasma can enumerate and reconfigure iosc's single output
 directly, including a runtime scale change. This is what lets the KDE flavor's
@@ -19,8 +31,9 @@ MIT-CMU). Advertised globals:
 libkscreen 6.1.5 binds device at v8, management at v9 and order at v1; it does
 not bind primary (plasma-workspace does). The versions above match exactly.
 
-All four are registered in `register_wayland_globals()` and the implementation
-lives in the "KDE output-management family" block in `wayland/iosc.c`.
+All four are registered in `register_wayland_globals()` in `wayland/iosc.c`; the
+implementation is `wayland/iosc_kde_output.c`. `kscreen-doctor` ships in `libkscreen
+6.1.5+ios2` (not `kscreen`).
 
 ## Output identity
 
@@ -109,11 +122,12 @@ regardless of its buffer size or buffer_scale. The source rect stays the full
 buffer, honoring any viewport source. The native-mode per-window path
 (`native_composite_toplevel`) is deliberately excluded, so it is unaffected.
 
-Damage for a stretched surface falls back to full-surface
-(`output_damage_add_surface_dirty_rects` and `surface_rect` via
-`surface_output_size`), because the per-rect buffer-to-output math does not hold
-under the stretch. This is correctness over performance and only triggers for
-mismatched fullscreen clients.
+Damage for a stretched surface maps each buffer-pixel dirty rect through the same
+stretch (`output_damage_add_surface_dirty_rects`), rounded outward with one texel of
+slack for bilinear sampling. The first version damaged the whole surface instead, and
+because the Xios presenter samples the shared IOSurface asynchronously, a full-frame
+redraw mid-composite showed as flicker while dragging at fractional scales. A degenerate
+source rect still falls back to full-surface damage.
 
 ## Input remapping
 
@@ -134,28 +148,20 @@ hit and confined across the whole output. Fullscreen configure senders still
 request `output_logical_width/height`; the stretch is only a fallback for clients
 that ignore their configure.
 
-## On-device test plan
+## Checking it on the device
 
-Host verification passed on 2026-07-18: `wayland/build-iosc.sh` generated all
-four protocol families, cross-compiled the compositor and test clients for
-arm64 iOS, and signed the compositor. The resulting payload is versioned as
-`iosc 0.9.18` so it does not overwrite the already-published 0.9.17 artifact.
-
-Runtime validation remains deferred while the device is offline. Run these
-from a terminal on the device once it is reachable.
+These are the checks that were run when it landed; rerun them after changing this code.
 
 1. Enumerate: `WAYLAND_DISPLAY=<iosc socket> kscreen-doctor --outputs`. Expect one
    output named `IOSC-1`, enabled, one mode at the physical size, current scale.
-2. Scale up: `kscreen-doctor output.1.scale.2` then `.3`. Expect the desktop UI
-   to grow, the IOSurface to stay the same physical size (no Xios reconnect in the
-   iosc log), and `wp_fractional_scale` clients (iosc-shell) to re-render at the
-   new scale. `kscreen-doctor --outputs` should report the new scale and the new
-   logical size (physical/scale).
-3. Rotation after scale: set a non-default scale, then rotate the iPad. Expect the
-   post-rotation logical size to reflect the scale (derived from `g_natural_*`),
-   not revert to the launch scale.
-4. KDE flavor: open systemsettings, Display and Monitor, change Global Scale, and
-   confirm the change applies (Plasma drives `kde_output_management_v2.apply`).
-5. Nested KWin fullscreen: run the KDE session and confirm the desktop fills the
-   whole output at any UI scale (no quarter-screen shrink) and that pointer and
-   touch land correctly across the whole surface.
+2. Scale up: `kscreen-doctor output.1.scale.2` then `.3`. The UI grows, the IOSurface
+   keeps its physical size (no Xios reconnect in the iosc log), and
+   `wp_fractional_scale` clients such as iosc-shell re-render at the new scale.
+3. Rotation after scale: set a non-default scale, rotate the iPad, and check that the
+   post-rotation logical size reflects the scale instead of reverting.
+4. KDE session: the desktop fills the whole output at any KDE UI scale (no
+   quarter-screen shrink), and pointer and touch land correctly across it.
+
+If a bad scale sticks across restarts, it is saved by KWin in
+`/var/root/Library/Preferences/kwinoutputconfig.json` and by kscreen under
+`/var/root/Library/Application Support/kscreen/`; delete those and restart the session.

@@ -16,10 +16,13 @@ Description: the display app for the Xios desktop
  texture every frame, and your touches and keystrokes go back to the server.
  Fullscreen desktop flavors need it.
  .
- Open it and pick a session, or start one from the shell with xios-session.
- Three-finger tap opens the session and screen size panel (other running
- displays are under Advanced), pinch zooms, and a swipe up from the lower edge
- raises the keyboard.
+ It opens to a launcher: a card for each desktop that is running, with a
+ thumbnail, its state and size. Tap a card to go full screen, touch and hold
+ for Stop, Open app in it or Change size, and use New Desktop to start another
+ (it offers the flavors you have installed and names the package for the rest).
+ Inside a desktop, a three-finger tap or a pull from the top edge opens the
+ switcher, pinch zooms, and a swipe up from the lower edge raises the keyboard.
+ Several desktops can run side by side (xios-session 1.0.81, iosc 0.9.49).
  .
  Install a flavor rather than this package on its own: xios-gnome, xios-kde,
  or xios-x11. Each one pulls this app in through xios-core. The per-app native

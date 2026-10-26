@@ -145,7 +145,11 @@ echo "==> start GNOME session -> $GNOME_SHELL_LOG"
     [ -x "$LIBEXEC/xios-accounts-stub" ] && "$LIBEXEC/xios-accounts-stub" &
     [ -x "$LIBEXEC/xios-bluez-stub" ] && "$LIBEXEC/xios-bluez-stub" &
     [ -x "$LIBEXEC/xios-hwbridged" ] && "$LIBEXEC/xios-hwbridged" &
-    [ -x "$LIBEXEC/xios-sensord" ] && "$LIBEXEC/xios-sensord" &
+    # No accelerometer for GNOME unless asked: with one, Mutter manages the built-in
+    # panel orientation and rotated it a quarter turn on top of the buffer the Xios
+    # app already sized for the new orientation (transform 270 on a landscape
+    # IOSurface), even with orientation-lock set. Rotation is the job of the Xios app.
+    [ "${XIOS_GNOME_SENSORD:-0}" = 1 ] && [ -x "$LIBEXEC/xios-sensord" ] && "$LIBEXEC/xios-sensord" &
     [ -r "$PULSE_PROFILE" ] && . "$PULSE_PROFILE" && xios_pulse_start
     [ -x "$LIBEXEC/xios-sysintd" ] && "$LIBEXEC/xios-sysintd" >"$SYSINT_LOG" 2>&1 &
     sleep 1
@@ -153,9 +157,13 @@ echo "==> start GNOME session -> $GNOME_SHELL_LOG"
   ' >"$GNOME_SHELL_LOG" 2>&1 </dev/null &
 GPID=$!
 
+# The session's own process group (the inner shell reports it), never "any GNOME
+# on the device": another slot's GNOME must not keep a dead one looking alive.
 session_alive() {
   kill -0 "$GPID" 2>/dev/null && return 0
-  ps ax 2>/dev/null | grep -v grep | grep -E "gnome-session.*--session=xios|/usr/bin/gnome-shell" >/dev/null 2>&1
+  pg="$(tr -cd 0-9 <"$XIOS_GNOME_PGID_FILE" 2>/dev/null)"
+  [ -n "$pg" ] || return 1
+  ps ax -o pgid= 2>/dev/null | awk -v g="$pg" '$1 == g { f = 1 } END { exit !f }'
 }
 
 echo "==> wait for GNOME Shell to create the output IOSurface + rendezvous sockets"
@@ -184,9 +192,14 @@ if [ -S "$XIOS_DDX_SOCKET" ]; then
   fi
 fi
 
-echo "==> relaunch the Xios app"
-uiopen -b com.max.xios 2>/dev/null || true
-sleep 1
+# A slot leaves the foreground alone unless asked (same rule as xios-session).
+if [ -z "${XIOS_SESSION_SLOT:-}" ] || [ "${XIOS_SLOT_FOREGROUND:-0}" = 1 ]; then
+  echo "==> relaunch the Xios app"
+  uiopen -b com.max.xios 2>/dev/null || true
+  sleep 1
+else
+  echo "==> slot $XIOS_SESSION_SLOT: leaving Xios foreground unchanged"
+fi
 
 echo "   session pgid:    $(cat "$XIOS_GNOME_PGID_FILE" 2>/dev/null)"
 

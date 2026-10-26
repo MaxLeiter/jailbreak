@@ -295,9 +295,20 @@ xs_reap_session_lock_owner() {
     rm -rf "$XS_LOCK_DIR" 2>/dev/null || true
 }
 
+XS_LOCK_NOPID_SEEN=0
 xs_session_lock_is_stale() {
     local pid started now age stale
     pid="$(cat "$XS_LOCK_DIR/pid" 2>/dev/null || true)"
+    # The owner writes its pid just after mkdir, so a missing pid file is only
+    # proof of a dead owner once it has stayed missing for a few seconds. Reaping
+    # on first sight let a waiter delete a lock that had just been taken, and two
+    # switches then ran at once.
+    if [ -z "$pid" ]; then
+        XS_LOCK_NOPID_SEEN=$((XS_LOCK_NOPID_SEEN + 1))
+        [ "$XS_LOCK_NOPID_SEEN" -ge 3 ]
+        return
+    fi
+    XS_LOCK_NOPID_SEEN=0
     xs_process_alive "$pid" || return 0
     started="$(cat "$XS_LOCK_DIR/started" 2>/dev/null || true)"
     now="$(date '+%s' 2>/dev/null || echo 0)"
@@ -318,6 +329,7 @@ xs_acquire_session_lock() {  # xs_acquire_session_lock <preset>
         fi
         if xs_session_lock_is_stale; then
             xs_reap_session_lock_owner
+            XS_LOCK_NOPID_SEEN=0
             continue
         fi
         if [ "$wait" -le 0 ] || [ "$waited" -ge "$wait" ]; then
@@ -333,8 +345,10 @@ xs_acquire_session_lock() {  # xs_acquire_session_lock <preset>
         waited=$((waited + 1))
     done
 
-    pgid="$(xs_current_pgid)"
+    # pid first: it is what tells waiters the lock is held (see above), and the
+    # pgid lookup forks ps.
     printf '%s\n' "$$" >"$XS_LOCK_DIR/pid" 2>/dev/null || true
+    pgid="$(xs_current_pgid)"
     printf '%s\n' "$pgid" >"$XS_LOCK_DIR/pgid" 2>/dev/null || true
     printf '%s\n' "$preset" >"$XS_LOCK_DIR/preset" 2>/dev/null || true
     date '+%s' >"$XS_LOCK_DIR/started" 2>/dev/null || true
@@ -531,7 +545,11 @@ xs_write_status() {
     [ -n "$socket" ] && extra="$extra,\"socket\":\"$(xs_json_escape "$socket")\""
     [ -n "$input_socket" ] && extra="$extra,\"input_socket\":\"$(xs_json_escape "$input_socket")\""
     [ -n "${IOSC_LOGICAL:-}" ] && extra="$extra,\"requested_logical\":\"$(xs_json_escape "$IOSC_LOGICAL")\""
-    [ -n "${XIOS_SESSION_DPI:-}" ] && extra="$extra,\"requested_dpi\":$XIOS_SESSION_DPI"
+    # Emitted as a bare JSON number, so only when it is one.
+    case "${XIOS_SESSION_DPI:-}" in
+        ""|*[!0-9]*) ;;
+        *) extra="$extra,\"requested_dpi\":$XIOS_SESSION_DPI" ;;
+    esac
     printf '{"preset":"%s","state":"%s","message":"%s","at":"%s"%s}\n' \
         "$(xs_json_escape "$preset")" "$(xs_json_escape "$state")" \
         "$(xs_json_escape "$msg")" "$at" "$meta$extra" >"$XS_STATUS" 2>/dev/null || true
@@ -898,7 +916,7 @@ xs_remove_slot_state() {  # xs_remove_slot_state <slot> [registry-entry]
           "$t/mutter-$slot-ddx.sock" "$t/mutter-$slot-input.sock" \
           "$t/mutter-$slot-clipboard.sock" \
           "$t/kwin-$slot" "$t/kwin-$slot.lock" \
-          "$sysint" "$t/xios-$slot-a11y.sock" \
+          "$sysint" "$t/xios-$slot-a11y.sock" "$t/xios-$slot-a11y.sock.pid" \
           "$t/gnome-session-bus-$slot" "$t/xios-gnome-$slot.pgid" \
           "$t/xios-active-session-$slot" \
           "$t/xios-session-$slot.json" "$t/xios-app-launch-$slot.json" \
@@ -960,7 +978,10 @@ xs_first_readable() {
 # pinned libexec script first because stale live owner scripts can silently drop
 # slot-specific env/argv.
 xs_find_bringup() {
-    local name="$1" override="${XIOS_SESSION_BRINGUP_DIR:+$XIOS_SESSION_BRINGUP_DIR/$name}"
+    # Two locals: in `local a=1 b=$a` the second expansion still sees the old
+    # $a, which made the override resolve to the bare directory.
+    local name="$1"
+    local override="${XIOS_SESSION_BRINGUP_DIR:+$XIOS_SESSION_BRINGUP_DIR/$name}"
     if [ -n "$XS_SLOT" ]; then
         xs_first_readable \
             "$override" \
@@ -988,7 +1009,10 @@ xs_find_bringup() {
 # session started by an older launcher). Recorded process groups are reaped
 # first, and anything provably owned by a slot is subtracted before a single
 # signal is sent, so a non-slot start or stop never touches a running slot.
-xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-sysintd|dbus-daemon.*--session|dbus-run-session'
+# ioscd starts the classic iosc with a bare argv[0] ("iosc -classic ..."), and iosc's
+# XWM spawns Xwayland; neither matched, so a stop deleted wayland-0 and left that iosc
+# and its Xwayland running. Slot-owned processes are subtracted before this applies.
+xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|^iosc -classic( |$)|/bin/Xwayland .*-rootless -wm|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-sysintd|dbus-daemon.*--session|dbus-run-session'
 # Shared desktop services (one per device, used by every desktop). Only an
 # everything-is-stopping teardown may touch these; switching or stopping one
 # desktop must leave another desktop's audio alone.
@@ -1034,7 +1058,7 @@ xios_session_teardown() {
     local t="${XS_TMP:?}"
     rm -f "$XS_WAYLAND_SOCK" "$XS_WAYLAND_SOCK.lock" \
           "$XS_CONFIG_JSON" \
-          "$XS_A11Y_SOCK" "$XS_SYSINT_SOCK" \
+          "$XS_A11Y_SOCK" "$XS_A11Y_SOCK.pid" "$XS_SYSINT_SOCK" \
           "$XS_IOSC_DDX_SOCK" "$XS_IOSC_INPUT_SOCK" \
           "$XS_IOSC_CLIPBOARD_SOCK" "$XS_IOSC_WM_SOCK" \
           "$XS_MUTTER_DDX_SOCK" "$XS_MUTTER_INPUT_SOCK" \
@@ -1317,7 +1341,8 @@ xios_session_iosc() {
     xs_record_slot_process_pgroups iosc
     xs_write_status iosc waiting "waiting for compositor surface"
     if ! xs_wait_socket "$XS_WAYLAND_SOCK" 50; then
-        xs_log "ERROR: iosc did not create wayland-0"; xs_write_status iosc error "wayland-0 never appeared"; return 1
+        xs_log "ERROR: iosc did not create $XS_WAYLAND_SOCK (see $XS_IOSC_LOG)"
+        xs_write_status iosc error "$XS_WAYLAND_NAME never appeared; see ${XS_IOSC_LOG##*/}"; return 1
     fi
     xs_fix_ddx_perms
     xs_ensure_xios iosc
@@ -1332,6 +1357,7 @@ xios_session_mutter() {
     xs_write_status mutter starting "starting mutter --wayland (compositor + display)"
     local script; script="$(xs_find_bringup run-mutter.sh)" || {
         xs_log "ERROR: run-mutter.sh not found"; xs_write_status mutter error "run-mutter.sh missing"; return 1; }
+    local mutter_log="$XS_TMP/mutter${XS_SLOT:+-$XS_SLOT}.log"
     xs_log "mutter: $script"
     # run-mutter.sh's own (now no-op) teardown finds nothing to kill after ours +
     # the settle, so it just starts mutter, waits for xios.json, and relaunches Xios.
@@ -1343,7 +1369,7 @@ xios_session_mutter() {
     XIOS_SYSINT_SOCK="$XS_SYSINT_SOCK" \
     XIOS_A11Y_SOCK="$XS_A11Y_SOCK" \
     XIOS_SESSION_SLOT="$XS_SLOT" \
-    MUTTER_LOG="${XS_TMP}/mutter${XS_SLOT:+-$XS_SLOT}.log" \
+    MUTTER_LOG="$mutter_log" \
     bash "$script" || true
     # mutter's argv names the slot (--wayland-display wayland-<slot>), so its
     # process group is found by needle; record it for the slot-scoped stop.
@@ -1353,8 +1379,8 @@ xios_session_mutter() {
         xs_log "mutter up (flat clutter stage; no shell yet)."
         xs_write_status mutter up "mutter --wayland running"
     else
-        xs_log "ERROR: mutter did not write xios.json (see $XS_TMP/mutter.log)"
-        xs_write_status mutter error "mutter failed; see mutter.log"; return 1
+        xs_log "ERROR: mutter did not write $XS_CONFIG_JSON (see $mutter_log)"
+        xs_write_status mutter error "mutter failed; see ${mutter_log##*/}"; return 1
     fi
 }
 
@@ -1395,6 +1421,7 @@ xios_session_gnome() {
     # Shell started at" in gnome-shell.log, printed after the JS UI loads. Poll
     # for that, a hard failure, or process exit (~15s); report each distinctly.
     local log="$XS_TMP/gnome-shell${XS_SLOT:+-$XS_SLOT}.log" i=0 outcome=timeout
+    local logname="${log##*/}"
     # Optional out-of-process Shell services share this log and may emit their
     # own JS errors without affecting the compositor or UI. Only treat errors
     # that identify the main Shell entry point or GPU backend as fatal here;
@@ -1403,7 +1430,7 @@ xios_session_gnome() {
     while [ "$i" -lt 30 ]; do
         if grep -q "GNOME Shell started at" "$log" 2>/dev/null; then outcome=started; break; fi
         if grep -qE "$fail_re" "$log" 2>/dev/null; then outcome=failed; break; fi
-        xios_session_process_running "/usr/bin/gnome-shell|gnome-session.*--session=xios" || { outcome=exited; break; }
+        xs_gnome_session_alive || { outcome=exited; break; }
         sleep 0.5; i=$((i+1))
     done
     case "$outcome" in
@@ -1413,18 +1440,31 @@ xios_session_gnome() {
         failed|exited)
             xs_log "gnome-shell FAILED ($outcome). Last 40 lines of $log:"
             tail -40 "$log" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
-            xs_write_status gnome error "gnome-shell $outcome; see gnome-shell.log"
+            xs_write_status gnome error "gnome-shell $outcome; see $logname"
             return 1 ;;
         timeout)
             if [ -f "$XS_CONFIG_JSON" ]; then
                 xs_log "gnome-shell: Mutter up but no 'GNOME Shell started' after ~15s (compositor-only). Last 40 lines of $log:"
                 tail -40 "$log" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
-                xs_write_status gnome compositor-only "Mutter up; GNOME Shell JS did not report started (see gnome-shell.log)"
+                xs_write_status gnome compositor-only "Mutter up; GNOME Shell JS did not report started (see $logname)"
             else
-                xs_log "gnome-shell: no xios.json and no start marker; bring-up failed."
-                xs_write_status gnome error "gnome-shell did not start; see gnome-shell.log"
+                xs_log "gnome-shell: no $XS_CONFIG_JSON and no start marker; bring-up failed."
+                xs_write_status gnome error "gnome-shell did not start; see $logname"
                 return 1
             fi ;;
+    esac
+}
+
+# Is THIS session's GNOME still running? launch-gnome-session.sh reports the
+# session's process group, which is exact. The argv pattern is only the fallback
+# for a launcher that wrote no pgid file: it matches any GNOME on the device, so
+# another slot's GNOME would keep a dead one looking alive.
+xs_gnome_session_alive() {
+    local pgid
+    pgid="$(tr -cd '0-9' <"$XS_TMP/xios-gnome${XS_SLOT:+-$XS_SLOT}.pgid" 2>/dev/null || true)"
+    case "$pgid" in
+        ""|0|1) xios_session_process_running "/usr/bin/gnome-shell|gnome-session.*--session=xios" ;;
+        *)      xs_pgid_has_live_session_process "$pgid" ;;
     esac
 }
 
@@ -1536,7 +1576,7 @@ xios_session_kde() {
     if [ "$kde_failed" = 1 ]; then
         xs_log "$preset FAILED: shell/compositor exited; see $XS_KDE_LOG"
         tail -40 "$XS_KDE_LOG" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
-        xs_write_status "$preset" error "$label exited; see kde-plasma.log"
+        xs_write_status "$preset" error "$label exited; see ${XS_KDE_LOG##*/}"
         return 1
     elif [ "$kde_ready" = 1 ]; then
         xs_log "$preset up ($XS_KWIN_SOCKET + plasmashell running)."
@@ -1546,7 +1586,7 @@ xios_session_kde() {
         xs_write_status "$preset" compositor-only "KWin running; plasmashell not confirmed"
     else
         xs_log "ERROR: KWin is not running; see $XS_KDE_LOG"
-        xs_write_status "$preset" error "KWin failed; see kde-plasma.log"
+        xs_write_status "$preset" error "KWin failed; see ${XS_KDE_LOG##*/}"
         return 1
     fi
 }
@@ -1809,7 +1849,7 @@ xios_session_resize() {
             xios_session_run_unlocked "$owner"
             ;;
         ""|stop)
-        xs_log "resize: no active desktop; starting iosc"
+            xs_log "resize: no active desktop; starting iosc"
             xios_session_run_unlocked iosc
             ;;
         *)
@@ -1908,7 +1948,12 @@ xios_session_run() {
         xs_mark_latest_switch_request "$preset"
     fi
     xs_acquire_session_lock "$preset" || return $?
-    trap 'xs_release_session_lock' EXIT HUP INT TERM
+    # The signal traps must exit: a handler that only released the lock let the
+    # interrupted switch carry on without it, racing the next request.
+    trap 'xs_release_session_lock' EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     xs_sweep_stale_slot_registry
     xs_refresh_ios_app_entries
     xios_session_run_unlocked "$@"

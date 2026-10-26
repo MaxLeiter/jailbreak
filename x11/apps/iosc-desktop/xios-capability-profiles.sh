@@ -152,8 +152,8 @@ xios_profile_env_pairs() {
         angle="${XS_ANGLE_LIBEGL:-$XIOS_PREFIX/lib/angle/libEGL.angle.dylib}"
     fi
     local lang="${LANG:-C}" lc_ctype="${LC_CTYPE:-UTF-8}" xcomposefile
-    case "$lang" in ""|UTF-8|*.UTF-8|*.utf8|C.UTF-8) lang=C ;; esac
-    case "$lc_ctype" in ""|C|POSIX|*.UTF-8|*.utf8|C.UTF-8) lc_ctype=UTF-8 ;; esac
+    case "$lang" in ""|UTF-8|*.UTF-8|*.utf8) lang=C ;; esac
+    case "$lc_ctype" in ""|C|POSIX|*.UTF-8|*.utf8) lc_ctype=UTF-8 ;; esac
     xcomposefile="${XCOMPOSEFILE:-$prefix/share/X11/locale/en_US.UTF-8/Compose}"
     case "$profile" in
         iosc-client-gpu)

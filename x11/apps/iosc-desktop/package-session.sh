@@ -42,7 +42,7 @@ fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
-VER="1.0.82"
+VER="1.0.84"
 ARCH="$XIOS_DEB_ARCH"
 DEB="xios-session_${VER}_${ARCH}.deb"
 
@@ -64,7 +64,7 @@ Version: ${VER}
 Architecture: ${ARCH}
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: iosc (>= 0.9.50), uikittools, xios-session-stubs (>= 0.2.12)
+Depends: iosc (>= 0.9.50), uikittools, xios-session-stubs (>= 0.2.13)
 Recommends: iosc-shell, com.max.xios
 Breaks: xios-a11y-tools (<< 0.2.17)
 Suggests: libmutter-14-0, gnome-shell, gnome-session, kwin, plasma-workspace, plasma-desktop, plasma-nano, plasma-mobile
@@ -107,13 +107,14 @@ EOF
 
 # 2b. prerm — the iOS-app desktop entries are generated at runtime, so dpkg does
 # not own them and would otherwise leave ~60 dead launchers behind on removal.
-cat > "$STAGE/DEBIAN/prerm" <<'EOF'
+# The helper path follows the target prefix (rootful has no jailbreak prefix).
+cat > "$STAGE/DEBIAN/prerm" <<EOF
 #!/bin/sh
 set -e
-case "$1" in
+case "\$1" in
   remove|purge)
-    [ -x /var/jb/usr/local/bin/xios-ios-apps ] \
-      && /var/jb/usr/local/bin/xios-ios-apps clean >/dev/null 2>&1 || true
+    [ -x ${XIOS_PREFIX}/usr/local/bin/xios-ios-apps ] \\
+      && ${XIOS_PREFIX}/usr/local/bin/xios-ios-apps clean >/dev/null 2>&1 || true
     ;;
 esac
 exit 0
@@ -129,6 +130,7 @@ fi
 
 # 3. assemble the deb (root-owned, zstd) via xmkdeb — builds in the container on a
 #    macOS host, or directly when already running as root inside one.
+xdeb_refuse_published "$STAGE"
 mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
 if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then

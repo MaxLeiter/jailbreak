@@ -1,4 +1,4 @@
-# Xios Device Testing Harness
+# Xios device testing harness
 
 `bin/xios-device` is the host-side entry point for autonomous device checks.
 It wraps the existing `apps/iosc-desktop/deploy-env.sh` SSH settings, the
@@ -19,10 +19,10 @@ Use it instead of hand-writing SSH snippets in agent sessions.
 - The iPad must be awake/unlocked for Xios foreground presentation. SSH can
   start compositors while the screen is asleep, but the Metal app may not adopt
   or present the IOSurface until foregrounded.
-- On-device helpers should be installed:
-  `/var/jb/usr/local/bin/xios-session`,
-  `/var/jb/usr/local/bin/iosc-input-test`, and ideally `grim` or
-  `/var/jb/usr/local/bin/iosc-screenshot-test`.
+- On-device helpers should be installed: `/var/jb/usr/local/bin/xios-session`
+  (package `xios-session`), `/var/jb/usr/local/bin/iosc-input-test` (ships in
+  `iosc`), and ideally `grim`. `iosc-screenshot-test` is built by
+  `wayland/build-iosc.sh` but not packaged; push it by hand if you want it.
 
 ## Quick Start
 
@@ -79,8 +79,12 @@ bin/xios-device session --width 1080 --height 1440 --dpi 176 iosc
 bin/xios-device session --via-daemon iosc
 ```
 
-Remember that session switches use the same teardown semantics documented in
-`docs/handoff/session-launcher.md`.
+Session switches use the teardown semantics documented in
+`docs/handoff/session-launcher.md`. Since `xios-session 1.0.82` a preset whose
+flavor is not installed is refused (exit 69) before the running desktop is torn
+down. `xios-device session` does not pass `presets` through, so list what can
+start with `bin/xios-device exec '/var/jb/usr/local/bin/xios-session presets'`. The `mutter` preset
+needs a standalone `mutter` binary that no meta package ships.
 
 ### `app`
 
@@ -250,7 +254,7 @@ the kernel every launch:
 ```
 $ iosc -logical 1440x1080 ...
 exit=137          # 128 + SIGKILL
-                  # ZERO bytes of output — not one fprintf reached stderr
+                  # ZERO bytes of output, not one fprintf reached stderr
 ```
 
 **Zero output plus exit 137 means AMFI rejected the signature, not that the code
@@ -259,7 +263,7 @@ any `/var/jb/tmp` log. It looks exactly like a compositor that dies during
 bring-up, and `xios-session` reports only the downstream symptom
 (`iosc did not create wayland-0`).
 
-Isolate it in one step — run the previous, package-installed binary with the same
+Isolate it in one step: run the previous, package-installed binary with the same
 arguments. If that one starts and prints its `output IOSurface ...` banner, the
 device is fine and the new binary's signature is the problem.
 
@@ -273,13 +277,22 @@ ssh root@$IP 'ldid -S/var/jb/tmp/iosc-gl-ent.xml /var/jb/usr/local/bin/iosc'
 Notes:
 - The scp is not at fault. Verify with `shasum -a 256` on both ends: the bytes are
   identical, so the host's signature itself is what AMFI refuses.
-- Only `iosc` was affected. `Xios.app`, signed by the same host `ldid` through
-  `bin/lib/build-app.sh`, launched fine — so this is specific to the entitlement
-  set in `iosc-gl-ent.xml` (`platform-application`,
+- `Xios.app`, signed by the same host `ldid` through `bin/lib/build-app.sh`,
+  launched fine, so this is specific to GPU entitlement sets like
+  `iosc-gl-ent.xml` (`platform-application`,
   `com.apple.private.amfi.can-allow-non-platform`, the IOKit user-client array)
   rather than to the host toolchain in general.
 - `sign-iosc.sh`'s header comment claims the Homebrew `ldid` "emits those
   correctly". On this host, at this version, it does not. Treat host signing as
   best-effort and re-sign on device whenever a fresh `iosc` exits 137.
-- `.deb`-installed compositors are signed at package build time and are unaffected;
-  this only bites the scp-a-dev-build loop.
+- A `.deb` is not automatically safe. On 2026-08-02 a `dpkg -i` of a host-built
+  `kwin` deb hit the same wall in a quieter shape: the process ran, but AMFI
+  ignored its entitlements, so ANGLE logged `Metal display creation failed 3000`
+  and `task_for_pid` failed with `0x5`, and KWin fell back to software. `ldid -e`
+  still reads the entitlements back, so their presence in the file proves
+  nothing. To isolate it, run another fakesigned GPU binary
+  (`iosc-gpu-client-v2`); if that prints `ANGLE Metal Renderer: Apple A10 GPU`,
+  the device is fine and that one binary's signature is the problem.
+  Reinstalling the previous version does not help. Re-sign in place with the
+  binary's own entitlements:
+  `ldid -e $BIN > /var/jb/tmp/ent.xml; ldid -S/var/jb/tmp/ent.xml $BIN`.

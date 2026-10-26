@@ -4,28 +4,33 @@ endif
 
 # Xwayland (X11-on-Wayland) for rootless iOS, GPU-accelerated via ANGLE-Metal.
 #
-# Version pin is LOAD-BEARING: 23.2.x is the last series with the pluggable
-# `struct xwl_egl_backend` vtable (24.1 hard-wired gbm/dma-buf and dropped
-# it). An IOSurface EGL backend hooks into that vtable (ports/xwayland/patches/,
-# recipes/build_info/xwayland-glamor-iosurface.c); buffers reach the
-# compositor over the iosc_iosurface protocol.
+# 24.1 removed the pluggable `struct xwl_egl_backend` vtable (and EGLStream):
+# xwayland-glamor.c is hard-wired to gbm/dma-buf. We therefore build with no
+# gbm, which selects `build_iosurface` (ports/xwayland/patches/0003), and
+# compile recipes/build_info/xwayland-glamor-iosurface.c in place of
+# xwayland-glamor.c + xwayland-glamor-gbm.c. That file re-implements the glamor
+# entry points on ANGLE-Metal + IOSurface; buffers reach the compositor over
+# the iosc_iosurface protocol. Bumping to a newer 24.1.x is a drop-in unless
+# upstream touches the hw/xwayland glamor/window-buffer hooks again; a bump to
+# 25/26 needs the file re-audited against that tree's glamor.c/gbm.c.
 #
 # GLX-on-EGL builds but desktop-GL apps stay on llvmpipe/SHM (no client DRI
 # on iOS); glamor only accelerates the 2D X path.
 
 SUBPROJECTS      += xwayland
-XWAYLAND_VERSION := 23.2.7
-DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios5
+XWAYLAND_VERSION := 24.1.14
+DEB_XWAYLAND_V   ?= $(XWAYLAND_VERSION)+ios1
 
 # libdrm is a links-only build shim: xwayland-window.h
-# includes <xf86drm.h> unconditionally (the xwl_window / xwl_egl_backend structs
-# carry drmDevice* fields), but the DRM code path stays inert on iOS.
+# includes <xf86drm.h> unconditionally (xwl_window / xwl_dmabuf_feedback carry
+# drmDevice* fields) and drm-lease/dmabuf.c link its stubs, but the DRM code
+# path stays inert on iOS.
 
 xwayland-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/xserver/xwayland-$(XWAYLAND_VERSION).tar.xz)
 	$(call EXTRACT_TAR,xwayland-$(XWAYLAND_VERSION).tar.xz,xwayland-$(XWAYLAND_VERSION),xwayland)
-	# iOS/ANGLE source edits: rootless popen shell + the IOSurface glamor
-	# backend hooks wired into the xwl_egl_backend vtable.
+	# iOS/ANGLE source edits: rootless popen shell, the IOSurface backend
+	# selection in meson, and the presentation-fence hook.
 	$(call DO_PATCH,xwayland,xwayland,-p1)
 	# Local backend implementation and private iosc protocol XML are build
 	# inputs, not upstream source patches.
@@ -80,7 +85,6 @@ xwayland: xwayland-setup libpixman xorgproto xtrans libxkbfile libxfont2 libfont
 		OBJC="$(CC)" meson \
 		--cross-file cross.txt \
 		-Dglamor=true \
-		-Dxwayland_eglstream=false \
 		-Ddri3=false \
 		-Dxvfb=false \
 		-Dxwayland_ei=false \

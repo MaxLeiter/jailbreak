@@ -12,7 +12,19 @@
  * The EGL/IOSurface sequence mirrors the on-device-proven plumbing in
  * x11/wayland/xios_egl.c and iosc-gpu-client.c (pbuffer EGL_TEXTURE_2D +
  * EGL_BIND_TO_TEXTURE_RGBA config + fully-specified IOSurface geometry).
- * The backend structure mirrors xwayland-glamor-gbm.c / -eglstream.c.
+ *
+ * Xwayland 24.1 removed the pluggable xwl_egl_backend vtable: the gbm/dma-buf
+ * backend is the only one and xwayland-glamor.c is hard-wired to it. When the
+ * build has no gbm (build_iosurface, see the build patch) this file is compiled
+ * INSTEAD of xwayland-glamor.c and xwayland-glamor-gbm.c and provides every
+ * symbol the rest of hw/xwayland expects from them:
+ *   - the glamor entry points (xwl_glamor_init, _init_wl_registry, _egl_make_current,
+ *     _pixmap_get_wl_buffer, _create_pixmap_for_window, _check_flip, ...)
+ *   - glamor_egl_screen_init / glamor_egl_fd_name_from_pixmap (called by glamor/)
+ *   - inert compat shims for the gbm explicit-sync/dmabuf-feedback hooks
+ *     (window-buffers.c, dmabuf.c), so those upstream files stay unmodified.
+ * Presentation sync is the brokered Metal shared-event fence, signalled from
+ * xwl_glamor_iosurface_signal_acquire() (called by the window-buffers.c hook).
  *
  * MIT, same terms as the surrounding X server code.
  */
@@ -25,11 +37,17 @@
 
 #include <glamor.h>
 #include <glamor_context.h>
+#include <glamor_glx_provider.h>
+#ifdef GLXEXT
+#include "glx_extinit.h"
+#endif
 
 #include "xwayland-glamor.h"
 #include "xwayland-pixmap.h"
+#include "xwayland-present.h"
 #include "xwayland-screen.h"
 #include "xwayland-window.h"
+#include "xwayland-window-buffers.h"
 
 #include "iosc-iosurface-client-protocol.h"
 #include "xios_metal_sync.h"
@@ -78,10 +96,10 @@ struct xwl_pixmap {
 
 static DevPrivateKeyRec xwl_iosurface_private_key;
 
-/* Consumed by the (patched) glamor_egl_make_current in xwayland-glamor.c:
- * stays EGL_NO_SURFACE unless surfaceless MakeCurrent turned out unsupported
- * at init_egl time, in which case it is a 1x1 pbuffer. */
-EGLSurface xwl_iosurface_fallback_surface = EGL_NO_SURFACE;
+/* Surface for glamor_egl_make_current: stays EGL_NO_SURFACE unless
+ * surfaceless MakeCurrent turned out unsupported at init_egl time, in which
+ * case it is a 1x1 pbuffer. */
+static EGLSurface xwl_iosurface_fallback_surface = EGL_NO_SURFACE;
 
 static inline struct xwl_iosurface_private *
 xwl_iosurface_get(struct xwl_screen *xwl_screen)
@@ -292,13 +310,20 @@ xwl_glamor_iosurface_create_pixmap(ScreenPtr screen,
     return pixmap;
 }
 
-static PixmapPtr
-xwl_glamor_iosurface_create_pixmap_for_window(struct xwl_window *xwl_window)
+PixmapPtr
+xwl_glamor_create_pixmap_for_window(struct xwl_window *xwl_window)
 {
-    return xwl_glamor_iosurface_create_pixmap(xwl_window->xwl_screen->screen,
-                                              xwl_window->window->drawable.width,
-                                              xwl_window->window->drawable.height,
-                                              xwl_window->window->drawable.depth,
+    struct xwl_screen *xwl_screen = xwl_window->xwl_screen;
+    WindowPtr window = xwl_window->surface_window;
+    unsigned border_width = 2 * window->borderWidth;
+
+    if (!xwl_screen->glamor)
+        return NullPixmap;
+
+    return xwl_glamor_iosurface_create_pixmap(xwl_screen->screen,
+                                              window->drawable.width + border_width,
+                                              window->drawable.height + border_width,
+                                              window->drawable.depth,
                                               CREATE_PIXMAP_USAGE_BACKING_PIXMAP);
 }
 
@@ -322,8 +347,8 @@ static const struct wl_buffer_listener xwl_glamor_iosurface_buffer_listener = {
     xwl_pixmap_buffer_release_cb,
 };
 
-static struct wl_buffer *
-xwl_glamor_iosurface_get_wl_buffer_for_pixmap(PixmapPtr pixmap)
+struct wl_buffer *
+xwl_glamor_pixmap_get_wl_buffer(PixmapPtr pixmap)
 {
     struct xwl_screen *xwl_screen = xwl_screen_get(pixmap->drawable.pScreen);
     struct xwl_iosurface_private *xwl_iosurface = xwl_iosurface_get(xwl_screen);
@@ -371,11 +396,16 @@ xwl_glamor_iosurface_get_wl_buffer_for_pixmap(PixmapPtr pixmap)
     return xwl_pixmap->buffer;
 }
 
-/* ---- damage / commit ordering --------------------------------------------- */
+/* ---- presentation sync ----------------------------------------------------- */
 
-static Bool
-xwl_glamor_iosurface_post_damage(struct xwl_window *xwl_window,
-                                 PixmapPtr pixmap, RegionPtr region)
+/* Called from xwl_window_handle_pixmap_sync() (window-buffers.c) after the
+ * damage has been copied into the window buffer and before it is attached.
+ * 23.2 did this in the backend's post_damage vfunc. Exports a Metal shared
+ * event the compositor GPU waits on before sampling the IOSurface; there is
+ * no CPU fallback (a missing broker is fatal, as before). */
+void
+xwl_glamor_iosurface_signal_acquire(struct xwl_window *xwl_window,
+                                    PixmapPtr pixmap)
 {
     struct xwl_screen *xwl_screen = xwl_window->xwl_screen;
     struct xwl_pixmap *xwl_pixmap = xwl_pixmap_get(pixmap);
@@ -385,10 +415,9 @@ xwl_glamor_iosurface_post_damage(struct xwl_window *xwl_window,
     struct wl_array token_array;
 
     if (!xwl_pixmap)
-        return FALSE;
-    if (!xwl_pixmap->buffer &&
-        !xwl_glamor_iosurface_get_wl_buffer_for_pixmap(pixmap))
-        return FALSE;
+        return;
+    if (!xwl_pixmap->buffer && !xwl_glamor_pixmap_get_wl_buffer(pixmap))
+        return;
 
     xwl_glamor_egl_make_current(xwl_screen);
     if (!xios_metal_sync_signal(xwl_screen->egl_display,
@@ -404,31 +433,25 @@ xwl_glamor_iosurface_post_damage(struct xwl_window *xwl_window,
         &token_array,
         (uint32_t)(value & 0xffffffffu),
         (uint32_t)(value >> 32));
-
-    return TRUE;
 }
 
 /* ---- registry ------------------------------------------------------------- */
 
-static Bool
-xwl_glamor_iosurface_init_wl_registry(struct xwl_screen *xwl_screen,
-                                      struct wl_registry *wl_registry,
-                                      uint32_t id, const char *name,
-                                      uint32_t version)
+void
+xwl_glamor_init_wl_registry(struct xwl_screen *xwl_screen,
+                            struct wl_registry *registry,
+                            uint32_t id, const char *interface,
+                            uint32_t version)
 {
     struct xwl_iosurface_private *xwl_iosurface = xwl_iosurface_get(xwl_screen);
 
-    if (strcmp(name, "iosc_iosurface") == 0) {
+    if (strcmp(interface, "iosc_iosurface") == 0)
         xwl_iosurface->iosc_iosurface =
-            wl_registry_bind(wl_registry, id, &iosc_iosurface_interface, 1);
-        return TRUE;
-    }
-
-    return FALSE;
+            wl_registry_bind(registry, id, &iosc_iosurface_interface, 1);
 }
 
 static Bool
-xwl_glamor_iosurface_has_wl_interfaces(struct xwl_screen *xwl_screen)
+xwl_glamor_has_wl_interfaces(struct xwl_screen *xwl_screen)
 {
     struct xwl_iosurface_private *xwl_iosurface = xwl_iosurface_get(xwl_screen);
 
@@ -446,6 +469,11 @@ xwl_glamor_iosurface_has_wl_interfaces(struct xwl_screen *xwl_screen)
 static Bool
 xwl_glamor_iosurface_init_egl(struct xwl_screen *xwl_screen)
 {
+    if (!(xwl_screen->glamor & XWL_GLAMOR_GLES)) {
+        ErrorF("glamor/iosurface: GLES only (ANGLE); -glamor gl is unsupported\n");
+        return FALSE;
+    }
+
     struct xwl_iosurface_private *xwl_iosurface = xwl_iosurface_get(xwl_screen);
     EGLDisplay (*get_platform_display)(EGLenum, void *, const EGLint *);
     static const EGLint display_attribs[] = {
@@ -575,44 +603,236 @@ xwl_glamor_iosurface_init_screen(struct xwl_screen *xwl_screen)
     return TRUE;
 }
 
-void
+/* Early (before the registry round trip): allocate the screen private that
+ * xwl_glamor_init_wl_registry() fills in. Stands in for xwl_glamor_init_gbm
+ * (xwayland-glamor.h maps the name). */
+Bool
 xwl_glamor_init_iosurface(struct xwl_screen *xwl_screen)
 {
     struct xwl_iosurface_private *xwl_iosurface;
 
-    xwl_screen->iosurface_backend.is_available = FALSE;
-
     if (!dixRegisterPrivateKey(&xwl_iosurface_private_key, PRIVATE_SCREEN, 0))
-        return;
+        return FALSE;
 
     xwl_iosurface = calloc(1, sizeof(*xwl_iosurface));
     if (!xwl_iosurface) {
         ErrorF("glamor/iosurface: out of memory, disabling\n");
-        return;
+        return FALSE;
     }
     xwl_iosurface->dummy_surface = EGL_NO_SURFACE;
 
     dixSetPrivate(&xwl_screen->screen->devPrivates, &xwl_iosurface_private_key,
                   xwl_iosurface);
+    return TRUE;
+}
 
-    xwl_screen->iosurface_backend.init_wl_registry =
-        xwl_glamor_iosurface_init_wl_registry;
-    xwl_screen->iosurface_backend.has_wl_interfaces =
-        xwl_glamor_iosurface_has_wl_interfaces;
-    xwl_screen->iosurface_backend.init_egl = xwl_glamor_iosurface_init_egl;
-    xwl_screen->iosurface_backend.init_screen = xwl_glamor_iosurface_init_screen;
-    xwl_screen->iosurface_backend.get_wl_buffer_for_pixmap =
-        xwl_glamor_iosurface_get_wl_buffer_for_pixmap;
-    xwl_screen->iosurface_backend.create_pixmap_for_window =
-        xwl_glamor_iosurface_create_pixmap_for_window;
-    xwl_screen->iosurface_backend.post_damage = xwl_glamor_iosurface_post_damage;
-    xwl_screen->iosurface_backend.allow_commits = NULL;
-    xwl_screen->iosurface_backend.check_flip = NULL;
-    xwl_screen->iosurface_backend.get_main_device = NULL;
-    xwl_screen->iosurface_backend.is_available = TRUE;
-    /* The compositor samples our IOSurfaces directly while we keep drawing;
-     * multi-buffer window pixmaps (rotated on wl_buffer.release) avoid
-     * rendering into a buffer the compositor is reading. */
-    xwl_screen->iosurface_backend.backend_flags =
-        XWL_EGL_BACKEND_NEEDS_N_BUFFERING;
+/* ---- glamor entry points (the parts of xwayland-glamor.c we replace) ------ */
+
+static void
+glamor_egl_make_current(struct glamor_context *glamor_ctx)
+{
+    EGLSurface s = xwl_iosurface_fallback_surface;
+
+    eglMakeCurrent(glamor_ctx->display, EGL_NO_SURFACE,
+                   EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    if (!eglMakeCurrent(glamor_ctx->display, s, s, glamor_ctx->ctx))
+        FatalError("Failed to make EGL context current\n");
+}
+
+void
+xwl_glamor_egl_make_current(struct xwl_screen *xwl_screen)
+{
+    EGLContext ctx = xwl_screen->glamor_ctx->ctx;
+
+    if (lastGLContext == ctx)
+        return;
+
+    lastGLContext = ctx;
+    xwl_screen->glamor_ctx->make_current(xwl_screen->glamor_ctx);
+}
+
+void
+glamor_egl_screen_init(ScreenPtr screen, struct glamor_context *glamor_ctx)
+{
+    struct xwl_screen *xwl_screen = xwl_screen_get(screen);
+
+    glamor_set_glvnd_vendor(screen, xwl_screen->glvnd_vendor);
+    glamor_enable_dri3(screen);
+    glamor_ctx->ctx = xwl_screen->egl_context;
+    glamor_ctx->display = xwl_screen->egl_display;
+
+    glamor_ctx->make_current = glamor_egl_make_current;
+
+    xwl_screen->glamor_ctx = glamor_ctx;
+}
+
+int
+glamor_egl_fd_name_from_pixmap(ScreenPtr screen,
+                               PixmapPtr pixmap,
+                               CARD16 *stride, CARD32 *size)
+{
+    return 0;
+}
+
+Bool
+xwl_glamor_check_flip(WindowPtr present_window, PixmapPtr pixmap)
+{
+    ScreenPtr screen = pixmap->drawable.pScreen;
+    PixmapPtr backing_pixmap = screen->GetWindowPixmap(present_window);
+
+    if (pixmap->drawable.depth != backing_pixmap->drawable.depth) {
+        if (pixmap->drawable.depth == 32)
+            return FALSE;
+
+        return xwl_present_maybe_redirect_window(present_window, pixmap);
+    }
+
+    return TRUE;
+}
+
+static Bool
+xwl_glamor_create_screen_resources(ScreenPtr screen)
+{
+    struct xwl_screen *xwl_screen = xwl_screen_get(screen);
+    int ret;
+
+    screen->CreateScreenResources = xwl_screen->CreateScreenResources;
+    ret = (*screen->CreateScreenResources) (screen);
+    xwl_screen->CreateScreenResources = screen->CreateScreenResources;
+    screen->CreateScreenResources = xwl_glamor_create_screen_resources;
+
+    if (!ret)
+        return ret;
+
+    if (xwl_screen->rootless) {
+        screen->devPrivate =
+            fbCreatePixmap(screen, 0, 0, screen->rootDepth, 0);
+    }
+    else {
+        screen->devPrivate = screen->CreatePixmap(
+            screen, screen->width, screen->height, screen->rootDepth,
+            CREATE_PIXMAP_USAGE_BACKING_PIXMAP);
+    }
+
+    SetRootClip(screen, xwl_screen->root_clip_mode);
+
+    return screen->devPrivate != NULL;
+}
+
+/* No native-fence / syncobj / implicit-sync story here: sync is the Metal
+ * shared event above. Present's fenced flush degrades to "no fence". */
+int
+xwl_glamor_get_fence(struct xwl_screen *xwl_screen)
+{
+    return -1;
+}
+
+void
+xwl_glamor_wait_fence(struct xwl_screen *xwl_screen, int fence_fd)
+{
+    if (fence_fd >= 0)
+        close(fence_fd);
+}
+
+/* TRUE keeps xwl_window_handle_pixmap_sync() from glamor_finish()ing (a CPU
+ * stall) and from the gbm explicit-sync path; the acquire fence is attached
+ * by xwl_glamor_iosurface_signal_acquire(). */
+Bool
+xwl_glamor_supports_implicit_sync(struct xwl_screen *xwl_screen)
+{
+    return TRUE;
+}
+
+Bool
+xwl_glamor_supports_syncobjs(struct xwl_screen *xwl_screen)
+{
+    return FALSE;
+}
+
+/* ---- compat shims for gbm-only hooks in unmodified upstream files --------- */
+
+drmDevice *
+xwl_gbm_get_main_device(struct xwl_screen *xwl_screen)
+{
+    return NULL;                /* xwayland-dmabuf.c: no DRM device on iOS */
+}
+
+Bool
+xwl_glamor_gbm_set_syncpts(struct xwl_window *xwl_window, PixmapPtr pixmap)
+{
+    return FALSE;
+}
+
+void
+xwl_glamor_gbm_dispose_syncpts(PixmapPtr pixmap)
+{
+}
+
+void
+xwl_glamor_gbm_wait_syncpts(PixmapPtr pixmap)
+{
+}
+
+void
+xwl_glamor_gbm_wait_release_fence(struct xwl_window *xwl_window,
+                                  PixmapPtr pixmap,
+                                  struct xwl_window_buffer *xwl_window_buffer)
+{
+}
+
+Bool
+xwl_glamor_init(struct xwl_screen *xwl_screen)
+{
+    ScreenPtr screen = xwl_screen->screen;
+    const char *no_glamor_env;
+
+    no_glamor_env = getenv("XWAYLAND_NO_GLAMOR");
+    if (no_glamor_env && *no_glamor_env != '0') {
+        ErrorF("Disabling glamor and dri3 support, XWAYLAND_NO_GLAMOR is set\n");
+        return FALSE;
+    }
+
+    if (!xwl_glamor_has_wl_interfaces(xwl_screen)) {
+        ErrorF("Xwayland glamor: iosc_iosurface Wayland interface not available\n");
+        return FALSE;
+    }
+
+    if (!xwl_glamor_iosurface_init_egl(xwl_screen)) {
+        ErrorF("EGL setup failed, disabling glamor\n");
+        return FALSE;
+    }
+
+    /* Surface (and drop) any GL error ANGLE has pending from EGL bring-up so
+     * it cannot be mistaken for a failure of glamor's own format probes. */
+    for (int i = 0; i < 16; i++) {
+        GLenum e = glGetError();
+        if (e == GL_NO_ERROR)
+            break;
+        LogMessageVerb(X_INFO, 3, "glamor/iosurface: pending GL error 0x%x "
+                       "after EGL init (dropped)\n", e);
+    }
+
+    if (!glamor_init(xwl_screen->screen, GLAMOR_USE_EGL_SCREEN)) {
+        ErrorF("Failed to initialize glamor\n");
+        return FALSE;
+    }
+
+    if (!xwl_glamor_iosurface_init_screen(xwl_screen)) {
+        ErrorF("EGL backend init_screen() failed, disabling glamor\n");
+        return FALSE;
+    }
+
+    xwl_screen->CreateScreenResources = screen->CreateScreenResources;
+    screen->CreateScreenResources = xwl_glamor_create_screen_resources;
+
+#ifdef XV
+    if (!xwl_glamor_xv_init(screen))
+        ErrorF("Failed to initialize glamor Xv extension\n");
+#endif
+
+#ifdef GLXEXT
+    GlxPushProvider(&glamor_provider);
+#endif
+
+    return TRUE;
 }

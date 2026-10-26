@@ -116,13 +116,19 @@ else
   echo "!! could not hand $XIOS_DDX_SOCKET to mobile; keeping it owner-only"
 fi
 
-echo "==> relaunch the Xios app (adopts + Metal-presents mutter's output IOSurface)"
-uiopen -b com.max.xios 2>/dev/null
-for _ in $(seq 1 20); do
-  grep -q "iosurface-zerocopy" "$TMP/xios-status.txt" 2>/dev/null && break
-  sleep 0.5
-done
-echo "   app adopted IOSurface: $(grep -q iosurface-zerocopy "$TMP/xios-status.txt" 2>/dev/null && echo yes || echo NO)"
+# A slot leaves the foreground alone unless asked (same rule as xios-session and
+# run-kde-plasma.sh); the app's status file then says nothing about this slot.
+if [ -z "${XIOS_SESSION_SLOT:-}" ] || [ "${XIOS_SLOT_FOREGROUND:-0}" = 1 ]; then
+  echo "==> relaunch the Xios app (adopts + Metal-presents mutter's output IOSurface)"
+  uiopen -b com.max.xios 2>/dev/null
+  for _ in $(seq 1 20); do
+    grep -q "iosurface-zerocopy" "$TMP/xios-status.txt" 2>/dev/null && break
+    sleep 0.5
+  done
+  echo "   app adopted IOSurface: $(grep -q iosurface-zerocopy "$TMP/xios-status.txt" 2>/dev/null && echo yes || echo NO)"
+else
+  echo "==> slot $XIOS_SESSION_SLOT: leaving Xios foreground unchanged"
+fi
 
 echo "==> mutter log (look for: MetaRendererIOS create_view, IOSurface id=, present):"
 sed 's/^/   /' "$MUTTER_LOG"

@@ -1,201 +1,65 @@
-# Xios session launcher — pick a desktop flavor from the iPad
+# Xios session launcher: design overview
 
-Goal: Max picks a preset on the device and the chosen desktop comes up on the
-iPad — no more SSHing a `run-*.sh` script for each flavor. This is the first
-concrete step of the "install one `xios` meta-package, then pick your flavor"
-distribution.
+This is the short design note for how a desktop gets picked and started. Current
+status, version history, device evidence and open work live in
+[`handoff/session-launcher.md`](handoff/session-launcher.md); read that before
+changing anything. (The July version of this file also carried an in-app picker
+spec based on a request file. The app talks to ioscd over a socket instead, so that
+spec is gone.)
 
-## What it is
+## One code path
 
-One shared library plus two triggers, all under `x11/apps/iosc-desktop/`:
+Everything that starts or stops a desktop goes through one sourced shell library,
+`x11/apps/iosc-desktop/xios-session-lib.sh`, shipped in the `xios-session` package:
 
-| File | Installed to | Role |
+| Piece | Installed to | Role |
 |------|--------------|------|
-| `xios-session-lib.sh` | `/var/jb/libexec/xios-session/` | teardown + preset bring-up (single source of truth) |
-| `xios-session` | `/var/jb/usr/local/bin/` (in PATH) | on-device / SSH CLI trigger |
-| `ioscd` SESSION verb | `/var/jb/tmp/ioscd.sock` | request/reply path used by the in-app picker |
-| `run-shell.sh`, `run-mutter.sh` | `/var/jb/libexec/xios-session/` | reused iosc/Mutter bring-up scripts |
-| `launch-gnome-session.sh` | `/var/jb/usr/bin/` | packaged GNOME session launcher from `xios-session-stubs` |
+| `xios-session-lib.sh` | `/var/jb/libexec/xios-session/` | preflight, teardown, preset bring-up |
+| `xios-session` | `/var/jb/usr/local/bin/` | CLI for a shell or SSH; `-d` sends the request through ioscd instead |
+| ioscd `SESSION` verb | `/var/jb/tmp/ioscd.sock` | what the Xios app's picker sends; ioscd runs the same CLI |
+| `run-shell.sh`, `run-mutter.sh`, `run-kde-plasma.sh` | `/var/jb/libexec/xios-session/` | bring-up scripts for iosc, raw Mutter, KDE |
+| `launch-gnome-session.sh` | `/var/jb/usr/bin/` | GNOME launcher, shipped by `xios-session-stubs` |
 
-The library reuses the existing iosc/Mutter bring-up scripts and the packaged
-GNOME session launcher behind clean preset names; the one thing it adds on top
-is a **bulletproof teardown** so switching sessions never leaves a stale
-compositor or socket behind.
+`xios-session` depends on `xios-session-stubs` (since 1.0.82) because the library
+needs `xios-setsid` and `xios-sysintd` for every flavor, not just GNOME. ioscd ships in
+`xios-launcher-tools`, which `xios-core` pulls in.
 
-Script resolution prefers the **LIVE installed copy** shipped by the owning package
-(`/var/jb/usr/local/bin/run-shell.sh` from iosc-shell, `/var/jb/usr/bin/…` for
-the GNOME/mutter launchers) over the launcher's own pinned `/var/jb/libexec/xios-session/`
-snapshot, which is only a fallback for when the owner package isn't installed. That
-way owner edits (e.g. run-shell.sh's `-logical` line) are tracked automatically
-instead of drifting behind a stale pin. Override with `XIOS_SESSION_BRINGUP_DIR`.
+Bring-up scripts resolve to the copy installed by the owning package first and fall
+back to the pinned copy in `libexec/xios-session/`. `XIOS_SESSION_BRINGUP_DIR`
+overrides both.
 
-## Presets (honest about what works today)
+## Presets
 
-| Preset | Brings up | State |
+`xios-session presets` prints the ones whose bring-up script and key binaries are
+installed. A preset that is not installed is refused (exit 69) before the running
+desktop is touched.
+
+| Preset | Brings up | Needs |
 |--------|-----------|-------|
-| `iosc` | iosc compositor + wallpaper + panel (`run-shell.sh`) | **works today** |
-| `mutter` | raw Mutter 46 `--wayland` (`run-mutter.sh`) | up — flat clutter stage, no shell yet |
-| `gnome` | GNOME session manager + Shell (`launch-gnome-session.sh`) | verified full-session path; status reflects the real paint (see below) |
-| `app <name>` | a Wayland client against the RUNNING compositor | works where the client + compositor do |
-| `stop` | tears everything down, back to SpringBoard | works |
+| `iosc` | iosc + wallpaper + panel; Xwayland too when `xios-x11` is installed | `xios-core` |
+| `gnome` | gnome-session + GNOME Shell on Mutter | `xios-gnome` |
+| `kde`, `kde-mobile`, `kde-nano` | iosc + nested KWin + a Plasma shell | `xios-kde` |
+| `mutter` | raw Mutter `--wayland`, no shell | a standalone `mutter` binary, which no meta ships |
+| `app <name>` | a client on the running compositor, no teardown | |
+| `stop` | tear down and return to SpringBoard | |
 
-`app <name>` does NOT tear down the compositor — it launches a client onto
-whatever is already up. Known names: `kgx`/`console`, `gnome-text-editor`/`editor`,
-`gnome-calculator`/`calc`; any other name is run as-is.
+`--slot <name>` runs a desktop beside the main one (Xios v2 M0); teardown is scoped
+to that slot.
 
-The `gnome` preset does NOT trust `xios.json` for success — Mutter writes that file
-before the gjs shell loads, so it only proves the compositor came up (identical to
-bare mutter). Instead it launches the packaged full-session wrapper, polls
-`gnome-shell.log` for ~15s, and reports honestly:
-`up` only on `GNOME Shell started at` (JS UI + stage loaded); `error` on a hard
-failure (`Failed to load module` / typelib `couldn't be found` / `JS ERROR` /
-`Execution of main.js threw exception` / `MTLCreateSystemDefaultDevice` nil, or the
-process exiting) with the last 40 log lines captured to `xios-session.log`; and a
-distinct `compositor-only` when Mutter is up but the shell never painted. Signal
-spec courtesy of gnome-session.
+## Rules the library keeps
 
-The `iosc` preset forwards `IOSC_PANEL_OPACITY` (0-100) when set, e.g.
-`IOSC_PANEL_OPACITY=70 xios-session iosc` for a less translucent panel (iosc-shell
->= 0.9.3; default 85).
-
-## Two hard-won gotchas the launcher respects
-
-- **(a) Bulletproof teardown.** Before starting the next compositor, the library
-  kills ALL of iosc / mutter / gnome-shell / Xios / panels / clients / session
-  buses, then removes every stale `/var/jb/tmp/{wayland-0(.lock), xios.json,
-  *-ddx.sock, *-input.sock, iosc-wm.sock, iosc-native.sock}`. The kill pattern is
-  anchored to binary paths so it never matches `xios-session` itself
-  (verified), and it also skips `$$`/`$PPID`.
-- **(b) Screen must be awake.** The Xios Metal app returns a nil device when
-  backgrounded, so the iPad must be **unlocked and awake** when a preset launches.
-  With the in-app picker this is automatic (you're looking at the app). Over SSH,
-  unlock the device first.
-- **(c) Settle the GPU between compositors (no jetsam).** Switching flavors kills
-  the old compositor (which holds a ~30MB GPU IOSurface + Metal/ANGLE context) and
-  starts a new one that allocates its own. Back-to-back, the two surfaces co-reside
-  and iOS jetsams the foreground Xios app mid-transition (Max hit this switching
-  iosc→mutter). So every switching preset: tears down (kills the old compositor AND
-  the app, so it isn't holding stale GPU state) → **settles** `XIOS_SESSION_SETTLE`
-  seconds (default 2) to let the kernel reclaim the old surface → starts the new
-  compositor → **relaunches the display** (`uiopen -b`) once the new surface exists,
-  re-launching the app if it isn't running. Every step updates
-  `xios-session-status.json` (`stopping → starting → waiting → relaunching → up`) so
-  the picker shows progress instead of going dark. App-side resilience (surviving the
-  surface teardown without a jetsam so the switch is flash-free) is tracked with
-  xios-app.
-
-## How Max picks a flavor
-
-### Path 1 — on-device / SSH CLI (works now, no daemon required)
-
-From a terminal on the iPad, or over SSH
-(`ssh -o BatchMode=yes -o IdentitiesOnly=yes -i ~/.ssh/id_ed25519 root@MaxsiPad.local`):
-
-```sh
-xios-session iosc                 # lightweight iosc desktop
-xios-session mutter               # raw Mutter --wayland
-xios-session gnome                # full GNOME session + Shell
-xios-session app kgx              # a terminal onto the running compositor
-xios-session app gnome-text-editor
-xios-session stop                 # back to SpringBoard
-xios-session status               # last session status (JSON)
-```
-
-The CLI calls the shared library directly. Add `-d`/`--via-daemon` to exercise
-the same `/var/jb/tmp/ioscd.sock` SESSION path used by the app; if ioscd is not
-running or does not acknowledge the request, the command fails.
-
-Current GNOME status (2026-07-06 12:59 PDT): the preset routes through
-`launch-gnome-session.sh` so `gnome-session --builtin --session=xios` owns
-`org.gnome.Shell`. With `xios-session 1.0.46`, `xios-session-stubs 0.2.4`, and
-`gnome-shell 46.0+ios3`, daemon `xios-session -d gnome` reached `state=up` after
-reaping a stale KDE app-launch lock. The old direct Shell runner is no longer shipped
-by `xios-session` and was absent on-device. If GNOME is replaced after that, treat it
-as a later explicit requester winning and check `/var/jb/tmp/ioscd.log` plus
-`xios-session.log`.
-
-### Path 2 — in-app picker (ioscd socket)
-
-The Xios app's main panel (three-finger tap, or the status bar button) lists the
-desktops under "Desktop". Tapping one connects to `/var/jb/tmp/ioscd.sock` and
-writes:
-
-```text
-SESSION<TAB>iosc<TAB><TAB>1080<TAB>1440<TAB>176
-```
-
-`ioscd` forks the existing `xios-session` CLI, so the same shared library owns
-teardown, settle, and bring-up. There is no request-file fallback for session
-picks; `/var/jb/tmp/xios-request.json` remains only for display-profile requests.
-For GNOME validation, use the direct CLI when you want the shortest path, and use
-`xios-session -d gnome` or the in-app picker when you specifically need to
-exercise ioscd's socket path.
-
-Result feedback: both paths write `/var/jb/tmp/xios-session-status.json`
-(`{"preset","state","message","at"}`) which the app / CLI can poll. `state` walks
-`stopping → starting → waiting → relaunching → up` through a switch, or ends `error`
-/ `stopped` / `compositor-only` (the gnome-specific "Mutter up but the shell never
-painted"). The app can surface `message` live so the picker shows what's launching.
-
-## Install
-
-- Deb (shippable): `bash x11/apps/iosc-desktop/package-session.sh` →
-  `xios-session_<version>_iphoneos-arm64.deb`. Depends on `iosc`; recommends
-  `iosc-shell` (for `run-shell.sh` + panel) and `xios` (the app).
-- Fast iterate (lead, touches device):
-  `bash x11/apps/iosc-desktop/install-xios-session.sh` (scp + chmod).
-
-## In-app picker spec (for the Xios app)
-
-Add to `apps/Xios/Sources/XScreen.swift`. A `writeSessionRequest` mirroring the
-existing `writeDisplayRequest`, plus a "Desktop Session" section in `presentTools()`:
-
-```swift
-private func writeSessionRequest(_ preset: String, app: String? = nil) {
-    var obj: [String: Any] = [
-        "action": "session",
-        "preset": preset,
-        "created_by": "Xios.app",
-        "created_at": ISO8601DateFormatter().string(from: Date()),
-    ]
-    if let app = app { obj["app"] = app }
-    do {
-        let data = try JSONSerialization.data(withJSONObject: obj,
-                                              options: [.prettyPrinted, .sortedKeys])
-        try data.write(to: URL(fileURLWithPath: requestPath), options: .atomic)
-        lastToolMessage = "Session: \(preset)" + (app.map { " \($0)" } ?? "")
-    } catch {
-        lastToolMessage = "Session request failed: \(error.localizedDescription)"
-    }
-    writeDebugSnapshot()
-}
-```
-
-In `presentTools()`, right after `stack.addArrangedSubview(message)`:
-
-```swift
-addSection("Desktop Session", to: stack)
-for (label, preset, app) in [
-    ("iosc  lightweight (works today)", "iosc", String?.none),
-    ("Mutter  raw compositor", "mutter", nil),
-    ("GNOME Shell  full session", "gnome", nil),
-] {
-    stack.addArrangedSubview(panelButton(label) { [weak self, weak message] in
-        self?.writeSessionRequest(preset, app: app)
-        message?.text = self?.lastToolMessage
-    })
-}
-stack.addArrangedSubview(buttonRow([
-    panelButton("+ Console")     { [weak self, weak message] in self?.writeSessionRequest("app", app: "kgx");                message?.text = self?.lastToolMessage },
-    panelButton("+ Text Editor") { [weak self, weak message] in self?.writeSessionRequest("app", app: "gnome-text-editor");  message?.text = self?.lastToolMessage },
-    panelButton("+ Calculator")  { [weak self, weak message] in self?.writeSessionRequest("app", app: "gnome-calculator");   message?.text = self?.lastToolMessage },
-]))
-stack.addArrangedSubview(panelButton("Stop  (back to SpringBoard)") { [weak self, weak message] in
-    self?.writeSessionRequest("stop"); message?.text = self?.lastToolMessage
-})
-```
-
-Optional polish: poll `/var/jb/tmp/xios-session-status.json` after a tap and surface
-`state`/`message` in the card. Requires `xios-session` installed (the daemon serves
-the request). No new socket, no `iosc.c`/protocol change — same file channel the app
-already writes.
+- **Preflight before teardown.** Check the new preset can start, then tear down.
+- **Teardown is complete.** Kill the old compositor, its shells, clients and session
+  buses, and remove its sockets, or the next compositor collides on `wayland-0` and the
+  ddx sockets. The kill pattern is anchored to binary paths so it never matches
+  `xios-session` itself.
+- **Settle the GPU between compositors.** The old compositor's IOSurfaces and Metal
+  context have to be reclaimed before the new one allocates, or the foreground Xios app
+  can be jetsammed mid-switch. `XIOS_SESSION_SETTLE` (default 2 s).
+- **The screen must be awake.** A backgrounded Xios app gets a nil Metal device. The
+  picker path is fine by construction; over SSH, unlock the iPad first.
+- **Report honestly.** `xios-session-status.json` walks
+  `stopping → starting → waiting → relaunching → up` (or `error`, `stopped`,
+  `compositor-only`). GNOME only counts as `up` once its log says `GNOME Shell started
+  at`; Mutter writes its display config before the JS shell loads, so the config file
+  alone proves nothing.

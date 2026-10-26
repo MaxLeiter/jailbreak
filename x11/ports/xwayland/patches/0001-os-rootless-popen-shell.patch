@@ -1,0 +1,16 @@
+Subject: [PATCH] os: exec the rootless /var/jb/bin/sh for popen helpers
+
+iOS has no /bin/sh in the rootless layout.
+
+diff -ruN xwayland-24.1.13/os/utils.c xwayland-24.1.13.patched/os/utils.c
+--- xwayland-24.1.13/os/utils.c
++++ xwayland-24.1.13.patched/os/utils.c
+@@ -1363,7 +1363,7 @@
+             }
+             close(pdes[1]);
+         }
+-        execl("/bin/sh", "sh", "-c", command, (char *) NULL);
++        execl("/var/jb/bin/sh", "sh", "-c", command, (char *) NULL);
+         _exit(127);
+     }
+ 

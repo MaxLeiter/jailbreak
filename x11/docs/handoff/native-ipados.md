@@ -1,215 +1,112 @@
-# native-ipados — the native per-window iPad flavor
+# native-ipados: the per-window iPad flavor
 
-## Ownership
-The flavor where each Linux app is its own native iPad window (per-window presentation), instead of one full-desktop canvas. A macOS-style window manager feel on iPadOS. Task #28.
+Each Linux app is its own iPadOS window (its own Home Screen icon, app switcher
+entry, Split View and Slide Over), instead of one fullscreen desktop canvas. The
+flavor package is `xios-native`: `xios-runtime` + `xios-launcher-tools` +
+`com.max.xiosprefs`, with no fullscreen app or shell.
 
-## Key files
-- `x11/apps/iosc-host/` — HostApp.swift, HostScreenView.swift, NativeClient.c, Shaders.metal → builds to `out/IOSCHost` (protocol-conformant prototype).
-- `x11/wayland/xios_canvas.{c,h}` — N-canvas registry + `iosc-native.sock` BIND server + `deliver_canvas_port`.
-- `x11/wayland/iosc.c` — runtime-gated native mode (`LAUNCH_NATIVE` via ioscd, or low-level `IOSC_NATIVE=1`/`-native`) that maps each xdg_toplevel to its own canvas while keeping classic mode available in the same binary.
-- Design: `x11/docs/native-ipados-plan.md` (§7b scopes per-window presentation), `x11/docs/native-ipados-protocol.md`.
-- Wire: XIOS_IN_BIND=8 (scope a connection's input to one window id) — already reserved in xios_input_socket.h; IoscInput.c had 8 on-wire before the header did.
+## Current state (2026-10-25)
 
-## Current state
-- 2026-07-30 native-wrapper cleanup is implemented and device-tested. A
-  generated `IOSCHost` now exits one second after its final UIKit scene is
-  explicitly discarded, exits after a 30-second grace period when its final
-  compositor window disappears, and has a separate 30-second watchdog for a
-  launch that never produces a native window; an outright `ioscd` rejection
-  retires the blank wrapper after one second. `WINDOW_NEW` cancels both pending
-  retirements, preserving jetsam/reconnect replay and GIMP's
-  splash-to-main-window transition. On-device, terminating a mapped Calculator
-  client removed both `gnome-calculator` and its wrapper while GIMP remained
-  isolated; all 12 installed native bundles and the shared launcher payload
-  were updated with the fixed host. `xios-launcher-tools 0.1.9` carries the
-  durable package payload.
-- 2026-07-29 launch-boundary and package-boundary closure:
-  `xios-launcher-tools 0.1.5` is installed and device-tested. Launcher bundles
-  contain only `IOSCAppID`/`IOSCName`; the daemon accepts only
-  `LAUNCH[_NATIVE|_CLASSIC]\t<app_id>`, authorizes root/mobile peers, resolves a
-  non-writable root-owned desktop entry, converts its `Exec` value to argv
-  without inserting a shell, and drops the application plus its session bus to
-  `mobile`. The device rejected an extra command field as `ERR malformed`,
-  rejected `../bin/sh`, rejected a mode-0666 test desktop entry, and launched
-  `org.gnome.dspy` as UID 501. Its D-Bus and Wayland sockets were
-  `mobile:mobile` mode `0660`; the existing GNOME session and Xios PID remained
-  active. Evidence: `artifacts/device-runs/ioscd-appid-mobile-20260729/`.
-  Package metadata now separates `xios-runtime 0.1.0` from fullscreen
-  `xios-core 0.1.6`; `xios-native 0.1.3` depends on runtime, launcher tools, and
-  Settings only, while runtime installs `xios-fhs >= 1.0.3`. Mach-O closure
-  auditing sets the launcher, native, and fullscreen package floor to iOS 16.5;
-  the shell-independent runtime itself remains at iOS 16.0.
-- 2026-07-29 native presentation protocol v1 is host-build complete. BIND
-  requires an exact HELLO/version match; every `XIOS_MSG_NATIVE_FRAME` carries
-  one package-broker token and a non-zero 64-bit `MTLSharedEvent` value. There
-  is no unfenced or older-version record shape. The host
-  imports the event and encodes the wait before sampling. Per-canvas generations
-  and ordered last-fence replay prevent a resize or host reconnect from pairing
-  a fence with the wrong IOSurface. `apps/iosc-host/build-host.sh` and
-  `wayland/build-iosc.sh` passed; physical native-window proof remains open.
-- HostApp prototype builds + is protocol-conformant (engine verified earlier; awaiting a visual on-device confirm).
-- The native host now replays the latest Wayland text-input TRAITS on scene activation/key-window activation and on tap, so the iPad keyboard can rise after the per-window host becomes the active UIKit scene.
-- The native host now sends two-finger touch and continuous trackpad scrolling through the shared AXIS wire protocol, including an axis-stop frame for kinetic scrolling. The Release iPhoneOS host build passed on 2026-07-18; physical gesture validation is deferred while the device is offline.
-- `xios_canvas.c` is implemented on the non-frozen side and retains enough window metadata to replay `WINDOW_NEW` + canvas ports when a host binds after a window already exists (jetsam/relaunch path).
-- `iosc_gl_bind_target()` is factored out of `iosc_gl_resize()`; the compositor build includes `xios_canvas.c` so it stays compile-checked.
-- `iosc.c` native mode now starts `iosc-native.sock`, creates/destroys per-window canvases on toplevel map/unmap, composites each toplevel into its own IOSurface, and handles host resize/activate/close requests on the Wayland event loop.
-- `XIOS_IN_BIND` is honored by the shared input reader + iosc's bound-aware dispatch path: host scene input connections can now be scoped to a compositor window id, including native-mode keyboard TRAITS broadcasts for the focused window.
-- Native launch is explicit per request: iosc-host sends only
-  `LAUNCH_NATIVE\t<app_id>`. ioscd accepts no executable text, resolves the id
-  from a trusted root-owned desktop entry, parses its `Exec` field without a
-  command shell, and launches the application as `mobile`. Native uses
-  `wayland-native-0` + `iosc-native-input.sock` + `xios-native.json`; classic
-  uses `wayland-0` + `iosc-input.sock`, so both can coexist.
-- **ioscd execs through libiosexec (2026-10-01, `xios-launcher-tools 0.1.11`,
-  host-built, not yet device-tested).** Rootless has no `/bin/sh`, so a plain
-  `execvp` of an `Exec` target that is a `#!/bin/sh` wrapper (crispy-doom,
-  openttd, imv, systemsettings) failed with ENOENT and the child exited 127
-  silently; `xios-start-a11y` had the same problem. Every exec in `ioscd.c`
-  now goes through Procursus libiosexec's `ie_execl`/`ie_execv`/`ie_execvp`
-  (`src/xios-iosexec.h`), which run a script's own `/bin` or `/usr/bin`
-  interpreter from the jailbreak prefix; Mach-O targets still go straight to
-  `execve`. The argv, the trusted desktop-entry check, and the drop to
-  `mobile` are unchanged, and no shell is inserted for the command line.
-  Only the exec entry points are used, not libiosexec's passwd/group
-  replacements, so the drop to `mobile` still resolves through the system
-  libinfo. ioscd weak-links the dylib (link stub `sdk/libiosexec.tbd`, rpath
-  `<prefix>/usr/lib`) and the package depends on `libiosexec1 (>= 1.3.1)`.
-  Check the ioscd log at startup: `ioscd: exec via libiosexec ...` means it is
-  live; `ioscd: WARNING libiosexec not loaded ...` means plain exec and the
-  old failure. A failed client exec now logs `ioscd: exec <target> failed for
-  <app_id>: <error>` to the client log. `test-iosexec.sh` (run by
-  `build-stub.sh`) guards it host-side.
-- **Raw touch opt-in (2026-10-01, host-built, not yet device-tested).** A
-  desktop entry with `X-Xios-RawTouch=true` in `[Desktop Entry]` makes
-  `xios-launcher-sync` (and `gen-launchers.sh --native`) write
-  `<key>IOSCRawTouch</key><true/>` into that app's native bundle `Info.plist`,
-  next to `IOSCAppID`/`IOSCName`. `IOSCHost` reads it from its own bundle and
-  then installs none of the recognizers that can claim a direct touch
-  (keyboard-reveal pan, two-finger pan, pinch, rotation) and sends no emulated
-  single-finger `wl_pointer`, so every finger reaches the client as `wl_touch`
-  only. Indirect input (trackpad/wheel scroll pans, hover, pointer buttons),
-  the hardware keyboard, and the TRAITS auto-keyboard are unchanged. The
-  scene's view controller also defers every screen-edge system gesture and
-  auto-hides the home indicator, so edge touches arrive without the iOS edge
-  delay and the home/app-switcher gesture takes a second swipe; that second
-  swipe is the way out. It is a presentation hint only: ioscd never
-  sees it and the launch request stays `LAUNCH_NATIVE\t<app_id>`. Absent key
-  means the old behavior. Classic bundles never carry it. Opted-in apps must
-  handle `wl_touch` themselves (games with on-screen controls; Crispy Doom is
-  the first). Ships in `xios-launcher-tools 0.1.10`; existing bundles pick it
-  up on the next `xios-launcher-sync --sync`.
-- Build the compositor with just `x11/wayland/build-iosc.sh` (no docker flags): on the Mac it re-execs inside the cross-build image with the mounts wired, reads dev debs from `linux-build/out` then `repo/debs` as a fallback, and host-signs `wayland/out/iosc` (GPU/IOSurface/task_for_pid DER entitlements) so it is device-ready. `IOSC_NO_SIGN=1` skips signing; `IOSC_XBUILD_IMAGE=` overrides the image.
+- **Published:** `xios-native 0.1.8`, `xios-launcher-tools 0.1.12`,
+  `com.max.xiosprefs 0.1.0`, `xios-runtime 0.1.4`.
+- **Device-proven (2026-07-29/30):** launch by app id as `mobile`, generated
+  per-app bundles opening as native windows, wrapper cleanup when the last window
+  goes away, GIMP's splash-to-main-window hand-off, coexistence with a running
+  fullscreen GNOME session.
+- **Shipped but with no recorded device run:**
+  - `0.1.10`: per-app raw touch opt-in (below).
+  - `0.1.11`: ioscd execs through libiosexec, so `#!/bin/sh` `Exec` targets
+    (crispy-doom, openttd, imv, systemsettings wrappers) launch instead of
+    exiting 127. Startup log says `ioscd: exec via libiosexec ...` when it is
+    live and `WARNING libiosexec not loaded` when not.
+  - `0.1.12`: depends on `xios-session-stubs` (ioscd starts `xios-sysintd` on its
+    app bus) and starts helpers per bus. That change is written up once in
+    [session-launcher.md](session-launcher.md).
+- **Known gap:** in native mode the session-lock surface has no canvas, so a lock
+  screen is invisible (open item from the 2026-10-01 audit).
 
-## On-device Home Screen app sync
-- The Mac-side `gen-launchers.sh --native` path is useful for dev/test, and the
-  device has the pieces for on-device `.desktop` -> `.app` sync:
-  `xios-icon-render` renders PNG/SVG theme icons through gdk-pixbuf into the iPad
-  SpringBoard icon sizes, and `xios-launcher-sync` scans
-  `/var/jb/usr/share/applications`, writes per-app `Info.plist` files, copies the
-  shared `IOSCHost`/`default.metallib` payload, signs bundle executables, and can
-  call `uicache`.
-- Dev installer: `x11/apps/iosc-desktop/install-launcher-tools.sh`. It installs
-  `/var/jb/usr/local/bin/xios-icon-render`, `/var/jb/usr/local/bin/xios-launcher-sync`,
-  and shared payloads/entitlements under `/var/jb/usr/libexec/xios-launchers`.
-- Package path: `x11/apps/iosc-desktop/package-launcher-tools.sh` builds
-  `xios-launcher-tools` at the script's `VER` (0.1.11 as of 2026-10-01). The
-  package ships `ioscd`,
-  `xios-icon-render`, `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`,
-  `default.metallib`, the entitlements, and
-  `/var/jb/Library/LaunchDaemons/com.max.ioscd.plist`. Postinst only fixes
-  modes/ownership (chmod/chown) and re-bootstraps `ioscd` (`launchctl bootout`
-  then `bootstrap`); it signs nothing. Bundle executables are signed by
-  `xios-launcher-sync` during a sync (`ldid -S` with the shipped entitlements).
-  Postinst does **not** run a mass `xios-launcher-sync --sync`, so Home Screen
-  app creation remains settings- or user-triggered.
-- `ioscd` exposes settings-pane-ready verbs on `/var/jb/tmp/ioscd.sock`:
-  `APPS_LIST`, `APPS_SYNC\t<native|classic>\t<dry>`,
-  `APP_ENABLE\t<app_id>`, and `APP_DISABLE\t<app_id>`. Responses are streamed
-  and end with `APPS_END\t<status>`.
-- Xios.app now exposes those verbs from the in-app panel under Advanced:
-  **Home Screen Apps** lists launcher candidates from `APPS_LIST`, searches by
-  name/exec/id, toggles enable/disable with `APP_ENABLE`/`APP_DISABLE`, and runs
-  dry/apply sync for native or classic bundles with a streamed report. It is also
-  reachable from the desktop context menu via Advanced.
-- Settings.app pane: `x11/../tweaks/XiosPrefs` builds
-  `com.max.xiosprefs_0.1.0_iphoneos-arm64.deb`. It installs
-  `/var/jb/Library/PreferenceBundles/XiosPrefs.bundle` plus
-  `/var/jb/Library/PreferenceLoader/Preferences/Xios.plist`, depends on
-  `xios-launcher-tools`, and exposes the same `ioscd` list/toggle/dry-run/apply
-  controls in the native iOS Settings app. The controller sets explicit
-  `PSButtonActionKey` values, handles button rows by stable ids as a fallback,
-  and bounds `ioscd` socket reads so Settings cannot hang on an incomplete daemon
-  reply. It also ships PreferenceLoader-sized `icon.png`, `icon@2x.png`, and
-  `icon@3x.png` assets derived from Xios.app's icon; the registration plist uses
-  `<key>icon</key><string>icon</string>` so the Settings sidebar shows the Xios
-  icon instead of a blank row.
-- On-device validation done: renderer compiled/runs on iPad and rendered
-  `org.gnome.Console.svg`; staged sync generated a complete native `mpv.app` and
-  `org.pwmt.zathura.app` under `/var/jb/tmp`; daemon verbs returned the 14 visible
-  app candidates and toggled `footclient` enable/disable state. `foot-server` is
-  currently disabled in prefs as a sanity example.
-- Package validation done: `xios-launcher-tools 0.1.0` installed on-device via
-  `dpkg -i`, restored `/var/jb/tmp/ioscd.sock` as `mobile:mobile` mode `660`,
-  listed apps through the packaged `xios-launcher-sync`, rendered
-  `org.gnome.Console.svg` into all three iPad icon PNG sizes, and returned
-  `APPS_END\t0` for both `APPS_LIST` and `APPS_SYNC\tnative\tdry`.
-- Settings-pane build/deploy done: Xios.app Release `iphoneos` build succeeded,
-  deployed to `/var/jb/Applications/Xios.app`, relaunched, and adopted the active
-  iosc IOSurface (`iosurface-zerocopy 2880x2160 [metal]`, input connected).
-  Backend smoke after deploy returned `APPS_END\t0` for `APPS_LIST` and
-  `APPS_SYNC\tnative\tdry`. Remaining validation is a physical/tap-through UI
-  check of the new sheet and one controlled apply sync.
-- Settings.app PreferenceBundle validation done: `com.max.xiosprefs 0.1.0`
-  built, installed, copied to the repo deb pool, and reflected in regenerated
-  local repo metadata. On-device package contents include the bundle and
-  PreferenceLoader registration plist; `preferenceloader 2.2.8` and
-  `xios-launcher-tools 0.1.0` are installed. Backend validation through
-  `/var/jb/tmp/ioscd.sock` returned `APPS_END\t0` for native dry-run after the
-  Settings hardening pass. A URL launch attempt starts Preferences without a
-  fresh crash. The installed bundle now contains the three PreferenceLoader icon
-  PNGs and the installed registration plist contains the `icon` key. USB
-  screenshot capture was unavailable (`idevicescreenshot`: no device found), so
-  visual confirmation in Settings.app is still pending.
+## How it works
+- **Compositor:** one iosc binary. Native mode is runtime-gated (`LAUNCH_NATIVE`
+  through ioscd, or `IOSC_NATIVE=1` / `-native`). It maps each `xdg_toplevel` to
+  its own canvas IOSurface and serves `iosc-native.sock`
+  (`wayland/xios_canvas.{c,h}`). Native uses `wayland-native-0`,
+  `iosc-native-input.sock` and `xios-native.json`; classic uses `wayland-0` and
+  `iosc-input.sock`, so both run at once.
+- **Host:** `apps/iosc-host/` builds `IOSCHost`, copied into every generated
+  bundle. A bundle's `Info.plist` carries only `IOSCAppID` and `IOSCName` (plus
+  the optional `IOSCRawTouch`).
+- **Wire:** protocol v1 from `apps/shared/XiosProtocol.h` (mirrored by
+  `apps/iosc-host/Sources/iosc_native_proto.h`). BIND needs an exact HELLO
+  version match; every `XIOS_MSG_NATIVE_FRAME` carries one broker token and a
+  non-zero 64-bit `MTLSharedEvent` value, and the host waits on it before
+  sampling. `XIOS_IN_BIND` scopes an input connection to one window id. Spec:
+  `../native-ipados-protocol.md`.
+- **Launch:** the host sends only `LAUNCH_NATIVE\t<app_id>`. ioscd authorizes
+  root/mobile peers, resolves a non-writable root-owned desktop entry, turns its
+  `Exec` into argv without a shell, and drops the app and its session bus to
+  `mobile`. Device checks: an extra field is `ERR malformed`, `../bin/sh` and a
+  mode-0666 entry are refused, `org.gnome.dspy` ran as UID 501.
+- **Wrapper lifecycle:** `IOSCHost` exits one second after its last scene is
+  discarded, 30 seconds after its last compositor window goes away, or 30 seconds
+  after a launch that never produced a window; an ioscd rejection retires it after
+  one second. `WINDOW_NEW` cancels pending exits (jetsam/reconnect replay, splash
+  windows).
+- **Raw touch:** `X-Xios-RawTouch=true` in a desktop entry makes
+  `xios-launcher-sync` write `IOSCRawTouch` into that bundle. The host then installs
+  none of the gesture recognizers that claim direct touches and sends no emulated
+  pointer, so every finger arrives as `wl_touch`. It also defers screen-edge
+  system gestures and hides the home indicator, so the way out is a second swipe.
+  Crispy Doom is the first user. Existing bundles pick it up on the next
+  `xios-launcher-sync --sync`.
 
-## Hardening (2026-07-02, from the native-integration review)
-- **Blocking mach hand-off moved off the compositor thread.** `deliver_canvas_port`
-  (task_for_pid + a timed mach_msg a suspended host can stall) previously ran on
-  iosc's wl event-loop thread under `s_lock` from `xios_canvas_announce`/`_geom`,
-  so a window mapping/resizing against a slow host could freeze every other native
-  window's input+present. Now the wl thread only flags the window
-  (`deliver_pending`) + nudges the reader thread; the reader does the record write
-  (still under the lock, on a non-blocking fd) + the unlocked mach send in
-  `process_pending_deliveries`. Single-threaded delivery keeps each
-  {WINDOW_NEW/GEOM, port} pair correlated for `recv_canvas`. `announced` still gates
-  DIRTY so it can't precede WINDOW_NEW.
-- **Map/unmap race closed.** `xios_canvas_gone` now sends WINDOW_GONE regardless of
-  `announced` (a WINDOW_NEW may be in-flight on the reader thread); a GONE for a
-  window the host never saw is a harmless no-op there. Prevents an orphaned scene.
-- **Socket is never world-writable.** The `0777` fallback in
-  `xios_canvas_server_start` is gone; it now locks the rendezvous socket to mobile
-  (uid 501 fallback if `getpwnam` fails), degrading to root-only 0600 + a warning
-  rather than opening it to every uid (app_id is the flavor's only isolation).
-- **First frame fits the tapped scene.** BIND's scene size is remembered
-  (`xios_canvas_default_scene`) and `send_initial_configure` sizes a native
-  toplevel's initial xdg configure to it, so the first mapped frame fills the iPad
-  window instead of flashing a default size then reflowing on the first RESIZE.
-- **Deploy re-signs on device + registers cdhash.** `gen-launchers.sh --deploy`
-  now stages the entitlements, `ldid -S`-resigns each bundle's on-device binary,
-  and best-effort trust-cache-adds the cdhash (jbctl/trustcache/ellekitc) before
-  uicache — the plan §6 "launch error 3" guard. ldid ad-hoc alone suffices on
-  palera1n/ellekit; the trust-cache step is non-fatal.
+## Home Screen app sync
+- `xios-launcher-tools` ships `ioscd` (LaunchDaemon `com.max.ioscd`),
+  `xios-icon-render` (theme icon to SpringBoard PNG sizes through gdk-pixbuf),
+  `xios-launcher-sync`, `IOSCLaunch`, `IOSCHost`, `default.metallib` and the
+  entitlements. Sources: `apps/iosc-desktop/src/`; package:
+  `apps/iosc-desktop/package-launcher-tools.sh` (version in its `VER`).
+- Postinst only fixes modes and re-bootstraps ioscd. It does not run a mass sync;
+  bundles are created from Settings or the Xios panel, and `xios-launcher-sync`
+  signs each bundle executable (`ldid -S` with the shipped entitlements).
+- ioscd verbs on `/var/jb/tmp/ioscd.sock`: `APPS_LIST`,
+  `APPS_SYNC\t<native|classic>\t<dry>`, `APP_ENABLE\t<id>`, `APP_DISABLE\t<id>`,
+  streamed and ending with `APPS_END\t<status>`. Both the Xios panel (Advanced,
+  Home Screen Apps) and the Settings pane (`tweaks/XiosPrefs`, package
+  `com.max.xiosprefs`) drive them. The Settings pane bounds its socket reads so an
+  incomplete reply cannot hang Settings.
+
+## Gotchas
+- Rootless has no `/bin/sh`. Anything that `execvp`s a script must go through
+  libiosexec (`src/xios-iosexec.h`), or it fails with ENOENT and exits 127 with
+  nothing in the log. ioscd weak-links it and only uses the exec entry points, so
+  the drop to `mobile` still resolves through the system libinfo.
+- Canvas port delivery (`task_for_pid` plus a timed `mach_msg`) runs on the reader
+  thread, never the Wayland thread, so one suspended host cannot freeze every
+  other native window. `WINDOW_GONE` is sent even if `WINDOW_NEW` is still in
+  flight.
+- The canvas socket is mobile-owned 0660 and never world-writable (app id is the
+  flavor's only isolation).
+- The first configure is sized to the scene BIND reported, so the first frame
+  fills the window instead of reflowing.
+- Build iosc with plain `wayland/build-iosc.sh`; on the Mac it re-execs in the
+  cross image and host-signs `wayland/out/iosc`.
 
 ## Open items
-1. Record the on-device demo result in this file: `gen-launchers.sh --native`, tap a generated app, confirm it opens as its own iPad window, resizes, focuses, accepts text, and closes cleanly.
-2. Physical coexistence smoke: keep the fullscreen Xios desktop up, tap a native generated app, and confirm both compositor sockets/configs stay live (`wayland-0`/`xios.json` and `wayland-native-0`/`xios-native.json`) while the UIKit host window is visible.
-3. **Touch coordinate transform per-window**: verify the host unprojects touches against the canvas's own fb size for every scene.
-4. Validate jetsam/relaunch replay: open a native-hosted app, kill/relaunch the host, confirm `WINDOW_NEW` + the live canvas port are replayed from `xios_canvas.c`.
-5. Confirm the keyboard hint path on device: focus a GTK/Qt text field inside a native-hosted window and verify the OSK appears when that scene is key.
-6. Decide whether native mode should keep the single-output IOSurface for tooling or skip it later to save memory.
-7. Visually validate the new Settings.app Xios pane on-device: open Settings,
-   confirm the Xios entry appears, toggle one app off/on, run dry native/classic,
-   then perform one controlled apply sync after confirming the visible candidate
-   set. Also do the same quick tap-through for the in-app shortcut.
+1. Device run of the 0.1.10 to 0.1.12 changes: a `#!/bin/sh` app (crispy-doom),
+   raw touch, and a Home Screen launch while a desktop is up.
+2. Visual checks still not recorded: resize/focus/close of a native window,
+   OSK rising in a native text field, host kill and relaunch replaying
+   `WINDOW_NEW`, the Settings pane toggle and one controlled apply sync.
+3. Give the session-lock surface a canvas in native mode.
+4. Decide whether native mode should keep the single output IOSurface (tooling)
+   or drop it to save memory.
 
-## Priority
-Core path is implemented; next pass is validation notes + polish closure.
+## History (short)
+- 2026-07-01: per-window host prototype and protocol; hardening (reader-thread
+  port delivery, map/unmap race, socket mode, first-frame sizing).
+- 2026-07-04: Home Screen sync tools, Settings pane, `xios-launcher-tools 0.1.0`.
+- 2026-07-29: app-id-only launches as `mobile`, fenced protocol v1, package split
+  into `xios-runtime` / `xios-core` / `xios-native`.
+- 2026-07-30: wrapper lifecycle (0.1.9).
+- 2026-10-01: raw touch (0.1.10), libiosexec exec (0.1.11).
+- 2026-10-25: per-bus helpers, stubs dependency (0.1.12).

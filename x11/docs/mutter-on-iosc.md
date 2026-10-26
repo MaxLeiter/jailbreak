@@ -1,21 +1,23 @@
-# Mutter on iosc — getting gnome-shell onto the iOS Wayland substrate
+# Mutter on iosc: getting gnome-shell onto the iOS Wayland substrate
 
-> Historical design/bring-up record. For current implementation, package, and verification
-> status use `docs/handoff/mutter.md`; several early blockers described below are now closed.
+**Status: historical design and bring-up record (June to July 2026).** The recommendation below,
+option (b), is what got built: `MetaBackendIOS` ships in `libmutter-14-0` (46.0+ios11 in the index)
+and is GNOME Shell's compositor on the iPad. iosc was not retired; it stays a separate compositor,
+and the shared iOS glue is linked by both. For current state, files and landmines read
+[handoff/mutter.md](handoff/mutter.md).
 
-Status: **Mutter 46 cross-builds + links to iOS arm64, and is now packaged as debs.** The 5 libs
-(libmutter-14, -cogl-14, -cogl-pango-14, -clutter-14, -mtk-14) + deps are built off-device and
-staged in `x11/linux-build/out` (see "Typelib generation" below for the deb list). The
-introspection *config* is proven to resolve off-device (the gir scanner commands harvested to
-`out/mutter-gir-commands.txt`); generating the actual typelibs requires the device (Blocker #2).
-**Backend code (MetaBackendIOS) is now WRITTEN and compile-clean off-device** against the real
-Mutter 46.0 ABI — the winsys (Step 2) plus the four Step-3/4/5 pieces (monitor manager, input,
-IOSurface buffer type, login1 stub) all compile under mutter's own strict flags; see "Backend code
-status" below. Grounded in the Mutter 46.0 source tree and in the working `iosc` compositor
-(`x11/wayland`). **We keep iosc as a switchable compositor AND add
-gnome-shell** — the shared iOS/GPU glue (iosc_gl.c + xios_surface.c + the iosc_iosurface protocol +
-libiosc_egl winsys) is factored into a shared lib both iosc and MetaBackendIOS link; iosc is NOT
-retired.
+Two things in this record turned out differently, so do not build on them:
+
+- **No EGLImage path.** Several sections plan IOSurface to EGLImage to
+  `cogl_egl_texture_2d_new_from_image()`. ANGLE-Metal cannot do that
+  (`eglCreateImageKHR(GL_TEXTURE_2D)` fails `0x3000`). The shipped renderer binds the output
+  IOSurface as FBO 0 of an ANGLE pbuffer ("route A"), and client buffers are aliased into Cogl
+  textures with a pbuffer plus `eglBindTexImage`.
+- **JIT-less mozjs is no longer the only option.** An opt-in JIT build exists
+  ([mozjs-jit-plan.md](mozjs-jit-plan.md)).
+
+The weak-link, schema and Linux-soname findings near the end are still accurate and are summarized
+as landmines in the handoff.
 
 Sibling docs: [`gnome-plan.md`](gnome-plan.md) (the four Shell blockers),
 [`gjs-plan.md`](gjs-plan.md) (typelibs + mozjs, both SOLVED), [`wayland-plan.md`](wayland-plan.md)
@@ -505,11 +507,11 @@ supplies its own — all done:
   minimal (fixed "us", single monitor, no constraints). All 9 backend `.o`s compile clean under
   mutter's own strict flags.
 
-One design fork is settled in code: the renderer view renders zero-copy directly into the output
-IOSurface (fallback if that IOSurface-EGLImage proves non-FBO-renderable at runtime = a plain
-offscreen + a present-time blit, a localized change).
+One design fork was settled at runtime, not as planned here: the IOSurface-EGLImage target was not
+renderable on ANGLE-Metal, so the view renders into the output IOSurface as FBO 0 of a pbuffer
+(route A) instead.
 
-**What's left is INTEGRATION/packaging, not backend code:** (1) drop the `src/backends/ios/*` files
+**What was left at this point was integration and packaging (all done since):** (1) drop the `src/backends/ios/*` files
 into the mutter tree + add them to `src/meson.build`; (2) a `meta-context-main.c` patch adding the
 Wayland→`MetaBackendIOS` branch (like the existing buffer.c patch); (3) call
 `meta_wayland_iosurface_init()` from the wayland compositor bring-up (parallel to the dma-buf init);
@@ -521,7 +523,7 @@ shared-lib split, `iosc-shared-glue.md`, must export): `xios_output_geometry`/`_
 `xios_input_socket_*` + `struct xios_in_msg`, `xios_import_client_iosurface`/`_release`,
 `xios_egl_image_from_iosurface`/`_destroy_image`. No `iosc.c` was touched.
 
-**Refinement to Risk #2 (resolved in code):** the mutter cogl fork dropped the public
+**Refinement to Risk #2 (superseded; see the status note at the top):** the mutter cogl fork dropped the public
 foreign-GL-texture wrap, so the pbuffer+bind→wrap route this doc originally sketched has no clean
 public cogl seam. The IOSurface buffer type instead goes IOSurface → **EGLImage** →
 `cogl_egl_texture_2d_new_from_image()` — the *same* idiomatic path mutter uses for its EGL_IMAGE and

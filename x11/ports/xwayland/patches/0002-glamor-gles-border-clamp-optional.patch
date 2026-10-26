@@ -1,0 +1,23 @@
+Subject: [PATCH] glamor: do not require texture_border_clamp on GLES (ANGLE)
+
+ANGLE-Metal does not advertise GL_OES_texture_border_clamp; glamor only
+uses it for rarely needed repeat/clamp-to-border cases. Warn and continue,
+as the 23.2 port did.
+
+diff -ruN xwayland-24.1.13/glamor/glamor.c xwayland-24.1.13.patched/glamor/glamor.c
+--- xwayland-24.1.13/glamor/glamor.c
++++ xwayland-24.1.13.patched/glamor/glamor.c
+@@ -721,9 +721,10 @@
+             goto fail;
+         }
+ 
+-        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp")) {
+-            ErrorF("GL_OES_texture_border_clamp required\n");
+-            goto fail;
++        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp") &&
++            !epoxy_has_gl_extension("GL_EXT_texture_border_clamp")) {
++            LogMessageVerb(X_WARNING, 0,
++                           "glamor/iosurface: no texture_border_clamp; continuing\n");
+         }
+     }
+ 

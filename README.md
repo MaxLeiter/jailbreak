@@ -56,10 +56,14 @@ hosted on Vercel. To add it in Sileo:
 `sileo://source/https://repo.maxleiter.com/`. The landing page has buttons for
 Sileo, Zebra, and Cydia plus a copyable URL.
 
-`repo/` holds the static site and the signed metadata. The actual package
-payloads live in `repo/debs/`, which is gitignored, and get uploaded to Vercel
-Blob before a deploy. `bin/lib/make-repo.py` generates the index (`Packages`,
-`Packages.gz`, `Release`, `index.html`, `CydiaIcon.png`) from that local cache.
+`repo/` holds the static site and the index, `repo/Packages`, which is the one
+tracked piece of APT metadata. `Packages.gz`, `Release` and the signatures are
+regenerated and signed at publish time. The package payloads live in
+`repo/debs/`, which is gitignored (a fresh clone has none, so `mkdir -p repo/debs`
+first), and get uploaded to Vercel Blob before a deploy. `bin/lib/make-repo.py`
+generates the index and the site from that local cache, or with `--from-index`
+rebuilds the site from the committed `repo/Packages` without any payloads.
+The full procedure, and the guardrails, are in [`AGENTS.md`](AGENTS.md).
 
 ```bash
 bin/build.sh tweaks/<Name>
