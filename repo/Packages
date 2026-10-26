@@ -12766,7 +12766,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-desktop-defaults
 Name: Xios desktop defaults
-Version: 1.1.14
+Version: 1.1.15
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -12774,11 +12774,11 @@ Depends: x11-fonts-sf, fontconfig, dbus, libglib2.0-bin, hicolor-icon-theme
 Section: X11
 Priority: optional
 Description: Retina, XDG, GTK, font and session defaults for Xios
-Filename: debs/xios-desktop-defaults_1.1.14_iphoneos-arm64.deb
-Size: 280854
-MD5sum: e96d71552e970212236c716a51b492fe
-SHA1: 8bdde809b9c0d32a29f26608d74342dbe6333e8e
-SHA256: c3961988499fe6bf442532af8e2c9e1d5e73c7129df58213fa2cb11616c3c963
+Filename: debs/xios-desktop-defaults_1.1.15_iphoneos-arm64.deb
+Size: 281286
+MD5sum: 0ede2824141ac7750b0d7062a3940cc8
+SHA1: a3469ca942386b5bb145a7e277e72b5848524d29
+SHA256: 8681d171a08bea3b8aa4af8ba6ed40860db86528b0a14d9701296107a3957cb5
 Icon: https://repo.maxleiter.com/icons/xios-desktop-defaults.png
 Depiction: https://repo.maxleiter.com/depictions/xios-desktop-defaults.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-desktop-defaults.json
