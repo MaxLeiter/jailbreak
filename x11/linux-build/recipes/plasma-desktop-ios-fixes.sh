@@ -543,3 +543,32 @@ from xios_fixlib import guard_x11_tree
 
 print("guard_x11_tree edits:", guard_x11_tree(sys.argv[1]))
 PY
+
+# ---- ios-perf-applet-enabled (+ios12) ---------------------------------------------------------------------------------
+# Plasma 6.7's CompactApplet.qml sets `enabled: dialog.visible` on every applet popup's mainItem, a workaround for
+# QTBUG-146992 (a hidden transient popup still reports QWindow::isActive(), so Shortcuts inside it fired). Flipping
+# `enabled` on every open and close recurses through the whole popup tree (setEffectiveEnableRecur), and every
+# Kirigami-themed item switches between the Active and Disabled colour groups, which re-syncs its palette and
+# re-colours its SVG icons. On the A10 that was 40-60% of plasmashell's main thread per clock popup open or close and
+# most of Kickoff's (sampled 2026-10-26); 6.1.5 had no such binding. qt6-declarative 6.10.3+ios3 fixes the bug where it
+# bites instead (QQuickShortcutContext: a hidden window never matches), so the workaround goes.
+python3 - "$src/desktoppackage/contents/applet/CompactApplet.qml" <<'PY'
+import sys
+from xios_fixlib import Path, todo
+
+p = Path(sys.argv[1])
+t = p.read_text()
+old = """            // Workaround for QTBUG-146992
+            // https://qt-project.atlassian.net/browse/QTBUG-146992
+            // https://codereview.qt-project.org/c/qt/qtbase/+/738776
+            enabled: dialog.visible
+"""
+new = """            // xios ios-perf-applet-enabled: upstream binds `enabled: dialog.visible` here as a workaround for
+            // QTBUG-146992. Toggling enabled re-themes the whole popup tree on every open and close; our
+            // qt6-declarative carries the fix in QQuickShortcutContext instead.
+"""
+if old in t:
+    p.write_text(t.replace(old, new))
+elif "ios-perf-applet-enabled" not in t:
+    todo("CompactApplet.qml enabled: dialog.visible workaround not found")
+PY

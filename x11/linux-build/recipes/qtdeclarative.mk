@@ -14,12 +14,14 @@ endif
 # RW -> RX, which iOS allows), and replaces the probe with a real execute test run once per process under
 # a SIGBUS/SIGSEGV/SIGILL guard: if it faults, QV4 interprets as before. QV4_JIT_PROBE_LOG=1 logs the
 # verdict and every new code chunk; QV4_FORCE_INTERPRETER=1 turns the JIT off. No entitlement needed.
+# +ios3: qtdeclarative-ios-fixes.sh makes QQuickShortcutContext ignore hidden windows (QTBUG-146992), so
+# plasma-desktop +ios12 can drop Plasma 6.7's `enabled: dialog.visible` popup workaround.
 # Software scenegraph (QT_QUICK_BACKEND=software, QPainter raster) is the first-light fallback over
 # wayland-shm; QtQuick's OpenGL path also resolves EGL/GLES through ANGLE/Metal for accelerated clients.
 
 SUBPROJECTS           += qtdeclarative
 QTDECLARATIVE_VERSION := 6.10.3
-DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios2
+DEB_QTDECLARATIVE_V   ?= $(QTDECLARATIVE_VERSION)+ios3
 
 qtdeclarative-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtdeclarative))
