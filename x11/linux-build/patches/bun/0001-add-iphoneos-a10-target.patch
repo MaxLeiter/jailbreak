@@ -1332,27 +1332,9 @@ index b6fe5a2715..4a39ae02f1 100644
              return Self {
                  iter: NewIterator {
 diff --git a/src/runtime/node/node_fs.rs b/src/runtime/node/node_fs.rs
-index 14d696aae4..73b365750f 100644
+index 14d696aae4..56c0dc251e 100644
 --- a/src/runtime/node/node_fs.rs
 +++ b/src/runtime/node/node_fs.rs
-@@ -32,7 +32,7 @@ use bun_threading::work_pool::{IntrusiveWorkTask as _, Task as WorkPoolTask, Wor
- // ──────────────────────────────────────────────────────────────────────────
- #[cfg(not(windows))]
- pub(crate) trait MaybeSysResultExt<R>: Sized {
--    #[cfg(not(target_os = "freebsd"))]
-+    #[cfg(not(any(target_os = "freebsd", target_os = "ios")))]
-     fn get_errno(&self) -> E;
-     fn errno_sys<Rc: sys::GetErrno>(rc: Rc, syscall: sys::Tag) -> Option<Self>;
-     fn errno_sys_fd<Rc: sys::GetErrno>(rc: Rc, syscall: sys::Tag, fd: FD) -> Option<Self>;
-@@ -50,7 +50,7 @@ pub(crate) trait MaybeSysResultExt<R>: Sized {
- }
- #[cfg(not(windows))]
- impl<R> MaybeSysResultExt<R> for Maybe<R> {
--    #[cfg(not(target_os = "freebsd"))]
-+    #[cfg(not(any(target_os = "freebsd", target_os = "ios")))]
-     #[inline]
-     fn get_errno(&self) -> E {
-         match self {
 @@ -5009,7 +5009,7 @@ impl NodeFS {
      /// https://github.com/nodejs/node/issues/34624
      fn copy_file_inner(&mut self, args: &args::CopyFile) -> Maybe<ret::CopyFile> {
@@ -1370,15 +1352,23 @@ index 14d696aae4..73b365750f 100644
              target_os = "freebsd",
              target_os = "linux",
              target_os = "android",
-@@ -9144,7 +9145,7 @@ impl NodeFS {
-     /// Tries `open(dest, flags, mode)`; on ENOENT creates the
-     /// parent directory and retries once. Any other error is annotated with
-     /// `dest` copied into `sync_error_buf`.
--    #[cfg(not(windows))]
-+    #[cfg(not(any(windows, target_os = "ios")))]
-     fn cp_open_dest_with_mkdir(&mut self, dest: &ZStr, flags: i32, mode: Mode) -> Maybe<FD> {
-         match Syscall::open(dest, flags, mode) {
-             Ok(result) => Ok(result),
+@@ -8574,7 +8575,7 @@ impl NodeFS {
+         let _ = args; // only the Windows branch consults `args` (shouldIgnoreEbusy)
+ 
+         // TODO: do we need to fchown?
+-        #[cfg(target_os = "macos")]
++        #[cfg(any(target_os = "macos", target_os = "ios"))]
+         {
+             if mode.is_force_clone() {
+                 // https://www.manpagez.com/man/2/clonefile/
+@@ -9128,6 +9129,7 @@ impl NodeFS {
+ 
+         #[cfg(not(any(
+             target_os = "macos",
++            target_os = "ios",
+             target_os = "linux",
+             target_os = "android",
+             target_os = "freebsd",
 diff --git a/src/runtime/node/node_fs_watcher.rs b/src/runtime/node/node_fs_watcher.rs
 index 1db3aa6037..47ff5cd64f 100644
 --- a/src/runtime/node/node_fs_watcher.rs

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible Bun iPhoneOS/A10 package build for OpenCode.
-# Default deb version: 1.4.4+ios1.
+# Default deb version: 1.4.4+ios2.
 #
 # This is intentionally a source-build path. The upstream macOS standalone
 # runtime crashes with SIGILL on iPad7,12/A10 because it is built for newer
@@ -24,7 +24,7 @@ PATCH="${BUN_IOS_PATCH:-$HERE/patches/bun/0001-add-iphoneos-a10-target.patch}"
 WEBKIT_PATCH_DIR="${BUN_WEBKIT_PATCH_DIR:-$HERE/patches/bun-webkit}"
 BUILD_DIR="${BUILD_DIR:-build/ios-a10}"
 CONTROL="${BUN_IOS_CONTROL:-$HERE/build_info/bun.control}"
-BUN_VERSION="${BUN_VERSION:-1.4.4+ios1}"
+BUN_VERSION="${BUN_VERSION:-1.4.4+ios2}"
 ARCH="${ARCH:-iphoneos-arm64}"
 PKG="bun_${BUN_VERSION}_${ARCH}.deb"
 
