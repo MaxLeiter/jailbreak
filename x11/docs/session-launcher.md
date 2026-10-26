@@ -32,7 +32,8 @@ overrides both.
 
 `xios-session presets` prints the ones whose bring-up script and key binaries are
 installed. A preset that is not installed is refused (exit 69) before the running
-desktop is touched.
+desktop is touched. The Xios app gets the same list from ioscd's `PRESETS` request, which
+runs this command as root.
 
 | Preset | Brings up | Needs |
 |--------|-----------|-------|

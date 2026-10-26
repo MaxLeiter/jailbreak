@@ -20,15 +20,15 @@ design is `docs/xios-v2-design.md`.
   mode bridge) and `xios-setsid`. Before 1.0.82 only `xios-gnome` brought them, so KDE and
   X11 sessions ran without the bridge and without process-group isolation.
 - A flavor that is not installed is refused before the running desktop is touched, and
-  `xios-session presets` lists what can start. Host-tested; no device run yet.
+  `xios-session presets` lists what can start (ioscd `PRESETS` serves it to the app). Host-tested; no device run yet.
 - ioscd starts its app-launch helpers per bus, not "once anywhere", and gives its own
   sysintd a private socket when a desktop already serves the global
   `/var/jb/tmp/xios-sysint.sock` (03da4e55). Host-tested; no device run yet.
 - With `xios-x11` installed, the iosc preset starts Xwayland (rootless, under iosc's XWM)
   and `xios-session app` hands clients `DISPLAY` plus `GDK_BACKEND=wayland,x11`. Device
   proof and the XWM itself are in `iosc-compositor.md`.
-- Not done: the app still lists every preset instead of asking `presets`, and the app does
-  not yet send appearance changes to every slot's sysintd (M1 work, see
+- The app asks ioscd's `PRESETS` verb (0.1.14, below) and falls back to its own file check; it
+  does not yet send appearance changes to every slot's sysintd (M1 work, see
   `docs/xios-v2-design.md`). No meta ships a standalone `mutter`, so the `mutter` preset
   only works on a dev install.
 
@@ -60,7 +60,8 @@ design is `docs/xios-v2-design.md`.
   `xios-session.pgids`, `xios-active-session[-<slot>]`.
 - Host tests: `test-session-slots.sh`, `test-session-state.sh`, `test-session-preflight.sh`,
   `test-session-x11.sh`, `test-session-bus.sh`, `test-ioscd-helpers.sh` and
-  `test-ioscd-fds.sh` (the last two run by `build-stub.sh`).
+  `test-ioscd-fds.sh` (the last two run by `build-stub.sh`). `test-ioscd-helpers.sh` also covers
+  `PRESETS` and the a11y helper's identity.
 
 ## How a switch works
 
@@ -132,6 +133,44 @@ no live process, once per operation and under the lock.
 - The package now Depends on `xios-session-stubs (>= 0.2.12)`, which ships `xios-sysintd`; only
   the GNOME flavor pulled it in before. hwbridged/sensord still come from `xios-fhs`.
 - Host test: `apps/iosc-desktop/test-ioscd-helpers.sh` (run by `build-stub.sh`).
+
+## 2026-10-25 (later still): `PRESETS` verb, a11y helper as mobile (xios-launcher-tools 0.1.14, `com.max.xios 0.2.1`, host-tested only)
+
+- **`PRESETS\n`** on `ioscd.sock` runs `bash xios-session presets` exactly like the `SESSION`
+  child (root, `set_rootless_path`, stderr to `ioscd-session.log`) and replies one preset per
+  line, then `PRESETS_END\t<exit status>` (the `APPS_END` shape). Only lines that look like
+  a preset name (`[a-z0-9-]`, 31 chars) are relayed. It is bounded (4 s, then the child's
+  group is killed and the reply is `ERR presets timed out`) because the accept loop is
+  single-threaded; a missing script is `ERR xios-session is not installed`. An ioscd without
+  the verb answers `ERR malformed`. Any peer may ask (read-only, like `APPS_LIST`).
+- The Xios app (0.2.1) asks first and falls back to `PresetProbe` (its mirror of
+  `xs_preset_check`) on an ERR, no ioscd, a non-zero status or an empty list. The
+  `xios-core` pin on `xios-launcher-tools` stays `>= 0.1.13`: the fallback makes 0.1.14 optional.
+- **The a11y helper on ioscd's bus now runs as mobile.** `start_a11y_for_busdir` used to run
+  `xios-start-a11y` as root on every bus; ioscd's bus daemon is mobile's and refuses root
+  clients, so at-spi-bus-launcher never reached it. The helper now takes the identity of the
+  bus socket's owner: mobile (HOME/USER/LOGNAME, `close_inherited_fds`, `drop_to_mobile`) on
+  `ioscd-bus`, root on `xios-session-bus` (the root CLI's bus). For mobile it also sets
+  `XIOS_A11Y_SOCK=/var/jb/tmp/xios-a11y.sock` (same path as before; xios-a11yd chowns it to
+  mobile 0660, which is what the app and `iosc-host` connect to), and moves the logs to
+  `ioscd-bus/xios-atspi.log` and `ioscd-bus/xios-a11yd.log` (the old ones in the sticky tmp
+  dir are root-owned, so mobile's `>>` redirect would fail).
+- **Leftovers from the old root helper** (before it drops privileges, only for the mobile case):
+  root-owned `ioscd-bus/at-spi` and `ioscd-bus/dconf` trees are chowned to mobile (children first,
+  nothing followed, hard-linked files skipped); a root-owned `/var/jb/tmp/xios-a11y.sock` and
+  `.pid` are unlinked unless the recorded `xios-a11yd` is still alive (a live one is left alone:
+  it may be serving xios-session's bus, and `xios-start-a11y` will not start a second one).
+- Host tests (`test-ioscd-helpers.sh`, run by `build-stub.sh`): PRESETS against stand-in scripts
+  and against the real `xios-session` + lib on a scratch prefix; the a11y helper's env/fds for a
+  mobile-owned and a foreign-owned bus; stale-leftover cleanup. The chown itself needs root and
+  is not exercised on the host.
+- **Device checks still open:** (1) `PRESETS` over the socket as mobile returns what
+  `xios-session presets` prints as root, and the Xios app writes `source=ioscd` to
+  `xios-presets.txt`; (2) with VoiceOver on, an ioscd `LAUNCH` starts `xios-start-a11y` as
+  mobile (`ps -o user`), at-spi-bus-launcher and xios-a11yd own the bus, `xios-a11y.sock` is
+  mobile 0660, and `ioscd-bus/at-spi` is mobile-owned; (3) an `xios-a11yd` left running as root
+  by the old ioscd keeps `a11yd_running` true, so kill it once (or respring) before expecting the
+  mobile one.
 
 ## M0 coexistence (2026-10-06): desktops run side by side
 
@@ -208,8 +247,7 @@ KDE stayed up; `stop all` left no session process. Footprints are in `docs/xios-
   global `xios-sysint.sock` is unlinked by root first, since mobile cannot replace it in the
   sticky tmp dir. Device: UPower, SensorProxy and the gsd Power shim all owned on `ioscd-bus`,
   `gdbus` as mobile reads the battery percentage. The a11y path (`start_a11y_for_busdir` on
-  ioscd's bus) still runs as root and has the same refusal; not fixed (root-owned leftovers
-  `ioscd-bus/at-spi` and `ioscd-bus/dconf` would also need migrating).
+  ioscd's bus) still ran as root and had the same refusal; fixed in 0.1.14 (below).
 - **DISPLAY for LAUNCH/LAUNCH_CLASSIC.** `launch_client` reads `x11-display` from
   `xios-status.d/iosc.status` (`iosc-native.status` for native) and passes `DISPLAY` +
   `GDK_BACKEND=wayland,x11` only while `/tmp/.X11-unix/X<N>` accepts a connection (stronger than

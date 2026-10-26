@@ -216,6 +216,10 @@ do {
     check(PresetProbe.parseIOSCD(["ERR malformed"]) == nil, "an ioscd without PRESETS falls back")
     check(PresetProbe.parseIOSCD(["iosc", "APPS_END\t1"]) == nil, "a failed run falls back")
     check(PresetProbe.parseIOSCD(["iosc"]) == nil, "no end marker falls back")
+    check(PresetProbe.parseIOSCD(["PRESETS_END\t0"]) == nil, "an empty list is not believed")
+    check(PresetProbe.parseIOSCD(["iosc", "PRESETS_END\t3"]) == nil, "PRESETS_END with a failed status falls back")
+    check(PresetProbe.parseIOSCD(["ERR xios-session is not installed"]) == nil, "an ERR reply falls back")
+    check(PresetProbe.requestLine == "PRESETS\n", "the request is the bare verb")
     check(PresetAvailability.unknown.isInstalled("gnome"), "unknown offers everything")
     check(!PresetAvailability(installed: ["iosc"], source: .ioscd).isInstalled("gnome"), "known list filters")
     check(PresetProbe.installHint(for: "gnome") == "Install xios-gnome"

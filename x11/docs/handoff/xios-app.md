@@ -1,6 +1,6 @@
 # xios-app — the Xios iOS app (Metal present + input + IOSurface adopt)
 
-> The 0.2.0 Sileo depiction text (description + changelog) is in commit 8da1c171 of `claude/xios-v2`; repo/meta/com.max.xios.json keeps the published 0.1.12 text until 0.2.0 is staged.
+> `repo/meta/com.max.xios.json` carries the v2 depiction (launcher, switcher, gestures) and the 0.2.0 changelog entry. 0.2.1 (the PRESETS change below) has no changelog entry yet: add it when the deb is staged.
 
 ## Ownership
 The native iOS app that presents a Wayland/Mutter compositor's IOSurface on the iPad via Metal, streams UIKit touch/keyboard back over a unix socket, and hosts the in-app session picker. This is the MOST ACTIVE bug area.
@@ -60,10 +60,11 @@ Waiting on the iPad: the device plan below. Known follow-ups for M2:
 - Skipped on purpose: M1 review finding 12 (pre-existing in v1, not a regression); see the PR description.
 - Hidden desktops are not paused yet (M2): switching away detaches the app, but the compositor
   keeps rendering.
-- Proposed for ioscd (not done, ioscd.c had another owner): a read-only `PRESETS` verb that runs
-  `xios-session presets` through `run_and_stream` (preset lines, then `APPS_END\t<status>`). The
-  app already asks for it and uses it when it answers; once it ships, the app's file mirror of
-  `xs_preset_check` (`Core/PresetAvailability.swift`) can go.
+- ioscd `PRESETS` (xios-launcher-tools 0.1.14, `com.max.xios 0.2.1`): ioscd runs `xios-session presets` as
+  root, the way it runs `SESSION`, and the app asks it first (`IOSCDClient.presets`). Reply: one preset per
+  line, then `PRESETS_END\t<exit status>`; an older ioscd answers `ERR malformed`. The app's file mirror of
+  `xs_preset_check` (`Core/PresetAvailability.swift`) stays as the fallback for an old or unreachable ioscd,
+  and for an empty or failed answer. Not yet device-tested; see the checks in `session-launcher.md`.
 
 Ship review (2026-10-25), on top of the M1 report:
 - Installed flavors only: New Desktop (and Settings > Developer) offer the presets
@@ -110,7 +111,7 @@ Device test plan (run when the iPad is handed over; home-screen tap, not `uiopen
 10. Settings: render scale chips, Debug copy/save, Home Screen Apps list + dry run, Shell wallpaper.
 11. Installed flavors: with xios-gnome NOT installed, New Desktop lists GNOME under "Not Installed"
     with "Install xios-gnome" and cannot start it; `xios-presets.txt` says `source=files` (or
-    `ioscd` once PRESETS ships) and matches `xios-session presets` run as root. Install it in
+    `ioscd` with xios-launcher-tools 0.1.14) and matches `xios-session presets` run as root. Install it in
     Sileo, background and foreground Xios: GNOME moves up into the startable list.
 12. Refusal text: with a KDE slot killed (step 8), `chmod -x` plasmashell over SSH, then tap
     Restart on its card (Restart does not consult the installed list): the toast shows

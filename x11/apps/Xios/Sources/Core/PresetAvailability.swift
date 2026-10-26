@@ -7,12 +7,13 @@ import Foundation
 ///
 /// The authority is `xios-session presets` (its `xs_preset_check`). The app runs
 /// as `mobile` and cannot run xios-session, so the answer comes from one of:
-///   1. ioscd's PRESETS verb, which runs `xios-session presets` as root. One copy
-///      of the knowledge, so this is the preferred source. (Proposed for ioscd; an
-///      ioscd without it answers `ERR malformed`.)
-///   2. Until then, `PresetProbe.installed`, a mirror of `xs_preset_check` over
-///      the same paths. Tests/ runs the real shell function against fake roots and
-///      fails when the two disagree, so the copy cannot drift silently.
+///   1. ioscd's PRESETS verb (xios-launcher-tools 0.1.14), which runs
+///      `xios-session presets` as root. One copy of the knowledge, so this is the
+///      preferred source. An older ioscd answers `ERR malformed`; no ioscd at all
+///      is a connect failure. Both fall through to 2.
+///   2. `PresetProbe.installed`, a mirror of `xs_preset_check` over the same
+///      paths. Tests/ runs the real shell function against fake roots and fails
+///      when the two disagree, so the copy cannot drift silently.
 ///   3. Neither usable: everything is offered, and xios-session's own preflight
 ///      refusal is shown word for word when a missing flavor is picked.
 struct PresetAvailability: Equatable {
@@ -45,20 +46,23 @@ enum PresetProbe {
 
     // MARK: ioscd PRESETS
 
-    /// PRESETS\n -> one preset per line, then PRESETS_END\t<status>\n (or ERR <msg>).
-    /// APPS_END is accepted too, since ioscd's run_and_stream helper ends every
-    /// streamed reply with it.
+    /// PRESETS\n -> one preset per line, then PRESETS_END\t<exit status>\n (or
+    /// ERR <msg>). APPS_END is accepted too: it is the end marker of ioscd's other
+    /// streamed replies.
     static let requestLine = "PRESETS\n"
 
     /// nil when this ioscd cannot answer (no such verb, an error, a non-zero exit,
-    /// or no end marker): the caller falls back to the file probe.
+    /// no end marker, or an empty list): the caller falls back to the file probe.
+    /// An empty list is not believed. com.max.xios depends on iosc, so a clean
+    /// "nothing can start" means ioscd's environment could not see the install,
+    /// the same reasoning as `installed(jb:)` below.
     static func parseIOSCD(_ lines: [String]) -> Set<String>? {
         var presets = Set<String>()
         for line in lines {
             if line.hasPrefix("ERR") { return nil }
             if line.hasPrefix("PRESETS_END") || line.hasPrefix("APPS_END") {
                 let status = line.split(separator: "\t").dropFirst().first.map(String.init) ?? "0"
-                return status == "0" ? presets : nil
+                return status == "0" && !presets.isEmpty ? presets : nil
             }
             // run_and_stream merges stderr: keep only lines that are preset names.
             if allPresets.contains(line) { presets.insert(line) }
