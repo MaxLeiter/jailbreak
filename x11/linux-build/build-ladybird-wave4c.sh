@@ -22,11 +22,13 @@ PROC=/work/Procursus
 SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"
 BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim   # MUST match wave4/wave4b (baked into build.ninja + the toolchain's LB_SHIM default)
-WORK=$PROC/ladybird-src
-BUILD=$PROC/ladybird-build
-HOST=$PROC/ladybird-hosttools
+LB_SUFFIX="${LB_SUFFIX--r2}"   # rebase 2026-10 dirs (see build-ladybird-wave4.sh)
+WORK=$PROC/ladybird-src$LB_SUFFIX
+BUILD=$PROC/ladybird-build$LB_SUFFIX
+HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
+export RUSTUP_TOOLCHAIN=1.98.0   # upstream rust-toolchain.toml (installed by wave4 prep)
 export PATH=$CARGO_HOME/bin:$PATH
 LB_STAGE="${LB_STAGE:-all}"
 run_stage() { case "$LB_STAGE" in all) return 0;; "$1") return 0;; *) return 1;; esac; }
@@ -52,7 +54,7 @@ EOF
          build_dist/libmimalloc build_dist/libmimalloc-dev
   COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
     CC=$PROC/build_tools/cc-nounused CXX=$PROC/build_tools/cxx-nounused"
-  if make mimalloc-package $COMMON -j"$(nproc)" 2>&1 | tail -15; then
+  if make mimalloc-package $COMMON -j"${JOBS:-8}" 2>&1 | tail -15; then
     echo "== mimalloc-package OK =="
   else
     echo "!! mimalloc-package FAILED"; fi
@@ -144,8 +146,8 @@ export LB_STAGED_PREFIX=$XIOS_PREFIX
 export PKG_CONFIG_PATH=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export PKG_CONFIG_LIBDIR=$XIOS_PREFIX/usr/lib/pkgconfig:$XIOS_PREFIX/usr/share/pkgconfig
 export LB_SHIM="$SHIM"
-export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
-export LB_HOST_ASMINTGEN="$HOST/asmintgen"
+export LB_HOST_GENERATE_INTERPRETER_LAYOUT="$HOST/generate_interpreter_layout"
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
 if run_stage engine; then
   cd "$WORK"
   rm -f "$BUILD/CMakeCache.txt"
@@ -158,7 +160,7 @@ if run_stage engine; then
   echo "reconfigure exit: ${PIPESTATUS[0]}"
   cd "$BUILD"
   TARGETS="WebContent RequestServer ImageDecoder WebWorker headless-shot"
-  ninja -k 0 -j"$(nproc)" $TARGETS 2>&1 | tee /out/wave4c-build.log | tail -25
+  ninja -k 0 -j"${JOBS:-8}" $TARGETS 2>&1 | tee /out/wave4c-build.log | tail -25
   p1=${PIPESTATUS[0]}
   if [ "$p1" -ne 0 ]; then
     echo "== pass1 exit $p1; -j2 retry for OOM-killed giants =="

@@ -18,8 +18,9 @@ Both run engine commit `92b0257` (upstream main, 2026-07-02). The leaf
 dependencies (ICU 78.3, mimalloc, and the rest) are published as normal dylib
 debs.
 
-Not on main: a rebase onto a newer upstream engine lives on the unmerged
-branch `claude/ladybird-rebase` (ladybird-app `0.1.26+ios1`). Upstream deleted
+The rebase onto upstream b9c913c0 (`claude/ladybird-rebase`, device-tested as
+ladybird-app `0.1.26+ios1`) is carried by `claude/land-stranded-20261025`, which
+rebuilt it as `0.1.26+ios2` against the bumped core libs. Upstream deleted
 `UI/Gtk` on 2026-07-09, so the Wayland flavor stays on the old engine until
 there is a Qt 6.10 frontend lane.
 

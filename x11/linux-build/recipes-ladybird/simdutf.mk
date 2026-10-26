@@ -5,7 +5,7 @@ endif
 # libsimdutf's soversion tracks its own ABI counter, not the release version.
 
 SUBPROJECTS      += simdutf
-SIMDUTF_VERSION  := 7.4.0
+SIMDUTF_VERSION  := 9.1.0
 DEB_SIMDUTF_V    ?= $(SIMDUTF_VERSION)+ios1
 
 simdutf-setup: setup

@@ -1,0 +1,9 @@
+Package: libavformat-ladybird61
+Version: @DEB_FFMPEG_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Depends: libavcodec-ladybird61 (= @DEB_FFMPEG_V@), libavutil-ladybird59 (= @DEB_FFMPEG_V@), libswresample-ladybird5 (= @DEB_FFMPEG_V@)
+Description: Ladybird-private FFmpeg (-ladybird suffix, symbol-versioned) container/format library - runtime
+ FFmpeg 7.1.1 (Ladybird minimal build: no muxers/demuxers at M0). Self-contained.

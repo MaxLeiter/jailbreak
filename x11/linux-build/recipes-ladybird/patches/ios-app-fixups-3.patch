@@ -1,0 +1,13 @@
+diff --git a/Libraries/LibWebView/CMakeLists.txt b/Libraries/LibWebView/CMakeLists.txt
+index 0b17c59d56..381ceef69e 100644
+--- a/Libraries/LibWebView/CMakeLists.txt
++++ b/Libraries/LibWebView/CMakeLists.txt
+@@ -135,7 +135,7 @@ if (ENABLE_CRANELIFT_JIT)
+     target_compile_definitions(LibWebView PUBLIC HAVE_WASM_COMPILER_SERVICE=1)
+ endif()
+ 
+-if (APPLE)
++if (APPLE AND NOT IOS)
+     target_link_libraries(LibWebView PRIVATE "-framework Carbon")
+ endif()
+ 

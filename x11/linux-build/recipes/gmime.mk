@@ -7,11 +7,12 @@ endif
 
 SUBPROJECTS   += gmime
 GMIME_MAJOR_V := 3.2
-GMIME_VERSION := $(GMIME_MAJOR_V).7
+GMIME_VERSION := $(GMIME_MAJOR_V).15
 DEB_GMIME_V   ?= $(GMIME_VERSION)+ios1
 
+# download.gnome.org stops at 3.2.7; 3.2.8+ are GitHub release assets only.
 gmime-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.gnome.org/sources/gmime/$(GMIME_MAJOR_V)/gmime-$(GMIME_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/jstedfast/gmime/releases/download/$(GMIME_VERSION)/gmime-$(GMIME_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gmime-$(GMIME_VERSION).tar.xz,gmime-$(GMIME_VERSION),gmime)
 	printf '#define ICONV_ISO_INT_FORMAT "iso-%%u-%%u"\n#define ICONV_ISO_STR_FORMAT "iso-%%u-%%s"\n#define ICONV_SHIFT_JIS "shift-jis"\n#define ICONV_10646 "UCS-4BE"\n' \
 		> $(BUILD_WORK)/gmime/iconv-detect.h

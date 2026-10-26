@@ -1,69 +1,64 @@
-Subject: [PATCH] ios-m0: allow host AsmInterpreter generators
-
-The iOS cross build cannot execute target-built `gen_asm_offsets` or
-`asmintgen` on the Linux build host. Let the build driver provide native host
-tools via `LB_HOST_GEN_ASM_OFFSETS` and `LB_HOST_ASMINTGEN`, while preserving
-the upstream target-built path when those variables are absent.
+diff --git a/Libraries/LibJS/CMakeLists.txt b/Libraries/LibJS/CMakeLists.txt
+index 0e11e6d867..6efe64847f 100644
 --- a/Libraries/LibJS/CMakeLists.txt
 +++ b/Libraries/LibJS/CMakeLists.txt
-@@ -359,6 +359,14 @@
+@@ -364,12 +364,22 @@ if (DEFINED FLAP_ARCH)
+     # NB: GenerateLayout.cpp does not depend on Op.h since opcode field
+     # offsets are computed from interpreter.flap by flapc directly.
+ 
 -    add_custom_command(
--        OUTPUT "${ASM_OFFSETS_FILE}"
--        COMMAND "$<TARGET_FILE:gen_asm_offsets>" > "${ASM_OFFSETS_FILE}"
--        DEPENDS gen_asm_offsets
--        COMMENT "Generating asm struct offsets"
+-        OUTPUT "${INTERPRETER_LAYOUT_FILE}"
+-        COMMAND "$<TARGET_FILE:generate_interpreter_layout>" > "${INTERPRETER_LAYOUT_FILE}"
+-        DEPENDS generate_interpreter_layout
+-        COMMENT "Generating JS interpreter layout"
 -    )
-+    if (DEFINED ENV{LB_HOST_GEN_ASM_OFFSETS})
++    if (DEFINED ENV{LB_HOST_GENERATE_INTERPRETER_LAYOUT})
++        # iOS cross build: the target-built tool cannot run on the build host, so the driver provides a
++        # native arm64 build of the same source (host and target are both LP64 arm64: identical offsets).
 +        add_custom_command(
-+            OUTPUT "${ASM_OFFSETS_FILE}"
-+            COMMAND "$ENV{LB_HOST_GEN_ASM_OFFSETS}" > "${ASM_OFFSETS_FILE}"
-+            COMMENT "Generating asm struct offsets (host tool)"
++            OUTPUT "${INTERPRETER_LAYOUT_FILE}"
++            COMMAND "$ENV{LB_HOST_GENERATE_INTERPRETER_LAYOUT}" > "${INTERPRETER_LAYOUT_FILE}"
++            COMMENT "Generating JS interpreter layout (host tool)"
 +        )
 +    else()
 +        add_custom_command(
-+            OUTPUT "${ASM_OFFSETS_FILE}"
-+            COMMAND "$<TARGET_FILE:gen_asm_offsets>" > "${ASM_OFFSETS_FILE}"
-+            DEPENDS gen_asm_offsets
-+            COMMENT "Generating asm struct offsets"
++            OUTPUT "${INTERPRETER_LAYOUT_FILE}"
++            COMMAND "$<TARGET_FILE:generate_interpreter_layout>" > "${INTERPRETER_LAYOUT_FILE}"
++            DEPENDS generate_interpreter_layout
++            COMMENT "Generating JS interpreter layout"
 +        )
 +    endif()
-@@ -395,12 +403,27 @@
--    add_custom_command(
--        OUTPUT "${ASMINT_GENERATED_S}"
--        COMMAND "${ASMINTGEN_BIN}" --arch ${ASMINT_ARCH}
--            --object-format ${ASMINT_OBJ_FORMAT}
--            --constants "${ASM_OFFSETS_FILE}"
--            --bytecode-def "${BYTECODE_DEF}"
--            --input "${ASMINT_DSL}"
--            --output "${ASMINT_GENERATED_S}"
--            ${ASMINT_EXTRA_FLAGS}
--        DEPENDS "${ASMINTGEN_BIN}" "${ASMINT_DSL}" "${ASM_OFFSETS_FILE}" "${BYTECODE_DEF}"
--        COMMENT "Generating asmint_${ASMINT_ARCH}.S from DSL"
--    )
-+    if (DEFINED ENV{LB_HOST_ASMINTGEN})
-+        # A10 target: NO --has-jscvt (ARMv8.1, lacks FEAT_JSCVT); use software ToInt32 fallback.
-+        add_custom_command(
-+            OUTPUT "${ASMINT_GENERATED_S}"
-+            COMMAND "$ENV{LB_HOST_ASMINTGEN}" --arch ${ASMINT_ARCH}
-+                --object-format ${ASMINT_OBJ_FORMAT}
-+                --constants "${ASM_OFFSETS_FILE}"
-+                --bytecode-def "${BYTECODE_DEF}"
-+                --input "${ASMINT_DSL}"
-+                --output "${ASMINT_GENERATED_S}"
-+            DEPENDS "${ASMINT_DSL}" "${ASM_OFFSETS_FILE}" "${BYTECODE_DEF}"
-+            COMMENT "Generating asmint_${ASMINT_ARCH}.S from DSL (host tool, no jscvt)"
-+        )
-+    else()
-+        add_custom_command(
-+            OUTPUT "${ASMINT_GENERATED_S}"
-+            COMMAND "${ASMINTGEN_BIN}" --arch ${ASMINT_ARCH}
-+                --object-format ${ASMINT_OBJ_FORMAT}
-+                --constants "${ASM_OFFSETS_FILE}"
-+                --bytecode-def "${BYTECODE_DEF}"
-+                --input "${ASMINT_DSL}"
-+                --output "${ASMINT_GENERATED_S}"
-+                ${ASMINT_EXTRA_FLAGS}
-+            DEPENDS "${ASMINTGEN_BIN}" "${ASMINT_DSL}" "${ASM_OFFSETS_FILE}" "${BYTECODE_DEF}"
-+            COMMENT "Generating asmint_${ASMINT_ARCH}.S from DSL"
-+        )
+ 
+     build_rust_binary(
+         MANIFEST_PATH Flap/Cargo.toml
+@@ -389,7 +399,8 @@ if (DEFINED FLAP_ARCH)
+     # Interpreter assertions guard memory safety invariants, so keep them in every build type.
+     set(FLAP_EXTRA_FLAGS "--enable-assertions")
+     # All Apple Silicon chips are ARMv8.5+ which includes FEAT_JSCVT.
+-    if ("${FLAP_ARCH}" STREQUAL "aarch64" AND APPLE)
++    # iOS: the A10 is ARMv8.1 without FEAT_JSCVT, so ToInt32 must stay software (no --has-jscvt).
++    if ("${FLAP_ARCH}" STREQUAL "aarch64" AND APPLE AND NOT IOS)
+         list(APPEND FLAP_EXTRA_FLAGS "--has-jscvt")
+     endif()
+ 
+diff --git a/Meta/CMake/rust_crate.cmake b/Meta/CMake/rust_crate.cmake
+index c6efdc78d7..4c15a39df0 100644
+--- a/Meta/CMake/rust_crate.cmake
++++ b/Meta/CMake/rust_crate.cmake
+@@ -128,6 +128,16 @@ function(build_rust_binary)
+         set(ARG_OUTPUT_NAME "${ARG_BINARY_NAME}")
+     endif()
+ 
++    # iOS cross build: build-time generators must run on the build host, so the driver can supply natively
++    # built copies in LB_HOST_RUST_BIN_DIR. Use those instead of cross-compiling a binary we cannot execute.
++    if (DEFINED ENV{LB_HOST_RUST_BIN_DIR} AND EXISTS "$ENV{LB_HOST_RUST_BIN_DIR}/${ARG_BINARY_NAME}")
++        add_custom_target(${ARG_BINARY_NAME}-build)
++        if (ARG_OUTPUT_PATH_VAR)
++            set(${ARG_OUTPUT_PATH_VAR} "$ENV{LB_HOST_RUST_BIN_DIR}/${ARG_BINARY_NAME}" PARENT_SCOPE)
++        endif()
++        return()
 +    endif()
++
+     _rust_crate_common_setup(
+         MANIFEST_PATH "${ARG_MANIFEST_PATH}"
+         CRATE_NAME ${ARG_CRATE_NAME}

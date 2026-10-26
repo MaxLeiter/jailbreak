@@ -1,27 +1,40 @@
-Subject: [PATCH] ios-app: enable ANGLE WebGL path on iOS
-
-Enable the iOS app to use the real ANGLE/Metal WebGL path, including
-CPU-backed WebGL readback surfaces for the non-Skia app compositor path and
-device-side tracing for EGL/GLES bring-up failures.
-
 diff --git a/Services/Compositor/CanvasHost.cpp b/Services/Compositor/CanvasHost.cpp
-index c919b2f972..dc102e11d3 100644
+index 00c83c7a78..a612987720 100644
 --- a/Services/Compositor/CanvasHost.cpp
 +++ b/Services/Compositor/CanvasHost.cpp
-@@ -12,8 +12,31 @@
+@@ -15,8 +15,50 @@
  #include <LibGfx/SkiaBackendContext.h>
- #include <LibWeb/Painting/CanvasSurfaceRegistry.h>
-
+ #include <core/SkTextBlob.h>
+ 
 +#if defined(AK_OS_IOS)
 +#    include <stdarg.h>
 +#    include <stdio.h>
++#    include <stdlib.h>
 +#endif
 +
  namespace Compositor {
-
+ 
 +#if defined(AK_OS_IOS)
++static bool lb_webgl_trace_enabled()
++{
++    static bool enabled = [] {
++        auto const* env = getenv("LADYBIRD_WEBGL_TRACE");
++        if (env && env[0] != '\0' && env[0] != '0')
++            return true;
++        auto* flag = fopen("/var/jb/tmp/ladybird-webgl-trace", "r");
++        if (!flag)
++            return false;
++        fclose(flag);
++        return true;
++    }();
++    return enabled;
++}
++
 +static void lb_webgl_trace(char const* format, ...)
 +{
++    if (!lb_webgl_trace_enabled())
++        return;
++
 +    auto* file = fopen("/var/jb/tmp/ladybird-webgl.log", "a");
 +    if (!file)
 +        return;
@@ -37,15 +50,15 @@ index c919b2f972..dc102e11d3 100644
 +static void lb_webgl_trace(char const*, ...) { }
 +#endif
 +
- CanvasHost::CanvasHost(RefPtr<Gfx::SkiaBackendContext> skia_backend_context, Web::Painting::CanvasSurfaceRegistry& canvas_surface_registry)
+ CanvasHost::CanvasHost(RefPtr<Gfx::SkiaBackendContext> skia_backend_context, Compositing::CanvasSurfaceRegistry& canvas_surface_registry)
      : m_skia_backend_context(move(skia_backend_context))
      , m_canvas_surface_registry(canvas_surface_registry)
-@@ -93,13 +116,24 @@ Optional<Web::Painting::CanvasId> CanvasHost::create_2d_context(Gfx::IntSize siz
-
- CanvasHost::CreateWebGLContextResult CanvasHost::create_webgl_context(Web::WebGL::WebGLVersion version, Gfx::IntSize size, bool depth, bool stencil, bool antialias)
+@@ -108,13 +150,24 @@ Optional<Compositing::CanvasId> CanvasHost::create_2d_context(Gfx::IntSize size,
+ 
+ CanvasHost::CreateWebGLContextResult CanvasHost::create_webgl_context(Compositing::WebGL::WebGLVersion version, Gfx::IntSize size, bool depth, bool stencil, bool antialias)
  {
 +    lb_webgl_trace("CanvasHost::create_webgl_context version=%d size=%dx%d depth=%d stencil=%d antialias=%d skia=%d",
-+        version == Web::WebGL::WebGLVersion::WebGL1 ? 1 : 2,
++        version == Compositing::WebGL::WebGLVersion::WebGL1 ? 1 : 2,
 +        size.width(), size.height(),
 +        depth ? 1 : 0,
 +        stencil ? 1 : 0,
@@ -58,41 +71,43 @@ index c919b2f972..dc102e11d3 100644
 +        lb_webgl_trace("CanvasHost::create_webgl_context failed");
          return {};
 +    }
-
+ 
      auto canvas_id = m_canvas_surface_registry.allocate_canvas_id();
      auto supported_extensions = context->gl_context().get_supported_opengl_extensions();
      m_contexts.set(canvas_id, context.release_nonnull());
 +    lb_webgl_trace("CanvasHost::create_webgl_context success extensions=%zu", supported_extensions.size());
      return { .success = true, .canvas_id = canvas_id, .supported_extensions = move(supported_extensions) };
  }
-
+ 
 diff --git a/Services/Compositor/OpenGLContext.cpp b/Services/Compositor/OpenGLContext.cpp
-index 6e39039c95..d9f9f16c17 100644
+index 325022f97d..7335d4c9a8 100644
 --- a/Services/Compositor/OpenGLContext.cpp
 +++ b/Services/Compositor/OpenGLContext.cpp
-@@ -32,9 +32,14 @@ extern "C" {
- #endif
- #include <Compositor/OpenGLContext.h>
-
+@@ -42,6 +42,42 @@ namespace Compositor {
+ 
+ using namespace Compositing::WebGL;
+ 
 +#if defined(AK_OS_IOS)
-+#    include <stdarg.h>
-+#    include <stdio.h>
-+#endif
++static bool lb_webgl_trace_enabled()
++{
++    static bool enabled = [] {
++        auto const* env = getenv("LADYBIRD_WEBGL_TRACE");
++        if (env && env[0] != '\0' && env[0] != '0')
++            return true;
++        auto* flag = fopen("/var/jb/tmp/ladybird-webgl-trace", "r");
++        if (!flag)
++            return false;
++        fclose(flag);
++        return true;
++    }();
++    return enabled;
++}
 +
- // Enable WebGL if we're on macOS and can use Metal, if Linux can use ANGLE's
- // OpenGL backend for CPU-painting tests, or if we can use shareable Vulkan images.
--#if defined(AK_OS_MACOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID)) || defined(USE_VULKAN_DMABUF_IMAGES)
-+#if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID)) || defined(USE_VULKAN_DMABUF_IMAGES)
- #    define ENABLE_WEBGL 1
- #endif
-
-@@ -42,6 +47,24 @@ namespace Compositor {
-
- using namespace Web::WebGL;
-
-+#if defined(AK_OS_IOS)
 +static void lb_webgl_trace(char const* format, ...)
 +{
++    if (!lb_webgl_trace_enabled())
++        return;
++
 +    auto* file = fopen("/var/jb/tmp/ladybird-webgl.log", "a");
 +    if (!file)
 +        return;
@@ -109,9 +124,9 @@ index 6e39039c95..d9f9f16c17 100644
 +#endif
 +
  struct OpenGLContext::Impl {
-     EGLDisplay display { EGL_NO_DISPLAY };
-     EGLConfig config { EGL_NO_CONFIG_KHR };
-@@ -83,7 +106,12 @@ OpenGLContext::~OpenGLContext()
+     AK_ALLOC_WITH_KMALLOC;
+ 
+@@ -85,7 +121,12 @@ OpenGLContext::~OpenGLContext()
  void OpenGLContext::free_surface_resources()
  {
  #ifdef ENABLE_WEBGL
@@ -121,12 +136,12 @@ index 6e39039c95..d9f9f16c17 100644
 +#    else
      eglMakeCurrent(m_impl->display, EGL_NO_SURFACE, EGL_NO_SURFACE, m_impl->context);
 +#    endif
-
+ 
      if (m_impl->framebuffer) {
          glDeleteFramebuffers(1, &m_impl->framebuffer);
-@@ -118,52 +146,91 @@ void OpenGLContext::free_surface_resources()
+@@ -120,34 +161,73 @@ void OpenGLContext::free_surface_resources()
  }
-
+ 
  #ifdef ENABLE_WEBGL
 -static EGLConfig get_egl_config(EGLDisplay display)
 +static EGLConfig get_egl_config(EGLDisplay display, OpenGLContext::DrawingBufferOptions drawing_buffer_options)
@@ -175,18 +190,14 @@ index 6e39039c95..d9f9f16c17 100644
 +        lb_webgl_trace("eglChooseConfig ok depth=%d stencil=%d configs=%d", depth_size, stencil_size, number_of_configs);
 +        return number_of_configs > 0 ? configs[0] : EGL_NO_CONFIG_KHR;
      };
-
+ 
 -    EGLint number_of_configs;
 -    eglChooseConfig(display, config_attribs, NULL, 0, &number_of_configs);
 +    if (drawing_buffer_options.depth && drawing_buffer_options.stencil) {
 +        if (auto config = try_config(24, 8); config != EGL_NO_CONFIG_KHR)
 +            return config;
 +    }
-
--    Vector<EGLConfig> configs;
--    configs.resize(number_of_configs);
--    eglChooseConfig(display, config_attribs, configs.data(), number_of_configs, &number_of_configs);
--    return number_of_configs > 0 ? configs[0] : EGL_NO_CONFIG_KHR;
++
 +    if (drawing_buffer_options.depth) {
 +        if (auto config = try_config(24, 0); config != EGL_NO_CONFIG_KHR)
 +            return config;
@@ -196,11 +207,15 @@ index 6e39039c95..d9f9f16c17 100644
 +        if (auto config = try_config(0, 8); config != EGL_NO_CONFIG_KHR)
 +            return config;
 +    }
-+
+ 
+-    Vector<EGLConfig> configs;
+-    configs.resize(number_of_configs);
+-    eglChooseConfig(display, config_attribs, configs.data(), number_of_configs, &number_of_configs);
+-    return number_of_configs > 0 ? configs[0] : EGL_NO_CONFIG_KHR;
 +    return try_config(0, 0);
  }
  #endif
-
+ 
  OwnPtr<OpenGLContext> OpenGLContext::create(RefPtr<Gfx::SkiaBackendContext> skia_backend_context, WebGLVersion webgl_version, [[maybe_unused]] DrawingBufferOptions drawing_buffer_options)
  {
  #ifdef ENABLE_WEBGL
@@ -214,22 +229,24 @@ index 6e39039c95..d9f9f16c17 100644
 +
 +#    if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
      bool use_cpu_painting_surface = !skia_backend_context;
- #    else
+ #    elif defined(AK_OS_WINDOWS)
+     // FIXME: Share the drawing buffer with Skia's Direct3D 12 device (via an NT shared handle opened on ANGLE's
+@@ -157,19 +237,19 @@ OwnPtr<OpenGLContext> OpenGLContext::create(RefPtr<Gfx::SkiaBackendContext> skia
      bool use_cpu_painting_surface = false;
  #    endif
-
+ 
 -#    if defined(AK_OS_MACOS) || defined(USE_VULKAN_DMABUF_IMAGES)
 +#    if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || defined(USE_VULKAN_DMABUF_IMAGES)
      if (!use_cpu_painting_surface && !skia_backend_context)
          return {};
  #    endif
-
+ 
 -#    if !defined(AK_OS_MACOS) && !defined(USE_VULKAN_DMABUF_IMAGES)
 +#    if !defined(AK_OS_MACOS) && !defined(AK_OS_IOS) && !defined(USE_VULKAN_DMABUF_IMAGES)
      if (!use_cpu_painting_surface)
          return {};
  #    endif
-
+ 
      EGLAttrib display_attributes[] = {
          EGL_PLATFORM_ANGLE_TYPE_ANGLE,
 -#    if defined(AK_OS_MACOS)
@@ -237,14 +254,14 @@ index 6e39039c95..d9f9f16c17 100644
          EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE,
  #    elif defined(USE_VULKAN_DMABUF_IMAGES) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
          EGL_PLATFORM_ANGLE_TYPE_OPENGL_ANGLE,
-@@ -176,23 +243,35 @@ OwnPtr<OpenGLContext> OpenGLContext::create(RefPtr<Gfx::SkiaBackendContext> skia
+@@ -184,23 +264,35 @@ OwnPtr<OpenGLContext> OpenGLContext::create(RefPtr<Gfx::SkiaBackendContext> skia
      auto display = eglGetPlatformDisplay(EGL_PLATFORM_ANGLE_ANGLE, reinterpret_cast<void*>(EGL_DEFAULT_DISPLAY), display_attributes);
      if (display == EGL_NO_DISPLAY) {
          dbgln("Failed to get EGL display");
 +        lb_webgl_trace("eglGetPlatformDisplay failed error=0x%x", eglGetError());
          return {};
      }
-
+ 
      EGLint major, minor;
      if (!eglInitialize(display, &major, &minor)) {
          dbgln("Failed to initialize EGL");
@@ -254,7 +271,7 @@ index 6e39039c95..d9f9f16c17 100644
 +    auto const* egl_vendor = eglQueryString(display, EGL_VENDOR);
 +    auto const* egl_version = eglQueryString(display, EGL_VERSION);
 +    lb_webgl_trace("eglInitialize ok version=%d.%d vendor=%s egl=%s", major, minor, egl_vendor ? egl_vendor : "(null)", egl_version ? egl_version : "(null)");
-
+ 
 -    auto* config = get_egl_config(display);
 +    auto* config = get_egl_config(display, drawing_buffer_options);
      if (config == EGL_NO_CONFIG_KHR) {
@@ -268,14 +285,14 @@ index 6e39039c95..d9f9f16c17 100644
          return {};
      }
 +    lb_webgl_trace("eglBindAPI GLES ok error=0x%x", eglGetError());
-
+ 
      EGLint texture_target;
 -#    if defined(AK_OS_MACOS)
 +#    if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
      if (use_cpu_painting_surface) {
          texture_target = EGL_TEXTURE_2D;
      } else {
-@@ -223,8 +302,10 @@ OwnPtr<OpenGLContext> OpenGLContext::create(RefPtr<Gfx::SkiaBackendContext> skia
+@@ -231,8 +323,10 @@ OwnPtr<OpenGLContext> OpenGLContext::create(RefPtr<Gfx::SkiaBackendContext> skia
      auto context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attributes);
      if (context == EGL_NO_CONTEXT) {
          dbgln("Failed to create EGL context");
@@ -283,22 +300,13 @@ index 6e39039c95..d9f9f16c17 100644
          return {};
      }
 +    lb_webgl_trace("eglCreateContext ok cpu_surface=%d texture_target=0x%x", use_cpu_painting_surface ? 1 : 0, texture_target);
-
+ 
  #    ifdef USE_VULKAN_DMABUF_IMAGES
      PFNEGLQUERYDMABUFFORMATSEXTPROC pfn_egl_query_dma_buf_formats_ext = nullptr;
-@@ -426,7 +507,7 @@ void OpenGLContext::allocate_vkimage_painting_surface()
- }
- #endif
-
--#if defined(AK_OS_MACOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
-+#if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
- void OpenGLContext::allocate_cpu_painting_surface()
- {
-     m_painting_surface = Gfx::PaintingSurface::create_with_size(
-@@ -434,8 +515,26 @@ void OpenGLContext::allocate_cpu_painting_surface()
+@@ -455,8 +549,26 @@ void OpenGLContext::allocate_cpu_painting_surface()
          Gfx::BitmapFormat::BGRA8888,
          Gfx::AlphaType::Premultiplied);
-
+ 
 +#    if defined(AK_OS_IOS)
 +    EGLint const surface_attributes[] = {
 +        EGL_WIDTH, m_size.width(),
@@ -320,31 +328,31 @@ index 6e39039c95..d9f9f16c17 100644
 +    auto const* gl_renderer = reinterpret_cast<char const*>(glGetString(GL_RENDERER));
 +    auto const* gl_version = reinterpret_cast<char const*>(glGetString(GL_VERSION));
 +    lb_webgl_trace("gl strings vendor=%s renderer=%s version=%s error=0x%x", gl_vendor ? gl_vendor : "(null)", gl_renderer ? gl_renderer : "(null)", gl_version ? gl_version : "(null)", glGetError());
-
+ 
      glGenTextures(1, &m_impl->color_buffer);
      glBindTexture(GL_TEXTURE_2D, m_impl->color_buffer);
-@@ -443,6 +542,7 @@ void OpenGLContext::allocate_cpu_painting_surface()
+@@ -464,6 +576,7 @@ void OpenGLContext::allocate_cpu_painting_surface()
      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 +    lb_webgl_trace("color texture setup id=%u error=0x%x", m_impl->color_buffer, glGetError());
-
+ 
      GLint original_pixel_unpack_buffer = 0;
      if (m_webgl_version == WebGLVersion::WebGL2) {
-@@ -450,10 +550,12 @@ void OpenGLContext::allocate_cpu_painting_surface()
+@@ -471,10 +584,12 @@ void OpenGLContext::allocate_cpu_painting_surface()
          glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
      }
      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, m_size.width(), m_size.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
 +    lb_webgl_trace("color texture image id=%u size=%dx%d error=0x%x", m_impl->color_buffer, m_size.width(), m_size.height(), glGetError());
      if (m_webgl_version == WebGLVersion::WebGL2)
          glBindBuffer(GL_PIXEL_UNPACK_BUFFER, original_pixel_unpack_buffer);
-
+ 
      glViewport(0, 0, m_size.width(), m_size.height());
 +    lb_webgl_trace("viewport set size=%dx%d error=0x%x", m_size.width(), m_size.height(), glGetError());
  }
-
+ 
  void OpenGLContext::copy_default_framebuffer_to_cpu_painting_surface()
-@@ -536,6 +638,8 @@ void OpenGLContext::allocate_painting_surface_if_needed()
+@@ -557,6 +672,8 @@ void OpenGLContext::allocate_painting_surface_if_needed()
      } else {
          allocate_iosurface_painting_surface();
      }
@@ -353,22 +361,22 @@ index 6e39039c95..d9f9f16c17 100644
  #    elif defined(USE_VULKAN_DMABUF_IMAGES)
  #        if defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID)
      if (m_impl->uses_cpu_painting_surface) {
-@@ -552,27 +656,54 @@ void OpenGLContext::allocate_painting_surface_if_needed()
+@@ -578,27 +695,60 @@ void OpenGLContext::allocate_painting_surface_if_needed()
      VERIFY(eglGetCurrentContext() == m_impl->context);
-
+ 
      glGenFramebuffers(1, &m_impl->framebuffer);
 +    lb_webgl_trace("framebuffer generated id=%u error=0x%x current=%p", m_impl->framebuffer, glGetError(), eglGetCurrentContext());
      glBindFramebuffer(GL_FRAMEBUFFER, m_impl->framebuffer);
 +    lb_webgl_trace("framebuffer bound id=%u error=0x%x", m_impl->framebuffer, glGetError());
      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, m_impl->texture_target == EGL_TEXTURE_RECTANGLE_ANGLE ? GL_TEXTURE_RECTANGLE_ANGLE : GL_TEXTURE_2D, m_impl->color_buffer, 0);
 +    lb_webgl_trace("framebuffer color attach fb=%u color=%u target=0x%x error=0x%x", m_impl->framebuffer, m_impl->color_buffer, m_impl->texture_target, glGetError());
-
+ 
      if (m_drawing_buffer_options.depth || m_drawing_buffer_options.stencil) {
          glGenRenderbuffers(1, &m_impl->depth_buffer);
 +        lb_webgl_trace("renderbuffer generated id=%u error=0x%x", m_impl->depth_buffer, glGetError());
          glBindRenderbuffer(GL_RENDERBUFFER, m_impl->depth_buffer);
 +        lb_webgl_trace("renderbuffer bound id=%u error=0x%x", m_impl->depth_buffer, glGetError());
-
+ 
          if (m_drawing_buffer_options.depth && m_drawing_buffer_options.stencil) {
              glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, m_size.width(), m_size.height());
 +            lb_webgl_trace("depth-stencil storage id=%u error=0x%x", m_impl->depth_buffer, glGetError());
@@ -391,7 +399,7 @@ index 6e39039c95..d9f9f16c17 100644
 +            lb_webgl_trace("stencil attach id=%u error=0x%x", m_impl->depth_buffer, glGetError());
          }
      }
-
+ 
 -    VERIFY(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE);
 +    GLint framebuffer_binding = 0;
 +    GLint renderbuffer_binding = 0;
@@ -403,13 +411,19 @@ index 6e39039c95..d9f9f16c17 100644
 +        m_impl->framebuffer, framebuffer_binding, m_impl->color_buffer, texture_binding, m_impl->depth_buffer, renderbuffer_binding, eglGetCurrentContext(), m_impl->surface, glGetError());
 +
 +    auto framebuffer_status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-+    if (framebuffer_status != GL_FRAMEBUFFER_COMPLETE)
++    if (framebuffer_status != GL_FRAMEBUFFER_COMPLETE) {
 +        lb_webgl_trace("framebuffer incomplete status=0x%x gl_error=0x%x depth=%d stencil=%d", framebuffer_status, glGetError(), m_drawing_buffer_options.depth ? 1 : 0, m_drawing_buffer_options.stencil ? 1 : 0);
-+    VERIFY(framebuffer_status == GL_FRAMEBUFFER_COMPLETE);
++#if defined(AK_OS_IOS)
++        lb_webgl_trace("framebuffer incomplete; leaving WebGL context without a drawing buffer");
++        return;
++#else
++        VERIFY(framebuffer_status == GL_FRAMEBUFFER_COMPLETE);
++#endif
++    }
  #endif
  }
-
-@@ -588,7 +719,11 @@ void OpenGLContext::make_current()
+ 
+@@ -614,7 +764,11 @@ void OpenGLContext::make_current()
  {
  #ifdef ENABLE_WEBGL
      allocate_painting_surface_if_needed();
@@ -420,8 +434,8 @@ index 6e39039c95..d9f9f16c17 100644
 +#    endif
  #endif
  }
-
-@@ -600,8 +735,8 @@ void OpenGLContext::present(bool preserve_drawing_buffer)
+ 
+@@ -626,8 +780,8 @@ void OpenGLContext::present()
      // "Before the drawing buffer is presented for compositing the implementation shall ensure that all rendering operations have been flushed to the drawing buffer."
      // With Metal, glFlush flushes the command buffer, but without waiting for it to be scheduled or completed.
      // eglWaitUntilWorkScheduledANGLE flushes the command buffer, and waits until it has been scheduled, hence the name.
@@ -432,25 +446,21 @@ index 6e39039c95..d9f9f16c17 100644
      if (m_impl->uses_cpu_painting_surface)
          glFinish();
      else
-@@ -613,7 +748,7 @@ void OpenGLContext::present(bool preserve_drawing_buffer)
-     glFinish();
- #    endif
-
--#    if defined(AK_OS_MACOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
-+#    if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
-     if (m_impl->uses_cpu_painting_surface)
-         copy_default_framebuffer_to_cpu_painting_surface();
- #    endif
 diff --git a/Services/Compositor/OpenGLContext.h b/Services/Compositor/OpenGLContext.h
-index 64fcbefbcd..4f0fe6aaeb 100644
+index 54bc3ab8a9..011948f941 100644
 --- a/Services/Compositor/OpenGLContext.h
 +++ b/Services/Compositor/OpenGLContext.h
-@@ -70,7 +70,7 @@ private:
- #if defined(USE_VULKAN_DMABUF_IMAGES)
-     void allocate_vkimage_painting_surface();
+@@ -15,11 +15,11 @@
+ #include <LibGfx/Forward.h>
+ #include <LibGfx/Size.h>
+ 
+-#ifdef AK_OS_MACOS
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
+ #    include <LibGfx/SharedImageBuffer.h>
  #endif
--#if defined(AK_OS_MACOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
-+#if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID))
-     void allocate_cpu_painting_surface();
-     void copy_default_framebuffer_to_cpu_painting_surface();
+ 
+-#if defined(AK_OS_MACOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID)) || defined(AK_OS_WINDOWS)
++#if defined(AK_OS_MACOS) || defined(AK_OS_IOS) || (defined(AK_OS_LINUX) && !defined(AK_OS_ANDROID)) || defined(AK_OS_WINDOWS)
+ #    define ENABLE_WEBGL_CPU_PAINTING_SURFACE
  #endif
+ 

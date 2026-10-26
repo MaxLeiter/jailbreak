@@ -1,1 +1,1 @@
-0001-ios-drop-samples-and-librt.patch
+# 2.6.6 needs no local patches: --disable-samples replaces the old drop-samples/-lrt patch.

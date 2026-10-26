@@ -1,52 +1,67 @@
-Subject: [PATCH] ios-m0: drop AVIF and JPEG-XL decoders
-
-The M0 iOS build renders a page to PNG and does not stage libavif or libjxl.
-Gate those dependency checks and compile only the decoders used by the M0
-package. ImageDecoder.cpp keeps the AVIF/JPEG-XL dispatch table entries behind
-the same compile definition for non-M0 builds.
+diff --git a/Libraries/LibGfx/ImageFormats/ImageDecoder.cpp b/Libraries/LibGfx/ImageFormats/ImageDecoder.cpp
+index fbae5ff9a5..c4454b4bc5 100644
 --- a/Libraries/LibGfx/ImageFormats/ImageDecoder.cpp
 +++ b/Libraries/LibGfx/ImageFormats/ImageDecoder.cpp
-@@ -6,0 +7 @@
+@@ -4,7 +4,9 @@
+  * SPDX-License-Identifier: BSD-2-Clause
+  */
+ 
+-#include <LibGfx/ImageFormats/AVIFLoader.h>
 +#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
-@@ -7,0 +9 @@
++#    include <LibGfx/ImageFormats/AVIFLoader.h>
 +#endif
-@@ -12,0 +15 @@
+ #include <LibGfx/ImageFormats/BMPLoader.h>
+ #include <LibGfx/ImageFormats/GIFLoader.h>
+ #include <LibGfx/ImageFormats/ICOLoader.h>
+@@ -31,7 +33,9 @@ static ErrorOr<OwnPtr<ImageDecoderPlugin>> probe_and_sniff_for_appropriate_plugi
+         { JPEGXLImageDecoderPlugin::sniff, JPEGXLImageDecoderPlugin::create },
+         { PNGImageDecoderPlugin::sniff, PNGImageDecoderPlugin::create },
+         { WebPImageDecoderPlugin::sniff, WebPImageDecoderPlugin::create },
 +#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
-@@ -13,0 +17 @@
+         { AVIFImageDecoderPlugin::sniff, AVIFImageDecoderPlugin::create }
 +#endif
-@@ -30,0 +35 @@
-+#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
-@@ -31,0 +37 @@
-+#endif
-@@ -33,0 +40 @@
-+#if !defined(LADYBIRD_M0_NO_JXL_AVIF)
-@@ -34,0 +42 @@
-+#endif
+     };
+ 
+     for (auto& plugin : s_initializers) {
+diff --git a/Libraries/LibImageDecoders/CMakeLists.txt b/Libraries/LibImageDecoders/CMakeLists.txt
+index c41c6d9081..a4decc60a9 100644
 --- a/Libraries/LibImageDecoders/CMakeLists.txt
 +++ b/Libraries/LibImageDecoders/CMakeLists.txt
-@@ -4 +3,0 @@
+@@ -1,7 +1,6 @@
+ set(LIBGFX_IMAGE_FORMATS_DIR "${LADYBIRD_SOURCE_DIR}/Libraries/LibGfx/ImageFormats")
+ 
+ set(SOURCES
 -    ${LIBGFX_IMAGE_FORMATS_DIR}/AVIFLoader.cpp
-@@ -11 +9,0 @@
--    ${LIBGFX_IMAGE_FORMATS_DIR}/JPEGXLLoader.cpp
-@@ -34 +31,0 @@
+     ${LIBGFX_IMAGE_FORMATS_DIR}/BMPLoader.cpp
+     ${LIBGFX_IMAGE_FORMATS_DIR}/ExifReader.cpp
+     ${LIBGFX_IMAGE_FORMATS_DIR}/GIFLoader.cpp
+@@ -38,7 +37,6 @@ target_link_libraries(LibImageDecoders PRIVATE
+     WebP::webpdecoder
+     WebP::webpdemux
+     WebP::libwebpmux
 -    avif
-@@ -71 +68,3 @@
--if (NOT ANDROID)
-+if (IOS)
-+    # m0: JPEG-XL dropped (no libjxl)
-+elseif (NOT ANDROID)
-@@ -75,0 +75,2 @@
+     libimagedecoders_rust
+ )
+ 
+@@ -75,3 +73,6 @@ unset(CMAKE_REQUIRED_LIBRARIES)
+ if (NOT LIBPNG_HAS_APNG)
+     message(FATAL_ERROR "libpng does not support APNG, which is required by LibImageDecoders.")
+ endif()
 +
++# iOS: libavif is not staged (JPEG-XL is now the in-tree Rust "jxl" crate, so only AVIF is dropped).
 +target_compile_definitions(LibImageDecoders PRIVATE LADYBIRD_M0_NO_JXL_AVIF)
+diff --git a/Meta/CMake/check_for_dependencies.cmake b/Meta/CMake/check_for_dependencies.cmake
+index bca7d8c352..75f95c8002 100644
 --- a/Meta/CMake/check_for_dependencies.cmake
 +++ b/Meta/CMake/check_for_dependencies.cmake
-@@ -21 +21,3 @@
+@@ -18,7 +18,9 @@ find_package(simdutf REQUIRED)
+ # LibGfx dependencies
+ find_package(harfbuzz REQUIRED)
+ find_package(JPEG REQUIRED)
 -find_package(LIBAVIF REQUIRED)
 +if (NOT IOS)  # m0-gated
 +    find_package(LIBAVIF REQUIRED)
 +endif()
-@@ -30 +32,3 @@
--    pkg_check_modules(Jxl REQUIRED IMPORTED_TARGET libjxl)
-+    if (NOT IOS)  # m0-gated
-+        pkg_check_modules(Jxl REQUIRED IMPORTED_TARGET libjxl)
-+    endif()
+ find_package(PNG REQUIRED)
+ find_package(WebP REQUIRED)
+ find_path(WUFFS_INCLUDE_DIR NAMES wuffs/wuffs-v0.3.c REQUIRED)

@@ -1,0 +1,22 @@
+diff --git a/Services/WebContent/main.cpp b/Services/WebContent/main.cpp
+index 5ec44908f4..1605e3e208 100644
+--- a/Services/WebContent/main.cpp
++++ b/Services/WebContent/main.cpp
+@@ -64,7 +64,7 @@
+ 
+ #include <SDL3/SDL_init.h>
+ 
+-#if !defined(AK_OS_WINDOWS)
++#if !defined(AK_OS_WINDOWS) && !defined(AK_OS_IOS)
+ #    include <signal.h>
+ static void crash_signal_handler(int signo)
+ {
+@@ -115,7 +115,7 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
+ {
+     AK::set_rich_debug_enabled(true);
+ 
+-#if !defined(AK_OS_WINDOWS)
++#if !defined(AK_OS_WINDOWS) && !defined(AK_OS_IOS)  // iOS: leave signals to CrashReporter so .ips reports are produced
+     install_crash_signal_handlers();
+ #endif
+ 

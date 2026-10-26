@@ -132,8 +132,8 @@ collect() { # name  pin
   find . -name "${1}_${2}_$XIOS_DEB_ARCH.deb" -newermt "-8 hours" -exec cp -v {} /out/ \; 2>/dev/null || true
 }
 for n in libssl3 libssl-dev libssl-doc openssl;                     do collect "$n" '3.5.3+ios1'; done
-for n in libnghttp2-14 libnghttp2-dev;                              do collect "$n" '1.61.0+ios1'; done
-for n in curl libcurl4 libcurl4-openssl-dev;                        do collect "$n" '8.20.0+ios1'; done
+for n in libnghttp2-14 libnghttp2-dev;                              do collect "$n" '1.70.0+ios1'; done
+for n in curl libcurl4 libcurl4-openssl-dev;                        do collect "$n" '8.22.0+ios1'; done
 for n in libavcodec61 libavcodec-dev libavformat61 libavformat-dev \
          libavutil59 libavutil-dev libswresample5 libswresample-dev; do collect "$n" '7.1.1+ios1'; done
 

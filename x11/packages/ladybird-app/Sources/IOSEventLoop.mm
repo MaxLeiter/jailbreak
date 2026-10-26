@@ -41,7 +41,7 @@
 #include <LibCore/Event.h>
 #include <LibCore/Notifier.h>
 #include <LibCore/ThreadEventQueue.h>
-#include <LibSync/RWLock.h>
+#include <AK/RWLock.h>
 
 #include <sys/event.h>
 #include <sys/time.h>
@@ -59,16 +59,18 @@ struct ThreadData;
 static thread_local OwnPtr<ThreadData> s_this_thread_data;
 static HashMap<pthread_t, ThreadData*> s_thread_data;
 static thread_local pthread_t s_thread_id;
-static Sync::RWLock s_thread_data_lock;
+static RWLock s_thread_data_lock;
 
 struct ThreadData {
+    AK_ALLOC_WITH_KMALLOC;
+
     static ThreadData& the()
     {
         if (s_thread_id == 0)
             s_thread_id = pthread_self();
         if (!s_this_thread_data) {
             s_this_thread_data = make<ThreadData>();
-            Sync::RWLockLocker<Sync::LockMode::Write> locker(s_thread_data_lock);
+            RWLockLocker<RWLock::Mode::Write> locker(s_thread_data_lock);
             s_thread_data.set(s_thread_id, s_this_thread_data);
         }
         return *s_this_thread_data;
@@ -76,13 +78,13 @@ struct ThreadData {
 
     static ThreadData* for_thread(pthread_t thread_id)
     {
-        Sync::RWLockLocker<Sync::LockMode::Read> locker(s_thread_data_lock);
+        RWLockLocker<RWLock::Mode::Read> locker(s_thread_data_lock);
         return s_thread_data.get(thread_id).value_or(nullptr);
     }
 
     ~ThreadData()
     {
-        Sync::RWLockLocker<Sync::LockMode::Write> locker(s_thread_data_lock);
+        RWLockLocker<RWLock::Mode::Write> locker(s_thread_data_lock);
         s_thread_data.remove(s_thread_id);
     }
 
@@ -248,6 +250,8 @@ static void wake_main_run_loop()
 }
 
 struct EventLoopImplementationIOS::Impl {
+    AK_ALLOC_WITH_KMALLOC;
+
     Impl(EventLoopImplementationIOS& event_loop_implementation)
         : run_loop(CFRunLoopGetCurrent())
     {

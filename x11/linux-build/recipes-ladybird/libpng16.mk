@@ -3,7 +3,10 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS      += libpng16
-LIBPNG16_VERSION := 1.6.50
+LIBPNG16_VERSION := 1.6.59
+# libpng-apng publishes its patch a release behind libpng; 1.6.58's applies cleanly to 1.6.59
+# (checked with patch --dry-run). Bump this to match LIBPNG16_VERSION once upstream catches up.
+LIBPNG16_APNG_V  := 1.6.58
 DEB_LIBPNG16_V   ?= $(LIBPNG16_VERSION)+ios1
 
 libpng16-setup: setup
@@ -17,9 +20,9 @@ libpng16-setup: setup
 	$(call EXTRACT_TAR,libpng-$(LIBPNG16_VERSION).tar.xz,libpng-$(LIBPNG16_VERSION),libpng16)
 	# Ladybird's LibImageDecoders FATAL_ERRORs without APNG support (png_get_acTL/
 	# png_get_next_frame_fcTL); stock libpng doesn't have it, so apply the libpng-apng patch.
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://downloads.sourceforge.net/project/libpng-apng/libpng16/$(LIBPNG16_VERSION)/libpng-$(LIBPNG16_VERSION)-apng.patch.gz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://downloads.sourceforge.net/project/libpng-apng/libpng16/$(LIBPNG16_APNG_V)/libpng-$(LIBPNG16_APNG_V)-apng.patch.gz)
 	if [ ! -f $(BUILD_WORK)/libpng16/.apng_applied ]; then \
-		gunzip -c $(BUILD_SOURCE)/libpng-$(LIBPNG16_VERSION)-apng.patch.gz | patch -d $(BUILD_WORK)/libpng16 -p1 && \
+		gunzip -c $(BUILD_SOURCE)/libpng-$(LIBPNG16_APNG_V)-apng.patch.gz | patch -d $(BUILD_WORK)/libpng16 -p1 && \
 		touch $(BUILD_WORK)/libpng16/.apng_applied ; \
 	fi
 

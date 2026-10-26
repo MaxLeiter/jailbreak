@@ -12,23 +12,27 @@
 # Toolchain: clang-19 (C++23) + cctools ld64/libtool + iPhoneOS16.5.sdk libc++ (proven to link a
 # C++23 Mach-O arm64 exe). CMake cross via CMAKE_SYSTEM_NAME=Darwin + fake xcrun + forced IOS=TRUE
 # (recipes-ladybird/ios-toolchain.cmake). All Ladybird codegen is Python now (no host-tool cross
-# split). Rust: 8 core libs build staticlib crates -> rustup toolchain 1.96.0 + aarch64-apple-ios.
+# split). Rust: 8 core libs build staticlib crates -> rustup toolchain 1.98.0 + aarch64-apple-ios.
 #
-# Stages (LB_STAGE, default "all"): prep | deps | fetch | configure | build | all
+# Stages (LB_STAGE, default "all"): prep | deps | fetch | hostrust | configure | build | all
 set -uo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
 
-LADYBIRD_REF="${LADYBIRD_REF:-92b0257e71bb7a80a3106f2365bacdfa09f6c0f7}"   # main @ 2026-07-02 (recon tree)
+LADYBIRD_REF="${LADYBIRD_REF:-b9c913c09f6dc8031749dd1d3f44417225077a84}"   # upstream master @ 2026-10-02 (rebase target; was 92b0257e @ 2026-07-02)
+LB_SUFFIX="${LB_SUFFIX--r2}"   # rebase 2026-10 builds in fresh -r2 dirs; the pre-rebase tree stays untouched
 LB_STAGE="${LB_STAGE:-all}"
+SKIA_STAGE="${SKIA_STAGE:-/out/skia-ios-arm64-m148}"   # build-skia.sh OUT=$SKIA_STAGE (m148; the m144 stage /out/skia-ios-arm64 is left in place)
 SDK=/root/cctools/SDK/iPhoneOS16.5.sdk
 PROC=/work/Procursus
 BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim
-WORK=$PROC/ladybird-src
-BUILD=$PROC/ladybird-build
+WORK=$PROC/ladybird-src$LB_SUFFIX
+BUILD=$PROC/ladybird-build$LB_SUFFIX
+HOST=$PROC/ladybird-hosttools$LB_SUFFIX
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
+export RUSTUP_TOOLCHAIN=1.98.0   # upstream rust-toolchain.toml (installed by wave4 prep)
 # NOTE: $SHIM is deliberately NOT on PATH. Its cctools mach-o tools (unprefixed ld/ar/libtool)
 # would shadow the host GNU toolchain that cargo needs to build+link HOST build.rs/proc-macros
 # (aarch64-unknown-linux-gnu) -> cctools ld64 chokes on GNU ld's -plugin. All shim tools are
@@ -90,14 +94,14 @@ ln -sf "$SHIM/xcrun" /usr/local/bin/xcrun
 ln -sf "$SHIM/sw_vers" /usr/local/bin/sw_vers
 echo "shim tools:"; ls "$SHIM"
 
-# rustup toolchain 1.96.0 (pinned by rust-toolchain.toml) + aarch64-apple-ios target, persisted on
+# rustup toolchain 1.98.0 (pinned by rust-toolchain.toml) + aarch64-apple-ios target, persisted on
 # the volume so re-runs skip the download.
 if ! command -v rustc >/dev/null 2>&1; then
   echo "==> installing rustup (persisted on volume)"
-  curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.96.0 --profile minimal --no-modify-path 2>&1 | tail -3
+  curl -fsSL https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.0 --profile minimal --no-modify-path 2>&1 | tail -3
 fi
-"$CARGO_HOME/bin/rustup" toolchain install 1.96.0 --profile minimal 2>&1 | tail -1 || true
-"$CARGO_HOME/bin/rustup" target add --toolchain 1.96.0 aarch64-apple-ios 2>&1 | tail -1 || true
+"$CARGO_HOME/bin/rustup" toolchain install 1.98.0 --profile minimal 2>&1 | tail -1 || true
+"$CARGO_HOME/bin/rustup" target add --toolchain 1.98.0 aarch64-apple-ios 2>&1 | tail -1 || true
 "$CARGO_HOME/bin/rustc" --version || echo "!! rustc missing"
 
 run_stage prep && [ "$LB_STAGE" = prep ] && { echo "prep done"; exit 0; }
@@ -111,7 +115,9 @@ if run_stage deps; then
   rm -rf $BB/usr/lib/libxml2.* $BB/usr/include/libxml2 $BB/usr/lib/pkgconfig/libxml-2.0.pc \
          $BB/usr/lib/cmake/libxml2*
   rm -rf /tmp/xmlstage; mkdir -p /tmp/xmlstage
-  for d in /out/libxml2_2.13.8*_$XIOS_DEB_ARCH.deb /out/libxml2-dev_2.13.8*_$XIOS_DEB_ARCH.deb; do
+  # newest 2.13.x deb in /out (2.13.8 pre-rebase; 2.13.9 from upd-wave-core). New upstream has no libxml2
+  # minimum above 2.13 (xmlAddIDSafe is 2.13.0), see docs/ladybird-rebase-2026-10.md.
+  for d in $(ls -1 /out/libxml2_2.13.*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1) $(ls -1 /out/libxml2-dev_2.13.*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1); do
     [ -f "$d" ] && { echo "  extracting $(basename "$d")"; dpkg-deb -x "$d" /tmp/xmlstage; }
   done
   # deb layout is ./var/jb/... -> copy the var/jb subtree into build_base's var/jb
@@ -127,26 +133,26 @@ if run_stage deps; then
     echo "==> mirrored wuffs header into wuffs/ subdir"
   fi
 
-  # --- Skia (built at /out/skia-ios-arm64) into /var/jb ---
+  # --- Skia (built at $SKIA_STAGE) into /var/jb ---
   echo "==> staging Skia (libskia.a, libskcms.a, headers, skia.pc)"
-  if [ -d /out/skia-ios-arm64 ]; then
-    cp -a /out/skia-ios-arm64/lib/libskia.a /out/skia-ios-arm64/lib/libskcms.a $BB/usr/lib/ 2>/dev/null || \
-      cp -a /out/skia-ios-arm64/lib/*.a $BB/usr/lib/
-    # /out/skia-ios-arm64/include/ contains a skia/ subdir whose children are core/, gpu/, ... .
+  if [ -d $SKIA_STAGE ]; then
+    cp -a $SKIA_STAGE/lib/libskia.a $SKIA_STAGE/lib/libskcms.a $BB/usr/lib/ 2>/dev/null || \
+      cp -a $SKIA_STAGE/lib/*.a $BB/usr/lib/
+    # $SKIA_STAGE/include/ contains a skia/ subdir whose children are core/, gpu/, ... .
     # Ladybird includes <core/SkCanvas.h> against includedir=/var/jb/include/skia, so the core/ dir
     # must land directly under /var/jb/include/skia (copy the INNER skia/. , not include/. , else
     # it double-nests to include/skia/skia/core).
     rm -rf $BB/include/skia; mkdir -p $BB/include/skia
-    if [ -d /out/skia-ios-arm64/include/skia ]; then
-      cp -a /out/skia-ios-arm64/include/skia/. $BB/include/skia/
+    if [ -d $SKIA_STAGE/include/skia ]; then
+      cp -a $SKIA_STAGE/include/skia/. $BB/include/skia/
     else
-      cp -a /out/skia-ios-arm64/include/. $BB/include/skia/
+      cp -a $SKIA_STAGE/include/. $BB/include/skia/
     fi
     mkdir -p $BB/usr/lib/pkgconfig
-    cp -a /out/skia-ios-arm64/lib/pkgconfig/skia.pc $BB/usr/lib/pkgconfig/skia.pc
+    cp -a $SKIA_STAGE/lib/pkgconfig/skia.pc $BB/usr/lib/pkgconfig/skia.pc
     echo "  skia.pc: $(grep -h ^Version $BB/usr/lib/pkgconfig/skia.pc)"
   else
-    echo "  !! /out/skia-ios-arm64 missing"
+    echo "  !! $SKIA_STAGE missing"
   fi
 
   # --- ANGLE GLES/EGL headers (LibWeb includes them for WebGL constants; NO link on WebContent) ---
@@ -162,13 +168,13 @@ if run_stage deps; then
       echo "  !! ANGLE include/ fetch failed"
     fi
   fi
-  cat > $BB/usr/lib/pkgconfig/angle.pc <<'EOF'
+  cat > $BB/usr/lib/pkgconfig/angle.pc <<EOF
 prefix=$XIOS_PREFIX
-includedir=${prefix}/usr/include
+includedir=\${prefix}/usr/include
 Name: angle
 Description: ANGLE GLES/EGL headers (M0 headers-only; GL entry points live in Compositor)
 Version: 7258
-Cflags: -I${includedir}
+Cflags: -I\${includedir}
 Libs:
 EOF
 
@@ -244,6 +250,26 @@ if run_stage fetch; then
 fi
 
 # ================================================================================================
+step "STAGE hostrust: build the Flap bytecode generators NATIVELY (they run at build time)"
+# ================================================================================================
+# Upstream's JS interpreter is generated by two Rust binaries from Libraries/LibJS/Flap (flapc and
+# generate-libjs-bytecode). The cross build would compile them for iOS, which cannot execute here, so
+# build them for the build host and let patches-m0/0005 pick them up through LB_HOST_RUST_BIN_DIR
+# (Meta/CMake/rust_crate.cmake: build_rust_binary). They must exist BEFORE configure.
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
+if run_stage hostrust; then
+  mkdir -p "$LB_HOST_RUST_BIN_DIR"
+  HT=$(rustc -vV | sed -n 's/^host: //p')
+  ( cd "$WORK/Libraries/LibJS/Flap" && \
+    cargo build --release --target "$HT" --bin flapc --bin generate-libjs-bytecode 2>&1 | tail -3 ) || echo "!! host Flap build failed"
+  for b in flapc generate-libjs-bytecode; do
+    cp -f "$WORK/Libraries/LibJS/Flap/target/$HT/release/$b" "$LB_HOST_RUST_BIN_DIR/$b" || echo "!! missing host $b"
+  done
+  ls -la "$LB_HOST_RUST_BIN_DIR"
+fi
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
+
+# ================================================================================================
 step "STAGE configure: cmake with the iOS toolchain (no vcpkg)"
 # ================================================================================================
 export LB_SHIM="$SHIM"
@@ -291,7 +317,7 @@ if run_stage build; then
   cd "$BUILD"
   # Build codegen first (all-Python), then the helper services. -k 0 keeps going so a single run
   # enumerates the whole macOS-vs-iOS porting tail instead of one error per pass.
-  ninja -k 0 -j"$(nproc)" WebContent RequestServer ImageDecoder WebWorker \
+  ninja -k 0 -j"${JOBS:-8}" WebContent RequestServer ImageDecoder WebWorker \
     2>&1 | tee /out/wave4-build.log
   echo "build exit: ${PIPESTATUS[0]}"
   echo "== emitted binaries =="

@@ -17,7 +17,7 @@ endif
 # iOS ships a real /usr/share/zoneinfo. 3.0.17 pairs with Ubuntu 24.04's ICU 74.2 / EDS 3.52.
 
 SUBPROJECTS     += libical
-LIBICAL_VERSION := 3.0.17
+LIBICAL_VERSION := 3.0.20
 DEB_LIBICAL_V   ?= $(LIBICAL_VERSION)+ios1
 
 libical-setup: setup

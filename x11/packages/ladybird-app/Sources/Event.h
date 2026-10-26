@@ -9,9 +9,9 @@
 #pragma once
 
 #import <UIKit/UIKit.h>
-#include <LibWeb/Page/InputEvent.h>
-#include <LibWeb/UIEvents/KeyCode.h>
-#include <LibWeb/UIEvents/MouseButton.h>
+#include <LibWebCommon/Page/InputEvent.h>
+#include <LibWebCommon/UIEvents/KeyCode.h>
+#include <LibWebCommon/UIEvents/MouseButton.h>
 
 @class LadybirdWebView;
 

@@ -57,7 +57,7 @@ target_link_libraries(Ladybird PRIVATE
 # Engine libs (static on iOS). Mirror UI/CMakeLists.txt's LADYBIRD_LIBS set exactly.
 target_link_libraries(Ladybird PRIVATE
     AK LibCore LibFileSystem LibGfx LibImageDecoderClient LibIPC LibJS
-    LibMain LibWeb LibWebView LibRequests LibSync LibURL)
+    LibMain LibWeb LibWebView LibRequests LibURL)
 target_link_libraries(Ladybird PRIVATE OpenSSL::Crypto OpenSSL::SSL)
 
 # The five spawned helpers (WebContent, RequestServer, ImageDecoder, WebWorker, Compositor)

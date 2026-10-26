@@ -8,8 +8,8 @@ endif
 # every consumer (tracker/nautilus/GNOME, Qt6/KDE).
 
 SUBPROJECTS         += sqlite3
-SQLITE3_VERSION     := 3.52.0
-SQLITE3_AUTOCONF_V  := 3520000
+SQLITE3_VERSION     := 3.53.4
+SQLITE3_AUTOCONF_V  := 3530400
 SQLITE3_DL_YEAR     := 2026
 DEB_SQLITE3_V       ?= $(SQLITE3_VERSION)+ios3
 # This package name shadows Procursus's libsqlite3-1, so the build must export at least

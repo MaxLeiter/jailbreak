@@ -102,6 +102,8 @@ if target_requests curl || target_requests appstream; then
   stage_required_patch_stack curl
 fi
 target_requests appstream && stage_required_patch_stack appstream
+# libadwaita.mk's DO_PATCH (portal settings backend) reads build_patch/libadwaita.
+target_requests libadwaita && stage_required_patch_stack libadwaita
 if target_requests tracker || target_requests nautilus; then
   stage_required_patch_stack tracker
 fi

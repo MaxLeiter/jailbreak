@@ -1,34 +1,65 @@
-Subject: [PATCH] ios-m0: gate macOS sandbox and libedit dependency
-
-The iOS cross build uses CMAKE_SYSTEM_NAME=Darwin, so CMake's APPLE branch is
-true. Several helper services select the macOS Seatbelt sandbox from that branch,
-but fakesigned iOS helper processes cannot use Seatbelt and should fall back to
-the unimplemented sandbox.
-
-The standalone JS REPL utility is not built for the M0 headless/app targets, so
-avoid requiring libedit on iOS as well.
+diff --git a/Meta/CMake/check_for_dependencies.cmake b/Meta/CMake/check_for_dependencies.cmake
+index d676306996..bca7d8c352 100644
 --- a/Meta/CMake/check_for_dependencies.cmake
 +++ b/Meta/CMake/check_for_dependencies.cmake
-@@ -5 +5 @@
+@@ -2,7 +2,7 @@ include_guard()
+ 
+ find_package(PkgConfig REQUIRED)
+ 
 -if (NOT WIN32 AND NOT ANDROID)
 +if (NOT WIN32 AND NOT ANDROID AND NOT IOS)
+     pkg_check_modules(LIBEDIT REQUIRED IMPORTED_TARGET libedit)
+ endif()
+ 
+diff --git a/Services/ImageDecoder/CMakeLists.txt b/Services/ImageDecoder/CMakeLists.txt
+index 8961a55f8d..593f85b7a5 100644
 --- a/Services/ImageDecoder/CMakeLists.txt
 +++ b/Services/ImageDecoder/CMakeLists.txt
-@@ -27 +27 @@ if (LINUX)
+@@ -24,7 +24,7 @@ if (LINUX)
+     if (ENABLE_ADDRESS_SANITIZER)
+         target_sources(ImageDecoder PRIVATE LeakSanitizer.cpp)
+     endif()
 -elseif (APPLE)
 +elseif (APPLE AND NOT IOS)
+     target_sources(ImageDecoder PRIVATE SandboxMacOS.cpp)
+ else()
+     target_sources(ImageDecoder PRIVATE SandboxUnimplemented.cpp)
+diff --git a/Services/RequestServer/CMakeLists.txt b/Services/RequestServer/CMakeLists.txt
+index 604cdf2304..7608ab692f 100644
 --- a/Services/RequestServer/CMakeLists.txt
 +++ b/Services/RequestServer/CMakeLists.txt
-@@ -13 +13 @@ if (LINUX)
+@@ -12,7 +12,7 @@ set(SOURCES
+ 
+ if (LINUX)
+     list(APPEND SOURCES SandboxLinux.cpp)
 -elseif (APPLE)
 +elseif (APPLE AND NOT IOS)
+     list(APPEND SOURCES SandboxMacOS.cpp)
+ else()
+     list(APPEND SOURCES SandboxUnimplemented.cpp)
+diff --git a/Services/WebContent/CMakeLists.txt b/Services/WebContent/CMakeLists.txt
+index 2fab594374..c136d8809f 100644
 --- a/Services/WebContent/CMakeLists.txt
 +++ b/Services/WebContent/CMakeLists.txt
-@@ -43 +43 @@ if (LINUX)
+@@ -43,7 +43,7 @@ add_executable(WebContent main.cpp)
+ 
+ if (LINUX)
+     target_sources(WebContent PRIVATE ../RendererSandboxLinux.cpp)
 -elseif (APPLE)
 +elseif (APPLE AND NOT IOS)
+     target_sources(WebContent PRIVATE ../RendererSandboxMacOS.cpp)
+ else()
+     target_sources(WebContent PRIVATE ../RendererSandboxUnimplemented.cpp)
+diff --git a/Services/WebWorker/CMakeLists.txt b/Services/WebWorker/CMakeLists.txt
+index 28ccb246d0..ca5c9d5096 100644
 --- a/Services/WebWorker/CMakeLists.txt
 +++ b/Services/WebWorker/CMakeLists.txt
-@@ -23 +23 @@ if (LINUX)
+@@ -24,7 +24,7 @@ add_executable(WebWorker main.cpp)
+ 
+ if (LINUX)
+     target_sources(WebWorker PRIVATE ../RendererSandboxLinux.cpp)
 -elseif (APPLE)
 +elseif (APPLE AND NOT IOS)
+     target_sources(WebWorker PRIVATE ../RendererSandboxMacOS.cpp)
+ else()
+     target_sources(WebWorker PRIVATE ../RendererSandboxUnimplemented.cpp)

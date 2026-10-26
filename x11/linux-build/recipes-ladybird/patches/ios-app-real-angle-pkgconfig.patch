@@ -1,6 +1,8 @@
+diff --git a/Meta/CMake/check_for_dependencies.cmake b/Meta/CMake/check_for_dependencies.cmake
+index 75f95c8002..676df633bd 100644
 --- a/Meta/CMake/check_for_dependencies.cmake
 +++ b/Meta/CMake/check_for_dependencies.cmake
-@@ -87,12 +87,21 @@
+@@ -89,12 +89,21 @@ endif()
  pkg_check_modules(LIBPSL REQUIRED IMPORTED_TARGET libpsl)
  pkg_check_modules(libtommath REQUIRED IMPORTED_TARGET libtommath)
  

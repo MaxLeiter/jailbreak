@@ -32,11 +32,14 @@ SDK=/root/cctools/SDK/iPhoneOS16.5.sdk
 PROC=/work/Procursus
 BB=$PROC/build_base/$XIOS_TRIPLE$XIOS_PREFIX
 SHIM=/work/shim
-WORK=$PROC/ladybird-src
-BUILD=$PROC/ladybird-build
-HOST=$PROC/ladybird-hosttools
+LB_SUFFIX="${LB_SUFFIX--r2}"
+WORK=$PROC/ladybird-src$LB_SUFFIX
+BUILD=$PROC/ladybird-build$LB_SUFFIX
+HOST=$PROC/ladybird-hosttools$LB_SUFFIX
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"   # flapc + generate-libjs-bytecode, built by wave4 stage hostrust
 export RUSTUP_HOME=$PROC/build_tools/rustup
 export CARGO_HOME=$PROC/build_tools/cargo
+export RUSTUP_TOOLCHAIN=1.98.0   # upstream rust-toolchain.toml (installed by wave4 prep)
 export PATH=$CARGO_HOME/bin:$PATH
 mkdir -p /out
 
@@ -174,7 +177,7 @@ else
 fi
 
 # ================================================================================================
-step "STAGE hosttools: build gen_asm_offsets (C++/AK) + asmintgen (Rust) NATIVELY (arm64 host)"
+step "STAGE hosttools: build generate_interpreter_layout (C++/AK) NATIVELY (arm64 host); flapc/bytecode generator come from wave4 hostrust"
 # ================================================================================================
 # Host-tool build needs LibJS's generated headers (Op.h/OpCodes.h etc). They exist in $BUILD after
 # wave4's partial build; if absent, run a codegen ninja pass (it will fail at the asm step, which is
@@ -200,11 +203,11 @@ ensure_generated_headers() {
       -DENABLE_CRANELIFT_JIT=OFF -DRUST_TARGET_TRIPLE=aarch64-apple-ios \
       -DLADYBIRD_CACHE_DIR="${XIOS_PREFIX:-/var}/lib/ladybird" -DVCPKG_ROOT= 2>&1 | tail -5
   fi
-  ( cd "$BUILD" && ninja -k 0 -j"$(nproc)" WebContent 2>&1 | tail -3 || true )
+  ( cd "$BUILD" && ninja -k 0 -j"${JOBS:-8}" WebContent > /out/wave4b-codegen.log 2>&1; grep -A12 "^FAILED" /out/wave4b-codegen.log | head -60; tail -2 /out/wave4b-codegen.log )
 }
 
-if run_stage hosttools && [ -x "$HOST/gen_asm_offsets" ] && [ -x "$HOST/asmintgen" ]; then
-  echo "  host tools already built ($HOST/{gen_asm_offsets,asmintgen}); skipping rebuild"
+if run_stage hosttools && [ "${FORCE_HOSTTOOLS:-0}" != 1 ] && [ -x "$HOST/generate_interpreter_layout" ] && [ -x "$HOST/rust-bin/flapc" ] && [ -x "$HOST/rust-bin/generate-libjs-bytecode" ]; then
+  echo "  host tools already built ($HOST/generate_interpreter_layout + rust-bin/*); skipping rebuild"
 elif run_stage hosttools; then
   ensure_generated_headers
 
@@ -216,7 +219,7 @@ elif run_stage hosttools; then
   FMT=${FMT%/src}
   echo "  simdutf=$SIMD  mimalloc=$MIM  fmt=$FMT"
 
-  rm -rf "$HOST"; mkdir -p "$HOST/ak"
+  mkdir -p "$HOST/ak"; rm -rf "$HOST/ak"/* "$HOST/libAK.a" "$HOST/generate_interpreter_layout"   # keep $HOST/rust-bin
   INC="-I$WORK -I$WORK/Libraries -I$WORK/Services -I$BUILD -I$BUILD/Libraries -I$BUILD/Services -idirafter $BB/usr/include"
   CXXFLAGS="-DENABLE_COMPILETIME_FORMAT_CHECK -DNDEBUG -fno-exceptions -std=c++2b -O1 -w $INC"
 
@@ -224,7 +227,7 @@ elif run_stage hosttools; then
   n=0
   for f in "$WORK"/AK/*.cpp; do
     bn=$(basename "$f" .cpp)
-    case $bn in DemangleWindows|LexicalPathWindows) continue;; esac
+    case $bn in *Windows*) continue;; esac
     clang++-19 $CXXFLAGS -c "$f" -o "$HOST/ak/$bn.o" 2>"$HOST/ak/$bn.err" \
       || { echo "  !! host AK FAIL $bn"; tail -20 "$HOST/ak/$bn.err"; exit 1; }
     n=$((n+1))
@@ -240,30 +243,26 @@ elif run_stage hosttools; then
   clang++-19 -O1 -w -std=c++20 -I"$FMT/include" -c "$FMT/src/format.cc" -o "$HOST/fmt.o" \
     || { echo "  !! fmt FAIL"; exit 1; }
 
-  echo "==> host gen_asm_offsets (private/protected exposed for offsetof)"
-  clang++-19 $CXXFLAGS -Dprivate=public -Dprotected=public \
-    "$WORK/Libraries/LibJS/Bytecode/AsmInterpreter/gen_asm_offsets.cpp" \
+  echo "==> host generate_interpreter_layout (private/protected exposed for offsetof)"
+  # -D__IOS__: the layout constants (GC heap-region / primitive-cage masks) are per-platform, so the host tool must
+  # see the same platform macros as the iOS target or the generated interpreter masks the wrong number of bits.
+  clang++-19 $CXXFLAGS -D__IOS__ -Dprivate=public -Dprotected=public \
+    "$WORK/Libraries/LibJS/Interpreter/GenerateLayout.cpp" \
     "$HOST/libAK.a" "$HOST/simdutf.o" "$HOST/mimalloc.o" "$HOST/fmt.o" -lpthread \
-    -o "$HOST/gen_asm_offsets" || { echo "  !! gen_asm_offsets link FAIL"; exit 1; }
-  file "$HOST/gen_asm_offsets"
+    -o "$HOST/generate_interpreter_layout" || { echo "  !! generate_interpreter_layout link FAIL"; exit 1; }
+  file "$HOST/generate_interpreter_layout"
 
-  echo "==> host asmintgen (cargo, aarch64-unknown-linux-gnu)"
-  ( cd "$WORK/Libraries/LibJS/AsmIntGen" && cargo build --release --target aarch64-unknown-linux-gnu 2>&1 | tail -3 )
-  cp "$WORK/Libraries/LibJS/AsmIntGen/target/aarch64-unknown-linux-gnu/release/asmintgen" "$HOST/asmintgen"
-  file "$HOST/asmintgen"
-
-  echo "==> smoke-run both host tools"
-  "$HOST/gen_asm_offsets" > "$HOST/asm_offsets.conf" && echo "  asm_offsets.conf: $(wc -l < "$HOST/asm_offsets.conf") lines"
-  "$HOST/asmintgen" --arch aarch64 --object-format macho \
-    --constants "$HOST/asm_offsets.conf" \
-    --bytecode-def "$WORK/Libraries/LibJS/Bytecode/Bytecode.def" \
-    --input "$WORK/Libraries/LibJS/Bytecode/AsmInterpreter/asmint.asm" \
-    --output "$HOST/asmint_aarch64.S" && echo "  asmint_aarch64.S: $(wc -l < "$HOST/asmint_aarch64.S") lines; fjcvtzs=$(grep -c fjcvtzs "$HOST/asmint_aarch64.S" || true)"
+  echo "==> smoke-run the host tools"
+  "$HOST/generate_interpreter_layout" > "$HOST/layout.conf" && echo "  layout.conf: $(wc -l < "$HOST/layout.conf") lines"
+  "$HOST/rust-bin/flapc" --arch aarch64 --object-format macho \
+    --constants "$HOST/layout.conf" \
+    --input "$WORK/Libraries/LibJS/Interpreter/interpreter.flap" \
+    --output "$HOST/interpreter_aarch64.S" --enable-assertions && echo "  interpreter_aarch64.S: $(wc -l < "$HOST/interpreter_aarch64.S") lines; fjcvtzs=$(grep -c fjcvtzs "$HOST/interpreter_aarch64.S" || true) (must be 0 on A10)"
 fi
 
-# these must be visible to the configure below so patch 12's env-gated branches fire.
-export LB_HOST_GEN_ASM_OFFSETS="$HOST/gen_asm_offsets"
-export LB_HOST_ASMINTGEN="$HOST/asmintgen"
+# these must be visible to the configure below so patches-m0/0005's env-gated branches fire.
+export LB_HOST_GENERATE_INTERPRETER_LAYOUT="$HOST/generate_interpreter_layout"
+export LB_HOST_RUST_BIN_DIR="$HOST/rust-bin"
 
 # ================================================================================================
 step "STAGE build: reconfigure (pick up patch 12 + LB_HOST_*) then compile LibWeb + link helpers"
@@ -287,7 +286,7 @@ if run_stage build; then
   cd "$BUILD"
   TARGETS="WebContent RequestServer ImageDecoder WebWorker headless-shot"
   # Pass 1: full parallelism, keep-going to enumerate any remaining source walls in one shot.
-  ninja -k 0 -j"$(nproc)" $TARGETS 2>&1 | tee /out/wave4b-build.log
+  ninja -k 0 -j"${JOBS:-8}" $TARGETS 2>&1 | tee /out/wave4b-build.log
   p1=${PIPESTATUS[0]}
   # Pass 2: some LibWebView/LibWeb TUs (e.g. ViewImplementation.cpp) are ~3GB at -O3 and get
   # OOM-killed ("Killed") under -j16 on this 7.7GiB VM. Retry the few remaining actions at low

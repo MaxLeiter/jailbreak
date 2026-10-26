@@ -59,3 +59,12 @@ done
 ```
 
 Leave the `agent-*` worktrees and `claude/gaps-cleanup` alone while that work is in flight.
+
+## Landing pass (later on 2026-10-25)
+
+Branch `claude/land-stranded-20261025`, cut from origin/main `b3992f2a`, carries what was still useful from four of the branches above. Debs and a per-package device checklist are in `x11/linux-build/out/landing-20261025/LANDING.txt` in that worktree (agent-ac30f5df1c796d574). Nothing is published.
+
+- `claude/upd-wave-gnome`: all 12 commits landed and rebuilt (libical 3.0.20, gtk3 3.24.52, libgsf 1.14.60, exiv2 0.28.9, exempi 2.6.6, libsoup 3.8.0, glib-networking 2.80.1, gmime 3.2.15, libadwaita 1.5.8, librsvg 2.56.6).
+- `claude/upd-wave-core`: the 13 still-unique commits landed and rebuilt (libxml2 2.13.9, nghttp2 1.70.0, curl 8.22.0, libpng 1.6.59, freetype 2.14.3, sqlite 3.53.4, harfbuzz 14.5.1, libxslt 1.1.43+ios2, ffmpeg 5.1.10 runtimes). Its two wayland 1.24 commits are already on main via the KDE 6.7 lane; the libxslt 1.1.45 bump and its revert cancel out.
+- `claude/ladybird-rebase`: all 7 commits landed; ladybird-app rebuilt as 0.1.26+ios2.
+- `claude/update-plans`: retired. `git cherry` flags 5 commits, but every file they touch is on main in the same or a newer form (main carries later fixes: the anchored QPA GL sed, the plasma-workspace re-run stamp, kio `USE_DBUS=ON`, the relink-gtkintl path, the qt6-base `Breaks` list). Nothing to land.

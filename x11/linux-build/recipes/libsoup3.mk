@@ -8,8 +8,8 @@ endif
 # apps get libsoup-3.0.vapi from the vendored vapidir instead (linux-build/vapi/README.md).
 
 SUBPROJECTS      += libsoup3
-LIBSOUP3_MAJOR_V := 3.4
-LIBSOUP3_VERSION := $(LIBSOUP3_MAJOR_V).4
+LIBSOUP3_MAJOR_V := 3.8
+LIBSOUP3_VERSION := $(LIBSOUP3_MAJOR_V).0
 DEB_LIBSOUP3_V   ?= $(LIBSOUP3_VERSION)+ios1
 
 libsoup3-setup: setup
@@ -45,6 +45,7 @@ libsoup3: libsoup3-setup glib2.0 libpsl libxml2 nghttp2 sqlite3 brotli
 		-Dsysprof=disabled \
 		-Dtls_check=false \
 		-Dbrotli=enabled \
+		-Dzstd=disabled \
 		-Dntlm=disabled \
 		-Dgssapi=disabled \
 		..

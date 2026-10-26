@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS     += libfmt
-LIBFMT_VERSION  := 12.1.0
+LIBFMT_VERSION  := 12.2.0
 DEB_LIBFMT_V    ?= $(LIBFMT_VERSION)+ios1
 
 libfmt-setup: setup

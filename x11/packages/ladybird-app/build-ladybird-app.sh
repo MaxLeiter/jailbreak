@@ -13,7 +13,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 X11="$(cd "$HERE/../.." && pwd)"
 . "$X11/lib/xlib.sh"
 
-VER="${LADYBIRD_APP_VERSION:-0.1.25+ios1}"
+VER="${LADYBIRD_APP_VERSION:-0.1.26+ios2}"
 ARCH="$XIOS_DEB_ARCH"
 ENGINE_STAGE="${LADYBIRD_ENGINE_STAGE:-}"     # dir with WebContent/RequestServer/... + share/Lagom
 UI_BIN="${LADYBIRD_UI_BIN:-}"                 # the built UIKit `Ladybird` Mach-O (step 1 output)
@@ -41,18 +41,18 @@ mkdir -p "$APP/share"
 
 # --- Step 2: assemble bundle ---
 cp "$UI_BIN" "$APP/Ladybird"
-for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for h in WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
     [ -f "$ENGINE_STAGE/$h" ] || die "missing helper: $ENGINE_STAGE/$h"
     cp "$ENGINE_STAGE/$h" "$APP/$h"
 done
 cp -R "$ENGINE_STAGE/share/Lagom" "$APP/share/Lagom"
 cp "$HERE/Resources/Info.plist" "$APP/Info.plist"
 [ -f "$HERE/Resources/AppIcon.png" ] && cp "$HERE/Resources/AppIcon.png" "$APP/AppIcon.png"
-chmod +x "$APP/Ladybird" "$APP/WebContent" "$APP/RequestServer" "$APP/ImageDecoder" "$APP/WebWorker" "$APP/Compositor"
+chmod +x "$APP/Ladybird" "$APP/WebContent" "$APP/RequestServer" "$APP/ImageDecoder" "$APP/WebWorker" "$APP/Compositor" "$APP/MediaServer"
 
 # libiosexec is the one external dylib. Its install name is @rpath-based, so
 # give each target its scheme-correct package prefix before signing.
-for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for b in Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
     for stale_rpath in /var/jb/usr/lib /usr/lib; do
         if [ "$stale_rpath" != "$XIOS_INSTALL_PREFIX/lib" ] && \
            otool -l "$APP/$b" | grep -A2 LC_RPATH | grep -Fq "path $stale_rpath "; then
@@ -76,7 +76,7 @@ done
 
 # --- Step 3: sign (Mac ldid, DER ents; xsign verifies markers) ---
 xsign "$APP/Ladybird" "$APP_ENTS" com.apple.private.amfi.can-allow-non-platform
-for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for h in WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
     xsign "$APP/$h" "$HELPER_ENTS" com.apple.private.amfi.can-allow-non-platform
 done
 

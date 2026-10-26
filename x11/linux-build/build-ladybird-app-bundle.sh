@@ -30,10 +30,10 @@ OTOOL=/root/cctools/bin/aarch64-apple-darwin-otool
 INT=/root/cctools/bin/aarch64-apple-darwin-install_name_tool
 LDID=/root/cctools/bin/ldid
 STAGE=/out/app-stage
-VER="${LADYBIRD_APP_VERSION:-0.1.25+ios1}"
+VER="${LADYBIRD_APP_VERSION:-0.1.26+ios2}"
 APPROOT=/tmp/lbapp
 APP=$APPROOT$XIOS_PREFIX/Applications/Ladybird.app
-BINS="Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor"
+BINS="Ladybird WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer"
 step() { echo; echo "########## $* ##########"; }
 
 [ -d "$STAGE" ] || { echo "!! $STAGE missing — run build-ladybird-app-engine.sh first"; exit 2; }
@@ -179,7 +179,7 @@ APP_ENT=/work/ladybird-app/entitlements/ladybird-app.entitlements
 HELPER_ENT=/work/ladybird-app/entitlements/ladybird-helper.entitlements
 for d in "$APP"/lib/*.dylib; do "$LDID" -S "$d" 2>/dev/null || true; done
 "$LDID" -S"$APP_ENT" "$APP/Ladybird"
-for h in WebContent RequestServer ImageDecoder WebWorker Compositor; do
+for h in WebContent RequestServer ImageDecoder WebWorker Compositor MediaServer; do
   [ -f "$APP/$h" ] && "$LDID" -S"$HELPER_ENT" "$APP/$h"
 done
 echo "preliminary signature markers on Ladybird:"; "$LDID" -e "$APP/Ladybird" 2>/dev/null | grep -o 'can-allow-non-platform' | head -1 || echo "(none?)"

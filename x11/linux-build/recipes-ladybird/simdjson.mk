@@ -3,7 +3,7 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS       += simdjson
-SIMDJSON_VERSION  := 4.2.4
+SIMDJSON_VERSION  := 4.6.4
 DEB_SIMDJSON_V    ?= $(SIMDJSON_VERSION)+ios1
 
 simdjson-setup: setup

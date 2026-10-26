@@ -30,8 +30,8 @@
 #include <LibURL/URL.h>
 #include <AK/ByteString.h>
 #include <AK/Utf16String.h>
-#include <LibWeb/HTML/VisibilityState.h>
-#include <LibWeb/Page/InputEvent.h>
+#include <LibWebCommon/HTML/VisibilityState.h>
+#include <LibWebCommon/Page/InputEvent.h>
 #include <LibWebView/Application.h>
 #include <LibWebView/SearchEngine.h>
 #include <LibWebView/URL.h>
@@ -225,7 +225,7 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
         LadybirdWebView* s = weakSelf;
         [s.observer webView:s didChangeURL:@(url.serialize().to_byte_string().characters())];
     };
-    _bridge->on_load_start = [weakSelf](URL::URL const&, bool) {
+    _bridge->on_load_start = [weakSelf]() {
         LadybirdWebView* s = weakSelf;
         [s.observer webViewDidStartLoading:s];
     };
@@ -442,7 +442,7 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
 
 - (void)ensureKeyboardResponder:(char const*)reason
 {
-    bool hasFocusedInput = _bridge->get_input_caret_rect().has_value();
+    bool hasFocusedInput = _bridge->input_method_state().is_enabled;
     if (!hasFocusedInput) {
         lb_trace("keyboard ensure skip reason=%s caret=0 first=%d", reason, self.isFirstResponder);
         return;
@@ -485,7 +485,7 @@ static NSString* lb_normalized_address_bar_input(NSString* input)
             // WebContent publishes this rect only while editable content owns focus. Treat that
             // as the only keyboard-open signal; pointer hover/selection/tap settling should not
             // summon UIKit's software keyboard by itself.
-            bool hasFocusedInput = strongSelf->_bridge->get_input_caret_rect().has_value();
+            bool hasFocusedInput = strongSelf->_bridge->input_method_state().is_enabled;
             bool shouldEnsure = hasFocusedInput;
             bool shouldDismiss = !hasFocusedInput && allowProactive && strongSelf.isFirstResponder && delay == finalDelay;
             lb_trace("keyboard sync reason=%s delay=%d caret=%d first=%d proactive=%d ensure=%d dismiss=%d",

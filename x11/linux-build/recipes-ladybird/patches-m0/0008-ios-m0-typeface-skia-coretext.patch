@@ -1,11 +1,8 @@
-Subject: [PATCH] ios-m0: use CoreText SkFontMgr in TypefaceSkia
-
-The iOS Skia build provides the CoreText font manager, but not the fontconfig
-font manager. Route iOS through CoreText so WebContent/WebWorker do not link
-against the missing SkFontMgr_New_FontConfig symbol.
+diff --git a/Libraries/LibGfx/Font/TypefaceSkia.cpp b/Libraries/LibGfx/Font/TypefaceSkia.cpp
+index bfe12a4e5e..19bd2b969d 100644
 --- a/Libraries/LibGfx/Font/TypefaceSkia.cpp
 +++ b/Libraries/LibGfx/Font/TypefaceSkia.cpp
-@@ -33,6 +33,10 @@
+@@ -42,6 +42,10 @@
  #    include <ports/SkFontMgr_mac_ct.h>
  #    include <ports/SkTypeface_mac.h>
  #endif
@@ -16,21 +13,97 @@ against the missing SkFontMgr_New_FontConfig symbol.
  
  namespace Gfx {
  
-@@ -81,7 +85,7 @@ static SkFontMgr& font_manager()
+@@ -98,7 +102,12 @@ static SkFontMgr& font_manager()
  {
      auto& font_manager = skia_font_manager();
      if (!font_manager) {
 -#ifdef AK_OS_MACOS
-+#if defined(AK_OS_MACOS) || defined(AK_OS_IOS)
-         if (Gfx::FontDatabase::the().system_font_provider_name() != "FontConfig"sv) {
++#if defined(AK_OS_IOS)
++        // The Apple Skia build has no fontconfig SkFontMgr, so CoreText is the only font manager
++        // available on iOS -- install it unconditionally (no provider name or rasterization
++        // override can leave it null and trip the VERIFY below).
++        font_manager = SkFontMgr_New_CoreText(nullptr);
++#elif defined(AK_OS_MACOS)
+         if (!Gfx::FontDatabase::the().force_freetype_rasterization() && (!Gfx::FontDatabase::the().has_system_font_provider() || Gfx::FontDatabase::the().system_font_provider_name() != "FontConfig"sv)) {
              font_manager = SkFontMgr_New_CoreText(nullptr);
          }
-@@ -90,6 +94,8 @@ static SkFontMgr& font_manager()
-         font_manager = SkFontMgr_New_Android(nullptr);
- #elif defined(AK_OS_WINDOWS)
-         font_manager = SkFontMgr_New_DirectWrite();
+@@ -110,6 +119,8 @@ static SkFontMgr& font_manager()
+             font_manager = SkFontMgr_New_Custom_Empty();
+         else
+             font_manager = SkFontMgr_New_DirectWrite();
 +#elif defined(AK_OS_IOS)
 +        // iOS: CoreText SkFontMgr selected above; Apple Skia build has no fontconfig fontmgr.
  #else
          if (!font_manager) {
              font_manager = SkFontMgr_New_FontConfig(nullptr, SkFontScanner_Make_FreeType());
+diff --git a/Libraries/LibWebView/Application.cpp b/Libraries/LibWebView/Application.cpp
+index d26d42fd8a..ce5177d143 100644
+--- a/Libraries/LibWebView/Application.cpp
++++ b/Libraries/LibWebView/Application.cpp
+@@ -473,6 +473,16 @@ ErrorOr<void> Application::initialize(Main::Arguments const& arguments)
+     create_platform_arguments(args_parser);
+     args_parser.parse(m_arguments);
+ 
++#ifdef AK_OS_IOS
++    // Reject rather than ignore: this build has no fontconfig at all, so the flag can only
++    // mislead. Caught in the UI process so it never reaches the helpers either.
++    if (force_fontconfig) {
++        warnln("--force-fontconfig is not supported on iOS: this build has no fontconfig font provider.");
++        warnln("Fonts load from the bundled resource://fonts set through the CoreText font manager.");
++        return Error::from_string_literal("--force-fontconfig is not supported on iOS");
++    }
++#endif
++
+ #if !defined(AK_OS_ANDROID)
+     ProfileSelection profile_selection;
+     if (force_new_process) {
+diff --git a/Services/Compositor/main.cpp b/Services/Compositor/main.cpp
+index c82d368fce..ef5492f05b 100644
+--- a/Services/Compositor/main.cpp
++++ b/Services/Compositor/main.cpp
+@@ -4,6 +4,7 @@
+  * SPDX-License-Identifier: BSD-2-Clause
+  */
+ 
++#include <AK/Format.h>
+ #include <Compositor/ConnectionFromClient.h>
+ #include <Compositor/Sandbox.h>
+ #include <LibCore/ArgsParser.h>
+@@ -65,8 +66,15 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
+         Gfx::force_hinting_for_testing(Gfx::FontHintingStyle::Normal);
+ 
+     Core::ResourceImplementation::install(make<Core::ResourceImplementationFile>(TRY(String::from_utf8(resource_root))));
+-    if (force_fontconfig)
++    if (force_fontconfig) {
++#ifdef AK_OS_IOS
++        // No fontconfig in this build; see Libraries/LibGfx/Font/TypefaceSkia.cpp.
++        warnln("Compositor: --force-fontconfig is not supported on iOS: this build has no fontconfig font provider.");
++        return Error::from_string_literal("--force-fontconfig is not supported on iOS");
++#else
+         Gfx::FontDatabase::the().set_force_freetype_rasterization(true);
++#endif
++    }
+ 
+ #if defined(AK_OS_LINUX)
+     // NB: The GPU driver starts threads, and Landlock does not confine a thread that already runs. Seccomp covers every
+diff --git a/Services/WebContent/main.cpp b/Services/WebContent/main.cpp
+index f652d352e9..59ebb2ae0e 100644
+--- a/Services/WebContent/main.cpp
++++ b/Services/WebContent/main.cpp
+@@ -204,8 +204,15 @@ ErrorOr<int> ladybird_main(Main::Arguments arguments)
+     if (file_origins_are_tuple_origins)
+         URL::set_file_scheme_urls_have_tuple_origins();
+ 
+-    if (force_fontconfig)
++    if (force_fontconfig) {
++#ifdef AK_OS_IOS
++        // No fontconfig in this build; see Libraries/LibGfx/Font/TypefaceSkia.cpp.
++        warnln("WebContent: --force-fontconfig is not supported on iOS: this build has no fontconfig font provider.");
++        return Error::from_string_literal("--force-fontconfig is not supported on iOS");
++#else
+         Gfx::FontDatabase::the().set_force_freetype_rasterization(true);
++#endif
++    }
+ 
+     WebContent::PageClient::set_is_headless(is_headless);
+ 

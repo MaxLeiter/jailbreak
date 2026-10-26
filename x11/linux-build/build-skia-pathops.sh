@@ -11,7 +11,7 @@
 set -euo pipefail
 SRC=/work/skia/skia
 BD=out/ios-arm64
-LIBSKIA=/out/skia-ios-arm64/lib/libskia.a
+LIBSKIA="${SKIA_STAGE:-/out/skia-ios-arm64-m148}/lib/libskia.a"
 AR=/root/cctools/bin/aarch64-apple-darwin-ar
 NM=/root/cctools/bin/aarch64-apple-darwin-nm
 CXX=/work/skia/shim/skia-cxx

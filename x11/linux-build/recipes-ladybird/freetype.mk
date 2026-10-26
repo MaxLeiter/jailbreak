@@ -6,7 +6,7 @@ endif
 # built afterward, with freetype enabled.
 
 SUBPROJECTS      += freetype
-FREETYPE_VERSION := 2.13.3
+FREETYPE_VERSION := 2.14.3
 DEB_FREETYPE_V   ?= $(FREETYPE_VERSION)+ios1
 
 freetype-setup: setup

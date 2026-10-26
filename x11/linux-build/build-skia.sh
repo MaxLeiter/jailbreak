@@ -33,8 +33,9 @@ export TZ=UTC
 
 # -------- pins (from ladybird-skia-recipe.md §1) ------------------------------
 SKIA_REPO="https://skia.googlesource.com/skia.git"
-# Skia "144" == chrome milestone m144. vcpkg port 144 -> upstream commit:
-SKIA_COMMIT="ee20d565acb08dece4a32e3f209cdd41119015ca"
+# Skia "148" == chrome milestone m148 (upstream Ladybird b9c913c0 pins skia 148#0; was 144 = ee20d565).
+# vcpkg port 148 (baseline 7f3781e1) -> upstream commit:
+SKIA_COMMIT="e7c90ecca9444fe09598f1630ab7cee2c0ee027a"
 
 SDK="/root/cctools/SDK/iPhoneOS16.5.sdk"      # staged sysroot in the image
 IOS_MIN="16.0"
@@ -302,25 +303,25 @@ echo "==> rewriting #include \"include/...\" -> #include \"...\" across staged h
 grep -rlZ '#include "include/' "$OUT/include/skia" 2>/dev/null \
   | xargs -0 -r sed -i 's|#include "include/|#include "|g'
 
-# skia.pc (§5) — Version 144, empty Requires (bundled deps archived in).
+# skia.pc (§5) — Version 148, empty Requires (bundled deps archived in).
 # Apple-framework closure (§5 risk / §8.5): a global-undefined survey of libskia.a
 # (nm: U-in-some-member, defined-in-none) shows it references CoreFoundation (~45),
 # CoreGraphics (~40), CoreText (~41, from the compiled-in SkFontMgr_mac_ct alongside
 # freetype), ImageIO (~3, CGImageSource/Destination), and libobjc (1). No Foundation/
 # UIKit/Metal symbols (confirms zero GPU/Metal closure). All are REQUIRED — none trims
 # — so bake them into Libs so PkgConfig::skia hands Ladybird a complete link closure.
-cat > "$OUT/lib/pkgconfig-skia.pc" <<'PC'
+cat > "$OUT/lib/pkgconfig-skia.pc" <<PC
 prefix=$XIOS_PREFIX
-exec_prefix=${prefix}
-libdir=${prefix}/lib
-includedir=${prefix}/include/skia
+exec_prefix=\${prefix}
+libdir=\${prefix}/lib
+includedir=\${prefix}/include/skia
 
 Name: skia
 Description: 2D graphic library for drawing text, geometries and images.
 URL: https://skia.org/
-Version: 144
-Libs: -L${libdir} -lskia -lskcms -lobjc -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
-Cflags: -I${includedir}
+Version: 148
+Libs: -L\${libdir} -lskia -lskcms -lobjc -framework CoreFoundation -framework CoreGraphics -framework CoreText -framework ImageIO
+Cflags: -I\${includedir}
 PC
 mkdir -p "$OUT/lib/pkgconfig"
 cp "$OUT/lib/pkgconfig-skia.pc" "$OUT/lib/pkgconfig/skia.pc"
