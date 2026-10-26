@@ -289,7 +289,8 @@ All of this runs in Docker on the `procursus-vol-kf6` volume (cloned from the Qt
 
 Branch `claude/kde-67` (draft PR) carries the lane from `claude/update-plans` onto
 `origin/main`, minus the WebKitGTK commits. Plan and port notes: `x11/docs/kde-qt68-plasma64-plan.md`
-(sections 9 and 10). Nothing here is published and nothing has run on the iPad yet.
+(sections 9 and 10). Nothing here is published. The first device run (2026-10-25) failed; see
+"Device run 1" at the end of this section before installing it again.
 
 ### What gets installed
 The staged set is the 200 `.deb`s listed in `x11/linux-build/out/KDE67-STAGED.txt` in the
@@ -440,3 +441,50 @@ processes and carry no entitlements of their own.
 
 The host-ldid AMFI landmine bit `iosc` only, but `kwin_wayland` and `plasmashell` carry the
 same `iosc-gl-ent.xml` set, so the AMFI step above is not optional.
+
+### Device run 1 (2026-10-25): failed, rolled back
+Logs, dpkg output, a capture and KWin's support information are in
+`x11/artifacts/device-runs/kde67-20261025/` in the main checkout (not tracked). The 200 staged
+debs and the rollback set are still on the iPad in `/var/jb/tmp/kde67/` and
+`/var/jb/tmp/kde67-rollback/`.
+
+Install problems (all build/packaging side):
+- `qt6-base`'s new `Breaks:` made the single `dpkg -i` refuse until `--auto-deconfigure` was added.
+  Either document that flag in the install step or let `xios-kde` carry the ordering.
+- File conflicts dpkg stopped on: `powerdevil` vs `plasma-mobile`
+  (`brightnesscontrolplugin/qmldir`), `kwrite` vs `kate` (`kio_kateexec.so`), and
+  `libdisplay-info-dev` vs `libdisplay-info1` (`libdisplay-info.dylib`). Each needs the file
+  moved to one owner or a `Replaces:`/`Breaks:` pair.
+- No `qt6-wayland-dev` in the set, so 28 `-dev` packages stayed unconfigured. Qt 6.10 folded
+  Wayland client into `qt6-base`; ship a transitional `qt6-wayland-dev` that depends on
+  `qt6-base-dev`.
+- `libKF6BreezeIcons.6.30.0.dylib` (27 MB) was unsigned and was ad-hoc signed on the device to
+  get further. The host signing pass skips it, probably on size or because it holds no code
+  entitlements; it is the only unsigned Mach-O in the set.
+
+Runtime problems:
+- **KWin fell back to QPainter.** The log has `Failed to open drm node`, `couldn't find dev node
+  for drm device` and `kwin_wayland_backend: Could not initialize rendering context`, and never
+  `ios-gpu: ANGLE Metal EGL initialized`. KWin 6.7 takes its DRM/GBM path and never reaches the
+  iOS ANGLE hook that 6.1.5 has, so the port's EGL backend patch needs re-applying to the 6.7
+  backend layout. This is the blocker.
+- The desktop did not fill the screen (black border). `supportInformation` reports
+  `Geometry: 0,0,1360x1000`, `Scale: 2`. 6.1.5 launches KWin at the same 1360x1000 logical size
+  and fills the screen, so the border is more likely the QPainter path than the size itself.
+  Recheck once the GPU path works.
+- A visible `Unknown protocol 'desktop'` error: the desktop:/ worker is compiled out (expected),
+  but the default folder view still points at it. Point the default containment at a plain
+  path, or keep the worker.
+- `kf6-i18n 6.30` was rebuilt with the corrected relink; confirm with `otool -L` that it links
+  `@rpath/libgtkintl.dylib` before the next run (see the prod note below).
+
+Rollback worked as written (`dpkg -i` of the fetched set, `apt-get check` clean), plus removing
+66 lane-only packages. It exposed one prod bug: the published `kf6-i18n 6.3.0+ios1` linked
+`@rpath/libintl.dylib` while importing `_g_libintl_*`, so KWin 6.1.5 aborted in dyld on any
+device that had not relinked it locally. Fixed on prod as `kf6-i18n 6.3.0+ios2` (same payload,
+`relink-gtkintl.sh`), and a scan of all 622 published debs found no other binary with that
+mismatch.
+
+Session cleanup bug seen along the way: when KWin aborts at launch, `xios-session` reports the
+failure but leaves `iosc` and `kded6` running, and the next `SESSION` for that slot fails with
+`slot ... already has a display` until `xios-session --slot NAME stop`.
