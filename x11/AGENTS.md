@@ -22,7 +22,7 @@ This directory contains the native X11/Wayland-on-iOS stack. Keep this file stab
 
 ## Architecture Invariants
 
-- The target install prefix is rootless `/var/jb`; packages and scripts should not assume rootful `/`.
+- The target install prefix is rootless `/var/jb`, and rootless is the only target. Rootful support was dropped on 2026-10-25; packages and scripts must not assume rootful `/`.
 - Native display output is passed to iOS as `IOSurface`s and presented by the app with Metal.
 - Geometry is not globally constant. Read compositor/app-reported dimensions such as `/var/jb/tmp/xios.json` instead of hardcoding framebuffer sizes.
 - `iosc` and the app communicate through small local protocols/sockets. Wire changes often require coordinated app and compositor deploys.

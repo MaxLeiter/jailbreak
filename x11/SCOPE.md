@@ -53,8 +53,7 @@ All three were `/var/jb` prefix mismatches, and they still explain shapes in the
    proposal: [`docs/procursus-pr-tigervnc.md`](docs/procursus-pr-tigervnc.md).
 2. **`/bin/sh` hardcode killed keyboard init.** xorg-server's `os/utils.c` execs
    `/bin/sh -c "xkbcomp …"`, and rootless has no `/bin/sh`. Fixed properly with a quilt patch
-   pointing the spawn shell at `$(MEMO_PREFIX)/bin/sh`, applied during the cross-build — a
-   no-op on rootful targets.
+   pointing the spawn shell at `$(MEMO_PREFIX)/bin/sh`, applied during the cross-build.
 3. **No font files.** Fixed by `x11-fonts-sf`, above.
 
 ## Entitlement gotchas for fakesigned apps that need the GPU and `/var/jb`
@@ -97,9 +96,10 @@ explicit fix for the original's "patched in place, on device" problem.
 
 - **Rootless (Dopamine, palera1n, modern)** — `/var/jb` prefix, Procursus,
   `iphoneos-arm64`. This is what everything here targets; the reference device runs Dopamine.
-- **Rootful / legacy** — `/` prefix, different libc paths. Procursus can target it with an
-  empty `MEMO_PREFIX`, and `linux-build/targets/rootful-1900.env` exists so a rootless binary
-  can't be silently packaged as a rootful one, but rootless stays the shipped layout.
+- **Rootful / legacy** — `/` prefix, different libc paths. Not supported: rootful jailbreaks
+  are dead on modern iOS, so the `rootful-1900` target, the rootful repo profile and the
+  rootful packaging branches were removed on 2026-10-25. (Procursus itself can still target
+  it with an empty `MEMO_PREFIX`.)
 - **RootHide** relocates the jbroot and needs its own Theos fork; not supported here.
 - **CFVER** — the reference device is on dist `1900`. Other iOS versions map to other dists,
   so a multi-version release means building per-CFVER.

@@ -5,7 +5,8 @@
 Ladybird ships in two flavors, both on `repo.maxleiter.com`:
 
 - `ladybird-app 0.1.25+ios1`: a standalone UIKit app with a Home Screen icon,
-  for rootless and rootful jailbreaks. Six processes (UI, WebContent,
+  for rootless jailbreaks (a rootful variant was published and then dropped on 2026-10-25;
+  it stays on `repo/profiles/rootful/` but is no longer built). Six processes (UI, WebContent,
   WebWorker, RequestServer, ImageDecoder, Compositor), about 200 MB resident on
   the A10. iPad is tested; iPhone installs but is not tested.
 - `ladybird-wayland 0.1.0+wl5`: the upstream GTK/libadwaita frontend as a

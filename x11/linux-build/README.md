@@ -126,12 +126,12 @@ source changes into procedural build-script rewrites.
 
 ## Target descriptors
 
-`targets/rootless-1900.env` and `targets/rootful-1900.env` hold the prefix, `MEMO_TARGET`,
-`MEMO_CFVER`, package payload root, and minimum iOS version for each layout;
-`target-lib.sh` loads them and the target-aware scripts below take a target id as their
-first argument. `bash print-target.sh rootless-1900` prints the resolved values. Rootless
-is the default and the shipped layout; the rootful descriptor exists so a rootless binary
-can't be silently packaged as a rootful one.
+`targets/rootless-1900.env` holds the prefix, `MEMO_TARGET`, `MEMO_CFVER`, package payload
+root, and minimum iOS version; `target-lib.sh` loads it and the target-aware scripts below
+take a target id as their first argument. `bash print-target.sh rootless-1900` prints the
+resolved values. Rootless is the only target. A `rootful-1900` descriptor existed until
+2026-10-25, when rootful support was dropped; an unknown target id is an error, not a
+silent rootless build. `tools/lint-targets.sh` checks every descriptor.
 
 ## Target-Aware Stub Libraries
 
@@ -140,19 +140,17 @@ through the target descriptor layer:
 
 ```bash
 bash x11/linux-build/build-stublibs.sh rootless-1900 --package
-bash x11/linux-build/build-stublibs.sh rootful-1900 --package
 ```
 
 `build-stublibs.sh` loads `linux-build/targets/<target>.env`, passes the resolved
 `MEMO_TARGET`, `MEMO_CFVER`, prefix, package payload prefix, and minimum iOS version into
 the Procursus container, and stages runtime trees under the matching payload root:
-`var/jb/usr/lib` for rootless, `usr/lib` for rootful. Use `--dry-run` to inspect the
+`var/jb/usr/lib`. Use `--dry-run` to inspect the
 Docker commands without starting a build. If the image already exists and Docker's BuildKit
 cache is unhealthy, add `--skip-image-build` to run only the producer containers.
 
-Rootful assembly requires rootful producer artifacts to exist first. If the package step
-reports a missing `out/*-stub-tree/usr/lib`, run the producer through `build-stublibs.sh`
-for the rootful target before assembling `xios-desktop-stublibs`.
+If the package step reports a missing `out/*-stub-tree/var/jb/usr/lib`, run the producer
+through `build-stublibs.sh` before assembling `xios-desktop-stublibs`.
 
 ## Target-Aware X Server Artifacts
 
@@ -162,13 +160,10 @@ for the rootful target before assembling `xios-desktop-stublibs`.
 
 ```bash
 bash x11/linux-build/build-xserver-target.sh rootless-1900 --package-xvfb
-bash x11/linux-build/build-xserver-target.sh rootful-1900 --package-xvfb
 ```
 
 `packages/x11-xvfb/build.sh` packages `Xvfb` from that target artifact directory. It
-keeps the committed rootless `Xvfb` as a fallback for `rootless-1900`, but refuses
-rootful assembly until `linux-build/out/targets/rootful-1900/Xvfb` exists, so a
-rootless binary cannot be accidentally shipped in a rootful package.
+keeps the committed rootless `Xvfb` as a fallback.
 
 ## The named volume — why and how
 
@@ -241,7 +236,7 @@ linux-build/
   build-*.sh        # one lane per subsystem (see "The other lanes" above)
   gir-*-ondevice.sh # GObject-Introspection typelib scans, run on the iPad
   build-deb.py      # assemble a .deb from a staged tree on macOS (no dpkg needed)
-  targets/*.env     # target descriptors (rootless-1900, rootful-1900)
+  targets/*.env     # target descriptors (rootless-1900)
   target-lib.sh     # loads a descriptor; print-target.sh prints the resolved values
   patches/
     xios/{xios_surface.c,xios_surface.h}       # compositor/app IOSurface glue

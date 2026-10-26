@@ -1,5 +1,7 @@
 # Dependency closure: rootful-1900
 
+> Retired 2026-10-25: the `rootful-1900` target was removed. Kept as a historical report.
+
 - packages built: 34 (37 names incl. Provides)
 - dependencies outside the set: 50
 

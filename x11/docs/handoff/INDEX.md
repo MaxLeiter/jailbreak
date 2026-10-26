@@ -49,7 +49,7 @@ picks and switches them.
 | `wayland-extra-apps.md` | Second wave all published and smoke-tested; waybar is a minimal build, Transmission's GTK client is not built. |
 | `geary-webkitgtk.md` | WebKitGTK 2.44.4 and Geary 46 published on an end-of-life engine, with security notices. The multiprocess WebKit smoke is still open. |
 | `games.md` | OpenTTD, Warzone 2100 and Crispy Doom run on the device; Wesnoth has never run there; 0 A.D. dropped. Nothing published. |
-| `openjdk.md` | Headless OpenJDK 21.0.12+ios1 published and working on the device. Rootful and AWT `+ios2` builds unpublished. |
+| `openjdk.md` | Headless OpenJDK 21.0.12+ios1 published and working on the device. AWT `+ios2` builds unpublished (the rootful `+rootful1` repackage was dropped). |
 | `amethyst-minecraft.md` | Host build only; unpublished; never run on the device. |
 | `xfce.md` | Only Thunar and its libraries are published. There is no XFCE session. |
 | `audit-2026-10-01.md` | The audit's rebuild wave shipped. Still unbumped: waybar, angle, basu, kf6-i18n, KitchenHub, KioskMode, XiosPrefs. Open decisions listed. |

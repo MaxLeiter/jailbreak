@@ -1,13 +1,18 @@
 # Rootless / Rootful / CFVER Migration Plan
 
-> Status (2026-10-25): partly done, no rootful progress since 2026-08-01. The target loader,
-> descriptors, literal audit, template packager and repo profiles exist, and one
-> package ships rootful: `ladybird-app` (`iphoneos-arm`, in `repo/profiles/rootful/`).
-> Everything else is still rootless-only. The Wayland base, GTK 3/4, ANGLE and iosc
-> build for `rootful-1900` but are not published, and nothing has been tested on a
-> rootful device. The software Xios X server this plan originally led with was retired
-> on 2026-07-29, so its steps are gone. The detailed log is under "Immediate Next
-> Patch" at the end.
+> **RETIRED (2026-10-25): rootful support was dropped.** Rootful jailbreaks are dead on
+> modern iOS, so the `rootful-1900` target, the rootful repo profile and every rootful
+> branch in the build and packaging scripts were removed. Rootless (`/var/jb`) is the only
+> target. The target loader and descriptors stay (one descriptor, `rootless-1900`), and
+> `repo/profiles/rootful/` is frozen on the live repo (it still serves `ladybird-app`) but
+> is no longer generated. Everything below is history: do not follow its rootful steps.
+>
+> Status as of the cut-off: no rootful progress since 2026-08-01. The target loader,
+> descriptors, literal audit, template packager and repo profiles existed, and one
+> package shipped rootful: `ladybird-app` (`iphoneos-arm`, in `repo/profiles/rootful/`).
+> The Wayland base, GTK 3/4, ANGLE and iosc built for `rootful-1900` but were never
+> published, and nothing was tested on a rootful device. The software Xios X server this
+> plan originally led with was retired on 2026-07-29, so its steps are gone.
 
 This is the implementation plan for moving Xios packaging from today's
 rootless-only `/var/jb` target to an explicit target matrix covering rootless,

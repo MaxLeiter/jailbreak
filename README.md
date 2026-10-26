@@ -46,7 +46,7 @@ Inside a tweak directory you can also use Theos directly:
 ```bash
 make package            # build the .deb into ./packages
 make package install    # build, push to THEOS_DEVICE_IP, respring
-make clean              # needed when switching rootless <-> rootful
+make clean              # needed when switching package schemes or device <-> simulator targets
 ```
 
 ## The Sileo repo

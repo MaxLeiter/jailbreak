@@ -5,15 +5,16 @@
 >
 > - **M1 (pin Procursus): not done.** `linux-build/build.sh` still shallow-clones the
 >   Procursus tip; there is no `procursus.lock` and no overlay report.
-> - **M2 (target matrix): done.** `linux-build/targets/{rootless,rootful}-1900.env`,
->   loaded by `linux-build/target-lib.sh`. `run-target-script.sh` and
+> - **M2 (target matrix): done.** `linux-build/targets/rootless-1900.env` (a
+>   `rootful-1900.env` existed until 2026-10-25), loaded by `linux-build/target-lib.sh`. `run-target-script.sh` and
 >   `build-procursus-target.sh` take a target id; the `build-target.sh` and
 >   `package-target.sh` sketched below were never written under those names.
 > - **M3 (templates): partly done.** `packages/templates/` covers `x11-fonts-sf`,
 >   `x11-xvfb`, `xfce4`, the `xios-*` metas and several runtime packages.
-> - **M4 (rootful): one package.** `ladybird-app` publishes to `repo/profiles/rootful/`
->   (`XIOS_REPO_PROFILE=rootful` for `bin/lib/make-repo.py`, not a `--profile` flag).
->   No rootful device validation yet.
+> - **M4 (rootful): RETIRED 2026-10-25.** Rootful support was dropped; the target, the
+>   rootful repo profile and the rootful packaging branches are gone. `ladybird-app`
+>   still sits on the frozen `repo/profiles/rootful/` suite, which is no longer generated.
+>   The rootful sections below are history.
 >
 > The `xios-server` package used as the example throughout was retired on 2026-07-29
 > along with the software Xios X server; X11 is rootless Xwayland under iosc now. The

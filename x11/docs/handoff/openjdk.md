@@ -18,9 +18,8 @@ Published (rootless):
 
 Built but **not published**:
 
-- `openjdk-21-{jre,jdk}-headless 21.0.12+rootful1`, the same arm64 image
-  repackaged under `/usr` (`iphoneos-arm`). Host inspection passes; it has
-  never run on a rootful device, so don't describe it as device-proven.
+- (Retired 2026-10-25: a `+rootful1` repackage of the same image under `/usr`
+  (`iphoneos-arm`) was built and never ran on a device; the rootful target is gone.)
 - `openjdk-21-{jre,jdk}-awt 21.0.12+ios2`, an opt-in headful XAWT image (below).
 
 Open:
@@ -123,7 +122,7 @@ From the repository root:
 
 ```bash
 bash x11/linux-build/build-openjdk-ios.sh
-XIOS_TARGET=rootful-1900 bash x11/linux-build/build-openjdk-ios.sh --package-only
+bash x11/linux-build/build-openjdk-ios.sh --package-only
 ```
 
 Pins: OpenJDK `jdk21u` commit `9de4f68c88a0a1510373f291d1a95b1f6b0db8c8`

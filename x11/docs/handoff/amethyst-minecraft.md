@@ -23,18 +23,18 @@ components as 27 arm64 iOS Mach-O files after bundling liblzma.
 Physical-device GUI proof (the gate below) is required before it is
 published.
 
-## Rootless and rootful packages
-
-One application source/build supports both jailbreak layouts:
+## Rootless package
 
 | Target | Application path | Java 21 path | Package architecture |
 |---|---|---|---|
 | `rootless-1900` | `/var/jb/Applications/AngelAuraAmethyst.app` | `/var/jb/usr/lib/jvm/java-21-openjdk` | `iphoneos-arm64` |
-| `rootful-1900` | `/Applications/AngelAuraAmethyst.app` | `/usr/lib/jvm/java-21-openjdk` | `iphoneos-arm` |
+
+(A `rootful-1900` variant was dropped on 2026-10-25. The launcher patch still
+probes a rootful Java path as a harmless fallback.)
 
 The launcher checks the rootless Java location, then the rootful location, then
-an optional bundled runtime. The `.deb` has an exact dependency on the matching
-scheme's `openjdk-21-jre-headless` revision. Amethyst's accidental
+an optional bundled runtime. The `.deb` has an exact dependency on the
+`openjdk-21-jre-headless` revision. Amethyst's accidental
 `/usr/lib/liblzma.5.dylib` dependency is rewritten to an app-bundled,
 ad-hoc-signed `@rpath/liblzma.5.dylib`, so the same executable does not depend
 on a rootful filesystem path.
@@ -45,7 +45,6 @@ Run from `x11/`:
 
 ```bash
 XIOS_TARGET=rootless-1900 bash linux-build/build-amethyst-ios.sh
-XIOS_TARGET=rootful-1900 bash linux-build/build-amethyst-ios.sh
 ```
 
 The build driver checksum-pins the x86_64 Temurin 8 boot JDK required by
@@ -53,17 +52,6 @@ Amethyst's Java build, resets all recursive submodules to the pinned upstream
 commit, applies `ports/amethyst-ios/patches/series`, builds a slim system-JRE
 payload, signs it with Amethyst's narrow TrollStore/JIT/GPU entitlements,
 audits every Mach-O, and emits both a `.deb` and `.tipa`.
-
-OpenJDK itself is built once because its arm64 iOS image is scheme-neutral.
-The existing image can be repackaged for rootful with:
-
-```bash
-XIOS_TARGET=rootful-1900 \
-  bash linux-build/build-openjdk-ios.sh --package-only
-```
-
-The rootful target is a smoke profile. Do not publish its packages until a
-rootful physical device has passed installation and runtime validation.
 
 ## Device gate
 

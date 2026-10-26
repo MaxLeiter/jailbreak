@@ -32,8 +32,9 @@ The domain docs list their own stubs and why: `gnome-session.md`, `kde-kf6.md`, 
   `_NET_WM_MOVERESIZE`, an X11 clipboard bridge. See `iosc-compositor.md`.
 - Geary/WebKitGTK: published; the multiprocess WebKit device smoke is still open. See
   `geary-webkitgtk.md`.
-- Ladybird: published (`ladybird-app 0.1.25+ios1`, rootless and rootful profiles); the first
-  physical rootful run is still open. See `docs/ladybird-plan.md`.
+- Ladybird: published (`ladybird-app 0.1.25+ios1`, rootless; a rootful profile was published
+  too and dropped on 2026-10-25, with no physical rootful run ever recorded). See
+  `docs/ladybird-plan.md`.
 
 Resolved from the old list and published on 2026-07-30: mako/basu, nwg-look, Papers.
 
