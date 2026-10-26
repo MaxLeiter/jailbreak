@@ -33,7 +33,7 @@ REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
-VER="0.9.53"
+VER="0.9.54"
 ARCH="$XIOS_DEB_ARCH"
 DEB="iosc_${VER}_${ARCH}.deb"
 
