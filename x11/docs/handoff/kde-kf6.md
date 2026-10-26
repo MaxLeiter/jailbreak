@@ -290,7 +290,8 @@ All of this runs in Docker on the `procursus-vol-kf6` volume (cloned from the Qt
 Branch `claude/kde-67` (draft PR) carries the lane from `claude/update-plans` onto
 `origin/main`, minus the WebKitGTK commits. Plan and port notes: `x11/docs/kde-qt68-plasma64-plan.md`
 (sections 9 and 10). Nothing here is published. The first device run (2026-10-25) failed; see
-"Device run 1" at the end of this section before installing it again.
+"Device run 1" and "Device run 1 fixes" at the end of this section before installing it again. Run 2
+installs the fixed set (`xios-kde 0.1.24`, 21 repacked debs), not the staged one described next.
 
 ### What gets installed
 The staged set is the 200 `.deb`s listed in `x11/linux-build/out/KDE67-STAGED.txt` in the
@@ -300,7 +301,7 @@ the same list as paths). Superseded duplicates were moved to `out/superseded-kde
 in `out/` is a seed copy of a published dependency and is not part of the test. It is the whole lane: Qt 6.10.3, KF6 6.30.0, Plasma 6.7.5,
 Gear 26.08.1, poppler 25.11.0, plus `libwayland0`/`libwayland-dev 1.24.0+ios2` (KWayland 6.7
 imports `_wl_fixes_interface`, a 1.24-only symbol; the recipe is `claude/upd-wave-core`'s,
-cherry-picked here) and `xios-kde 0.1.22`, which pins every lane runtime unit with `>=` so the
+cherry-picked here) and `xios-kde 0.1.23` (0.1.24 in the fixed set), which pins every lane runtime unit with `>=` so the
 upgrade is one transaction. Everything GPU-entitled in it has been through
 `resign-graphics-packages.py` on the Mac (a second dry run reports 0 changes), so the bytes are
 what a publish would ship. Runtime pieces published elsewhere that this stack runs on: `angle`
@@ -340,17 +341,28 @@ pre-6.10 Qt modules and the KDE units that use Qt private API), `kwayland`
    installing: `apt-get download $(grep -E "^(qt6-|kf6-|plasma|kwin|kdecoration|kwayland|kglobalacceld|layer-shell-qt|libplasma|libkscreen|kscreen|breeze|milou|powerdevil|systemsettings|kactivitymanagerd|qcoro6|phonon4qt6|libpoppler|libwayland|libdisplay-info|konsole|dolphin|kate|kwrite|kcalc|okular|ark|xios-kde)" versions.txt)`.
 
 ### Install (one dpkg transaction, no apt resolver)
+Run 2 uses the fixed set (`KDE67-SET.txt`, see "Device run 1 fixes" below), not the staged one.
+Use a fresh directory: `/var/jb/tmp/kde67/` still holds run 1's debs.
 ```sh
-ssh root@$IP 'mkdir -p /var/jb/tmp/kde67'
-scp $(cat x11/linux-build/out/KDE67-STAGED.paths) root@$IP:/var/jb/tmp/kde67/   # from the claude/kde-67 worktree root
-ssh root@$IP 'cd /var/jb/tmp/kde67 && shasum -a 256 *.deb > got.sha256'   # compare with KDE67-STAGED.txt
-ssh root@$IP 'dpkg -i /var/jb/tmp/kde67/*.deb && apt-get check'
+ssh root@$IP 'mkdir -p /var/jb/tmp/kde67r2'
+scp $(cat x11/linux-build/out/KDE67-SET.paths) root@$IP:/var/jb/tmp/kde67r2/   # from the worktree root that holds out/kde67-set
+ssh root@$IP 'cd /var/jb/tmp/kde67r2 && shasum -a 256 *.deb > got.sha256'   # compare with KDE67-SET.txt
+ssh root@$IP 'cd /var/jb/tmp/kde67r2 && dpkg -i $(ls *.deb | grep -v "^qt6-base_") qt6-base_*.deb && apt-get check'
 ```
-One `dpkg -i` with every file lets dpkg order the unpack itself. No `apt-get -f`, no
-`dist-upgrade`. If `dpkg -i` reports an unmet dependency, stop: the staged set is wrong, the
-fix is on the build side. `apt-get check` must print nothing. Then
-`dpkg -l | grep -E "^ii +(qt6-base|kwin|plasma-workspace|kf6-kio|libwayland0|xios-kde) "` shows
-`6.10.3-2+ios1`, `6.7.5+ios1`, `6.7.5+ios14`, `6.30.0+ios1`, `1.24.0+ios2`, `0.1.22`.
+One `dpkg -i` with every file; qt6-base goes LAST on the command line. dpkg unpacks in
+command-line order and checks `qt6-base`'s `Breaks:` (pre-6.10 `qt6-declarative`, `-svg`,
+`-tools`, ... and the KDE units that use Qt private API) at that moment against whatever is
+still installed. In glob order `qt6-base_` sorts before `qt6-declarative`, `qt6-svg`, `qt6-tools`,
+`qt6-wayland` and the others, so those are still 6.6 when it unpacks and dpkg refuses ("installing
+qt6-base would break qt6-wayland, and deconfiguration is not permitted"). No relation can change that
+(a versioned Depends from `xios-kde` is only checked at configure time, and `Breaks` is the only thing
+that makes apt upgrade the old modules together with qt6-base), so the fix is the order. A plain
+`dpkg -i *.deb` in glob order also works if you add `--auto-deconfigure`; both were run against a
+fake 6.1.5 dpkg root and ended with all 200 packages configured. No `apt-get -f`, no
+`dist-upgrade`. If `dpkg -i` reports an unmet dependency, stop: the set is wrong, the fix is on
+the build side. `apt-get check` must print nothing. Then
+`dpkg -l | grep -E "^ii +(qt6-base|qt6-wayland-dev|kwin|plasma-workspace|kf6-kio|libwayland0|xios-kde) "` shows
+`6.10.3-2+ios1`, `6.10.3-1+ios2`, `6.7.5+ios1`, `6.7.5+ios14`, `6.30.0+ios1`, `1.24.0+ios2`, `0.1.24`.
 
 ### AMFI / signature check (before starting a session)
 A host-signed binary can be SIGKILLed with zero output (exit 137); see `x11/docs/device-testing.md`.
@@ -488,3 +500,54 @@ mismatch.
 Session cleanup bug seen along the way: when KWin aborts at launch, `xios-session` reports the
 failure but leaves `iosc` and `kded6` running, and the next `SESSION` for that slot fails with
 `slot ... already has a display` until `xios-session --slot NAME stop`.
+
+### Device run 1 fixes (packaging side, 2026-10-25)
+The install problems above are fixed in the recipes and in a repacked set that needs no rebuild:
+`x11/linux-build/tools/repack-kde67-run1.sh <dir with the staged debs>` writes the 21 changed debs to
+`out/kde67-fixed/` (`KDE67-FIXED.txt`: name, version, sha256, file, which staged deb each supersedes),
+and `tools/assemble-deb-set.py` builds the full 200-deb install set from the staged list plus those
+(`out/kde67-set/`, `KDE67-SET.txt` / `.paths`). `tools/audit-deb-set.py <dir>` is the pre-flight for
+any set: duplicate paths, directories-only debs, unsigned Mach-O, `_g_libintl_*` without libgtkintl.
+It reports all of run 1's findings on the staged set and nothing on the fixed one.
+
+Root causes:
+- **`brightnesscontrolplugin/qmldir` (powerdevil vs plasma-mobile).** `plasma-mobile-ios-qml-stubs.sh`
+  wrote a pure-QML `ScreenBrightnessControl` into the module powerdevil 6.7 now builds for real. Nothing
+  in Plasma Mobile 6.7 imports it (its `BrightnessItem` uses `mobileshell.screenbrightnessplugin`), so
+  the stand-in is gone (plasma-mobile `+ios24`) and powerdevil owns the module (`+ios3`, `Replaces:
+  plasma-mobile (<< 6.7.5+ios24)` for an upgrade that unpacks it first).
+- **`kio_kateexec.so` (and `bin/exec_inspect.sh`), kwrite vs kate.** Both apps come out of the same
+  `apps/lib` install; `kio_kateexec` links `libkateprivate`, which kwrite already owns (kate.mk already
+  dropped libkateprivate and the locale catalogs for that reason, just not these). kate `+ios2` drops
+  them (plus the doubled `plugins/plugins/` copy), kwrite `+ios2` `Replaces: kate (<< 26.08.1+ios2)`.
+- **`libdisplay-info.dylib` (-dev vs libdisplay-info1).** The 0.1.1 link-only shim put the unversioned
+  dylib in the runtime package; 0.2.0 correctly puts the symlink in -dev, but nothing retired the
+  still-installed `libdisplay-info1 0.1.1+ios1`. `libdisplay-info-dev 0.2.0+ios2` `Replaces:
+  libdisplay-info1 (<< 0.2.0)` (libdisplay-info2 moved to `+ios2` too, they share the version variable).
+  libdisplay-info1 is left with no files and dpkg retires it.
+- **"qt6-wayland-dev missing".** It was in the set. Its README sat in `share/doc`, which PACK replaces
+  with the licence files, so the deb held only directories; dpkg treats such a package as completely
+  replaced and dropped it right after unpacking ("Noting disappearance of qt6-wayland-dev"), and every
+  -dev that depends on it stayed unconfigured. The same run dropped `kscreen-dev`, `plasma-desktop-dev`,
+  `plasma-mobile-dev`, `plasma-nano-dev`, `plasma-pa-dev` and `systemsettings-dev` (dev debs with no headers).
+  `qt6-wayland` / `qt6-wayland-dev` `6.10.3-1+ios2` keep their README in `share/xios-transitional/`, and
+  `KF6_COPY_DEV` now writes a marker file when a -dev would be empty; those six -dev debs and their
+  runtimes moved up one revision (the dev pins the runtime with `=`).
+- **Unsigned `libKF6BreezeIcons.6.30.0.dylib`.** `breeze-icons` is a `data_only` entry in
+  `gen-kf6-recipes.py` ("no SIGN"), true for 6.3 and wrong since 6.30 builds a real dylib. The generator
+  now emits a SIGN for it (`sign=True`); `kf6-breeze-icons 6.30.0+ios2` is signed with `ldid -Cadhoc -S`
+  like its siblings. No size or file-type filter was involved. A scan of all 200 staged debs found no
+  other unsigned Mach-O (only 8 static-plugin `.o` object files in `qt6-base` / `qt6-declarative`, which are
+  never loaded).
+- **`Unknown protocol 'desktop'`.** `org.kde.desktopcontainment`'s `main.xml` defaults the folder view to
+  `desktop:/`, which needs the kio_desktop worker that plasma-workspace-ios-fixes.sh compiles out.
+  `plasma-desktop-ios-qml-fixes.sh` now defaults to `~/Desktop` (FolderModel expands the tilde; plasmashell
+  runs with `HOME=<prefix>/var/root`) and the deb ships that directory (plasma-desktop `+ios11`).
+- **kf6-i18n.** The staged `6.30.0+ios1` links `@rpath/libgtkintl.dylib`; no binary in the 200 debs
+  imports `_g_libintl_*` without it.
+
+`--auto-deconfigure`: see Install. `qt6-base`'s `Breaks:` list is correct as written (each bound sorts
+old < bound <= new and the Plasma units that use Qt private API are all on it), so it is unchanged;
+the install step now puts `qt6-base` last instead. The KF6 units that read
+`QGuiApplicationPrivate::platform_theme` (`kf6-colorscheme`, `-configwidgets`, `-iconthemes`, `-kio`) are
+not on it; that symbol is stable, so a partial upgrade is not expected to break them.
