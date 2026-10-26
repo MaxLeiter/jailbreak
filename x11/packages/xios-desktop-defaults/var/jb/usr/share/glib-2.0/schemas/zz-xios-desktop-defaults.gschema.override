@@ -10,3 +10,11 @@
 [org.gnome.desktop.interface]
 monospace-font-name='.SF UI Mono 11'
 color-scheme='prefer-dark'
+
+# Rotation belongs to the Xios app: it sends the new size and MetaBackendIOS resizes
+# the output IOSurface. xios-sensord also offers an accelerometer, so Mutter's own
+# auto-rotate turned the built-in monitor a quarter turn on top of that (seen on
+# device: transform 270 on a landscape 2880x2160 buffer, GNOME laid out 1080 wide
+# with a second set of panel icons at the real edge). Keep Mutter from rotating.
+[org.gnome.settings-daemon.peripherals.touchscreen]
+orientation-lock=true
