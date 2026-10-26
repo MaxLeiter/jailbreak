@@ -261,8 +261,8 @@ EOF
 fi
 
 fetch_extract xz \
-  https://github.com/tukaani-project/xz/releases/download/v5.6.4/xz-5.6.4.tar.xz \
-  xz-5.6.4
+  https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz \
+  xz-5.8.4
 if ! reuse_stage xz; then
   rm -rf "$BUILD/xz" "$STAGE/xz"
   cmake -S "$SRC/xz" -B "$BUILD/xz" -GNinja \
@@ -277,15 +277,15 @@ if ! reuse_stage xz; then
 fi
 
 fetch_extract libtiff \
-  https://download.osgeo.org/libtiff/tiff-4.7.0.tar.xz \
-  tiff-4.7.0
+  https://download.osgeo.org/libtiff/tiff-4.7.2.tar.xz \
+  tiff-4.7.2
 if ! reuse_stage libtiff; then
   rm -rf "$BUILD/libtiff" "$STAGE/libtiff"
   cmake -S "$SRC/libtiff" -B "$BUILD/libtiff" -GNinja \
     -DCMAKE_TOOLCHAIN_FILE="$SCRIPTS/ios-toolchain.cmake" \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$PREFIX" \
     -DBUILD_SHARED_LIBS=ON -Dtiff-tools=OFF -Dtiff-tests=OFF \
-    -Dtiff-contrib=OFF -Dtiff-docs=OFF -Dcxx=OFF \
+    -Dtiff-contrib=OFF -Dtiff-docs=OFF -Dtiff-cxx=OFF \
     -Dld-version-script=OFF -Djpeg=ON -Dzlib=ON \
     -Dlzma=ON -Dwebp=ON -Dzstd=OFF -Dlibdeflate=OFF
   ninja -C "$BUILD/libtiff" -j"$CPUS"

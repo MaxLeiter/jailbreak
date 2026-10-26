@@ -139,8 +139,11 @@ remove_devel_files "$TIFF"
 rm -f "$TIFF/var/jb/usr/lib/libtiff.dylib" \
   "$TIFF/var/jb/usr/lib/libtiffxx.dylib"
 mkdir -p "$TIFF/var/jb/usr/lib/gimp-private"
-cp "$BUILT/xz/var/jb/usr/lib/liblzma.5.6.4.dylib" \
-  "$TIFF/var/jb/usr/lib/gimp-private/liblzma.5.dylib"
+# The real file is liblzma.5.<xz version>.dylib (CMake); take whichever the
+# staged build produced rather than hard-coding a version that goes stale.
+LZMA_REAL="$(find "$BUILT/xz/var/jb/usr/lib" -maxdepth 1 -type f -name 'liblzma.5.*.dylib' | head -1)"
+[ -n "$LZMA_REAL" ] || { echo "no liblzma.5.*.dylib in $BUILT/xz" >&2; exit 2; }
+cp "$LZMA_REAL" "$TIFF/var/jb/usr/lib/gimp-private/liblzma.5.dylib"
 install_name_tool -id \
   "/var/jb/usr/lib/gimp-private/liblzma.5.dylib" \
   "$TIFF/var/jb/usr/lib/gimp-private/liblzma.5.dylib"
@@ -150,11 +153,20 @@ retarget_import "$TIFF" \
 retarget_import "$TIFF" \
   "/var/jb/usr/lib/liblzma.5.dylib" \
   "/var/jb/usr/lib/gimp-private/liblzma.5.dylib"
-write_control "$TIFF" libtiff6 4.7.0+ios2 Libraries \
+# 4.7.2 (2026-10-25): libtiff6 is also the TIFF runtime gdk-pixbuf, GTK4 and
+# lcms2 link now, replacing Procursus libtiff5 4.2.0. The private XZ is 5.8.4,
+# past CVE-2025-31115.
+write_control "$TIFF" libtiff6 4.7.2+ios1 Libraries \
   "libjpeg62-turbo, libwebp7, libz1" \
-  "TIFF image codec runtime for GIMP with a private XZ runtime"
+  "TIFF image codec runtime (libtiff 4.7) with a private XZ runtime"
 sign_stage "$TIFF"
 xmkdeb "$TIFF" "$OUT" >/dev/null
+# XIOS_GIMP_PACKAGE_ONLY=libtiff6 stops here: a libtiff bump needs only this
+# deb, not a repack of the whole GIMP stack and the native host app build.
+if [ "${XIOS_GIMP_PACKAGE_ONLY:-}" = libtiff6 ]; then
+  echo "==> XIOS_GIMP_PACKAGE_ONLY=libtiff6: packaged libtiff6 only"
+  exit 0
+fi
 
 pack_runtime_and_dev babl libbabl-0.1-0 libbabl-0.1-dev 0.1.126+ios1 \
   "liblcms2-2" "babl pixel-format conversion runtime"
