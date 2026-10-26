@@ -43,12 +43,11 @@ definition in (CodeBlock.h only forward-declares it).
 mach_vm_remap is declared by wtf/spi/cocoa/MachVMSPI.h for non-MAC platforms,
 so it needs no local declaration even though the iOS SDK's mach/mach_vm.h
 omits it.
-
 diff --git a/Source/JavaScriptCore/jit/ExecutableAllocator.cpp b/Source/JavaScriptCore/jit/ExecutableAllocator.cpp
-index c9e3589bac..ade8cd9926 100644
+index 75fe31a7754..4eece369453 100644
 --- a/Source/JavaScriptCore/jit/ExecutableAllocator.cpp
 +++ b/Source/JavaScriptCore/jit/ExecutableAllocator.cpp
-@@ -333,7 +333,16 @@ static ALWAYS_INLINE void initializeSeparatedWXHeaps(void* stubBase, size_t stub
+@@ -319,7 +319,16 @@ static ALWAYS_INLINE void initializeSeparatedWXHeaps(void* stubBase, size_t stub
  #endif
  
      // Prevent writing into the executable JIT mapping.
@@ -65,7 +64,7 @@ index c9e3589bac..ade8cd9926 100644
      RELEASE_ASSERT(!result);
  
      // Prevent execution in the writable JIT mapping.
-@@ -342,7 +351,17 @@ static ALWAYS_INLINE void initializeSeparatedWXHeaps(void* stubBase, size_t stub
+@@ -328,7 +337,17 @@ static ALWAYS_INLINE void initializeSeparatedWXHeaps(void* stubBase, size_t stub
  
  WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
      // Zero out writableAddr to avoid leaking the address of the writable mapping.
@@ -83,26 +82,11 @@ index c9e3589bac..ade8cd9926 100644
  WTF_ALLOW_UNSAFE_BUFFER_USAGE_END
  
  #if ENABLE(SEPARATED_WX_HEAP)
-diff --git a/Source/JavaScriptCore/runtime/ScriptExecutable.cpp b/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
-index 76a66a05be..133de47cad 100644
---- a/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
-+++ b/Source/JavaScriptCore/runtime/ScriptExecutable.cpp
-@@ -26,6 +26,10 @@
- #include "config.h"
- 
- #include "CodeBlock.h"
-+// CodeBlock.h only forward-declares CompilationResult; setupJIT() compares
-+// against its enumerators, and with FTL off nothing else in this unified source
-+// pulls in the definition.
-+#include "CompilationResult.h"
- #include "Debugger.h"
- #include "EvalCodeBlock.h"
- #include "FunctionCodeBlock.h"
 diff --git a/Source/WTF/wtf/PlatformEnable.h b/Source/WTF/wtf/PlatformEnable.h
-index 19941e359c..102443da84 100644
+index b62d0feda92..46a3529c227 100644
 --- a/Source/WTF/wtf/PlatformEnable.h
 +++ b/Source/WTF/wtf/PlatformEnable.h
-@@ -538,6 +538,13 @@
+@@ -532,6 +532,13 @@
  #endif
  #endif
  
@@ -117,10 +101,10 @@ index 19941e359c..102443da84 100644
  #define ENABLE_SEPARATED_WX_HEAP 0
  #endif
 diff --git a/Source/WTF/wtf/PlatformHave.h b/Source/WTF/wtf/PlatformHave.h
-index e92480df89..fd30303c96 100644
+index 9c53f471873..f7398f63e0f 100644
 --- a/Source/WTF/wtf/PlatformHave.h
 +++ b/Source/WTF/wtf/PlatformHave.h
-@@ -89,6 +89,12 @@
+@@ -84,6 +84,12 @@
  #define HAVE_REMAP_JIT 1
  #endif
  
@@ -134,12 +118,12 @@ index e92480df89..fd30303c96 100644
  #define HAVE_SEC_KEYCHAIN 1
  #endif
 diff --git a/Source/WTF/wtf/PlatformUse.h b/Source/WTF/wtf/PlatformUse.h
-index be8ac0b053..de6965487f 100644
+index d35c0e967a0..3809916ea13 100644
 --- a/Source/WTF/wtf/PlatformUse.h
 +++ b/Source/WTF/wtf/PlatformUse.h
-@@ -151,7 +151,9 @@
- #define USE_BUILTIN_FRAME_ADDRESS 1
- #endif
+@@ -140,7 +140,9 @@
+ /* https://bugs.webkit.org/show_bug.cgi?id=214777 */
+ #define USE_BIGINT32 0
  
 -#if OS(DARWIN) && CPU(ARM64) && HAVE(REMAP_JIT)
 +/* The execute-only write thunk needs execute-only memory, which the A10 does
@@ -149,7 +133,7 @@ index be8ac0b053..de6965487f 100644
  #endif
  
 diff --git a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
-index a4c951ecdc..d515e4733e 100644
+index 4177872a7c5..b084a165895 100644
 --- a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
 +++ b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
 @@ -109,12 +109,19 @@ void* OSAllocator::tryReserveAndCommitImpl(size_t bytes, Usage usage, void* addr
@@ -172,7 +156,7 @@ index a4c951ecdc..d515e4733e 100644
  #elif OS(LINUX) || OS(HAIKU)
      UNUSED_PARAM(jitCageEnabled);
      if (uncommitted)
-@@ -272,6 +279,27 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, void* address, bo
+@@ -279,6 +286,27 @@ void* OSAllocator::reserveAndCommit(size_t bytes, Usage usage, void* address, bo
  
  void OSAllocator::commit(void* address, size_t bytes, bool writable, bool executable)
  {

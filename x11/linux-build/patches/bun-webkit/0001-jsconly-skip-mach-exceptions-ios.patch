@@ -1,3 +1,4 @@
+
 diff --git a/Source/JavaScriptCore/assembler/FastJITPermissions.h b/Source/JavaScriptCore/assembler/FastJITPermissions.h
 index 4e4067d009e..51bee1fb93a 100644
 --- a/Source/JavaScriptCore/assembler/FastJITPermissions.h
@@ -39,7 +40,7 @@ index 6ba85116d1b..7f727fd9453 100644
  
  namespace JSC {
 diff --git a/Source/JavaScriptCore/wasm/WasmAddressType.cpp b/Source/JavaScriptCore/wasm/WasmAddressType.cpp
-index d6656dcdc22..c7f47a93e51 100644
+index 14a0f747001..e0118acbb91 100644
 --- a/Source/JavaScriptCore/wasm/WasmAddressType.cpp
 +++ b/Source/JavaScriptCore/wasm/WasmAddressType.cpp
 @@ -27,9 +27,12 @@
@@ -55,52 +56,53 @@ index d6656dcdc22..c7f47a93e51 100644
 +
  namespace JSC { namespace Wasm {
  
- AddressType::AddressType(AddressType::Kind addressType) : m_type(addressType) { };
-@@ -52,7 +55,7 @@ AddressType::AddressType(TypeKind typeKind)
+ static constexpr const char* invalidAddressTypeConversion = "Invalid Wasm Type to AddressType conversion";
+@@ -48,7 +51,7 @@ AddressType::AddressType(TypeKind typeKind)
      }
  }
  
--#if !PLATFORM(PLAYSTATION)
+-#if !PLATFORM(PLAYSTATION) && ENABLE(JIT)
 +#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
  AddressType::AddressType(B3::Type type)
  {
      switch (type.kind()) {
-@@ -80,7 +83,7 @@ TypeKind AddressType::asWasmTypeKind() const
+@@ -88,7 +91,7 @@ Wasm::Type AddressType::asWasmType() const
      RELEASE_ASSERT_NOT_REACHED(invalidAddressTypeConversion);
  }
  
--#if !PLATFORM(PLAYSTATION)
+-#if !PLATFORM(PLAYSTATION) && ENABLE(JIT)
 +#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
  B3::TypeKind AddressType::asB3TypeKind() const
  {
      switch (m_type) {
 diff --git a/Source/JavaScriptCore/wasm/WasmAddressType.h b/Source/JavaScriptCore/wasm/WasmAddressType.h
-index 16d20c32b6a..e5aeb418bc5 100644
+index 8220568dfc5..35a09026633 100644
 --- a/Source/JavaScriptCore/wasm/WasmAddressType.h
 +++ b/Source/JavaScriptCore/wasm/WasmAddressType.h
-@@ -45,14 +45,16 @@ public:
-     AddressType() = default;
-     AddressType(TypeKind);
-     AddressType(AddressType::Kind);
--#if !PLATFORM(PLAYSTATION)
+@@ -48,7 +48,7 @@ public:
+     constexpr AddressType(AddressType::Kind addressType)
+         : m_type(addressType)
+     { }
+-#if !PLATFORM(PLAYSTATION) && ENABLE(JIT)
 +#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
      AddressType(B3::Type);
  #endif
-     explicit AddressType(bool is64bit);
- 
+     explicit constexpr AddressType(bool is64Bit)
+@@ -58,7 +58,9 @@ public:
      AddressType::Kind type() const { return m_type; }
-     TypeKind NODELETE asWasmTypeKind() const;
+     TypeKind LEGACY_NODELETE asWasmTypeKind() const;
+     Wasm::Type asWasmType() const;
 +#if (ENABLE(B3_JIT) || ENABLE(WEBASSEMBLY_BBQJIT)) && !PLATFORM(PLAYSTATION)
-     B3::TypeKind NODELETE asB3TypeKind() const;
+     B3::TypeKind LEGACY_NODELETE asB3TypeKind() const;
 +#endif
  
-     friend bool NODELETE operator==(const AddressType& lhs, const AddressType& rhs);
+     friend bool LEGACY_NODELETE operator==(const AddressType& lhs, const AddressType& rhs);
      friend bool operator!=(const AddressType& lhs, const AddressType& rhs);
 diff --git a/Source/WTF/wtf/PlatformHave.h b/Source/WTF/wtf/PlatformHave.h
-index 54b4e045881..e92480df896 100644
+index eed1cf6d3a5..9c53f471873 100644
 --- a/Source/WTF/wtf/PlatformHave.h
 +++ b/Source/WTF/wtf/PlatformHave.h
-@@ -101,7 +101,7 @@
+@@ -96,7 +96,7 @@
  #define HAVE_HISERVICES 1
  #endif
  
@@ -109,7 +111,7 @@ index 54b4e045881..e92480df896 100644
  #define HAVE_READLINE 1
  #endif
  
-@@ -221,7 +221,7 @@
+@@ -216,7 +216,7 @@
  #define HAVE_PTHREAD_SETNAME_NP 1
  #endif
  
@@ -119,10 +121,10 @@ index 54b4e045881..e92480df896 100644
  #endif
  
 diff --git a/Source/WTF/wtf/PlatformJSCOnly.cmake b/Source/WTF/wtf/PlatformJSCOnly.cmake
-index 399bd2d2aae..966bc3cca6a 100644
+index 4e754fcd9c9..199b4695994 100644
 --- a/Source/WTF/wtf/PlatformJSCOnly.cmake
 +++ b/Source/WTF/wtf/PlatformJSCOnly.cmake
-@@ -87,32 +87,35 @@ if (WIN32)
+@@ -89,25 +89,31 @@ if (WIN32)
          win/MemoryPressureHandlerWin.cpp
      )
  elseif (APPLE)
@@ -168,7 +170,10 @@ index 399bd2d2aae..966bc3cca6a 100644
 -        VERBATIM)
 +        )
 +    endif ()
-     list(APPEND WTF_SOURCES
+     # Bun: not with USE_BUN_JSC_ADDITIONS. TimeZone.cpp then compiles its no-op listenForTimeZoneChangeNotifications()
+     # on every platform (Bun bumps the time zone ID itself, through timeZoneDidChange()), and this file defines the same
+     # function: libWTF.a would hold two strong definitions of it and the link would take whichever came first.
+@@ -120,9 +126,6 @@ elseif (APPLE)
          cocoa/MemoryFootprintCocoa.cpp
  
          generic/MemoryPressureHandlerGeneric.cpp
@@ -179,7 +184,7 @@ index 399bd2d2aae..966bc3cca6a 100644
  elseif (ANDROID)
      list(APPEND WTF_SOURCES
 diff --git a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
-index 2d2a68d9c26..a4c951ecdc3 100644
+index b338b036914..4177872a7c5 100644
 --- a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
 +++ b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
 @@ -49,11 +49,11 @@
@@ -209,11 +214,11 @@ index 2d2a68d9c26..a4c951ecdc3 100644
  #define BUN_VM_CHILD_PROCESS_INHERIT VM_INHERIT_NONE
  #else
  #ifdef VM_INHERIT_DEFAULT
-@@ -187,7 +191,7 @@ void* OSAllocator::tryReserveUncommittedAligned(size_t bytes, size_t alignment,
+@@ -194,7 +198,7 @@ void* OSAllocator::tryReserveUncommittedAligned(size_t bytes, size_t alignment,
  {
      ASSERT(hasOneBitSet(alignment) && alignment >= pageSize());
  
--#if PLATFORM(MAC) || USE(APPLE_INTERNAL_SDK) || BUN_MACOSX
+-#if PLATFORM(MAC) || USE(APPLE_INTERNAL_SDK) || defined(BUN_MACOSX)
 +#if (PLATFORM(MAC) || USE(APPLE_INTERNAL_SDK) || BUN_MACOSX) && !OS(IOS_FAMILY)
      ASSERT_UNUSED(numGuardPagesToAddOnEachEnd, !numGuardPagesToAddOnEachEnd);
      ASSERT_UNUSED(jitCageEnabled, !jitCageEnabled); // Not supported for mach API.

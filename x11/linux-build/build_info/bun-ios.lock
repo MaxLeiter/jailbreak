@@ -3,9 +3,9 @@
 # The OpenCode iPad path needs a Bun runtime built for iPhoneOS on A10, not a
 # restamped macOS standalone. This lock keeps the source experiment auditable.
 BUN_GIT_REPO=https://github.com/oven-sh/bun
-BUN_GIT_COMMIT=5b55beb711558496e18ecd84f91ffc2c67ef0ec2
-BUN_DESCRIBE=bun-v1.3.14-641-g5b55beb711
+BUN_GIT_COMMIT=38afee6c84fcf48c0edb2466aa4b27d287a59c30
+BUN_DESCRIBE=bun-v1.4.4
 BUN_WEBKIT_REPO=https://github.com/oven-sh/WebKit
-BUN_WEBKIT_COMMIT=c9ad5813fd23bd8b98b0738abc3d037ec716aa92
+BUN_WEBKIT_COMMIT=d6375c72affe0f70222cdcb45012b10f0bf3a9d5
 IOS_MIN=16.0
 IOS_CPU=apple-a10

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Reproducible Bun iPhoneOS/A10 package build for OpenCode.
-# Default deb version: 1.4.0~canary.1+git5b55beb711+ios0.5.
+# Default deb version: 1.4.4+ios1.
 #
 # This is intentionally a source-build path. The upstream macOS standalone
 # runtime crashes with SIGILL on iPad7,12/A10 because it is built for newer
@@ -24,7 +24,7 @@ PATCH="${BUN_IOS_PATCH:-$HERE/patches/bun/0001-add-iphoneos-a10-target.patch}"
 WEBKIT_PATCH_DIR="${BUN_WEBKIT_PATCH_DIR:-$HERE/patches/bun-webkit}"
 BUILD_DIR="${BUILD_DIR:-build/ios-a10}"
 CONTROL="${BUN_IOS_CONTROL:-$HERE/build_info/bun.control}"
-BUN_VERSION="${BUN_VERSION:-1.4.0~canary.1+git5b55beb711+ios0.5}"
+BUN_VERSION="${BUN_VERSION:-1.4.4+ios1}"
 ARCH="${ARCH:-iphoneos-arm64}"
 PKG="bun_${BUN_VERSION}_${ARCH}.deb"
 
@@ -76,7 +76,7 @@ TINYCC_IOS_PATCH="${TINYCC_IOS_PATCH:-$HERE/patches/tinycc/tccrun-ios-mmap.patch
 install -d "$SRC/patches/tinycc"
 cp "$TINYCC_IOS_PATCH" "$SRC/patches/tinycc/tccrun-ios-mmap.patch"
 
-LLVM_PREFIX="${LLVM_PREFIX:-/opt/homebrew/opt/llvm@21}"
+LLVM_PREFIX="${LLVM_PREFIX:-/opt/homebrew/opt/llvm}"  # bun 1.4.4 requires clang 23.1
 if [ -x "$LLVM_PREFIX/bin/clang" ]; then
   export PATH="$LLVM_PREFIX/bin:$PATH"
   export CC="$LLVM_PREFIX/bin/clang"
