@@ -13055,7 +13055,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-session-stubs
 Name: Xios GNOME session bridges
-Version: 0.2.13
+Version: 0.2.14
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -13064,11 +13064,11 @@ Recommends: pulseaudio-utils
 Section: X11
 Priority: optional
 Description: iOS-backed freedesktop D-Bus services for the Xios GNOME session
-Filename: debs/xios-session-stubs_0.2.13_iphoneos-arm64.deb
-Size: 41470
-MD5sum: 3898f8f7344eba877e76610f14c749ef
-SHA1: 5be5bc22ac35d8c57e3b2d1f2e010f5c9b0a6841
-SHA256: 29b015b2fd18f523992d447563ae9480f0056ff58a5405daea936c4166900cab
+Filename: debs/xios-session-stubs_0.2.14_iphoneos-arm64.deb
+Size: 41678
+MD5sum: 908f9300ac2e88ea05185035d6cfc934
+SHA1: c20e09157eb699d606c15df91b9b82b478d31f9b
+SHA256: bf01c65f138e3b8636b36dd9cbec73a5d9884d75635538ece1b9b219445f8bae
 Icon: https://repo.maxleiter.com/icons/xios-session-stubs.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session-stubs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session-stubs.json
