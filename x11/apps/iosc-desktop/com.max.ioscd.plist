@@ -25,6 +25,16 @@
     <key>KeepAlive</key>
     <true/>
 
+    <!-- Every desktop session (iosc, KWin, plasmashell, mutter, audio, D-Bus) is
+         spawned by ioscd and inherits its scheduling policy. Without a
+         ProcessType, iOS launchd runs a daemon as Background: every thread at
+         priority 4 (MAXPRI_THROTTLE) with coalesced timers, so a 10 ms repaint
+         timer in iosc fired up to ~100 ms late and the whole desktop competed
+         with photoanalysisd for CPU. Interactive gives priority 31, like sshd
+         and the Metal event broker. -->
+    <key>ProcessType</key>
+    <string>Interactive</string>
+
     <key>StandardOutPath</key>
     <string>/var/jb/tmp/ioscd.log</string>
     <key>StandardErrorPath</key>

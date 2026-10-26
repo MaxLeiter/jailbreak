@@ -32,7 +32,7 @@ root = Path(sys.argv[1])
 def replace(path, old, new, marker):
     p = root / path
     text = p.read_text()
-    if marker in text:
+    if marker in text or new in text:   # new: a replacement whose result does not spell its marker
         return
     if old not in text:
         raise SystemExit(f"{path}: missing anchor for {marker}")
@@ -159,7 +159,7 @@ replace("src/core/renderdevice.cpp",
 replace("src/core/renderdevice.cpp",
         "        connect(m_vulkanDevice.get(), &VulkanDevice::deviceLost, this, &RenderDevice::handleVulkanDeviceLoss);\n    }\n    m_inReset = false;\n}",
         "        connect(m_vulkanDevice.get(), &VulkanDevice::deviceLost, this, &RenderDevice::handleVulkanDeviceLoss);\n    }\n    m_inReset = false;\n#endif\n}",
-        "ios-gpu-no-vulkan-create-end")
+        "ios-gpu-no-vulkan-create-end")  # the result has no marker text; replace() recognises it by the new text
 
 # ---- WaylandBackend: pick the ANGLE render device, accept IOSurface buffers ------------------------------------------
 replace("src/backends/wayland/wayland_backend.h",
@@ -325,6 +325,132 @@ if "ios-gpu-texture-load" not in text:
 
 '''
     p.write_text(text.replace(anchor, implementation + anchor, 1))
+
+# ---- presentation feedback is matched to its frame, not to the oldest one -------------------------------------------
+# Upstream pairs every presented/discarded event with m_frames.front(). iosc up to 0.9.53 answered the feedbacks of a
+# repaint newest-first, so the event for frame B completed frame A and destroyed A's feedback proxy, which silently
+# dropped the event already queued for A. B then stayed in m_frames for good: RenderLoop counted one frame in flight
+# forever and never let a second real one go out, so every frame waited a whole repaint + present round trip and the
+# slidingpopups slide-out (at most 16 ms of animation per composite) took ~1.5 s. Match by feedback object; a frame
+# older than the one answered is complete too (the host is showing newer content), and an older frame that never got
+# an answer when a newer one is discarded is dropped.
+replace("src/backends/wayland/wayland_output.h",
+        "    void frameDiscarded();\n    void framePresented(std::chrono::nanoseconds timestamp, uint32_t refreshRate);\n",
+        "    void frameDiscarded();\n    void framePresented(std::chrono::nanoseconds timestamp, uint32_t refreshRate);\n"
+        "    void frameDiscarded(struct wp_presentation_feedback *feedback); // ios-presentation-match-decl\n"
+        "    void framePresented(struct wp_presentation_feedback *feedback, std::chrono::nanoseconds timestamp, uint32_t refreshRate);\n",
+        "ios-presentation-match-decl")
+replace("src/backends/wayland/wayland_output.cpp",
+        "    reinterpret_cast<WaylandOutput *>(data)->frameDiscarded();\n",
+        "    reinterpret_cast<WaylandOutput *>(data)->frameDiscarded(wp_presentation_feedback); // ios-presentation-match-discarded\n",
+        "ios-presentation-match-discarded")
+replace("src/backends/wayland/wayland_output.cpp",
+        "    reinterpret_cast<WaylandOutput *>(data)->framePresented(timestamp, refreshRate);\n",
+        "    reinterpret_cast<WaylandOutput *>(data)->framePresented(wp_presentation_feedback, timestamp, refreshRate); // ios-presentation-match-presented\n",
+        "ios-presentation-match-presented")
+replace("src/backends/wayland/wayland_output.cpp",
+        "void WaylandOutput::frameDiscarded()\n{\n    m_frames.pop_front();\n}\n",
+        "void WaylandOutput::frameDiscarded()\n{\n    m_frames.pop_front();\n}\n\n"
+        "void WaylandOutput::frameDiscarded(struct wp_presentation_feedback *feedback) // ios-presentation-match-impl\n"
+        "{\n"
+        "    const auto it = std::ranges::find_if(m_frames, [feedback](const auto &frame) {\n"
+        "        return frame.presentationFeedback == feedback;\n"
+        "    });\n"
+        "    if (it == m_frames.end()) {\n"
+        "        return;\n"
+        "    }\n"
+        "    while (m_frames.front().presentationFeedback != feedback) {\n"
+        "        m_frames.pop_front();\n"
+        "    }\n"
+        "    m_frames.pop_front();\n"
+        "}\n\n"
+        "void WaylandOutput::framePresented(struct wp_presentation_feedback *feedback, std::chrono::nanoseconds timestamp, uint32_t refreshRate)\n"
+        "{\n"
+        "    const auto it = std::ranges::find_if(m_frames, [feedback](const auto &frame) {\n"
+        "        return frame.presentationFeedback == feedback;\n"
+        "    });\n"
+        "    if (it == m_frames.end()) {\n"
+        "        return;\n"
+        "    }\n"
+        "    while (m_frames.front().presentationFeedback != feedback) {\n"
+        "        framePresented(timestamp, refreshRate);\n"
+        "    }\n"
+        "    framePresented(timestamp, refreshRate);\n"
+        "}\n",
+        "ios-presentation-match-impl")
+# Under iosc a nested frame is presented only after the Xios app has shown it: commit -> repaint at the app's next
+# deadline -> app tick -> CoreAnimation present -> presented handler, 55-65 ms on the A10. With two frames in flight that
+# caps KWin at ~28 fps, and slidingpopups advances at most one refresh interval (16.7 ms) per composite, so a 200 ms
+# slide took ~550 ms. Measured on the A10 (iosc 0.9.54): 3 in flight ~44 fps, 4 in flight ~53 fps (popup close 445 ->
+# 380 ms) for one more 2880x2160 swapchain buffer (+25 MB). Frames are only queued while KWin animates continuously, so
+# a single input event still composites at once. KWIN_IOS_MAX_PENDING_FRAMES (1-4) overrides.
+replace("src/backends/wayland/wayland_output.cpp",
+        "    m_renderLoop->setMaxPendingFrameCount(2);\n",
+        "#if defined(__APPLE__) // ios-nested-pending-frames\n"
+        "    m_renderLoop->setMaxPendingFrameCount(std::clamp(qEnvironmentVariableIsSet(\"KWIN_IOS_MAX_PENDING_FRAMES\") ? qEnvironmentVariableIntValue(\"KWIN_IOS_MAX_PENDING_FRAMES\") : 4, 1, 4));\n"
+        "#else\n"
+        "    m_renderLoop->setMaxPendingFrameCount(2);\n"
+        "#endif\n",
+        "ios-nested-pending-frames")
+# A host present time earlier than the frame callback (a stale presentedTime) made the margin negative, the expected
+# compositing time negative, and the next composite land that far in the future. A margin is never below zero.
+replace("src/backends/wayland/wayland_output.cpp",
+        "        m_renderLoop->setPresentationSafetyMargin(difference + std::chrono::milliseconds(1));\n",
+        "        m_renderLoop->setPresentationSafetyMargin(std::max<std::chrono::nanoseconds>(difference + std::chrono::milliseconds(1), std::chrono::nanoseconds::zero())); // ios-presentation-margin-clamp\n",
+        "ios-presentation-margin-clamp")
+
+# ---- KWIN_IOS_FRAME_TRACE=1: one stderr line per RenderLoop decision and nested-output frame -------------------------
+# Stamped in CLOCK_UPTIME_RAW ms, the clock iosc's IOSC_PRESENT_TRACE uses, so both sides of a frame line up. Read once.
+replace("src/core/renderloop.cpp",
+        "#include <filesystem>\n",
+        "#include <filesystem>\n#include <cstdio> // ios-frame-trace-include\n#include <time.h>\n",
+        "ios-frame-trace-include")
+replace("src/core/renderloop.cpp",
+        "static const bool s_printDebugInfo = qEnvironmentVariableIntValue(\"KWIN_LOG_PERFORMANCE_DATA\") != 0;\n",
+        "static const bool s_printDebugInfo = qEnvironmentVariableIntValue(\"KWIN_LOG_PERFORMANCE_DATA\") != 0;\n"
+        "static const bool s_iosFrameTrace = qEnvironmentVariableIntValue(\"KWIN_IOS_FRAME_TRACE\") != 0; // ios-frame-trace-define\n"
+        "#define IOS_FRAME_TRACE(...) do { if (s_iosFrameTrace) { fprintf(stderr, \"ftrace %.3f \", clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e6); fprintf(stderr, __VA_ARGS__); } } while (0)\n",
+        "ios-frame-trace-define")
+replace("src/core/renderloop.cpp",
+        "    const std::chrono::nanoseconds nextRenderTimestamp = nextPresentationTimestamp - expectedCompositingTime;\n"
+        "    compositeTimer.start(std::max(0ms, std::chrono::duration_cast<std::chrono::milliseconds>(nextRenderTimestamp - currentTime)), Qt::PreciseTimer, q);\n",
+        "    const std::chrono::nanoseconds nextRenderTimestamp = nextPresentationTimestamp - expectedCompositingTime;\n"
+        "    compositeTimer.start(std::max(0ms, std::chrono::duration_cast<std::chrono::milliseconds>(nextRenderTimestamp - currentTime)), Qt::PreciseTimer, q);\n"
+        "    IOS_FRAME_TRACE(\"loop timer %.1fms target+%.1fms last-%.1fms expected %.1fms margin %.1fms render %.1fms pending %d\\n\", // ios-frame-trace-timer\n"
+        "                    (nextRenderTimestamp - currentTime).count() / 1e6, (nextPresentationTimestamp - currentTime).count() / 1e6,\n"
+        "                    (currentTime - lastPresentationTimestamp).count() / 1e6, expectedCompositingTime.count() / 1e6,\n"
+        "                    safetyMargin.count() / 1e6, renderJournal.result().count() / 1e6, pendingFrameCount);\n",
+        "ios-frame-trace-timer")
+replace("src/core/renderloop.cpp",
+        "void RenderLoopPrivate::delayScheduleRepaint()\n{\n",
+        "void RenderLoopPrivate::delayScheduleRepaint()\n{\n"
+        "    IOS_FRAME_TRACE(\"loop delay (pending %d)\\n\", pendingFrameCount); // ios-frame-trace-delay\n",
+        "ios-frame-trace-delay")
+replace("src/core/renderloop.cpp",
+        "    Q_ASSERT(pendingFrameCount > 0);\n    pendingFrameCount--;\n\n    if (!inhibitCount && pendingReschedule) {\n        scheduleNextRepaint();\n    }\n}\n",
+        "    Q_ASSERT(pendingFrameCount > 0);\n    pendingFrameCount--;\n"
+        "    IOS_FRAME_TRACE(\"loop dropped (pending %d reschedule %d)\\n\", pendingFrameCount, pendingReschedule); // ios-frame-trace-dropped\n\n"
+        "    if (!inhibitCount && pendingReschedule) {\n        scheduleNextRepaint();\n    }\n}\n",
+        "ios-frame-trace-dropped")
+replace("src/core/renderloop.cpp",
+        "    Q_ASSERT(pendingFrameCount > 0);\n    pendingFrameCount--;\n\n    notifyVblank(timestamp);\n",
+        "    Q_ASSERT(pendingFrameCount > 0);\n    pendingFrameCount--;\n"
+        "    IOS_FRAME_TRACE(\"loop presented age %.1fms (pending %d reschedule %d timer %d)\\n\", // ios-frame-trace-presented\n"
+        "                    (std::chrono::steady_clock::now().time_since_epoch() - timestamp).count() / 1e6, pendingFrameCount, pendingReschedule, compositeTimer.isActive());\n\n"
+        "    notifyVblank(timestamp);\n",
+        "ios-frame-trace-presented")
+replace("src/core/renderloop.cpp",
+        "void RenderLoopPrivate::dispatch()\n{\n",
+        "void RenderLoopPrivate::dispatch()\n{\n"
+        "    IOS_FRAME_TRACE(\"loop dispatch (pending %d)\\n\", pendingFrameCount); // ios-frame-trace-dispatch\n",
+        "ios-frame-trace-dispatch")
+replace("src/core/renderloop.cpp",
+        "    d->delayedVrrTimer.stop();\n    const int effectiveMaxPendingFrameCount",
+        "    d->delayedVrrTimer.stop();\n"
+        "    IOS_FRAME_TRACE(\"loop schedule item=%p layer=%p pending %d max %d inhibit %d timer %d preparing %d\\n\", // ios-frame-trace-schedule\n"
+        "                    (void *)item, (void *)outputLayer, d->pendingFrameCount, d->maxPendingFrameCount, d->inhibitCount, d->compositeTimer.isActive(), d->preparingNewFrame);\n"
+        "    const int effectiveMaxPendingFrameCount",
+        "ios-frame-trace-schedule")
 PY
 
 install -m 0644 "$assets/wayland_egl_backend.h" "$backend/wayland_egl_backend.h"

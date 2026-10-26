@@ -258,8 +258,27 @@ static int g_interactive_w, g_interactive_h;
 static uint32_t g_interactive_edges;
 static uint64_t g_presentation_seq;
 static struct wl_event_source *g_present_ack_timer;
-static uint64_t g_present_wait_seq;
-static uint32_t g_present_wait_started_ms;
+/* One composited frame handed to the app and not yet shown: the presentation
+ * feedbacks and frame callbacks of the commits it contains, answered when the app
+ * acks THIS generation. There used to be a single wait slot that every repaint
+ * replaced, so while a client (KWin) kept committing, the wait kept moving to a
+ * generation the app had not shown yet and nothing was answered until the client
+ * stopped: KWin, which needs presentation feedback to free a frame slot, ran at
+ * ~28 fps however many frames it was allowed in flight. */
+struct present_batch {
+    uint64_t seq;
+    uint32_t started_ms;
+    uint64_t published_ns;      /* CLOCK_MONOTONIC: its present cannot be earlier */
+    struct wl_list feedbacks;   /* iosc_presentation_feedback.link, oldest first */
+    struct wl_list frames;      /* iosc_frame.link */
+    struct wl_list link;        /* g_present_batches, oldest first */
+};
+static struct wl_list g_present_batches;
+static int g_present_batches_ready;
+static int present_batches_pending(void)
+{
+    return g_present_batches_ready && !wl_list_empty(&g_present_batches);
+}
 static struct wl_event_source *g_frame_clock_timer;
 static int g_frame_clock_armed;
 /* Display pacing (P0.4's remaining half). The repaint timer is the vblank-paced
@@ -563,6 +582,25 @@ static void surface_place_child(struct iosc_surface *s)
     s->dy = s->parent->dy + s->rel_y;
 }
 
+/* IOSC_PRESENT_TRACE=1: one stderr line per step of the commit -> repaint -> app
+ * present -> feedback path, stamped in CLOCK_UPTIME_RAW milliseconds (the clock
+ * KWin's steady_clock and its perf CSV use), so a nested compositor's frame
+ * timeline can be lined up against ours. */
+static int present_trace_on(void)
+{
+    static int v = -1;
+    if (v < 0) v = iosc_env_truthy(getenv("IOSC_PRESENT_TRACE"));
+    return v;
+}
+static double present_trace_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_UPTIME_RAW, &ts);
+    return (double)ts.tv_sec * 1e3 + (double)ts.tv_nsec / 1e6;
+}
+#define PRESENT_TRACE(...) do { if (present_trace_on()) { \
+    fprintf(stderr, "ptrace %.3f ", present_trace_ms()); fprintf(stderr, __VA_ARGS__); } } while (0)
+
 static void presentation_feedback_destroy(struct wl_resource *r)
 {
     struct iosc_presentation_feedback *fb = wl_resource_get_user_data(r);
@@ -584,7 +622,7 @@ static void presentation_feedback_destroy(struct wl_resource *r)
  * Deliberately NOT claiming ZERO_COPY: the app samples our output IOSurface without
  * a copy, but it still composites that through a render pass into its drawable, so
  * the update as a whole is not zero-copy. */
-static void presentation_timestamp(struct timespec *ts, uint32_t *flags)
+static void presentation_timestamp(struct timespec *ts, uint32_t *flags, uint64_t published_ns)
 {
     uint32_t age_us = 0;
     uint64_t ack_at_ms = 0;
@@ -602,6 +640,14 @@ static void presentation_timestamp(struct timespec *ts, uint32_t *flags)
         return;                       /* nonsense pair; keep the safe "now" */
 
     uint64_t present_ns = ack_ns - age_ns;
+    /* A presentedTime from before this frame was even published is not this
+     * frame's: after an idle stretch the app's first drawable has reported the
+     * previous present (seen 1.4-23 s stale). Handed to KWin as-is it became a
+     * safety margin of minus that much, and KWin scheduled its next composite
+     * that far in the future, so the first frames of a popup opening after a
+     * pause sat ~1.5 s on screen. Keep the safe "now" instead. */
+    if (present_ns < published_ns)
+        return;
     ts->tv_sec = (time_t)(present_ns / 1000000000ull);
     ts->tv_nsec = (long)(present_ns % 1000000000ull);
     /* CoreAnimation presents on the vertical retrace, and this timestamp came out
@@ -612,23 +658,32 @@ static void presentation_timestamp(struct timespec *ts, uint32_t *flags)
 
 /* `unchanged`: the commits behind these feedbacks changed nothing on screen, so no
  * repaint (and no app present) is coming for them. They are on screen as of now. */
-static void presentation_present_surface(struct iosc_surface *s, int unchanged)
+static void presentation_present_list(struct wl_list *feedbacks, int unchanged,
+                                      uint64_t published_ns, const void *what)
 {
-    if (wl_list_empty(&s->presentation_feedbacks)) return;
+    if (wl_list_empty(feedbacks)) return;
     struct timespec ts;
     uint32_t flags = 0;
     if (unchanged)
         clock_gettime(CLOCK_MONOTONIC, &ts);
     else
-        presentation_timestamp(&ts, &flags);
+        presentation_timestamp(&ts, &flags, published_ns);
     uint64_t sec = (uint64_t)ts.tv_sec;
     uint64_t seq = ++g_presentation_seq;
     /* Real refresh interval from the app's display clock rather than a hardcoded
      * 60 Hz: CoreAnimation settles the link inside the range we ask for, so a
      * thermally throttled 30 Hz session used to be reported to clients as 60. */
     uint32_t refresh_ns = g_present_interval_us * 1000u;
+    if (present_trace_on()) {
+        struct timespec nowts;
+        clock_gettime(CLOCK_MONOTONIC, &nowts);
+        double age = ((double)nowts.tv_sec - (double)ts.tv_sec) * 1e3 +
+                     ((double)nowts.tv_nsec - (double)ts.tv_nsec) / 1e6;
+        PRESENT_TRACE("feedback-presented surface=%p unchanged=%d ts_age=%.2fms flags=%u\n",
+                      what, unchanged, age, flags);
+    }
     struct iosc_presentation_feedback *fb, *tmp;
-    wl_list_for_each_safe(fb, tmp, &s->presentation_feedbacks, link) {
+    wl_list_for_each_safe(fb, tmp, feedbacks, link) {
         wp_presentation_feedback_send_presented(
             fb->resource,
             (uint32_t)(sec >> 32), (uint32_t)sec, (uint32_t)ts.tv_nsec,
@@ -637,6 +692,11 @@ static void presentation_present_surface(struct iosc_surface *s, int unchanged)
             flags);
         wl_resource_destroy(fb->resource);
     }
+}
+
+static void presentation_present_surface(struct iosc_surface *s, int unchanged)
+{
+    presentation_present_list(&s->presentation_feedbacks, unchanged, 0, s);
 }
 
 static void presentation_discard_surface(struct iosc_surface *s)
@@ -648,13 +708,18 @@ static void presentation_discard_surface(struct iosc_surface *s)
     }
 }
 
-static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
+static void frame_list_send_done(struct wl_list *frames, uint32_t time)
 {
     struct iosc_frame *f, *tmp;
-    wl_list_for_each_safe(f, tmp, &s->frame_callbacks, link) {
+    wl_list_for_each_safe(f, tmp, frames, link) {
         wl_callback_send_done(f->resource, time);
         wl_resource_destroy(f->resource);   /* frame_callback_destroy frees f */
     }
+}
+
+static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
+{
+    frame_list_send_done(&s->frame_callbacks, time);
 }
 
 /* A frame request with no corresponding damage still needs compositor pacing:
@@ -678,7 +743,11 @@ static int frame_clock_timer_cb(void *data)
     (void)data;
     g_frame_clock_armed = 0;
     uint32_t t = now_ms();
-    int repaint_pending = g_recompose_scheduled || g_present_wait_seq != 0;
+    /* Older batches still out: answering a newer feedback first would hand a
+     * client its frames out of order (KWin pairs events with its oldest frame). */
+    int repaint_pending = g_recompose_scheduled || present_batches_pending();
+    PRESENT_TRACE("frame-clock repaint_scheduled=%d batches=%d\n",
+                  g_recompose_scheduled, present_batches_pending());
     struct iosc_surface *s, *tmp;
     wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
         if (!repaint_pending)
@@ -708,12 +777,28 @@ static void frame_clock_arm(void)
     wl_event_source_timer_update(g_frame_clock_timer, period_ms);
 }
 
+static void present_batch_answer(struct present_batch *b, int acked)
+{
+    PRESENT_TRACE("present-ack seq=%llu presented=%llu waited=%ums%s\n",
+                  (unsigned long long)b->seq,
+                  (unsigned long long)xios_presented_generation(),
+                  (unsigned)(now_ms() - b->started_ms), acked ? "" : " TIMEOUT");
+    presentation_present_list(&b->feedbacks, 0, b->published_ns, b);
+    frame_list_send_done(&b->frames, now_ms());
+    wl_list_remove(&b->link);
+    free(b);
+}
+
 static void frame_callbacks_after_repaint(void)
 {
     if (g_frame_clock_armed && g_frame_clock_timer) {
         wl_event_source_timer_update(g_frame_clock_timer, 0);
         g_frame_clock_armed = 0;
     }
+    /* Anything still waiting on the app is older than what we answer below. */
+    while (present_batches_pending())
+        present_batch_answer(wl_container_of(g_present_batches.next,
+                                             (struct present_batch *)NULL, link), 0);
     uint32_t t = now_ms();
     struct iosc_surface *s, *tmp;
     wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
@@ -729,19 +814,27 @@ static int present_ack_timer_cb(void *data)
 {
     (void)data;
     const uint32_t timeout_ms = 100;   /* old app / suspended app safety valve */
-    uint64_t seq = g_present_wait_seq;
-    if (seq == 0) {
-        wl_event_source_timer_update(g_present_ack_timer, 0);
-        return 0;
+    uint64_t presented = xios_presented_generation();
+    uint32_t now = now_ms();
+    int answered = 0;
+    while (present_batches_pending()) {
+        struct present_batch *b = wl_container_of(g_present_batches.next, b, link);
+        int acked = presented >= b->seq;
+        if (!acked && now - b->started_ms < timeout_ms)
+            break;
+        present_batch_answer(b, acked);
+        answered = 1;
     }
-    if (xios_presented_generation() >= seq ||
-        now_ms() - g_present_wait_started_ms >= timeout_ms) {
-        g_present_wait_seq = 0;
-        frame_callbacks_after_repaint();
+    if (answered)
+        release_direct_buffers();
+    if (present_batches_pending()) {
+        wl_event_source_timer_update(g_present_ack_timer, 1);
+    } else {
         wl_event_source_timer_update(g_present_ack_timer, 0);
-        return 0;
+        /* Feedback of no-damage commits made while batches were out waited for
+         * them (ordering); the frame clock answers it now. */
+        frame_clock_arm();
     }
-    wl_event_source_timer_update(g_present_ack_timer, 1);
     return 0;
 }
 
@@ -752,20 +845,40 @@ static void frame_callbacks_after_present(void)
         frame_callbacks_after_repaint();
         return;
     }
-
-    g_present_wait_seq = seq;
-    g_present_wait_started_ms = now_ms();
     struct wl_event_loop *loop = g_display ? wl_display_get_event_loop(g_display) : NULL;
-    if (!loop) {
-        frame_callbacks_after_repaint();
-        return;
-    }
-    if (!g_present_ack_timer)
+    if (loop && !g_present_ack_timer)
         g_present_ack_timer = wl_event_loop_add_timer(loop, present_ack_timer_cb, NULL);
-    if (!g_present_ack_timer) {
+    struct present_batch *b = g_present_ack_timer ? calloc(1, sizeof(*b)) : NULL;
+    if (!b) {
         frame_callbacks_after_repaint();
         return;
     }
+    if (!g_present_batches_ready) {
+        wl_list_init(&g_present_batches);
+        g_present_batches_ready = 1;
+    }
+    struct timespec pub;
+    clock_gettime(CLOCK_MONOTONIC, &pub);
+    b->seq = seq;
+    b->started_ms = now_ms();
+    b->published_ns = (uint64_t)pub.tv_sec * 1000000000ull + (uint64_t)pub.tv_nsec;
+    wl_list_init(&b->feedbacks);
+    wl_list_init(&b->frames);
+    /* The frame clock was only covering no-damage commits; these are now ours. */
+    if (g_frame_clock_armed && g_frame_clock_timer) {
+        wl_event_source_timer_update(g_frame_clock_timer, 0);
+        g_frame_clock_armed = 0;
+    }
+    struct iosc_surface *s, *tmp;
+    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
+        wl_list_insert_list(b->feedbacks.prev, &s->presentation_feedbacks);
+        wl_list_init(&s->presentation_feedbacks);
+        wl_list_insert_list(b->frames.prev, &s->frame_callbacks);
+        wl_list_init(&s->frame_callbacks);
+    }
+    wl_list_insert(g_present_batches.prev, &b->link);
+    PRESENT_TRACE("present-wait seq=%llu (batches %d)\n", (unsigned long long)seq,
+                  wl_list_length(&g_present_batches));
     wl_event_source_timer_update(g_present_ack_timer, 1);
 }
 
@@ -2042,11 +2155,14 @@ static char probe_ch(uint32_t p)
 /* IOSC_DEBUG=1 turns on the per-frame validation readbacks + logs. They call
  * glReadPixels (a synchronous GPU->CPU stall) and fprintf every recompose, so
  * they must stay OFF in normal operation. Event-driven logs (focus, drag, lock,
- * tablet) are not gated by this — only the per-frame spam is. Cached once. */
+ * tablet) are not gated by this — only the per-frame spam is. Cached once.
+ * Truthy, not merely set: run-kde-plasma.sh passes IOSC_DEBUG="${IOSC_DEBUG-}",
+ * so every KDE session's iosc used to see an EMPTY IOSC_DEBUG and ran with three
+ * synchronous readbacks per repaint. */
 int iosc_debug(void)
 {
     static int v = -1;
-    if (v < 0) v = getenv("IOSC_DEBUG") ? 1 : 0;
+    if (v < 0) v = iosc_env_truthy(getenv("IOSC_DEBUG"));
     return v;
 }
 
@@ -2396,6 +2512,7 @@ void recomposite_now(void)
         g_repaint_timer_armed = 0;
         g_recompose_scheduled = 0;
     }
+    PRESENT_TRACE("repaint-start\n");
     if (g_native_mode) {
         native_recomposite_now();
         return;
@@ -2424,6 +2541,7 @@ void recomposite_now(void)
         uint64_t release_wait_value = 0;
         if (!xios_output_acquire(&output_surface, &output_surface_id,
                                  &output_age, &release_wait_value)) {
+            PRESENT_TRACE("repaint-no-output-buffer (retry in 4ms)\n");
             /* The app has not submitted a release for any allocation yet. Keep
              * damage intact and retry from the Wayland event loop instead of
              * blocking this CPU or rendering into a surface still being sampled. */
@@ -2461,6 +2579,7 @@ void recomposite_now(void)
         iosc_render_plan_log(&plan, g_recompose_reason, g_recompose_reason_line,
                              g_width, g_height);
         if (plan.damage_count == 0) {
+            PRESENT_TRACE("repaint-empty (no damage after plan)\n");
             xios_output_cancel(output_surface_id);
             recomposite_reason_clear();
             return;
@@ -2528,6 +2647,7 @@ void recomposite_now(void)
         iosc_gl_end();
         if (notify_gpu_frame(output_surface_id) != 0)
             return;
+        PRESENT_TRACE("repaint-done rects=%d\n", plan.damage_count);
         output_damage_history_record();
         frame_callbacks_after_present();
         /* Validation (IOSC_DEBUG only — each readback is a synchronous GPU->CPU
@@ -2703,6 +2823,7 @@ void recomposite_all_at(const char *reason, int line)
         if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
             fprintf(stderr, "iosc: repaint request skipped (no output damage) %s:%d\n",
                     reason ? reason : "unknown", line);
+        PRESENT_TRACE("repaint-request skipped (no output damage) %s:%d\n", reason ? reason : "?", line);
         /* No repaint is coming, but the commit that asked for one may carry frame
          * callbacks and presentation feedback: retire them on the frame clock. */
         frame_clock_arm();
@@ -2718,6 +2839,7 @@ void recomposite_all_at(const char *reason, int line)
     }
 
     int delay = repaint_delay_ms();
+    PRESENT_TRACE("repaint-request %s:%d delay=%d\n", reason ? reason : "?", line, delay);
     if (delay > 0) {
         if (!g_repaint_timer)
             g_repaint_timer = wl_event_loop_add_timer(loop, repaint_timer_cb, NULL);
@@ -3350,6 +3472,9 @@ static void surface_commit_apply(struct iosc_surface *s)
     if (s == g_cursor_surface)
         cursor_image_publish();
 
+    PRESENT_TRACE("commit surface=%p role=%d recomposite=%d frame_cbs=%d feedbacks=%d\n",
+                  (void *)s, s->role, need_recomposite, !wl_list_empty(&s->frame_callbacks),
+                  !wl_list_empty(&s->presentation_feedbacks));
     if (need_recomposite) recomposite_all();
 
     /* A no-damage commit still receives a paced callback and its presentation
@@ -3632,7 +3757,14 @@ static void presentation_feedback(struct wl_client *c, struct wl_resource *r,
     if (!fb->resource) { free(fb); wl_client_post_no_memory(c); return; }
     fb->surface = s;
     wl_resource_set_implementation(fb->resource, NULL, fb, presentation_feedback_destroy);
-    wl_list_insert(&s->presentation_feedbacks, &fb->link);
+    /* Append: presentation_present_surface() answers the list head first, so it
+     * must be oldest-first. Inserting at the head answered the NEWEST commit
+     * first, and KWin pairs each event with its OLDEST outstanding frame and
+     * destroys that frame's feedback proxy, which drops the event still queued
+     * for it. KWin then counted one frame as in flight forever and never had
+     * more than one real frame in flight, so every frame waited a full
+     * repaint + app present round trip (slide-out animations ran at ~8 fps). */
+    wl_list_insert(s->presentation_feedbacks.prev, &fb->link);
 }
 static const struct wp_presentation_interface presentation_impl = {
     .destroy = presentation_destroy,
