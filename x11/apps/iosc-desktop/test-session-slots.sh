@@ -147,4 +147,33 @@ grep -q deadslot "$XS_TMP/xios-session.pgids" && fail "dead slot's pgid row surv
 grep -q "$NPGID" "$XS_TMP/xios-session.pgids" || true
 echo "ok: sweep prunes dead slots' pgid rows"
 
+# ---- a KDE launch that fails cleans its slot up --------------------------------
+# KWin aborting at launch used to leave the slot's iosc running and its display
+# json in place, so the next start for the slot was refused as "already has a
+# display".
+mkdir -p "$TEST_TMP/bringup-fail"
+cat >"$TEST_TMP/bringup-fail/run-kde-plasma.sh" <<'SH'
+printf '{}\n' >"$XIOS_JSON_PATH"
+perl -e 'setpgrp(0,0); exec { "sleep" } @ARGV' -- "iosc -s $WAYLAND_DISPLAY" 300 >/dev/null 2>&1 </dev/null &
+printf '%s\n' "$!" >"$XS_TMP/kfail-iosc.pid"
+sleep 0.3
+printf 'kwin socket did not appear: x\n' >>"$KDE_LOG"
+SH
+kde_fail() {
+    xs_preset_check() { return 0; }
+    xs_ensure_xios() { :; }
+    XIOS_SESSION_BRINGUP_DIR="$TEST_TMP/bringup-fail" xios_session_kde xios && return 9
+    return 0
+}
+rc=0; run_lib kfail kde_fail >/dev/null 2>&1 || rc=$?
+KF="$(cat "$XS_TMP/kfail-iosc.pid" 2>/dev/null || true)"
+[ -n "$KF" ] && FAKE_PIDS+=("$KF")
+[ "$rc" = 0 ] || fail "failed KDE launch reported rc=$rc (9 = it claimed success)"
+[ -n "$KF" ] || fail "the fake KDE bring-up never ran"
+sleep 0.3
+alive "$KF" && fail "a failed KDE launch left the slot's iosc running"
+[ -e "$XS_TMP/xios-kfail.json" ] && fail "a failed KDE launch left the slot's display json"
+grep -q '"state":"error"' "$XS_TMP/xios-session-kfail.json" || fail "a failed KDE launch did not report an error status"
+echo "ok: a failed KDE launch tears its slot down"
+
 echo "PASS"

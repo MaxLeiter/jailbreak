@@ -1440,6 +1440,7 @@ xios_session_gnome() {
         failed|exited)
             xs_log "gnome-shell FAILED ($outcome). Last 40 lines of $log:"
             tail -40 "$log" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
+            xs_cleanup_failed_launch gnome
             xs_write_status gnome error "gnome-shell $outcome; see $logname"
             return 1 ;;
         timeout)
@@ -1576,6 +1577,7 @@ xios_session_kde() {
     if [ "$kde_failed" = 1 ]; then
         xs_log "$preset FAILED: shell/compositor exited; see $XS_KDE_LOG"
         tail -40 "$XS_KDE_LOG" 2>/dev/null | while IFS= read -r ln; do xs_log "  | $ln"; done
+        xs_cleanup_failed_launch "$preset"
         xs_write_status "$preset" error "$label exited; see ${XS_KDE_LOG##*/}"
         return 1
     elif [ "$kde_ready" = 1 ]; then
@@ -1586,6 +1588,7 @@ xios_session_kde() {
         xs_write_status "$preset" compositor-only "KWin running; plasmashell not confirmed"
     else
         xs_log "ERROR: KWin is not running; see $XS_KDE_LOG"
+        xs_cleanup_failed_launch "$preset"
         xs_write_status "$preset" error "KWin failed; see ${XS_KDE_LOG##*/}"
         return 1
     fi
@@ -1792,6 +1795,18 @@ xs_stop_slot_named() {  # xs_stop_slot_named <slot>
     xs_reap_slot_pidfiles "$slot"
     xs_remove_slot_state "$slot"
     xs_log "slot $slot stopped"
+}
+
+# A desktop that dies at launch must not leave its iosc, kded6 or bus behind:
+# the slot would look occupied and the next start for it would be refused.
+# Runs before the error status is written, because the slot stop removes the
+# slot's status file.
+xs_cleanup_failed_launch() {  # xs_cleanup_failed_launch <preset>
+    if [ -n "${XS_SLOT:-}" ]; then
+        xs_stop_slot_named "$XS_SLOT"
+    else
+        xios_session_teardown "$1 failed to start" 0 0
+    fi
 }
 
 # stop             the non-slot session; the Xios app goes with it only when no
