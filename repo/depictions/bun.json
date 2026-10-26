@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "1.4.0~canary.1+git5b55beb711+ios0.4"
+          "text": "1.4.4+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "12109.1 KiB"
+          "text": "23836.2 KiB"
         },
         {
           "class": "DepictionTableTextView",
