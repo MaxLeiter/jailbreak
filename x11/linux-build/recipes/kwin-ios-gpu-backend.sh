@@ -189,6 +189,32 @@ replace("src/backends/wayland/wayland_backend.cpp",
         "        } else if (const DmaBufAttributes *attributes = graphicsBuffer->dmabufAttributes()) {\n            handle = m_display->linuxDmabuf()->importBuffer(graphicsBuffer);",
         "ios-gpu-import-iosurface")
 
+# ---- host presentation timestamps onto KWin's clock -------------------------------------------------------------------
+# KWin 6.7 paces the nested output purely from wp_presentation "presented" and feeds the timestamp straight into
+# RenderLoop, which works on std::chrono::steady_clock. iosc stamps presentation in CLOCK_MONOTONIC (what it
+# advertises as clock_id), while libc++'s steady_clock on Darwin is CLOCK_UPTIME_RAW. The two differ by seconds to
+# minutes and the gap changes every time the iPad sleeps (CLOCK_MONOTONIC keeps counting, UPTIME_RAW does not; see
+# the A10 clock note). When the host clock is AHEAD, RenderLoop schedules the next composite that far in the future
+# and KWin stops repainting for that long after every presented frame: taps reach Plasma but nothing shows, and a
+# rotation leaves Plasma's old-size surfaces on screen. When it is behind (the case on the test boot), the bogus
+# negative safety margin only happens to work. Map the host time onto steady_clock at receipt.
+replace("src/backends/wayland/wayland_output.cpp",
+        "#include <cmath>\n",
+        "#include <cmath>\n#include <time.h> // ios-presentation-clock-include\n",
+        "ios-presentation-clock-include")
+replace("src/backends/wayland/wayland_output.cpp",
+        "    const auto timestamp = std::chrono::seconds((uint64_t(tv_sec_hi) << 32) | tv_sec_lo) + std::chrono::nanoseconds(tv_nsec);\n",
+        "    std::chrono::nanoseconds timestamp = std::chrono::seconds((uint64_t(tv_sec_hi) << 32) | tv_sec_lo) + std::chrono::nanoseconds(tv_nsec);\n"
+        "#if defined(__APPLE__) // ios-presentation-clock-map\n"
+        "    {\n"
+        "        timespec host = {};\n"
+        "        clock_gettime(CLOCK_MONOTONIC, &host); // iosc's wp_presentation clock_id\n"
+        "        const std::chrono::nanoseconds hostNow = std::chrono::seconds(host.tv_sec) + std::chrono::nanoseconds(host.tv_nsec);\n"
+        "        timestamp = timestamp - hostNow + std::chrono::steady_clock::now().time_since_epoch();\n"
+        "    }\n"
+        "#endif\n",
+        "ios-presentation-clock-map")
+
 # The Metal acquire fence rides with every commit of a compositor-owned IOSurface (the wl_buffer is cached per
 # GraphicsBuffer, the fence is per frame).
 replace("src/backends/wayland/wayland_layer.cpp",
