@@ -15,6 +15,7 @@ ap.add_argument("--phase", default=None, help="open | close | all (default: prin
 ap.add_argument("--grep", default=None, help="only stacks with a frame matching this regex")
 ap.add_argument("--callers", default=None, help="print the callers (next frame up) of symbols matching this regex")
 ap.add_argument("--waiting", action="store_true", help="analyze all samples, not just running ones")
+ap.add_argument("--timeline", default=None, help="print the time of every sample with a frame matching this regex")
 ap.add_argument("--tree", type=float, default=None, help="print a top-down call tree, nodes >= this percent")
 ap.add_argument("--root", default=None, help="tree: start at the first frame matching this regex")
 ap.add_argument("--from-ms", type=float, default=None)
@@ -184,6 +185,14 @@ for t, ti, st, fr in sel:
     if a.grep and not any(re.search(a.grep, s) for s in stack):
         continue
     groups.setdefault(ph, []).append((tm, ti, st, stack))
+
+if a.timeline:
+    for ph, rows in groups.items():
+        for tm, ti, st, stack in rows:
+            hits = [nm for nm in stack if re.search(a.timeline, nm)]
+            if hits:
+                print("  %7.1f ms %-14s %s" % (tm, names.get(ti, ti), " < ".join(h.split("  [")[0][:60] for h in hits[:3])))
+    sys.exit(0)
 
 # the sampler's interval sets the weight of one sample; estimate it from the main thread's sample spacing
 mt = [s[0] for s in samples if s[1] == 0]

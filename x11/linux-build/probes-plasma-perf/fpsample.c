@@ -3,7 +3,7 @@
 // task_for_pid, then every INTERVAL_US suspend each thread that is running (plus the main
 // thread, always), read its registers, walk the x29 chain, and resume.
 //
-// usage: fpsample PID SECONDS INTERVAL_US OUT [all|main]
+// usage: fpsample PID SECONDS INTERVAL_US OUT [all|main|every]   (every: also waiting threads)
 // OUT lines:
 //   B <mach_absolute_time at t=0> <numer> <denom>
 //   I <load_addr_hex> <path>                     loaded images (from dyld_all_image_infos)
@@ -55,13 +55,14 @@ static int tindex(uint64_t tid, int pid, FILE *out) {
 
 int main(int argc, char **argv) {
     if (argc < 5) {
-        fprintf(stderr, "usage: fpsample PID SECONDS INTERVAL_US OUT [all|main]\n");
+        fprintf(stderr, "usage: fpsample PID SECONDS INTERVAL_US OUT [all|main|every]\n");
         return 2;
     }
     int pid = atoi(argv[1]);
     double secs = atof(argv[2]);
     useconds_t iv = (useconds_t)atoi(argv[3]);
     int mainonly = argc > 5 && !strcmp(argv[5], "main");
+    int every = argc > 5 && !strcmp(argv[5], "every");
     FILE *out = fopen(argv[4], "w");
     if (!out) { perror("fopen"); return 1; }
     task_t task;
@@ -114,7 +115,7 @@ int main(int argc, char **argv) {
             thread_basic_info_data_t bi;
             mach_msg_type_number_t bc = THREAD_BASIC_INFO_COUNT;
             if (thread_info(th[i], THREAD_BASIC_INFO, (thread_info_t)&bi, &bc) != KERN_SUCCESS) continue;
-            if (i != 0 && bi.run_state != TH_STATE_RUNNING) continue;
+            if (i != 0 && !every && bi.run_state != TH_STATE_RUNNING) continue;
             thread_identifier_info_data_t ii;
             mach_msg_type_number_t ic = THREAD_IDENTIFIER_INFO_COUNT;
             if (thread_info(th[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&ii, &ic) != KERN_SUCCESS) continue;

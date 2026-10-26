@@ -16,8 +16,9 @@ class RU(ctypes.Structure):
     _fields_ = [("uuid", ctypes.c_uint8 * 16), ("user", ctypes.c_uint64), ("system", ctypes.c_uint64), ("a", ctypes.c_uint64 * 8)]
 def cpu_ms(pid):
     ru = RU(); libc.proc_pid_rusage(pid, 0, ctypes.byref(ru)); return (ru.user + ru.system) * 125 / 3 / 1e6
+proc = os.environ.get("POPPROF_PROC", "plasmashell")  # sample another process (e.g. kwin_wayland) instead
 pid = max(int(l.split()[0]) for l in subprocess.run(["ps", "-Ao", "pid,comm"], capture_output=True, text=True).stdout.splitlines()
-          if l.strip().endswith("/plasmashell"))
+          if l.strip().endswith("/" + proc))
 MAGIC = 0x584D5331
 def msg(t, x=0, y=0, code=0, state=0): return struct.pack("<IIIIiiii", MAGIC, t, state, 0, x, y, code, 0)
 s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.connect("/var/jb/tmp/iosc-%s-input.sock" % slot)
