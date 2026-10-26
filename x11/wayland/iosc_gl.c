@@ -745,6 +745,11 @@ void iosc_gl_end(void)
 
 }
 
+void iosc_gl_finish(void)
+{
+    glFinish();
+}
+
 int iosc_gl_present_fence(const void **token, size_t *token_size,
                           uint64_t *value)
 {

@@ -15,6 +15,7 @@
 
 #include "xios_surface.h"   /* xios_read_output_region() */
 #include "iosc_internal.h"
+#include "iosc_gl.h"         /* iosc_gl_finish() */
 #include "iosc_util.h"
 
 #include <stdio.h>
@@ -71,6 +72,12 @@ static void screencopy_do_copy(struct iosc_screencopy_frame *f, struct wl_resour
     output_damage_add_full();
     recomposite_now();          /* synchronous: the readback below needs THIS frame */
     g_force_output_composite = 0;
+    /* recomposite_now() only queues the frame on the GPU (its fence is for the app);
+     * IOSurfaceLock does not wait for it. Without this a capture taken while clients
+     * animate read a half-drawn or black output: 4 of 50 grim captures of an
+     * unchanging region during a popup animation. IOSC_DEBUG's per-repaint
+     * glReadPixels used to hide it in KDE sessions. */
+    iosc_gl_finish();
 
     wl_shm_buffer_begin_access(shm);
     int rc = xios_read_output_region(f->x, f->y, f->w, f->h,
