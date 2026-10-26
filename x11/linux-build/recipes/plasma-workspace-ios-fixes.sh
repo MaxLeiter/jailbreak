@@ -1516,4 +1516,36 @@ p.write_text(t)
 print("guard_x11_tree edits:", guard_x11_tree(src))
 PY
 
+# ios-perf-calendar-reset (+ios15): the digital clock's CalendarView calls
+# monthView.resetToToday() on every expandedChanged, so on every popup open AND close.
+# Calendar::resetToToday() then ran updateData() unconditionally, even when the
+# calendar already showed today: DaysModel::update() resets the model, the month
+# grid's Repeater destroys and re-creates its 42 day delegates, and every event
+# plugin reloads. That was ~60% of plasmashell's main-thread time per clock popup
+# open or close on the A10 (sampled 2026-10-26). setDisplayedDate() already runs
+# updateData() when the date actually changes, and event plugins push their own
+# updates, so the extra call only rebuilt identical data.
+python3 - "$src/components/calendar/calendar.cpp" <<'PY'
+import sys
+from xios_fixlib import Path, todo
+
+p = Path(sys.argv[1])
+t = p.read_text()
+old = """void Calendar::resetToToday()
+{
+    setDisplayedDate(d->today);
+    updateData();
+}"""
+new = """void Calendar::resetToToday()
+{
+    // ios-perf-calendar-reset: setDisplayedDate() rebuilds the data when the date
+    // changes; rebuilding when it did not re-created every day delegate for nothing.
+    setDisplayedDate(d->today);
+}"""
+if old in t:
+    p.write_text(t.replace(old, new))
+else:
+    todo("calendar.cpp resetToToday body not found")
+PY
+
 printf '%s\n' "$self_sha" > "$stamp"
