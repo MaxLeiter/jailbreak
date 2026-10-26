@@ -66,10 +66,9 @@ elif [ -n "$BASE_DEB" ]; then
     debian:bookworm-slim \
     bash -ceu 'test "$(dpkg-deb -f "/input/$1" Package)" = angle; dpkg-deb -x "/input/$1" /base' \
     _ "$(basename "$BASE_DEB")"
-  # The base deb carries whichever prefix IT was built for, which has nothing to
-  # do with the target being packaged now -- restaging a published rootless deb
-  # into a rootful package is the whole point of this path. Read the base at its
-  # own prefix and write at the target's.
+  # The base deb carries whichever prefix IT was built for, which need not be
+  # the target being packaged now. Read the base at its own prefix and write at
+  # the target's.
   if [ -d "$BASE_STAGE/var/jb/lib/angle" ]; then
     BASE_PREFIX=/var/jb
   else
@@ -110,10 +109,10 @@ install_name_tool -id $XIOS_PREFIX/lib/angle/libGLESv2.dylib  "$STAGE$XIOS_PREFI
 # 2b. ...and the references BETWEEN them. -id only rewrites a library's own name;
 # the shim's LC_LOAD_DYLIB entries still carry whatever prefix they were built
 # or previously packaged with. That matters most on the ANGLE_BASE_DEB path,
-# which restages binaries from an already-published deb: without this a rootful
-# package installs cleanly and then fails to load, pointing at a /var/jb that is
-# not there. tools/check-target-package.py scans Mach-O load commands for
-# exactly this.
+# which restages binaries from an already-published deb: without this a package
+# built for another prefix installs cleanly and then fails to load, pointing at
+# a prefix that is not there. tools/check-target-package.py scans Mach-O load
+# commands for exactly this.
 for lib in libEGL.angle.dylib libEGL.dylib libGLESv2.dylib; do
   target="$STAGE$XIOS_PREFIX/lib/angle/$lib"
   [ -f "$target" ] || continue

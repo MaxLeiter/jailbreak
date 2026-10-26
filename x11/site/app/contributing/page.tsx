@@ -149,10 +149,9 @@ export default function Contributing() {
           <div className="row">
             <dt>Rootless only</dt>
             <dd>
-              Everything bakes <code>/var/jb</code>. A <T k="rootful" />{" "}target
-              is designed and partly scaffolded, but nothing rootful is built or
-              published, and the converted packages refuse to produce one until a
-              rootful server has been smoke-tested on hardware.
+              Everything bakes <code>/var/jb</code>. There is no <T k="rootful" />{" "}
+              target: it was planned and dropped, since rootful jailbreaks do not
+              exist on current iOS.
             </dd>
           </div>
         </dl>

@@ -175,17 +175,16 @@ export default function Build() {
         </Callout>
       </Section>
 
-      <Section num="05.5" title="One prefix, for now">
+      <Section num="05.5" title="One prefix">
         <div className="prose">
           <p>
             Everything is built for the <T k="rootless" />{" "}layout and bakes{" "}
             <code>/var/jb</code>{" "}into paths, launchers and entitlements. A{" "}
-            <T k="rootful" />{" "}target is designed and the first pieces are in
-            the tree: build targets come from a descriptor file instead of a
-            hardcoded prefix, and a handful of packages render their payload from
-            templates. Nothing rootful is built or published yet, and the two
-            binary packages that were converted refuse to produce a rootful deb
-            until a rootful server has been built and smoke-tested on hardware.
+            <T k="rootful" />{" "}target was planned and then dropped, because
+            rootful jailbreaks do not exist on current iOS. Build targets still
+            come from a descriptor file instead of a hardcoded prefix, and a
+            handful of packages render their payload from templates, but
+            rootless is the only target.
           </p>
         </div>
       </Section>

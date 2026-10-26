@@ -109,7 +109,7 @@ target_requests gtk4 && stage_required_patch_stack gtk4
 # real libintl_* still get them, and the post-build relink is unaffected. Same
 # approach papers.mk already uses for its Rust link.
 #
-# Not a rootful issue: the warm rootless build_base has a libintl.8.dylib
+# Not a target issue: the warm rootless build_base has a libintl.8.dylib
 # carrying 9 g_libintl_* exports where a stock gettext build has 0, and nothing
 # in the repo produces that file.
 stage_gtkintl_for_link() {

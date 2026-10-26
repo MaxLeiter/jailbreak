@@ -48,7 +48,7 @@ export const TERMS = {
   },
   rootful: {
     label: "rootful",
-    def: "the older jailbreak layout that writes directly into the system root",
+    def: "the older jailbreak layout that writes directly into the system root; not supported here",
   },
 
   // --- graphics ---

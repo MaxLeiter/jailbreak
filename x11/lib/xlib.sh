@@ -44,34 +44,9 @@ xsign() {
         echo "xsign: ERROR ldid not found (brew install ldid)" >&2; return 1; }
     [ -n "$bin" ] && [ -f "$bin" ] || {
         echo "xsign: ERROR missing binary: $bin" >&2; return 1; }
-    # Entitlement files are committed with rootless path exceptions. A binary
-    # signed for another target needs its OWN prefix excepted -- the exception is
-    # what lets it read its libraries and sockets at all, so a stale /var/jb here
-    # is a sandbox denial on device, not a cosmetic mismatch. Render a copy for
-    # the selected target rather than making every caller remember to.
-    # XIOS_PREFIX comes from linux-build/target-lib.sh; unset means rootless, so
-    # this is a no-op for every existing caller.
-    local rendered=""
-    if [ -n "$ents" ] && [ "${XIOS_PREFIX-/var/jb}" != "/var/jb" ]; then
-        # An explicit XXXXXX template: GNU mktemp (the container) rejects a
-        # bare `-t xios-ents`.
-        rendered="$(mktemp "${TMPDIR:-/tmp}/xios-ents.XXXXXX")" || return 1
-        # An empty prefix must NOT become "/": that grants the whole filesystem
-        # where rootless granted one directory. Rootful installs under the
-        # subprefix, so that is what gets excepted.
-        local ent_prefix="${XIOS_PREFIX:-${XIOS_SUBPREFIX:-/usr}}"
-        sed -e "s|/var/jb/tmp|${XIOS_RUNTIME_TMP:-/var/tmp}|g" \
-            -e "s|<string>/var/jb/</string>|<string>$ent_prefix/</string>|g" \
-            -e "s|.*<string>/private/var/jb/</string>.*||g" \
-            -e "s|/var/jb/|$ent_prefix/|g" "$ents" > "$rendered"
-        echo "xsign: rendered $ents for prefix ${XIOS_PREFIX:-/}" >&2
-        ents="$rendered"
-    fi
     if [ -n "$ents" ]; then
         ldid -S"$ents" "$bin" || {
-            [ -z "$rendered" ] || rm -f "$rendered"
             echo "xsign: ERROR ldid failed on $bin" >&2; return 1; }
-        [ -z "$rendered" ] || rm -f "$rendered"
     else
         ldid -S "$bin" || { echo "xsign: ERROR ldid failed on $bin" >&2; return 1; }
     fi
@@ -165,18 +140,13 @@ _xlib_control_field() {  # _xlib_control_field <control-file> <key>
 #   already listed in the APT index: that filename is public (production, or the
 #   staging Blob store), and a public .deb's bytes must never change. Bump the
 #   version instead. The index defaults to the working tree's index for the
-#   selected target's repo profile (repo/Packages for rootless), which is also
-#   what a staging publish regenerates. A missing index passes.
+#   repo/Packages, which is also what a staging publish regenerates. A missing
+#   index passes.
 xdeb_refuse_published() {
     local stage="$1" index="${2:-}" ctrl pkg ver arch
     ctrl="$stage/DEBIAN/control"
     [ -f "$ctrl" ] || { echo "xdeb_refuse_published: ERROR no DEBIAN/control in $stage" >&2; return 1; }
-    if [ -z "$index" ]; then
-        case "${XIOS_REPO_PROFILE:-rootless}" in
-            rootless) index="$XLIB_ROOT/../repo/Packages" ;;
-            *)        index="$XLIB_ROOT/../repo/profiles/$XIOS_REPO_PROFILE/Packages" ;;
-        esac
-    fi
+    [ -n "$index" ] || index="$XLIB_ROOT/../repo/Packages"
     [ -f "$index" ] || return 0
     pkg="$(_xlib_control_field "$ctrl" Package)"
     ver="$(_xlib_control_field "$ctrl" Version)"
