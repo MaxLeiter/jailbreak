@@ -384,6 +384,11 @@
       "url": "https://repo.maxleiter.com/banners/kcalc.png"
     },
     {
+      "title": "kde-cli-tools",
+      "package": "kde-cli-tools",
+      "url": "https://repo.maxleiter.com/banners/kde-cli-tools.png"
+    },
+    {
       "title": "kdecoration",
       "package": "kdecoration",
       "url": "https://repo.maxleiter.com/banners/kdecoration.png"
@@ -539,6 +544,16 @@
       "url": "https://repo.maxleiter.com/banners/kf6-declarative-dev.png"
     },
     {
+      "title": "kf6-filemetadata",
+      "package": "kf6-filemetadata",
+      "url": "https://repo.maxleiter.com/banners/kf6-filemetadata.png"
+    },
+    {
+      "title": "kf6-filemetadata-dev",
+      "package": "kf6-filemetadata-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-filemetadata-dev.png"
+    },
+    {
       "title": "kf6-globalaccel",
       "package": "kf6-globalaccel",
       "url": "https://repo.maxleiter.com/banners/kf6-globalaccel.png"
@@ -557,6 +572,16 @@
       "title": "kf6-guiaddons-dev",
       "package": "kf6-guiaddons-dev",
       "url": "https://repo.maxleiter.com/banners/kf6-guiaddons-dev.png"
+    },
+    {
+      "title": "kf6-holidays",
+      "package": "kf6-holidays",
+      "url": "https://repo.maxleiter.com/banners/kf6-holidays.png"
+    },
+    {
+      "title": "kf6-holidays-dev",
+      "package": "kf6-holidays-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-holidays-dev.png"
     },
     {
       "title": "kf6-i18n",
@@ -727,6 +752,16 @@
       "title": "kf6-parts-dev",
       "package": "kf6-parts-dev",
       "url": "https://repo.maxleiter.com/banners/kf6-parts-dev.png"
+    },
+    {
+      "title": "kf6-prison",
+      "package": "kf6-prison",
+      "url": "https://repo.maxleiter.com/banners/kf6-prison.png"
+    },
+    {
+      "title": "kf6-prison-dev",
+      "package": "kf6-prison-dev",
+      "url": "https://repo.maxleiter.com/banners/kf6-prison-dev.png"
     },
     {
       "title": "kf6-pty",
@@ -917,6 +952,16 @@
       "title": "kglobalacceld-dev",
       "package": "kglobalacceld-dev",
       "url": "https://repo.maxleiter.com/banners/kglobalacceld-dev.png"
+    },
+    {
+      "title": "knighttime",
+      "package": "knighttime",
+      "url": "https://repo.maxleiter.com/banners/knighttime.png"
+    },
+    {
+      "title": "knighttime-dev",
+      "package": "knighttime-dev",
+      "url": "https://repo.maxleiter.com/banners/knighttime-dev.png"
     },
     {
       "title": "konsole",
@@ -1227,6 +1272,11 @@
       "title": "libdisplay-info1",
       "package": "libdisplay-info1",
       "url": "https://repo.maxleiter.com/banners/libdisplay-info1.png"
+    },
+    {
+      "title": "libdisplay-info2",
+      "package": "libdisplay-info2",
+      "url": "https://repo.maxleiter.com/banners/libdisplay-info2.png"
     },
     {
       "title": "libdrm-dev",
@@ -2059,6 +2109,11 @@
       "url": "https://repo.maxleiter.com/banners/libpoppler140.png"
     },
     {
+      "title": "libpoppler154",
+      "package": "libpoppler154",
+      "url": "https://repo.maxleiter.com/banners/libpoppler154.png"
+    },
+    {
       "title": "libportal-dev",
       "package": "libportal-dev",
       "url": "https://repo.maxleiter.com/banners/libportal-dev.png"
@@ -2097,6 +2152,16 @@
       "title": "libpulse0",
       "package": "libpulse0",
       "url": "https://repo.maxleiter.com/banners/libpulse0.png"
+    },
+    {
+      "title": "libqrencode-dev",
+      "package": "libqrencode-dev",
+      "url": "https://repo.maxleiter.com/banners/libqrencode-dev.png"
+    },
+    {
+      "title": "libqrencode4",
+      "package": "libqrencode4",
+      "url": "https://repo.maxleiter.com/banners/libqrencode4.png"
     },
     {
       "title": "librsvg2-2",
@@ -2829,6 +2894,26 @@
       "url": "https://repo.maxleiter.com/banners/qt6-image-formats.png"
     },
     {
+      "title": "qt6-location",
+      "package": "qt6-location",
+      "url": "https://repo.maxleiter.com/banners/qt6-location.png"
+    },
+    {
+      "title": "qt6-location-dev",
+      "package": "qt6-location-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-location-dev.png"
+    },
+    {
+      "title": "qt6-positioning",
+      "package": "qt6-positioning",
+      "url": "https://repo.maxleiter.com/banners/qt6-positioning.png"
+    },
+    {
+      "title": "qt6-positioning-dev",
+      "package": "qt6-positioning-dev",
+      "url": "https://repo.maxleiter.com/banners/qt6-positioning-dev.png"
+    },
+    {
       "title": "qt6-sensors",
       "package": "qt6-sensors",
       "url": "https://repo.maxleiter.com/banners/qt6-sensors.png"
@@ -2944,6 +3029,11 @@
       "url": "https://repo.maxleiter.com/banners/transmission.png"
     },
     {
+      "title": "vulkan-headers",
+      "package": "vulkan-headers",
+      "url": "https://repo.maxleiter.com/banners/vulkan-headers.png"
+    },
+    {
       "title": "waybar",
       "package": "waybar",
       "url": "https://repo.maxleiter.com/banners/waybar.png"
@@ -2982,6 +3072,11 @@
       "title": "xauth",
       "package": "xauth",
       "url": "https://repo.maxleiter.com/banners/xauth.png"
+    },
+    {
+      "title": "xdg-desktop-portal-kde",
+      "package": "xdg-desktop-portal-kde",
+      "url": "https://repo.maxleiter.com/banners/xdg-desktop-portal-kde.png"
     },
     {
       "title": "xfconf",

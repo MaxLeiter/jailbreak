@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "KDecoration2 for the Xios desktop"
+          "markdown": "KDecoration3 for the Xios desktop"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios1"
+          "text": "6.7.5+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "66.5 KiB"
+          "text": "76.6 KiB"
         },
         {
           "class": "DepictionTableTextView",

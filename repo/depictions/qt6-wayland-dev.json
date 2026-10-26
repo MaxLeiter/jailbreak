@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for the Qt 6 Wayland client"
+          "markdown": "Transitional package: Qt 6 Wayland client headers now ship in qt6-base-dev"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.6.3-1+ios3"
+          "text": "6.10.3-1+ios2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "181.2 KiB"
+          "text": "956 B"
         },
         {
           "class": "DepictionTableTextView",

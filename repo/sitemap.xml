@@ -55,6 +55,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/iosc-shell.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/iso-codes.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kactivitymanagerd.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kde-cli-tools.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kdecoration.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kdecoration-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-archive.html</loc></url>
@@ -86,10 +87,14 @@
   <url><loc>https://repo.maxleiter.com/depictions/kf6-dbusaddons-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-declarative.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-declarative-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kf6-filemetadata.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kf6-filemetadata-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-globalaccel.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-globalaccel-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-guiaddons.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-guiaddons-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kf6-holidays.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kf6-holidays-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-i18n.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-i18n-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-iconthemes.html</loc></url>
@@ -124,6 +129,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/kf6-package-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-parts.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-parts-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kf6-prison.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/kf6-prison-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-pty.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-pty-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kf6-pulseaudio-qt.html</loc></url>
@@ -162,6 +169,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/kf6-xmlgui-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kglobalacceld.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kglobalacceld-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/knighttime.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/knighttime-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kscreen.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kscreen-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/kwayland.html</loc></url>
@@ -220,6 +229,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/libdazzle-1.0-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdisplay-info-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdisplay-info1.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libdisplay-info2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdrm-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libdrm2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libeditorconfig-dev.html</loc></url>
@@ -386,6 +396,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/libpoppler-qt6-3.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpoppler-qt6-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpoppler140.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libpoppler154.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libportal-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libportal-gtk3-1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libportal-gtk4-1.html</loc></url>
@@ -394,6 +405,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/libpsl5.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpulse-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpulse0.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libqrencode-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libqrencode4.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/librsvg2-2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/librsvg2-bin.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/librsvg2-common.html</loc></url>
@@ -534,6 +547,10 @@
   <url><loc>https://repo.maxleiter.com/depictions/qt6-declarative.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/qt6-declarative-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/qt6-image-formats.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/qt6-location.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/qt6-location-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/qt6-positioning.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/qt6-positioning-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/qt6-sensors.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/qt6-sensors-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/qt6-shadertools.html</loc></url>
@@ -552,12 +569,14 @@
   <url><loc>https://repo.maxleiter.com/depictions/tigervnc-scraping-server.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/tigervnc-standalone-server.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/transmission.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/vulkan-headers.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/wayland-protocols.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/woff2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/wuffs-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/x11-fonts-sf.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/x11-xvfb.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/xauth.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/xdg-desktop-portal-kde.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/xfconf.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/xios-a11y-tools.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/xios-audio-server.html</loc></url>

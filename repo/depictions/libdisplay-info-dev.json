@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "EDID and DisplayID library (iOS shim, development files)"
+          "markdown": "Development files for libdisplay-info"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.1.1+ios2"
+          "text": "0.2.0+ios2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "1.7 KiB"
+          "text": "22.7 KiB"
         },
         {
           "class": "DepictionTableTextView",

@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Development files for KDecoration2"
+          "markdown": "Development files for KDecoration3"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.1.5+ios2"
+          "text": "6.7.5+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "17.9 KiB"
+          "text": "20.3 KiB"
         },
         {
           "class": "DepictionTableTextView",

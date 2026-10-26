@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "Qt 6 Wayland client platform plugin for the Xios desktop"
+          "markdown": "Transitional package: Qt 6 Wayland client now ships in qt6-base"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "6.6.3-1+ios3"
+          "text": "6.10.3-1+ios2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "311.6 KiB"
+          "text": "928 B"
         },
         {
           "class": "DepictionTableTextView",
