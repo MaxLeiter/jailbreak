@@ -772,7 +772,8 @@ xs_reap_slot_session_pgroups() {
     local want="$1"
     [ -n "$want" ] || return 0
     [ -f "$XS_SESSION_PGIDS" ] || return 0
-    local tmp="$XS_SESSION_PGIDS.$$" pgid preset slot at current
+    local tmp="$XS_SESSION_PGIDS.$$" pgid preset slot at current i
+    local reap_pgids=() reap_labels=()
     current="$(xs_current_pgid)"
     : >"$tmp" 2>/dev/null || true
     while IFS=$'\t' read -r pgid preset slot at; do
@@ -790,12 +791,20 @@ xs_reap_slot_session_pgroups() {
                 xs_log "slot $want: process group $pgid is shared with another session; reaping by name instead"
                 continue
             fi
-            xs_reap_pgid "$pgid" "slot $want ${preset:-session}"
+            reap_pgids+=("$pgid")
+            reap_labels+=("slot $want ${preset:-session}")
         else
             printf '%s\t%s\t%s\t%s\n' "$pgid" "$preset" "$slot" "$at" >>"$tmp" 2>/dev/null || true
         fi
     done <"$XS_SESSION_PGIDS"
     mv "$tmp" "$XS_SESSION_PGIDS" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+    # Reverse start order: the groups recorded later (KWin + Plasma, Mutter, apps)
+    # are clients of the ones recorded first (iosc). Killing iosc first broke
+    # KWin's host connection mid-teardown, and KWin answered with
+    # qFatal("Wayland connection broke"): a SIGABRT crash report on every stop.
+    for ((i = ${#reap_pgids[@]} - 1; i >= 0; i--)); do
+        xs_reap_pgid "${reap_pgids[$i]}" "${reap_labels[$i]}"
+    done
 }
 
 xs_reap_slot_named_processes() {
