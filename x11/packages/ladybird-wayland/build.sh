@@ -14,7 +14,7 @@ done
 
 X11DIR="$(cd "$PKGDIR/../.." && pwd)"
 OUT="${OUT:-$X11DIR/linux-build/out}"
-VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl5}"
+VER="${LADYBIRD_WAYLAND_VERSION:-0.1.0+wl6}"
 INSTALL_ROOT="${LADYBIRD_WAYLAND_INSTALL_ROOT:-$OUT/ladybird-wayland-install}"
 APP_ENTS="$X11DIR/linux-build/build_info/iosc-gpu-client-ent.xml"
 ICON_SRC="$X11DIR/packages/ladybird-app/Resources/AppIcon.png"
@@ -76,6 +76,18 @@ rewrite_angle_loads() {
   if [ "$(basename "$bin")" = "Compositor" ] &&
      otool -L "$bin" 2>/dev/null | grep -q '/var/jb/lib/angle/libEGL.dylib'; then
     install_name_tool -change $XIOS_PREFIX/lib/angle/libEGL.dylib $XIOS_PREFIX/lib/angle/libEGL.angle.dylib "$bin"
+  fi
+}
+
+# glib's pkg-config adds -lintl, which links as the unversioned @rpath/libintl.dylib.
+# Only Procursus libintl-dev ships that dev symlink, so point the load at the runtime
+# soname (libintl8, in DEBIAN/control). MUST run before sign_payload.
+retarget_libintl() {
+  local bin="$1"
+  command -v otool >/dev/null 2>&1 || return 0
+  if otool -L "$bin" 2>/dev/null | grep -qF '@rpath/libintl.dylib'; then
+    install_name_tool -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$bin" ||
+      die "failed to retarget libintl in $bin"
   fi
 }
 
@@ -235,6 +247,7 @@ install -m 0644 "$ICON_SRC" "$icon_dir/ladybird.png"
 
 while IFS= read -r f; do
   rewrite_angle_loads "$f"
+  retarget_libintl "$f"
   prepend_tls_rpath "$f"
 done < <(find "$STAGE$XIOS_PREFIX/usr/bin" "$STAGE$XIOS_PREFIX/usr/libexec" -type f -perm -111 2>/dev/null | sort)
 

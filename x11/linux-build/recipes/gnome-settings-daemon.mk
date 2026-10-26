@@ -58,6 +58,16 @@ gnome-settings-daemon: gnome-settings-daemon-setup gtk+3.0 gnome-desktop gsettin
 			$(BUILD_STAGE)/gnome-settings-daemon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec -type f 2>/dev/null); do \
 		$(I_N_T) -change @rpath/libintl.dylib @rpath/libgtkintl.dylib $$f 2>/dev/null || true; \
 	done
+	# The plugins load @rpath/libgsd.dylib, but they install with meson's BUILD-tree rpath
+	# (@loader_path/../../gnome-settings-daemon), which from libexec/ points at
+	# $(MEMO_PREFIX)/gnome-settings-daemon. Swap it for the real pkglibdir in place
+	# (same length, so no header padding needed). -rpath fails on binaries without that
+	# entry, hence || true.
+	for f in $$(find $(BUILD_STAGE)/gnome-settings-daemon/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/libexec \
+			-type f -name 'gsd-*' 2>/dev/null); do \
+		$(I_N_T) -rpath @loader_path/../../gnome-settings-daemon \
+			$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/gnome-settings-daemon-$(GSD_MAJOR_V) $$f 2>/dev/null || true; \
+	done
 	$(call AFTER_BUILD,copy)
 endif
 

@@ -1,10 +1,10 @@
 Package: xios-desktop-stublibs
 Name: Xios desktop compatibility libraries
-Version: 0.1.1
+Version: 0.1.2
 Architecture: @DEB_ARCH@
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libglib2.0-0
+Depends: libglib2.0-0, libintl8
 Section: X11
 Priority: optional
 Description: iOS compatibility libraries for the GNOME desktop stack

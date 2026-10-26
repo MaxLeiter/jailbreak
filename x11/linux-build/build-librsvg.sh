@@ -84,6 +84,12 @@ done
 
 echo "==> collect debs -> /out"
 mkdir -p /out
-find . -name "librsvg2*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} /out/ \; 2>/dev/null || true
+# Through a private dir so the shared intl pass touches only these debs (librsvg links
+# glib's -lintl as the unversioned @rpath/libintl.dylib; see recipes/relink-gtkintl.sh).
+collect="$(mktemp -d)"
+find . -name "librsvg2*_*_$XIOS_DEB_ARCH.deb" -exec cp -v {} "$collect/" \; 2>/dev/null || true
+bash /work/recipes/relink-gtkintl.sh "$collect"
+cp -v "$collect"/*.deb /out/ 2>/dev/null || true
+rm -rf "$collect"
 
 echo "==> done"

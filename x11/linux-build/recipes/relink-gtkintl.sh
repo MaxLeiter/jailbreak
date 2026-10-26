@@ -10,12 +10,20 @@
 #     app executables are signed with the GPU-client entitlement so the post-pass
 #     does not strip AGX/IOGPU access after the package recipe added it;
 #   * declare `Depends: libgtkintl` so apt installs the shim;
+#   * relink any OTHER mach-o that still loads the unversioned @rpath/libintl.dylib onto
+#     @rpath/libintl.8.dylib and declare `Depends: libintl8` (dropping a `libintl-dev`
+#     bridge). Only Procursus libintl-dev ships the libintl.dylib -> libintl.8.dylib dev
+#     symlink, so without this a fresh install dyld-aborts (the "libintl trap" in the
+#     2026-10-25 Procursus dependency audit). Most of these loads are dead (-lintl from
+#     glib's pkg-config, no symbol bound), but dyld still has to resolve them. These are
+#     re-signed with the entitlements they already carry;
 #   * regenerate DEBIAN/md5sums and repack (zstd).
 #
 # Idempotent by construction: a deb already fixed (by this pass, by gtk+3.0.mk/gtk4.mk, or
 # by hand) still imports g_libintl_* but no longer links @rpath/libintl{,.8}.dylib, so it is
-# left untouched — no needless repack. libgtkintl itself EXPORTS (not imports) the symbols,
-# so it is naturally skipped and never gets a self-dependency.
+# left untouched — no needless repack. A libintl.8 relink leaves no @rpath/libintl.dylib
+# load behind, so it is a one-time change too. libgtkintl itself EXPORTS (not imports) the
+# symbols, so it is naturally skipped and never gets a self-dependency.
 #
 # Runs inside the Procursus build container (needs dpkg-deb + the cross cctools + ldid).
 # Usage: relink-gtkintl.sh DIR [DIR ...]
@@ -70,15 +78,33 @@ sign_macho() {
   fi
 }
 
+# Retarget an unversioned @rpath/libintl.dylib load to the libintl8 runtime soname and
+# re-sign with the entitlements the file already had (read before the edit invalidates it).
+relink_libintl8() {
+  local f="$1" ent
+  ent="$(mktemp)"
+  "$LDID" -e "$f" > "$ent" 2>/dev/null || : > "$ent"
+  "$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "$f"
+  if [ -s "$ent" ]; then "$LDID" -S"$ent" "$f"; else "$LDID" -S "$f"; fi
+  rm -f "$ent"
+}
+
 fix_deb() {
-  local deb="$1" work pkg changed=0 needdep=0 f
+  local deb="$1" work pkg changed=0 needdep=0 needintl8=0 f
   work="$(mktemp -d)"
   "$DEB" -R "$deb" "$work" >/dev/null
   pkg="$(awk '/^Package:/{print $2; exit}' "$work/DEBIAN/control")"
 
   while IFS= read -r f; do
     file "$f" 2>/dev/null | grep -q 'Mach-O' || continue
-    "$NM" -u "$f" 2>/dev/null | grep '_g_libintl_' >/dev/null || continue
+    if ! "$NM" -u "$f" 2>/dev/null | grep '_g_libintl_' >/dev/null; then
+      if "$OTOOL" -L "$f" 2>/dev/null | grep -F '@rpath/libintl.dylib' >/dev/null; then
+        relink_libintl8 "$f"
+        needintl8=1
+        changed=1
+      fi
+      continue
+    fi
     needdep=1
     # Only relink if it still points at the unshippable proxy (keeps re-runs no-op).
     if "$OTOOL" -L "$f" 2>/dev/null | grep -E '@rpath/libintl(\.8)?\.dylib' >/dev/null; then
@@ -102,6 +128,19 @@ fix_deb() {
     changed=1
   fi
 
+  if [ "$needintl8" = 1 ]; then
+    # The libintl-dev bridge (stamp-minos.py DEPENDS_ADD, until 2026-10-25) is moot now.
+    sed -i -E '/^Depends:/{s/, *libintl-dev( *\([^)]*\))?//; s/^Depends: *libintl-dev( *\([^)]*\))?, */Depends: /}' \
+      "$work/DEBIAN/control"
+    if ! { grep '^Depends:' "$work/DEBIAN/control" 2>/dev/null | grep -qE '(^|[ ,])libintl8([ ,(]|$)'; }; then
+      if grep -q '^Depends:' "$work/DEBIAN/control"; then
+        sed -i "s/^Depends:[[:space:]]*/Depends: libintl8, /" "$work/DEBIAN/control"
+      else
+        sed -i "/^Architecture:/a Depends: libintl8" "$work/DEBIAN/control"
+      fi
+    fi
+  fi
+
   if [ "$changed" = 1 ]; then
     ( cd "$work" && find . -path ./DEBIAN -prune -o -type f -print0 \
         | xargs -0 md5sum | sed 's|  \./|  |' > DEBIAN/md5sums )
@@ -110,7 +149,7 @@ fix_deb() {
   elif [ "$needdep" = 1 ]; then
     printf '  ok      %-46s [%s] (already shimmed)\n' "$(basename "$deb")" "$pkg"
   else
-    printf '  skip    %-46s [%s] (no g_libintl_)\n' "$(basename "$deb")" "$pkg"
+    printf '  skip    %-46s [%s] (no g_libintl_, no unversioned libintl)\n' "$(basename "$deb")" "$pkg"
   fi
   rm -rf "$work"
 }

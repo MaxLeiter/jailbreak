@@ -63,8 +63,13 @@ evolution-data-server: evolution-data-server-setup glib2.0 sqlite3 libxml2 json-
 	printf '/* Pre-generated for the iOS cross build — see recipes/evolution-data-server.mk.\n * Output of iconv-detect.c run against Darwin libiconv; names verified against\n * GNU libiconv 1.17 (case-insensitive), the iconv the target actually links. */\n\n#define ICONV_ISO_D_FORMAT "iso-%%d-%%d"\n#define ICONV_ISO_S_FORMAT "iso-%%d-%%s"\n#define ICONV_10646 "UCS-4BE"\n' \
 		> $(BUILD_WORK)/evolution-data-server/build/iconv-detect.h
 	touch $(BUILD_WORK)/evolution-data-server/build/oauth2-google-client-id
+	# CMAKE_INSTALL_RPATH: libedbus-private.dylib installs to lib/evolution-data-server/ and
+	# every EDS library, factory and backend loads it as @rpath/libedbus-private.dylib, so
+	# that directory must be on their rpath next to lib/ (upstream's Linux packages carry it
+	# as a RUNPATH). The 3.52.4+ios2 deb had only lib/, and nothing could load it.
 	cd $(BUILD_WORK)/evolution-data-server && cmake -B build \
 		$(DEFAULT_CMAKE_FLAGS) \
+		-DCMAKE_INSTALL_RPATH="$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib;$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/evolution-data-server" \
 		-DPKG_CONFIG_EXECUTABLE=$(BUILD_TOOLS)/cross-pkg-config \
 		-D_correct_iconv=1 \
 		-DHAVE_LKSTRFTIME=1 \

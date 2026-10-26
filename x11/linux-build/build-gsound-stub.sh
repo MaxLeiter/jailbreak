@@ -50,6 +50,11 @@ $CC $CFLAGS -dynamiclib -fvisibility=default \
     -install_name @rpath/$DYLIB -compatibility_version 1.0.0 -current_version 1.0.3 \
     -I"$SRC" "$SRC/gsound-stub.c" $GLIB_FLAGS -L"$SYSROOT/lib" \
     -Wl,-rpath,"$TARGET_INSTALL_PREFIX/lib" -o "/tmp/$DYLIB"
+# glib's pkg-config adds -lintl, which links as the unversioned @rpath/libintl.dylib that
+# only Procursus libintl-dev provides. Point it at the libintl8 runtime soname (the deb
+# Depends on libintl8). See recipes/relink-gtkintl.sh.
+INT="$(command -v aarch64-apple-darwin-install_name_tool || command -v install_name_tool)"
+"$INT" -change @rpath/libintl.dylib @rpath/libintl.8.dylib "/tmp/$DYLIB"
 [ -n "$LDID" ] && "$LDID" -S "/tmp/$DYLIB"
 file "/tmp/$DYLIB" | sed 's/^/   /'
 

@@ -2,6 +2,11 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
+# Packaging this as ladybird-tls (lib/ladybird-tls/): retarget libssl.3.dylib's
+# @rpath/libcrypto.3.dylib load to @loader_path/libcrypto.3.dylib before signing. Its only
+# LC_RPATH is lib/, so through @rpath it binds the base Procursus libcrypto 3.2.1 unless the
+# loading executable already put ladybird-tls first (ladybird-tls 3.5.3+wl2 does this).
+
 SUBPROJECTS     += openssl
 OPENSSL_VERSION := 3.6.3
 DEB_OPENSSL_V   ?= $(OPENSSL_VERSION)+ios1
