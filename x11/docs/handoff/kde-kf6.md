@@ -582,3 +582,37 @@ Left as is:
 - Displays KCM scale changes are not applied to the nested output (upstream 6.7 ignores them there too); the scale
   is the launcher's `--scale`.
 - `qt.qpa.wayland: EGL not available` comes from `kactivitymanagerd` (no GPU entitlement, no window), not plasmashell.
+
+### Run 3 (2026-10-25): rotation and tap latency, kwin 6.7.5+ios3
+Max reported Plasma not following a portrait-to-landscape rotation (slot kde-0b85; the right quarter was KWin's
+black background) and taps that "don't seem to work, or are slow".
+
+- **Fixed: host presentation clock.** KWin 6.7 completes nested-output frames only from wp_presentation `presented`
+  and feeds the timestamp to RenderLoop, which runs on `steady_clock` (CLOCK_UPTIME_RAW on Darwin). iosc stamps
+  CLOCK_MONOTONIC, which keeps counting through sleep. On the test boot it was 11.8 s behind, so KWin ran on its
+  "GPU was idle for 100+ frames" path every frame. When CLOCK_MONOTONIC is ahead, which an earlier boot measured
+  at +204 s, RenderLoop schedules the next composite that far ahead and KWin stops repainting after each presented
+  frame. Plasma still gets the input and the new output size, but nothing reaches the screen. `+ios3` maps the
+  timestamp onto steady_clock at receipt (`ios-presentation-clock-map` in `kwin-ios-gpu-backend.sh`). Afterwards the
+  perf CSV (`KWIN_LOG_PERFORMANCE_DATA=1`, written to `/var/jb/tmp`) shows pageflip timestamps within a few ms of
+  their targets, a 3-9 ms safety margin and a ~20 ms render prediction. Plasma popups open in 330-800 ms (were
+  630-1700) and close in ~700 ms (were ~1250).
+- **Not reproduced: the stuck rotation.** I tried synthetic XIOS_IN_OUTPUT rotations (`/var/jb/tmp/xin.py`,
+  `rotseq.py`): single, 30-300 ms bursts, Kickoff open, a cold Kickoff loading, and a replay of the launch
+  sequence (ioscd SESSION at 1440x1080, then portrait before KWin maps, with both KWin `--width/--height`
+  orders). Plasma followed every time, in ~140 ms. Max's own log ends with Plasma importing 2879x2159 buffers
+  after his last rotation. The clock bug above produces exactly that picture: KWin has the new geometry but has
+  not redrawn Plasma's new buffers. That is the likely cause, but I could not confirm it was active in his session.
+- **Input mapping** after rotation is right in both orientations: taps on the panel clock open the calendar in
+  portrait (1886,2784 px) and landscape (2610,2088 px), including with a 6-16 px finger drift.
+- **Where tap latency goes** (renderloop logs + per-process CPU via `proc_pid_rusage`):
+  - iosc to KWin to client is fast: konsole's menu responds in 120-170 ms, measured through a ~100 ms grim poll.
+  - Plasma popups are CPU-bound in plasmashell: 250-600 ms of polish and QML work at 100% of one A10 core,
+    because QML is interpreted on iOS (no V4 JIT). A cold Kickoff takes ~2.5 s. Animations then run at ~30 fps,
+    matching the app's display clock.
+  - The remaining lever is QML/JS execution, for example trying Qt's V4 JIT with the mmap+mprotect(RX) path that
+    works for bun. That is a qtdeclarative project, not a KWin one.
+- `qt.qpa.wayland: wl_output.name received after output has been initialized` comes from a Qt client of iosc when
+  iosc re-advertises its outputs on rotation (iosc re-sends `name` to existing resources). It is cosmetic.
+- Seen once in five SSH launches: plasmashell came up without its panel (no `PanelView` in the log). The next
+  launch was fine. Not investigated.
