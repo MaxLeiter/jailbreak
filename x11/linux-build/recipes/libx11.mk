@@ -7,6 +7,10 @@ SUBPROJECTS    += libx11
 # CVE-2023-43785/43786/43787 (fixed in 1.8.7). Every binary package of this source
 # moves together, libx11-xcb1 included: libX11-xcb reaches into libX11's private
 # Display layout, so a 1.7.3.1 libX11-xcb must never meet a 1.8 libX11.
+# --with-launchd=yes: configure only auto-detects launchd by looking for the binary,
+# so Procursus's macOS-hosted build got HAVE_LAUNCHD + TRANS_REOPEN and this Linux
+# host would not. Without it _XimXTransReopenCOTSServer / _XimXTransGetReopenInfo
+# vanish from libX11.6's exports and launchd-style DISPLAY paths stop working.
 LIBX11_VERSION := 1.8.14
 DEB_LIBX11_V   ?= $(LIBX11_VERSION)+ios1
 
@@ -31,6 +35,7 @@ libx11: libx11-setup xorgproto libxcb xtrans
 		--enable-xthreads \
 		--enable-specs=no \
 		--enable-malloc0returnsnull=no \
+		--with-launchd=yes \
 		--with-keysymdefdir=$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/X11 \
 		CC_FOR_BUILD="$(CC_FOR_BUILD)" \
 		CFLAGS_FOR_BUILD="$(CFLAGS_FOR_BUILD)" \

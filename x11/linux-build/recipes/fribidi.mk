@@ -34,9 +34,12 @@ fribidi: fribidi-setup
 		--disable-docs \
 		CC_FOR_BUILD='$(shell command -v cc) $(CFLAGS_FOR_BUILD)' \
 		CPP_FOR_BUILD='$(shell command -v cc) -E $(CPPFLAGS_FOR_BUILD)'
-	+$(MAKE) -C $(BUILD_WORK)/fribidi
+	# dist_man_MANS= : bin/'s man page is made by running the just-built fribidi under
+	# help2man, which cannot work for an iOS binary on the Linux build host.
+	+$(MAKE) -C $(BUILD_WORK)/fribidi dist_man_MANS=
 	+$(MAKE) -C $(BUILD_WORK)/fribidi install \
-		DESTDIR=$(BUILD_STAGE)/fribidi
+		DESTDIR=$(BUILD_STAGE)/fribidi \
+		dist_man_MANS=
 	$(call AFTER_BUILD,copy)
 endif
 

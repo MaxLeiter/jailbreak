@@ -5,10 +5,10 @@ endif
 SUBPROJECTS        += libsndfile
 # 1.0.31 -> 1.2.2 (CVE-2022-33065 and earlier), plus the CVE-2024-50612 and
 # CVE-2026-37555 fixes that no release carries yet (ports/libsndfile/patches).
-# Soname stays libsndfile.1.dylib. Procursus's CMake build also shipped the
-# fully-versioned libsndfile.1.0.31.dylib; this autotools build names the real file
-# libsndfile.1.dylib, so libsndfile.1.0.31.dylib is kept as a compat symlink for
-# file parity (consumers link @rpath/libsndfile.1.dylib).
+# Soname stays libsndfile.1.dylib. The real file moves from libsndfile.1.0.31.dylib
+# to libsndfile.1.0.37.dylib, so the old name ships as a compat symlink: it is a path
+# Procursus's package owns and the shadow gate's parity rule checks. Consumers link
+# @rpath/libsndfile.1.dylib, not that name.
 LIBSNDFILE_VERSION := 1.2.2
 DEB_LIBSNDFILE_V   ?= $(LIBSNDFILE_VERSION)+ios1
 
@@ -43,6 +43,8 @@ libsndfile-package: libsndfile-stage
 
 	# libsndfile.mk Prep libsndfile1
 	cp -a $(BUILD_STAGE)/libsndfile/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsndfile.1*.dylib $(BUILD_DIST)/libsndfile1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	[ -e $(BUILD_DIST)/libsndfile1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsndfile.1.0.31.dylib ] || \
+		ln -s $$(readlink $(BUILD_DIST)/libsndfile1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsndfile.1.dylib) $(BUILD_DIST)/libsndfile1/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsndfile.1.0.31.dylib
 
 	# libsndfile.mk Prep libsndfile1-dev
 	cp -a $(BUILD_STAGE)/libsndfile/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libsndfile.{dylib,a} $(BUILD_DIST)/libsndfile1-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib

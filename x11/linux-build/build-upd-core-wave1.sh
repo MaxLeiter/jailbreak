@@ -40,10 +40,11 @@ echo "==> wave 1 recipes and control templates"
 for m in libtasn1 nettle libidn2 p11-kit gnutls xz flac libsndfile sudo fribidi libarchive libx11 lcms2; do
   cp -v "/work/recipes/$m.mk" makefiles/
 done
-for c in libgnutls30 libgnutlsxx30 gnutls-bin p11-kit p11-kit-modules nettle-bin liblcms2-utils; do
+for c in libgnutls30 libgnutlsxx30 gnutls-bin p11-kit p11-kit-modules nettle-bin liblcms2-utils \
+         sudo xzdec; do
   cp -v "/work/build_info/$c.control" build_info/
 done
-for p in flac libsndfile p11-kit; do
+for p in nettle flac libsndfile p11-kit; do
   want "$p" && bash /work/recipes/stage-port-patches.sh "$p" /work/ports build_patch
 done
 
@@ -112,6 +113,12 @@ if ! want libtiff-stage || [ "$(echo $TARGETS)" != libtiff-stage ]; then
   done
   ls "$XIOS_USR"/lib/libz.*.dylib >/dev/null 2>&1 && echo "   NOTE: other libz dylibs remain: $(ls "$XIOS_USR"/lib/libz.*.dylib)"
 fi
+
+# A light-cloned volume recreates every build_work/<pkg> dir, even for packages the source
+# volume never finished (no .build_complete). An empty dir makes EXTRACT_TAR skip the
+# extract, so that dependency's setup then fails on missing sources (libvorbis, under
+# libsndfile). Empty dirs carry nothing; drop them so those dependencies build normally.
+find "$XIOS_BUILD_WORK" -mindepth 1 -maxdepth 1 -type d -empty -print -delete | sed 's/^/   dropped empty build_work dir: /'
 
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 CORE_COUNT=${JOBS:-4}"
 BW=$XIOS_BUILD_WORK; BS=$XIOS_BUILD_STAGE; BB=$XIOS_SYSROOT

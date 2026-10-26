@@ -1,0 +1,77 @@
+Restore nettle 3.9.1's internal _nettle_ecc_hash / _nettle_gost_hash in libhogweed
+
+3.10 replaced them (ChangeLog 2024-06-01), dropping two exports libhogweed.6 had.
+Bodies are 3.9.1's ecc-hash.c, verbatim. Import scan of every Procursus and
+Xios reverse dependency of libhogweed6 (2026-10-26): zero importers; this only
+keeps the replacement a true export superset.
+
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -193,7 +193,7 @@
+ 		  rsa-keygen.c rsa-blind.c \
+ 		  rsa2sexp.c sexp2rsa.c \
+ 		  dsa.c dsa-compat.c dsa-compat-keygen.c dsa-gen-params.c \
+-		  dsa-sign.c dsa-verify.c dsa-keygen.c dsa-hash.c \
++		  dsa-sign.c dsa-verify.c dsa-keygen.c dsa-hash.c ecc-hash-compat.c \
+ 		  dsa-sha1-sign.c dsa-sha1-verify.c \
+ 		  dsa-sha256-sign.c dsa-sha256-verify.c  \
+ 		  dsa2sexp.c sexp2dsa.c \
+--- a/ecc-hash-compat.c
++++ b/ecc-hash-compat.c
+@@ -0,0 +1,56 @@
++/* ecc-hash-compat.c
++
++   nettle 3.10 folded the internal helpers _nettle_ecc_hash and _nettle_gost_hash
++   (ecc-hash.c) into _nettle_dsa_hash / _nettle_gostdsa_hash with a different
++   signature. libhogweed.6 from nettle 3.9.1 exported both, and the Xios build
++   replaces that package in place, so this file brings them back with their 3.9.1
++   bodies, unchanged, to keep libhogweed.6's exports a superset. Nothing in nettle
++   3.10 calls them.
++
++   Copyright (C) 2013, 2019 Niels Möller (original ecc-hash.c)
++
++   This file is part of GNU Nettle, dual-licensed GPLv2+/LGPLv3+ like the rest. */
++
++#if HAVE_CONFIG_H
++# include "config.h"
++#endif
++
++#include "ecc-internal.h"
++#include "gmp-glue.h"
++
++void
++_nettle_ecc_hash (const struct ecc_modulo *m,
++		  mp_limb_t *hp,
++		  size_t length, const uint8_t *digest);
++void
++_nettle_gost_hash (const struct ecc_modulo *m,
++		   mp_limb_t *hp,
++		   size_t length, const uint8_t *digest);
++
++/* Requires m->size + 1 limbs, the extra limb may be needed for unusual limb
++   sizes. */
++void
++_nettle_ecc_hash (const struct ecc_modulo *m,
++		  mp_limb_t *hp,
++		  size_t length, const uint8_t *digest)
++{
++  if (length > ((size_t) m->bit_size + 7) / 8)
++    length = (m->bit_size + 7) / 8;
++
++  mpn_set_base256 (hp, m->size + 1, digest, length);
++
++  if (8 * length > m->bit_size)
++    /* We got a few extra bits, at the low end. Discard them. */
++    mpn_rshift (hp, hp, m->size + 1, 8*length - m->bit_size);
++}
++
++void
++_nettle_gost_hash (const struct ecc_modulo *m,
++		   mp_limb_t *hp,
++		   size_t length, const uint8_t *digest)
++{
++  if (length > ((size_t) m->bit_size + 7) / 8)
++    length = (m->bit_size + 7) / 8;
++
++  mpn_set_base256_le (hp, m->size + 1, digest, length);
++}

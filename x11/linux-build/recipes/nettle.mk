@@ -16,6 +16,8 @@ nettle-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftpmirror.gnu.org/nettle/nettle-$(NETTLE_VERSION).tar.gz{$(comma).sig})
 	$(call PGP_VERIFY,nettle-$(NETTLE_VERSION).tar.gz)
 	$(call EXTRACT_TAR,nettle-$(NETTLE_VERSION).tar.gz,nettle-$(NETTLE_VERSION),nettle)
+	# ports/nettle/patches: restores the two libhogweed.6 exports 3.10 dropped.
+	$(call DO_PATCH,nettle,nettle,-p1)
 
 ifneq ($(wildcard $(BUILD_WORK)/nettle/.build_complete),)
 nettle:

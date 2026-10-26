@@ -15,6 +15,12 @@ flac-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.osuosl.org/pub/xiph/releases/flac/flac-$(FLAC_VERSION).tar.xz)
 	$(call EXTRACT_TAR,flac-$(FLAC_VERSION).tar.xz,flac-$(FLAC_VERSION),flac)
 	$(call DO_PATCH,flac,flac,-p1)
+	# 1.3.4's configure learned to recognise Mach-O and now builds with
+	# -fvisibility=hidden there, which drops 136 of the 427 symbols Procursus's 1.3.3
+	# libFLAC.8 exports (FLAC__MD5*, the FLAC__OGG_MAPPING_* tables, bitreader
+	# internals) and one from libFLAC++.6. A drop-in has to keep them, so build with
+	# default visibility, as 1.3.3 effectively did.
+	sed -i 's/ -fvisibility=hidden//g' $(BUILD_WORK)/flac/configure
 	sed -i 's/-keep_private_externs -nostdlib/-keep_private_externs $(PLATFORM_VERSION_MIN) -arch $(MEMO_ARCH) -nostdlib/g' $(BUILD_WORK)/flac/configure
 
 ifneq ($(wildcard $(BUILD_WORK)/flac/.build_complete),)
