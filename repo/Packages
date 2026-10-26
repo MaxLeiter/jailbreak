@@ -2342,7 +2342,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-guiaddons-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-guiaddons-dev.json
 
 Package: kf6-i18n
-Version: 6.3.0+ios1
+Version: 6.3.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
@@ -2352,11 +2352,11 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, libgtkintl, iso-code
 Description: KI18n for the Xios desktop
 Installed-Size: 18980
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-i18n_6.3.0+ios1_iphoneos-arm64.deb
-Size: 4458594
-MD5sum: 93579e6f6d7af15a5e80ec6fcc8c174f
-SHA1: 01535b10c28d043a443db43faa08319f4818574c
-SHA256: 2eb3946ee723a82971922925cff9cc1fb9d8cef2c132db88d6674fc2dc614593
+Filename: debs/kf6-i18n_6.3.0+ios2_iphoneos-arm64.deb
+Size: 1421812
+MD5sum: f57202f555e22822b5f673b570e7261a
+SHA1: 19dfb6aa8872578ef652700553e24921013c23aa
+SHA256: 11623210bd6b1d76bcc2936140b22386ed56dc2077677141a1c5182c06b3359a
 Icon: https://repo.maxleiter.com/icons/kf6-i18n.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-i18n.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-i18n.json
