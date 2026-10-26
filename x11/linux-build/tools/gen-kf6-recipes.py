@@ -334,8 +334,11 @@ TABLE = [
                "kiconthemes", "kitemviews", "kjobwidgets", "kservice", "solid",
                "kwidgetsaddons", "kwindowsystem"],
          qt_deps=["qt6-base", "qt6-5compat"],
+         # USE_DBUS=ON explicitly: KF 6.30 widened the default's guard to "... AND NOT HAIKU)", the
+         # sed below stopped matching, and KIO silently built without DBus (no kiod6/kioexec/KDirNotify).
          flags=["-DCMAKE_DISABLE_FIND_PACKAGE_ACL=TRUE",
-                "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE"],
+                "-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE",
+                "-DUSE_DBUS=ON"],
          seds=["sed -i 's/if(UNIX AND NOT APPLE AND NOT ANDROID)/if(UNIX AND NOT ANDROID)/' $(BUILD_WORK)/kio/CMakeLists.txt",
                "sed -i '/kiod_agent\\.mm/d' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt",
                "sed -i '/-framework AppKit -framework CoreFoundation/d' $(BUILD_WORK)/kio/src/kiod/CMakeLists.txt",

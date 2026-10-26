@@ -69,7 +69,8 @@ kio: kio-setup
 		-G Ninja \
 		$(KF6_CMAKE_FLAGS) \
 		-DCMAKE_DISABLE_FIND_PACKAGE_ACL=TRUE \
-		-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE
+		-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE \
+		-DUSE_DBUS=ON
 	+ninja -C $(BUILD_WORK)/kio/build
 	+DESTDIR="$(BUILD_STAGE)/kio" ninja -C $(BUILD_WORK)/kio/build install
 	$(call AFTER_BUILD,copy)
