@@ -1133,18 +1133,19 @@ sub(
     "    return QPointF(size.width(), size.height());\n"
     "}\n"
     "\n"
-    "// ios-bringup-fractional-scale: the host tags kwin's nested surface with\n"
-    "// wl_surface.set_buffer_scale(ceil(outputScale)), so inbound surface-local\n"
-    "// coordinates arrive in pixelSize/ceil(scale) space while kwin's logical output\n"
-    "// space is pixelSize/scale. Rescale surface-local coordinates by ceil(scale)/scale.\n"
-    "// Exactly 1.0 at integer scales (no behaviour change there).\n"
+    "// ios-bringup-fractional-scale (6.7 shape): the nested output's host surface is sized\n"
+    "// through wp_viewport to pixelSize/hostSurfaceScale() (the iosc logical size, see\n"
+    "// ios-bringup-fixed-host-pixel-size in wayland_output.cpp), so inbound surface-local\n"
+    "// coordinates arrive in that space while kwin's logical output space is\n"
+    "// pixelSize/scale. Rescale by hostSurfaceScale/scale; exactly 1.0 when the host scale\n"
+    "// contract is off (hostSurfaceScale() == scale()), i.e. upstream behaviour.\n"
     "static inline qreal xiosSurfaceToLogicalFactor(const WaylandOutput *output)\n"
     "{\n"
     "    const qreal scale = output ? output->scale() : 1.0;\n"
     "    if (scale <= 0.0) {\n"
     "        return 1.0;\n"
     "    }\n"
-    "    return std::ceil(scale) / scale;\n"
+    "    return output->hostSurfaceScale() / scale;\n"
     "}\n",
 )
 
@@ -1197,70 +1198,113 @@ PY
 # Upstream nested KWin treats its --width/--height as the host window's logical
 # size and resizes its render buffer to hostConfigureSize * KWinOutputScale.
 # That is useful for a normal resizable development window, but it makes
-# System Settings display scaling a pure supersampling control in Xios:
+# KWin's output scale a pure supersampling control in Xios:
 #
 #   KWin scale 2.25 -> buffer 3240x2430 -> iosc stretches it back to 1440x1080
 #
-# The KWin logical workspace therefore remains 1440x1080 and Plasma controls do
-# not get any larger. Xios has a fixed physical IOSurface mode, so keep KWin's
-# render mode fixed to hostConfigureSize * the host output scale instead. Then
-# KWin's own output scale correctly changes geometry() (2880 / 2.25 = 1280)
-# while the buffer stays matched to the 2880-wide IOSurface. The existing
-# ceil(scale)/scale inbound-coordinate correction above maps input into that
-# reduced logical geometry.
+# Xios has a fixed physical IOSurface mode, so keep KWin's render mode fixed to
+# hostConfigureSize * the host output scale instead. Then KWin's own output
+# scale changes geometry() (2880 / 2.75 = 1047) while the buffer stays matched
+# to the 2880-wide IOSurface.
 #
-# This is opt-in through KWIN_XIOS_HOST_OUTPUT_SCALE; ordinary nested KWin keeps
-# the upstream behavior.
-python3 - "$src/src/backends/wayland/wayland_output.cpp" <<'PY'
+# KWin 6.7 needs four more pieces than 6.1 did, because its nested backend is
+# built on wp_viewport + wp_fractional_scale:
+#   - the host surface size (main surface and layer subsurface viewports) is
+#     pixelSize / hostSurfaceScale(), not pixelSize / scale(); otherwise iosc gets
+#     a 1047x785 window at KWin scale 2.75 and the desktop is boxed;
+#   - KWin's output scale stays the --scale it was launched with (applyConfigure
+#     would otherwise copy the host's preferred fractional scale, 2, into it);
+#   - WaylandOutput::init() no longer sends xdg_toplevel.unset_fullscreen when
+#     --fullscreen is not given. 6.1 never sent it; 6.7 does, iosc answers with a
+#     default-size (1360x1000) configure, and that second configure became the
+#     mode: the black border of device run 1;
+#   - inbound surface-local input is rescaled by hostSurfaceScale/scale (see the
+#     fractional-scale block above).
+#
+# This is opt-in through KWIN_XIOS_HOST_OUTPUT_SCALE; with it unset
+# hostSurfaceScale() == scale() and every piece is upstream behaviour.
+python3 - "$src/src/backends/wayland" <<'PY'
 import sys
 from pathlib import Path
 
-path = Path(sys.argv[1])
-text = path.read_text()
+root = Path(sys.argv[1])
 marker = "ios-bringup-fixed-host-pixel-size"
-if marker in text:
-    print(f"wayland_output.cpp: {marker} already applied")
-    sys.exit(0)
 
-old = """void WaylandOutput::applyConfigure(const QSize &size, quint32 serial)
-{
-    m_xdgShellSurface->ackConfigure(serial);
-    if (!size.isEmpty()) {
-        resize(size * scale());
-    }
-}
-"""
-new = """void WaylandOutput::applyConfigure(const QSize &size, quint32 serial)
-{
-    m_xdgShellSurface->ackConfigure(serial);
-    if (!size.isEmpty()) {
-        // ios-bringup-fixed-host-pixel-size: iosc presents a fixed physical
-        // IOSurface. Keep this nested output mode matched to that host mode so
-        // changing KWin scale reduces logical geometry instead of only growing
-        // a buffer that iosc immediately fits back into the same rectangle.
-        bool hostScaleOk = false;
-        const qreal hostScale =
-            qEnvironmentVariable("KWIN_XIOS_HOST_OUTPUT_SCALE").toDouble(&hostScaleOk);
-        resize(size * ((hostScaleOk && hostScale > 0.0) ? hostScale : scale()));
-    }
-}
-"""
-old_67 = """        auto mode = std::make_shared<OutputMode>(OutputModeline(size * m_pendingScale, m_refreshRate));
-"""
-new_67 = """        // ios-bringup-fixed-host-pixel-size (6.7 shape): the nested output mode follows the host's fixed physical
-        // IOSurface (hostConfigureSize * KWIN_XIOS_HOST_OUTPUT_SCALE), while next.scale below stays KWin's own
-        // pending scale, so changing the scale shrinks logical geometry instead of growing the buffer.
-        bool hostScaleOk = false;
-        const qreal hostScale = qEnvironmentVariable("KWIN_XIOS_HOST_OUTPUT_SCALE").toDouble(&hostScaleOk);
-        auto mode = std::make_shared<OutputMode>(OutputModeline(size * ((hostScaleOk && hostScale > 0.0) ? hostScale : m_pendingScale), m_refreshRate));
-"""
-if text.count(old) == 1:
-    path.write_text(text.replace(old, new))
-elif text.count(old_67) == 1:
-    path.write_text(text.replace(old_67, new_67))
-else:
-    raise SystemExit("wayland_output.cpp: applyConfigure scale block not found exactly once")
-print(f"wayland_output.cpp: applied {marker}")
+def edit(name, old, new, tag):
+    p = root / name
+    s = p.read_text()
+    if tag in s:
+        return
+    if s.count(old) != 1:
+        raise SystemExit(f"{name}: anchor for {tag} not found exactly once")
+    p.write_text(s.replace(old, new, 1))
+
+edit("wayland_output.h",
+     "    bool isReady() const;\n",
+     "    bool isReady() const;\n"
+     "    // ios-bringup-fixed-host-pixel-size-api: KWIN_XIOS_HOST_OUTPUT_SCALE when set, else scale().\n"
+     "    // pixelSize / hostSurfaceScale() is the host (iosc) logical size of this output's window.\n"
+     "    qreal hostSurfaceScale() const;\n",
+     marker + "-api")
+
+edit("wayland_output.cpp",
+     "        auto mode = std::make_shared<OutputMode>(OutputModeline(size * m_pendingScale, m_refreshRate));\n",
+     "        // ios-bringup-fixed-host-pixel-size: the nested output mode follows the host's fixed physical IOSurface\n"
+     "        // (hostConfigureSize * KWIN_XIOS_HOST_OUTPUT_SCALE).\n"
+     "        const bool xiosHostScale = xiosHostOutputScale() > 0.0;\n"
+     "        auto mode = std::make_shared<OutputMode>(OutputModeline(size * (xiosHostScale ? xiosHostOutputScale() : m_pendingScale), m_refreshRate));\n",
+     marker)
+edit("wayland_output.cpp",
+     "        next.scale = m_pendingScale;\n",
+     "        // ios-bringup-fixed-host-pixel-size-scale: keep KWin's own --scale; the host's preferred fractional scale\n"
+     "        // only describes the host buffer density, which the mode above already accounts for.\n"
+     "        next.scale = xiosHostScale ? m_state.scale : m_pendingScale;\n",
+     marker + "-scale")
+edit("wayland_output.cpp",
+     "    m_viewport->setDestination(QSize(std::round(modeSize().width() / scale()), std::round(modeSize().height() / scale())));\n",
+     "    m_viewport->setDestination(QSize(std::round(modeSize().width() / hostSurfaceScale()), std::round(modeSize().height() / hostSurfaceScale()))); // ios-bringup-fixed-host-pixel-size-viewport\n",
+     marker + "-viewport")
+edit("wayland_output.cpp",
+     "    m_xdgShellSurface->setFullscreen(fullscreen);\n    m_surface->commit(KWayland::Client::Surface::CommitFlag::None);\n",
+     "    if (fullscreen) { // ios-bringup-fixed-host-pixel-size-no-unfullscreen: never send unset_fullscreen (6.1 behaviour)\n"
+     "        m_xdgShellSurface->setFullscreen(true);\n"
+     "    }\n"
+     "    m_surface->commit(KWayland::Client::Surface::CommitFlag::None);\n",
+     marker + "-no-unfullscreen")
+edit("wayland_output.cpp",
+     "bool WaylandOutput::isReady() const\n",
+     "qreal WaylandOutput::hostSurfaceScale() const // ios-bringup-fixed-host-pixel-size-impl\n"
+     "{\n"
+     "    const qreal host = xiosHostOutputScale();\n"
+     "    return host > 0.0 ? host : scale();\n"
+     "}\n"
+     "\n"
+     "bool WaylandOutput::isReady() const\n",
+     marker + "-impl")
+edit("wayland_output.cpp",
+     "namespace KWin\n{\nnamespace Wayland\n{\n",
+     "namespace KWin\n{\nnamespace Wayland\n{\n\n"
+     "// ios-bringup-fixed-host-pixel-size-env: KWIN_XIOS_HOST_OUTPUT_SCALE, or 0 when unset/invalid.\n"
+     "static qreal xiosHostOutputScale()\n"
+     "{\n"
+     "    static const qreal value = [] {\n"
+     "        bool ok = false;\n"
+     "        const qreal v = qEnvironmentVariable(\"KWIN_XIOS_HOST_OUTPUT_SCALE\").toDouble(&ok);\n"
+     "        return (ok && v > 0.0) ? v : 0.0;\n"
+     "    }();\n"
+     "    return value;\n"
+     "}\n",
+     marker + "-env")
+
+edit("wayland_layer.cpp",
+     "    const Rect logicalTarget = targetRect().scaled(1.0 / m_output->scale()).rounded();\n",
+     "    const Rect logicalTarget = targetRect().scaled(1.0 / output->hostSurfaceScale()).rounded(); // ios-bringup-fixed-host-pixel-size-layer\n",
+     marker + "-layer")
+edit("wayland_qpainter_backend.cpp",
+     "cursor()->update(buffer, m_back->buffer()->size() / m_output->scale(), hotspot().toPoint());\n",
+     "cursor()->update(buffer, m_back->buffer()->size() / static_cast<WaylandOutput *>(m_output.get())->hostSurfaceScale(), hotspot().toPoint()); // ios-bringup-fixed-host-pixel-size-cursor\n",
+     marker + "-cursor")
+print(f"wayland backend: applied {marker} (6.7)")
 PY
 
 # Keep the accelerated ANGLE/IOSurface phase separate from the first-light

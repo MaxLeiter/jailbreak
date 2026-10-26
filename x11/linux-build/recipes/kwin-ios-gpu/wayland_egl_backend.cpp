@@ -203,7 +203,10 @@ bool WaylandEglCursorLayer::doEndFrame(const Region &renderedDeviceRegion, const
     }
     ioscApplyAcquireFence(m_backend->backend()->display(), buffer, m_buffer->buffer());
 
-    static_cast<WaylandOutput *>(m_output.get())->cursor()->update(buffer, m_buffer->buffer()->size() / m_output->scale(), (hotspot() / m_output->scale()).toPoint());
+    // xios: the cursor surface lives in the host window's coordinate space, pixelSize / hostSurfaceScale()
+    auto *waylandOutput = static_cast<WaylandOutput *>(m_output.get());
+    const qreal hostScale = waylandOutput->hostSurfaceScale();
+    waylandOutput->cursor()->update(buffer, m_buffer->buffer()->size() / hostScale, (hotspot() / hostScale).toPoint());
 
     m_swapchain->release(m_buffer, FileDescriptor());
     return true;

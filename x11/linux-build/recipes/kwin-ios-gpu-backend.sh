@@ -82,6 +82,66 @@ replace("src/compositor.cpp",
         "    if (const auto pciInfo = backend->drmDevice() ? backend->drmDevice()->pciDeviceInfo() : std::nullopt) { // ios-gpu-no-drm-pci",
         "ios-gpu-no-drm-pci")
 
+# ---- an OpenGL ES 3.0 context: what KWin 6.7 needs and ANGLE has to be asked for explicitly -------------------------
+# KWin asks for EGL_CONTEXT_CLIENT_VERSION 2 and relies on drivers handing out the newest compatible version. ANGLE
+# creates exactly the version requested, so 6.7 got an ES 2.0 context, and EglContext::checkSupported() rejected it
+# without a word (no 3D textures without GL_OES_texture_3D, which ANGLE does not expose on ES 2): KWin printed only
+# "Could not initialize rendering context" and fell back to QPainter. ANGLE Metal gives ES 3.0 on the A10 (the angle
+# deb's es3 patch), so ask for 3 first and keep upstream's ES 2 candidates as the fallback.
+replace("src/opengl/eglcontext.cpp",
+        "    std::vector<std::unique_ptr<AbstractOpenGLContextAttributeBuilder>> candidates;\n    if (GLES) {\n",
+        "    std::vector<std::unique_ptr<AbstractOpenGLContextAttributeBuilder>> candidates;\n    if (GLES) {\n"
+        "#if defined(__APPLE__) // ios-gpu-gles3-context\n"
+        "        {\n"
+        "            auto gles3 = std::make_unique<EglOpenGLESContextAttributeBuilder>();\n"
+        "            gles3->setVersion(3);\n"
+        "            candidates.push_back(std::move(gles3));\n"
+        "        }\n"
+        "#endif\n",
+        "ios-gpu-gles3-context")
+# ANGLE's GLSL preprocessor is spec-strict: an undefined identifier in #if is an error, not 0, and the extension macro
+# is not defined under "#version 300 es" (derivatives are core there). Mesa tolerates it; ANGLE fails every base.frag
+# variant with "'GL_OES_standard_derivatives' : unexpected token after conditional expression".
+replace("src/opengl/base.frag",
+        "#if GL_OES_standard_derivatives && TRAIT_ROUNDED_CORNERS && TRAIT_BORDER\n",
+        "#if defined(GL_OES_standard_derivatives) && TRAIT_ROUNDED_CORNERS && TRAIT_BORDER // ios-gpu-angle-glsl-defined\n",
+        "ios-gpu-angle-glsl-defined")
+# Several effect shaders (blur downsample, colour-blindness correction, monochrome) say "#version 140" but sample with
+# texture2D(), which desktop GL 1.40 still has and GLSL ES 3.00 does not: ANGLE rejects them, and blur dies with
+# "Failed to load downsampling pass shader". Alias it for GLES core shaders, the same way upstream already aliases
+# texture() the other way round for pre-1.40 shaders.
+replace("src/opengl/glshader.cpp",
+        '            ret.append("precision highp sampler3D;\\n");\n        }\n',
+        '            ret.append("precision highp sampler3D;\\n");\n'
+        '            if (coreShader) { // ios-gpu-gles3-texture2d\n'
+        '                ret.append("#define texture2D texture\\n");\n'
+        '            }\n'
+        '        }\n',
+        "ios-gpu-gles3-texture2d")
+# GL_UNPACK_ROW_LENGTH & co. are core in ES 3.0; upstream only accepts the ES 2 extension spelling.
+replace("src/opengl/eglcontext.cpp",
+        "    const bool supportsUnpack = !m_isOpenglES || hasOpenglExtension(QByteArrayLiteral(\"GL_EXT_unpack_subimage\"));\n",
+        "    const bool supportsUnpack = !m_isOpenglES || hasVersion(Version(3, 0)) || hasOpenglExtension(QByteArrayLiteral(\"GL_EXT_unpack_subimage\")); // ios-gpu-es3-unpack\n",
+        "ios-gpu-es3-unpack")
+# Say which requirement failed instead of failing silently: this check is what cost device run 1 its GPU path.
+replace("src/opengl/eglcontext.cpp",
+        "    if (!supportsGLSL || !supportsNonPowerOfTwoTextures || !supports3DTextures || !supportsFBOs || !supportsUnpack || !supportsBGRADownload) {\n        return false;\n    }\n",
+        "    if (!supportsGLSL || !supportsNonPowerOfTwoTextures || !supports3DTextures || !supportsFBOs || !supportsUnpack || !supportsBGRADownload) {\n"
+        "        qCWarning(KWIN_OPENGL) << \"ios-gpu: GL context rejected:\" << m_versionString << \"glsl\" << supportsGLSL // ios-gpu-checksupported-diag\n"
+        "                               << \"npot\" << supportsNonPowerOfTwoTextures << \"3d\" << supports3DTextures << \"fbo\" << supportsFBOs\n"
+        "                               << \"unpack\" << supportsUnpack << \"bgraRead\" << supportsBGRADownload;\n"
+        "        return false;\n    }\n",
+        "ios-gpu-checksupported-diag")
+replace("src/opengl/eglcontext.cpp",
+        "    return m_shaderManager->shader(ShaderTrait::MapTexture | ShaderTrait::TransformColorspace | ShaderTrait::AdjustSaturation | ShaderTrait::Modulate);\n}",
+        "    if (!m_shaderManager->shader(ShaderTrait::MapTexture | ShaderTrait::TransformColorspace | ShaderTrait::AdjustSaturation | ShaderTrait::Modulate)) {\n"
+        "        qCWarning(KWIN_OPENGL) << \"ios-gpu: GL context rejected: the probe shader does not compile on\" << m_versionString; // ios-gpu-checksupported-shader\n"
+        "        return false;\n"
+        "    }\n"
+        "    qCInfo(KWIN_OPENGL) << \"ios-gpu: GL context\" << m_versionString << m_renderer;\n"
+        "    return true;\n}",
+        "ios-gpu-checksupported-shader")
+
 # RenderDevice assumes a DrmDevice (nullable here) and a Vulkan instance: vk::raii::Context dlopens a Vulkan loader
 # that does not exist on iOS. Both members go away on Apple; vulkanDevice() stays nullptr.
 replace("src/core/renderdevice.h",
