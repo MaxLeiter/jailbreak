@@ -104,7 +104,8 @@ case "$PRESET" in
             || echo '{"state":"unknown","message":"no status yet"}'
         exit 0 ;;
     presets)
-        # Answered locally (also with -d): ioscd has no presets request.
+        # Answered locally, also with -d. ioscd's PRESETS verb runs exactly this
+        # for the Xios app, which cannot run xios-session itself.
         xios_session_run presets
         exit $? ;;
 esac

@@ -19,6 +19,12 @@
  *         ".desktop"), run from that trusted entry's argv. An id that does not
  *         resolve -> ERR unknown app <id>.
  *     APPS_LIST\n                         -> TSV app list + APPS_END\t<status>\n
+ *     PRESETS\n                          -> one installed desktop preset per line
+ *                                            + PRESETS_END\t<status>\n | ERR <msg>\n
+ *         The output of `xios-session presets` (xs_installed_presets), run the way
+ *         SESSION runs xios-session: root, bash, the rootless PATH. <status> is
+ *         the script's exit code, like APPS_END; anything but 0 means the list
+ *         cannot be trusted. An ioscd without the verb answers ERR malformed.
  *     APPS_SYNC\t<native|classic>\t<dry>\n -> sync log + APPS_END\t<status>\n
  *     APP_ENABLE\t<app_id>\n              -> status + APPS_END\t<status>\n
  *     APP_DISABLE\t<app_id>\n             -> status + APPS_END\t<status>\n
@@ -1480,6 +1486,98 @@ static int write_a11y_enabled_state(int on)
     return 0;
 }
 
+/* The accessibility helper (xios-start-a11y: at-spi-bus-launcher, the a11y
+ * bus switch, xios-a11yd) is a client of the session bus, so it has to be the
+ * bus daemon's user. ioscd's own bus runs as mobile and its policy admits only
+ * its own uid: a root client authenticates and is dropped after BEGIN (the
+ * same refusal the native helpers hit, see ensure_native_helpers_for_bus), so
+ * the root a11y helper never reached the bus. A bus whose socket root owns
+ * (xios-session's, started by the root CLI) keeps a root helper. */
+static int bus_owned_by_mobile(const char *sock)
+{
+    struct passwd *pw = getpwnam("mobile");
+    uid_t uid = pw ? pw->pw_uid : 501;
+    struct stat st;
+    return uid != 0 && lstat(sock, &st) == 0 && S_ISSOCK(st.st_mode) &&
+           st.st_uid == uid;
+}
+
+/* The owner of what the old root-run helper left behind (the test builds
+ * with its own uid, since it cannot make root-owned files). */
+#ifndef A11Y_LEFTOVER_UID
+#define A11Y_LEFTOVER_UID 0
+#endif
+
+/* Hand root-made files below dir_fd/name to mobile, children before the
+ * directory itself: while the directory is still root's, mobile cannot swap
+ * an entry. Nothing is followed, only root's files are touched, and a file
+ * with other hard links is left alone (it may be root's file elsewhere). */
+static void chown_root_tree(int dir_fd, const char *name, uid_t uid, gid_t gid,
+                            int depth)
+{
+    struct stat st;
+    if (depth > 6 || fstatat(dir_fd, name, &st, AT_SYMLINK_NOFOLLOW) != 0 ||
+        st.st_uid != (uid_t)A11Y_LEFTOVER_UID)
+        return;
+    if (S_ISDIR(st.st_mode)) {
+        int fd = openat(dir_fd, name, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        DIR *d = fd >= 0 ? fdopendir(fd) : NULL;
+        if (!d) {
+            if (fd >= 0) close(fd);
+            return;
+        }
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+            chown_root_tree(fd, e->d_name, uid, gid, depth + 1);
+        }
+        closedir(d);
+    } else if (st.st_nlink != 1) {
+        return;
+    }
+    (void)fchownat(dir_fd, name, uid, gid, AT_SYMLINK_NOFOLLOW);
+}
+
+/* What an older, root-run a11y helper left on disk that its mobile successor
+ * must write: the at-spi and dconf directories in the bus dir (the dir is
+ * mobile's, but a root process made these inside it), and the helper's socket
+ * and pid file at the global name in the sticky tmp dir, which mobile can
+ * neither replace nor unlink. A socket whose recorded xios-a11yd is still
+ * running as root is left alone: it may serve xios-session's bus, and
+ * xios-start-a11y will not start a second one beside it. */
+static void migrate_root_a11y_leftovers(const char *busdir, const char *a11y_sock)
+{
+    struct passwd *pw = getpwnam("mobile");
+    uid_t uid = pw ? pw->pw_uid : 501;
+    gid_t gid = pw ? pw->pw_gid : 501;
+
+    int dfd = open(busdir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (dfd >= 0) {
+        chown_root_tree(dfd, "at-spi", uid, gid, 0);
+        chown_root_tree(dfd, "dconf", uid, gid, 0);
+        close(dfd);
+    }
+
+    char pidpath[PATH_MAX], dir[PATH_MAX];
+    snprintf(pidpath, sizeof(pidpath), "%s.pid", a11y_sock);
+    const char *slash = strrchr(pidpath, '/');
+    if (!slash) return;
+    snprintf(dir, sizeof(dir), "%.*s", slash == pidpath ? 1 : (int)(slash - pidpath),
+             pidpath);
+    int tfd = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (tfd < 0) return;
+    pid_t old = 0;
+    if (helper_pidfile_running(tfd, slash + 1, "xios-a11yd", &old) == HELPER_NONE) {
+        struct stat st;
+        const char *paths[2] = { a11y_sock, pidpath };
+        for (int i = 0; i < 2; i++)
+            if (lstat(paths[i], &st) == 0 && st.st_uid == (uid_t)A11Y_LEFTOVER_UID &&
+                (S_ISSOCK(st.st_mode) || S_ISREG(st.st_mode)) && unlink(paths[i]) == 0)
+                fprintf(stderr, "ioscd: cleared root-owned a11y leftover %s\n", paths[i]);
+    }
+    close(tfd);
+}
+
 static int start_a11y_for_busdir(const char *busdir)
 {
     char sock[PATH_MAX];
@@ -1492,6 +1590,15 @@ static int start_a11y_for_busdir(const char *busdir)
         return 0;
     snprintf(addr, sizeof(addr), "unix:path=%s", sock);
 
+    int as_mobile = bus_owned_by_mobile(sock);
+    char a11y_sock[PATH_MAX], atspi_log[PATH_MAX], a11yd_log[PATH_MAX];
+    snprintf(a11y_sock, sizeof(a11y_sock), "%s/xios-a11y.sock", g_tmp);
+    /* The helper's logs go in the bus dir, the way the native helpers' do:
+     * the old ones in the tmp dir are root's and mobile cannot append. */
+    snprintf(atspi_log, sizeof(atspi_log), "%s/xios-atspi.log", busdir);
+    snprintf(a11yd_log, sizeof(a11yd_log), "%s/xios-a11yd.log", busdir);
+    if (as_mobile) migrate_root_a11y_leftovers(busdir, a11y_sock);
+
     pid_t pid = fork();
     if (pid < 0) return -1;
     if (pid == 0) {
@@ -1499,8 +1606,20 @@ static int start_a11y_for_busdir(const char *busdir)
         child_stdio(g_ioscd_client_log, 1);
         setenv("XDG_RUNTIME_DIR", busdir, 1);
         setenv("DBUS_SESSION_BUS_ADDRESS", addr, 1);
-        setenv("HOME", g_home, 1);
         set_rootless_path(1);
+        if (as_mobile) {
+            setenv("HOME", g_mobile_home, 1);
+            setenv("USER", "mobile", 1);
+            setenv("LOGNAME", "mobile", 1);
+            setenv("XIOS_TMP", g_tmp, 1);
+            setenv("XIOS_A11Y_SOCK", a11y_sock, 1);
+            setenv("XIOS_ATSPI_LOG", atspi_log, 1);
+            setenv("XIOS_A11YD_LOG", a11yd_log, 1);
+            close_inherited_fds();
+            if (drop_to_mobile() != 0) _exit(126);
+        } else {
+            setenv("HOME", g_home, 1);
+        }
         xios_execl(g_xios_start_a11y, "xios-start-a11y", (char *)NULL);
         _exit(127);
     }
@@ -1933,6 +2052,109 @@ static void handle_apps_list(int fd)
     (void)run_launcher_sync(fd, argv);
 }
 
+/* --- PRESETS: which desktops can start -------------------------------------
+ *
+ * The Xios app runs as mobile and cannot see (or run) what xios-session's
+ * preflight checks, so it asks here: `xios-session presets` prints one preset
+ * per line (xs_installed_presets, the same xs_preset_check a SESSION request
+ * hits first). It runs exactly like the SESSION child: root, bash, the rootless
+ * PATH, so `command -v gnome-session` and the other probes see what a real
+ * start would see. The reply mirrors APPS_LIST: data lines, then an end marker
+ * carrying the exit status.
+ *
+ * Only lines that look like a preset name are relayed: the script's stderr
+ * goes to the session log, but a stray stdout line must not become a "preset".
+ * The accept loop is single-threaded, so the child is bounded. */
+#ifndef PRESETS_TIMEOUT_MS
+#define PRESETS_TIMEOUT_MS 4000   /* under the app's 5 s read timeout */
+#endif
+#define PRESETS_MAX_BYTES 4096
+
+static int preset_name_ok(const char *s, size_t len)
+{
+    if (len == 0 || len > 31) return 0;
+    for (size_t i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)s[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-'))
+            return 0;
+    }
+    return 1;
+}
+
+static void handle_presets(int fd)
+{
+    if (access(g_xios_session_bin, R_OK) != 0) {
+        fprintf(stderr, "ioscd: presets request FAILED: %s is not installed (%s)\n",
+                g_xios_session_bin, strerror(errno));
+        reply(fd, "ERR xios-session is not installed\n");
+        return;
+    }
+    int pipefd[2];
+    if (pipe(pipefd) != 0) {
+        reply(fd, "ERR pipe failed\n");
+        return;
+    }
+    pid_t pid = fork();
+    if (pid < 0) {
+        close(pipefd[0]);
+        close(pipefd[1]);
+        reply(fd, "ERR fork failed\n");
+        return;
+    }
+    if (pid == 0) {
+        setsid();
+        child_stdio(g_ioscd_session_log, 1);   /* stdin /dev/null, stderr -> log */
+        dup2(pipefd[1], 1);
+        close(pipefd[0]);
+        close(pipefd[1]);
+        set_rootless_path(1);
+        xios_execl(g_bash_bin, "bash", g_xios_session_bin, "presets", (char *)NULL);
+        fprintf(stderr, "ioscd: exec %s failed: %s\n", g_bash_bin, strerror(errno));
+        _exit(127);
+    }
+
+    close(pipefd[1]);
+    char out[PRESETS_MAX_BYTES];
+    size_t len = 0;
+    int eof = 0;
+    uint64_t deadline = now_ms() + PRESETS_TIMEOUT_MS;
+    while (len < sizeof(out) - 1) {      /* the cap is far more than any preset list */
+        uint64_t now = now_ms();
+        if (now >= deadline) break;
+        struct pollfd p = { .fd = pipefd[0], .events = POLLIN, .revents = 0 };
+        int pr = poll(&p, 1, (int)(deadline - now));
+        if (pr < 0 && errno == EINTR) continue;
+        if (pr <= 0) break;
+        ssize_t n = read(pipefd[0], out + len, sizeof(out) - 1 - len);
+        if (n <= 0) { eof = 1; break; }
+        len += (size_t)n;
+    }
+    close(pipefd[0]);
+    out[len] = 0;
+    /* Anything short of end-of-output left a child that may never exit. */
+    if (!eof) kill(-pid, SIGKILL);
+    int status = 0;
+    waitpid(pid, &status, 0);
+    if (!eof) {
+        fprintf(stderr, "ioscd: presets request FAILED: xios-session presets did not finish\n");
+        reply(fd, "ERR presets timed out\n");
+        return;
+    }
+    int code = WIFEXITED(status) ? WEXITSTATUS(status) : 128;
+
+    char *cursor = out, *line;
+    while ((line = strsep(&cursor, "\n")) != NULL) {
+        size_t n = strlen(line);
+        if (n && line[n - 1] == '\r') line[--n] = 0;
+        if (!preset_name_ok(line, n)) continue;
+        reply(fd, line);
+        reply(fd, "\n");
+    }
+    char end[64];
+    snprintf(end, sizeof(end), "PRESETS_END\t%d\n", code);
+    reply(fd, end);
+}
+
 static void handle_apps_sync(int fd, char *payload)
 {
     char *rest = payload;
@@ -2225,6 +2447,10 @@ static void handle_conn(int fd)
             handle_apps_list(fd);
             return;
         }
+        if (strcmp(verb, "PRESETS") == 0) {
+            handle_presets(fd);
+            return;
+        }
         /* Payload-free verbs. `status` is also accepted lowercase because the
          * contract in docs/ios-platform-features.md §0 spells the operator-facing
          * form that way, and a diagnostic verb should not fail on case. */
@@ -2245,6 +2471,10 @@ static void handle_conn(int fd)
     }
     if (strcmp(verb, "APPS_LIST") == 0) {
         handle_apps_list(fd);
+        return;
+    }
+    if (strcmp(verb, "PRESETS") == 0) {
+        handle_presets(fd);
         return;
     }
     if (strcmp(verb, "APPS_SYNC") == 0) {

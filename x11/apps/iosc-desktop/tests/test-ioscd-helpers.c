@@ -19,15 +19,29 @@
  *      as DISPLAY with GDK_BACKEND=wayland,x11; ioscd's own iosc start turns
  *      on IOSC_XWAYLAND when Xwayland is installed, unless IOSC_XWAYLAND=0.
  *
+ *   4. PRESETS runs `xios-session presets` the way SESSION runs xios-session
+ *      (bash, the rootless PATH), relays only preset-name lines, ends with
+ *      PRESETS_END\t<exit status>, and answers ERR when xios-session is missing
+ *      or hangs. Once against stand-in scripts, once against the real
+ *      xios-session and lib on a scratch prefix.
+ *   5. The accessibility helper starts as the bus owner: mobile on ioscd's bus
+ *      (a root client is refused by that bus), root on a root-owned bus; its
+ *      logs, socket and at-spi directories are reachable by mobile.
+ *
  * As in test-ioscd-fds.c, "mobile" is the current user.
  */
 #include <pwd.h>
 #include <unistd.h>
 
 static struct passwd *test_getpwnam(const char *name);
+/* "mobile" is the current user plus this: bump it to make a bus the test user
+ * made look like another user's (a root-owned bus). */
+static int t_mobile_uid_offset;
 static int test_initgroups(const char *name, int gid);
 #define getpwnam test_getpwnam
 #define initgroups test_initgroups
+#define PRESETS_TIMEOUT_MS 800
+#define A11Y_LEFTOVER_UID getuid()
 #define main ioscd_main
 #include "../src/ioscd.c"
 #undef main
@@ -44,7 +58,7 @@ static struct passwd *test_getpwnam(const char *name)
     if (strcmp(name, "mobile") != 0) return NULL;
     struct passwd *me = getpwuid(getuid());
     memset(&pw, 0, sizeof(pw));
-    pw.pw_uid = getuid();
+    pw.pw_uid = getuid() + (uid_t)t_mobile_uid_offset;
     pw.pw_gid = getgid();
     snprintf(nm, sizeof(nm), "%s", me ? me->pw_name : "mobile");
     pw.pw_name = nm;
@@ -74,6 +88,24 @@ static int helper_main(void)
     alarm(120);  /* never outlive a crashed test */
     for (;;) pause();
 }
+
+/* Stands in for xios-start-a11y: reports what ioscd gave it. */
+static int a11y_helper_main(void)
+{
+    int n = 0;
+    for (int fd = 3; fd < 1024; fd++)
+        if (fcntl(fd, F_GETFD) != -1) n++;
+    printf("a11y fds=%d\n", n);
+#define SHOW(v) printf("a11y " v "=%s\n", getenv(v) ? getenv(v) : "")
+    SHOW("HOME"); SHOW("USER"); SHOW("XDG_RUNTIME_DIR");
+    SHOW("DBUS_SESSION_BUS_ADDRESS"); SHOW("XIOS_TMP"); SHOW("XIOS_A11Y_SOCK");
+    SHOW("XIOS_ATSPI_LOG"); SHOW("XIOS_A11YD_LOG");
+#undef SHOW
+    fflush(stdout);
+    return 0;
+}
+
+static char t_a11yd_copy[300];
 
 static void slurp(const char *path, char *buf, size_t len)
 {
@@ -359,6 +391,254 @@ static void test_missing_session(void)
     unlink(log);
 }
 
+/* The whole reply, to EOF. */
+static void request_all(const char *sock, const char *msg, char *out, size_t len)
+{
+    int fd = connect_ctl(sock);
+    assert(fd >= 0);
+    assert(write(fd, msg, strlen(msg)) == (ssize_t)strlen(msg));
+    size_t got = 0;
+    ssize_t n;
+    while (got + 1 < len && (n = read(fd, out + got, len - 1 - got)) > 0)
+        got += (size_t)n;
+    out[got] = 0;
+    close(fd);
+}
+
+static void write_script(const char *path, const char *body)
+{
+    FILE *f = fopen(path, "w");
+    assert(f);
+    fputs(body, f);
+    fclose(f);
+    assert(chmod(path, 0755) == 0);
+}
+
+static pid_t start_daemon(const char *log)
+{
+    pid_t daemon = fork();
+    assert(daemon >= 0);
+    if (daemon == 0) {
+        int out = open(log, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        dup2(out, 2);
+        close(out);
+        _exit(ioscd_main());
+    }
+    return daemon;
+}
+
+static void stop_daemon(pid_t daemon, const char *sock)
+{
+    kill(daemon, SIGTERM);
+    waitpid(daemon, NULL, 0);
+    usleep(200 * 1000);
+    unlink(sock);
+}
+
+static void test_presets(const char *session_src_dir)
+{
+    char sock[200], log[200], script[200], seen[200], buf[4096], body[1024];
+    snprintf(sock, sizeof(sock), "%s/ioscd.sock", t_tmp);
+    snprintf(log, sizeof(log), "%s/presets.log", t_root);
+    snprintf(script, sizeof(script), "%s/usr/local/bin/xios-session", t_jb);
+    snprintf(seen, sizeof(seen), "%s/presets-seen", t_root);
+
+    pid_t daemon = start_daemon(log);
+
+    /* Not installed: same ERR as SESSION, and the bare verb is enough. */
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "ERR xios-session is not installed\n") == 0);
+    puts("ioscd-presets: missing xios-session is an ERR reply");
+
+    /* Runs `xios-session presets` through bash with the SESSION child's PATH,
+     * relays preset names only (stdout noise and stderr are not presets),
+     * and ends with the exit status. */
+    snprintf(body, sizeof(body),
+        "echo \"$1 $PATH\" > '%s'\n"
+        "echo \"warning: something odd\" >&2\n"
+        "printf 'iosc\\nkde-desktop\\nNot A Preset\\n\\n../etc\\ngnome\\r\\n'\n", seen);
+    write_script(script, body);
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "iosc\nkde-desktop\ngnome\nPRESETS_END\t0\n") == 0);
+    {
+        char want[PATH_MAX + 32], got[PATH_MAX + 64];
+        snprintf(want, sizeof(want), "presets %s\n", g_local_path);
+        slurp(seen, got, sizeof(got));
+        assert(strcmp(got, want) == 0);
+        slurp(g_ioscd_session_log, got, sizeof(got));
+        assert(strstr(got, "warning: something odd") != NULL);   /* stderr -> session log */
+    }
+    puts("ioscd-presets: runs 'xios-session presets' with the SESSION PATH; relays preset names only");
+
+    /* A tab after the verb is tolerated, like APPS_LIST. */
+    request_all(sock, "PRESETS\textra\n", buf, sizeof(buf));
+    assert(strcmp(buf, "iosc\nkde-desktop\ngnome\nPRESETS_END\t0\n") == 0);
+
+    /* A failing run still reports its status, so the app can fall back. */
+    write_script(script, "echo iosc\nexit 3\n");
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "iosc\nPRESETS_END\t3\n") == 0);
+    puts("ioscd-presets: a non-zero exit is PRESETS_END with that status");
+
+    /* No presets installed is a valid empty answer, not an error. */
+    write_script(script, "exit 0\n");
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "PRESETS_END\t0\n") == 0);
+
+    /* A hung script cannot park the daemon. */
+    write_script(script, "echo iosc\nexec sleep 30\n");
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "ERR presets timed out\n") == 0);
+    request_all(sock, "STATUS\n", buf, sizeof(buf));        /* still serving */
+    assert(strstr(buf, "STATUS_END") != NULL);
+    puts("ioscd-presets: a hung xios-session is killed, the daemon keeps serving");
+
+    /* The real xios-session and lib on a scratch prefix: the answer is the
+     * shell's own xs_installed_presets, not a copy of its rules. */
+    unlink(script);
+    stop_daemon(daemon, sock);
+    char libexec[300], iosc[300], shell_sh[300], cmd[1000];
+    snprintf(libexec, sizeof(libexec), "%s/libexec/xios-session", t_jb);
+    snprintf(iosc, sizeof(iosc), "%s/usr/local/bin/iosc", t_jb);
+    snprintf(shell_sh, sizeof(shell_sh), "%s/run-shell.sh", libexec);
+    snprintf(cmd, sizeof(cmd), "/bin/mkdir -p '%s'", libexec);
+    assert(system(cmd) == 0);
+    write_script(iosc, "exit 0\n");
+    write_script(shell_sh, "exit 0\n");
+    setenv("XS_JB", t_jb, 1);
+    setenv("XS_TMP", t_tmp, 1);
+    const char *clear[] = { "MUTTER", "SHELL_BIN", "IOSC_BIN", "KWIN_BIN", "PLASMA_BIN",
+                            "XIOS_SESSION_BRINGUP_DIR", "XIOS_SESSION_LIB",
+                            "XIOS_SESSION_SLOT", NULL };
+    for (int i = 0; clear[i]; i++) unsetenv(clear[i]);
+    /* The shipped script and lib, installed where ioscd looks for them. */
+    snprintf(cmd, sizeof(cmd), "/bin/cp '%s/xios-session' '%s' && /bin/cp '%s/xios-session-lib.sh' '%s/'",
+             session_src_dir, script, session_src_dir, libexec);
+    assert(system(cmd) == 0);
+    daemon = start_daemon(log);
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "iosc\nPRESETS_END\t0\n") == 0);       /* no mutter, gnome or kde here */
+    assert(unlink(iosc) == 0);
+    request_all(sock, "PRESETS\n", buf, sizeof(buf));
+    assert(strcmp(buf, "PRESETS_END\t0\n") == 0);              /* iosc binary gone */
+    puts("ioscd-presets: the real xios-session answers from its own preflight (iosc only, then none)");
+
+    stop_daemon(daemon, sock);
+    unsetenv("XS_JB");
+    unsetenv("XS_TMP");
+    unlink(shell_sh);
+    unlink(script);
+    unlink(log);
+    unlink(seen);
+}
+
+static void a11y_stub_run(const char *busdir, char *out, size_t len)
+{
+    char log[256];
+    snprintf(log, sizeof(log), "%s/ioscd-client.log", t_tmp);
+    unlink(log);
+    assert(start_a11y_for_busdir(busdir) == 1);
+    while (waitpid(-1, NULL, 0) > 0) {}
+    slurp(log, out, len);
+}
+
+static void test_a11y(void)
+{
+    char busdir[200], sock[260], buf[4096], want[600], a11y_sock[300], pid_file[300];
+    snprintf(busdir, sizeof(busdir), "%s/abus", t_tmp);
+    assert(mkdir(busdir, 0700) == 0);
+    snprintf(sock, sizeof(sock), "%s/session-bus", busdir);
+    int bus = make_listener(sock);
+    snprintf(a11y_sock, sizeof(a11y_sock), "%s/xios-a11y.sock", t_tmp);
+    snprintf(pid_file, sizeof(pid_file), "%s.pid", a11y_sock);
+
+    /* A bus mobile owns (ioscd's own): the helper gets mobile's identity, and
+     * its logs and socket land where mobile can write; it inherits no fds. */
+    a11y_stub_run(busdir, buf, sizeof(buf));
+    assert(strstr(buf, "a11y fds=0\n") != NULL);
+    assert(strstr(buf, "a11y HOME=/var/mobile\n") != NULL);
+    assert(strstr(buf, "a11y USER=mobile\n") != NULL);
+    snprintf(want, sizeof(want), "a11y XDG_RUNTIME_DIR=%s\n", busdir);
+    assert(strstr(buf, want) != NULL);
+    snprintf(want, sizeof(want), "a11y DBUS_SESSION_BUS_ADDRESS=unix:path=%s\n", sock);
+    assert(strstr(buf, want) != NULL);
+    snprintf(want, sizeof(want), "a11y XIOS_A11Y_SOCK=%s\n", a11y_sock);
+    assert(strstr(buf, want) != NULL);
+    snprintf(want, sizeof(want), "a11y XIOS_ATSPI_LOG=%s/xios-atspi.log\n", busdir);
+    assert(strstr(buf, want) != NULL);
+    snprintf(want, sizeof(want), "a11y XIOS_A11YD_LOG=%s/xios-a11yd.log\n", busdir);
+    assert(strstr(buf, want) != NULL);
+    puts("ioscd-a11y: the helper on mobile's bus runs as mobile, with logs and socket mobile can write");
+
+    /* A bus another user owns (xios-session's, root's) keeps the old helper
+     * environment. */
+    t_mobile_uid_offset = 1;
+    a11y_stub_run(busdir, buf, sizeof(buf));
+    assert(strstr(buf, "a11y XIOS_A11Y_SOCK=\n") != NULL);
+    assert(strstr(buf, "a11y XIOS_ATSPI_LOG=\n") != NULL);
+    assert(strstr(buf, "a11y HOME=/var/mobile\n") == NULL);
+    puts("ioscd-a11y: a bus another user owns keeps the old helper environment");
+
+    /* Leftovers of the old root-run helper: a dead one's socket and pid file
+     * are cleared so mobile can bind. (The test user stands in for root.) */
+    t_mobile_uid_offset = 0;
+    close(make_listener(a11y_sock));
+    FILE *f = fopen(pid_file, "w");
+    assert(f);
+    fputs("999999\n", f);
+    fclose(f);
+    migrate_root_a11y_leftovers(busdir, a11y_sock);
+    struct stat st;
+    assert(lstat(a11y_sock, &st) != 0 && lstat(pid_file, &st) != 0);
+    puts("ioscd-a11y: a dead root helper's socket and pid file are cleared");
+
+    /* A live xios-a11yd, another user's or mobile's, is not disturbed. */
+    int pp[2];
+    assert(pipe(pp) == 0);
+    pid_t mid = fork();
+    assert(mid >= 0);
+    pid_t live = 0;
+    if (mid == 0) {
+        pid_t g = fork();
+        if (g == 0) {
+            int null = open("/dev/null", O_WRONLY);
+            dup2(null, 1);
+            close(pp[0]);
+            close(pp[1]);
+            execl(t_a11yd_copy, "xios-a11yd", (char *)NULL);
+            _exit(127);
+        }
+        (void)!write(pp[1], &g, sizeof(g));
+        _exit(0);
+    }
+    close(pp[1]);
+    assert(read(pp[0], &live, sizeof(live)) == sizeof(live));
+    close(pp[0]);
+    waitpid(mid, NULL, 0);
+    for (int i = 0; i < 100 && !is_helper(live, "xios-a11yd"); i++) usleep(20 * 1000);
+    assert(is_helper(live, "xios-a11yd"));
+    close(make_listener(a11y_sock));
+    f = fopen(pid_file, "w");
+    assert(f);
+    fprintf(f, "%d\n", (int)live);
+    fclose(f);
+    t_mobile_uid_offset = 1;               /* the live helper is now "another user's" */
+    migrate_root_a11y_leftovers(busdir, a11y_sock);
+    assert(lstat(a11y_sock, &st) == 0 && lstat(pid_file, &st) == 0);
+    t_mobile_uid_offset = 0;               /* and as mobile's own */
+    migrate_root_a11y_leftovers(busdir, a11y_sock);
+    assert(lstat(a11y_sock, &st) == 0 && lstat(pid_file, &st) == 0);
+    puts("ioscd-a11y: a live xios-a11yd's socket and pid file are left alone");
+
+    kill_wait(live);
+    while (waitpid(-1, NULL, WNOHANG) > 0) {}
+    unlink(a11y_sock);
+    unlink(pid_file);
+    close(bus);
+    unlink(sock);
+    rmdir(busdir);
+}
+
 static void write_status(const char *body)
 {
     char dir[256], path[300];
@@ -441,6 +721,8 @@ int main(int argc, char **argv)
 {
     char self[PATH_MAX], dir[200], path[256];
     char *base = basename(argv[0]);
+    if (strcmp(base, "xios-start-a11y") == 0)
+        return a11y_helper_main();
     if (strncmp(base, "xios-", 5) == 0)
         return helper_main();
     if (argc > 1 && strcmp(argv[1], "--print-x11-env") == 0) {
@@ -472,12 +754,20 @@ int main(int argc, char **argv)
         snprintf(cmd, sizeof(cmd), "/bin/cp '%s' '%s/usr/libexec/%s'", self, t_jb, k_names[i]);
         assert(system(cmd) == 0);
     }
+    snprintf(path, sizeof(path), "%s/usr/local/bin/xios-start-a11y", t_jb);
+    snprintf(dir, sizeof(dir), "/bin/cp '%s' '%s'", self, path);
+    assert(system(dir) == 0);
+    snprintf(t_a11yd_copy, sizeof(t_a11yd_copy), "%s/usr/libexec/xios-a11yd", t_jb);
+    snprintf(dir, sizeof(dir), "/bin/cp '%s' '%s'", self, t_a11yd_copy);
+    assert(system(dir) == 0);
     setenv("IOSC_JBROOT", t_jb, 1);
     setenv("XIOS_RUNTIME_TMP", t_tmp, 1);
     init_paths();
 
     test_helpers(self);
     test_missing_session();
+    test_presets(SESSION_SRC_DIR);
+    test_a11y();
     test_x11(self);
 
     char cmd[256];
