@@ -610,12 +610,17 @@ static void presentation_timestamp(struct timespec *ts, uint32_t *flags)
              WP_PRESENTATION_FEEDBACK_KIND_HW_COMPLETION;
 }
 
-static void presentation_present_surface(struct iosc_surface *s)
+/* `unchanged`: the commits behind these feedbacks changed nothing on screen, so no
+ * repaint (and no app present) is coming for them. They are on screen as of now. */
+static void presentation_present_surface(struct iosc_surface *s, int unchanged)
 {
     if (wl_list_empty(&s->presentation_feedbacks)) return;
     struct timespec ts;
     uint32_t flags = 0;
-    presentation_timestamp(&ts, &flags);
+    if (unchanged)
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+    else
+        presentation_timestamp(&ts, &flags);
     uint64_t sec = (uint64_t)ts.tv_sec;
     uint64_t seq = ++g_presentation_seq;
     /* Real refresh interval from the app's display clock rather than a hardcoded
@@ -654,17 +659,32 @@ static void surface_send_frame_callbacks(struct iosc_surface *s, uint32_t time)
 
 /* A frame request with no corresponding damage still needs compositor pacing:
  * nested compositors use it to schedule their next render. Retire those
- * callbacks on a 60 Hz clock without manufacturing damage, a presentation
- * event, or a redundant GPU composite. Real presents continue to retire them
- * through frame_callbacks_after_present(). */
+ * callbacks on a 60 Hz clock without manufacturing damage or a redundant GPU
+ * composite. Real presents continue to retire them through
+ * frame_callbacks_after_present().
+ *
+ * The same goes for wp_presentation feedback: every feedback must end in
+ * presented or discarded. A commit that changes nothing on screen (KWin's nested
+ * output commits its main surface with the feedback and puts the content in sync
+ * subsurface layers; a frame with no layer update or empty damage arrives here)
+ * used to leave its feedback pending until some unrelated repaint. KWin 6.7
+ * completes a nested-output frame only on presented/discarded, so its RenderLoop
+ * stopped compositing, clients' buffers were never released, and plasmashell hung
+ * in eglSwapBuffers until anything else made iosc repaint. When no repaint is
+ * scheduled or waiting on the app, those feedbacks are answered here as presented
+ * now (nothing changed, so the current image is what is on screen). */
 static int frame_clock_timer_cb(void *data)
 {
     (void)data;
     g_frame_clock_armed = 0;
     uint32_t t = now_ms();
+    int repaint_pending = g_recompose_scheduled || g_present_wait_seq != 0;
     struct iosc_surface *s, *tmp;
-    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link)
+    wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
+        if (!repaint_pending)
+            presentation_present_surface(s, 1);
         surface_send_frame_callbacks(s, t);
+    }
     return 0;
 }
 
@@ -697,7 +717,7 @@ static void frame_callbacks_after_repaint(void)
     uint32_t t = now_ms();
     struct iosc_surface *s, *tmp;
     wl_list_for_each_safe(s, tmp, &g_surfaces, surface_link) {
-        presentation_present_surface(s);
+        presentation_present_surface(s, 0);
         surface_send_frame_callbacks(s, t);
     }
     /* Direct-present buffers are no longer sampled once the app has presented
@@ -2683,6 +2703,9 @@ void recomposite_all_at(const char *reason, int line)
         if (iosc_env_truthy(getenv("IOSC_DAMAGE_STATS")))
             fprintf(stderr, "iosc: repaint request skipped (no output damage) %s:%d\n",
                     reason ? reason : "unknown", line);
+        /* No repaint is coming, but the commit that asked for one may carry frame
+         * callbacks and presentation feedback: retire them on the frame clock. */
+        frame_clock_arm();
         return;
     }
     g_recompose_reason = reason;
@@ -3329,9 +3352,11 @@ static void surface_commit_apply(struct iosc_surface *s)
 
     if (need_recomposite) recomposite_all();
 
-    /* A no-damage commit still receives a paced callback. Do not force a GPU
-     * repaint merely to advance a nested compositor's frame clock. */
-    if (!need_recomposite && !wl_list_empty(&s->frame_callbacks))
+    /* A no-damage commit still receives a paced callback and its presentation
+     * feedback. Do not force a GPU repaint merely to advance a nested compositor's
+     * frame clock. */
+    if (!need_recomposite && (!wl_list_empty(&s->frame_callbacks) ||
+                              !wl_list_empty(&s->presentation_feedbacks)))
         frame_clock_arm();
 
     surface_apply_sync_children(s);

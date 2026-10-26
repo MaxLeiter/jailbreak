@@ -34,7 +34,10 @@
 #include <mach/mach.h>
 
 #include <dlfcn.h>
+#include <errno.h>
+#include <poll.h>
 #include <pthread.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -394,6 +397,43 @@ static int win_find_free_buffer(struct iosc_egl_win *w, int start)
     return -1;
 }
 
+/* Wait for events on the window's private queue without spinning: poll the display
+ * fd under prepare_read so Qt's event thread and this render thread can share it.
+ * 1 = events dispatched, 0 = timeout, -1 = error. */
+static int win_wait_queue(struct wl_display *d, struct wl_event_queue *q, int timeout_ms)
+{
+    if (wl_display_prepare_read_queue(d, q) != 0)
+        return wl_display_dispatch_queue_pending(d, q) < 0 ? -1 : 1;
+    if (wl_display_flush(d) < 0 && errno != EAGAIN) {
+        wl_display_cancel_read(d);
+        return -1;
+    }
+    struct pollfd p = { .fd = wl_display_get_fd(d), .events = POLLIN };
+    int r;
+    do {
+        r = poll(&p, 1, timeout_ms);
+    } while (r < 0 && errno == EINTR);
+    if (r <= 0) {
+        wl_display_cancel_read(d);
+        return r < 0 ? -1 : 0;
+    }
+    if (wl_display_read_events(d) < 0)
+        return -1;
+    return wl_display_dispatch_queue_pending(d, q) < 0 ? -1 : 1;
+}
+
+static int64_t mono_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* How long a swap waits for the compositor to release a buffer before it gives up
+ * and reuses the oldest attached one. Real backpressure clears within a frame or
+ * two; this only fires when the compositor has stopped compositing the surface. */
+#define IOSC_RELEASE_BUDGET_MS 250
+
 static int win_next_buffer(struct iosc_egl_win *w, int start)
 {
     int idx;
@@ -403,15 +443,34 @@ static int win_next_buffer(struct iosc_egl_win *w, int start)
     if (idx >= 0)
         return idx;
 
-    /* All buffers are still attached. Block only for real swapchain backpressure,
-     * not because the arbitrary next slot is busy while another slot is free. */
-    do {
-        if (wl_display_roundtrip_queue(w->wl->display, w->wl->queue) < 0)
+    /* All buffers are still attached: wait for a wl_buffer.release. This used to
+     * loop wl_display_roundtrip_queue until one arrived, which burned a core (and
+     * the compositor's) and never ended when the compositor stopped compositing:
+     * the GUI thread then blocked forever on Qt's render thread, which is how a
+     * KWin that missed its presentation feedback hung plasmashell. Block on the
+     * queue instead, with a budget. */
+    const int64_t t0 = mono_ms();
+    for (;;) {
+        int left = (int)(t0 + IOSC_RELEASE_BUDGET_MS - mono_ms());
+        if (left <= 0)
+            break;
+        if (win_wait_queue(w->wl->display, w->wl->queue, left) < 0)
             return -1;
         idx = win_find_free_buffer(w, start);
-    } while (idx < 0);
+        if (idx >= 0)
+            return idx;
+    }
 
-    return idx;
+    /* Nothing released in the budget. Draw into the oldest attached buffer (the one
+     * after the buffer just committed) rather than stall the client. At worst the
+     * compositor samples one frame mid-draw. */
+    static int warned;
+    if (!warned || egl_debug()) {
+        warned = 1;
+        fprintf(stderr, "iosc_egl: no wl_buffer.release in %d ms (%dx%d); reusing the oldest buffer\n",
+                IOSC_RELEASE_BUDGET_MS, w->w, w->h);
+    }
+    return start;
 }
 
 /* ---- intercepted EGL entrypoints ------------------------------------------ */
