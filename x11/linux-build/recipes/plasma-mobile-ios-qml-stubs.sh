@@ -156,34 +156,9 @@ write_file "$nm/EnabledConnections.qml" \
   "    property Timer refreshTimer: Timer { interval: 30000; running: true; repeat: true; onTriggered: root.refresh() }" \
   "}"
 
-brightness="$qml/org/kde/plasma/private/brightnesscontrolplugin"
-mkdir -p "$brightness"
-write_file "$brightness/qmldir" \
-  "module org.kde.plasma.private.brightnesscontrolplugin" \
-  "ScreenBrightnessControl 1.0 ScreenBrightnessControl.qml"
-write_file "$brightness/ScreenBrightnessControl.qml" \
-  "import QtQuick 2.15" \
-  "import org.kde.plasma.private.mobileshell as MobileShell" \
-  "QtObject {" \
-  "    id: root" \
-  "    readonly property string backlight: \"/var/jb/sys/class/backlight/xios_backlight\"" \
-  "    property int brightness: 50" \
-  "    property int brightnessMax: 1000" \
-  "    property bool refreshing: false" \
-  "    function readInt(name, fallbackValue) {" \
-  "        var value = parseInt(MobileShell.ShellUtil.readTextFile(backlight + \"/\" + name))" \
-  "        return isNaN(value) ? fallbackValue : value" \
-  "    }" \
-  "    function refresh() {" \
-  "        refreshing = true" \
-  "        brightnessMax = Math.max(1, readInt(\"max_brightness\", brightnessMax))" \
-  "        brightness = Math.max(1, Math.min(brightnessMax, readInt(\"brightness\", brightness)))" \
-  "        refreshing = false" \
-  "    }" \
-  "    onBrightnessChanged: if (!refreshing) MobileShell.ShellUtil.writeTextFile(backlight + \"/brightness\", Math.round(brightness).toString())" \
-  "    Component.onCompleted: refresh()" \
-  "    property Timer refreshTimer: Timer { interval: 10000; running: true; repeat: true; onTriggered: root.refresh() }" \
-  "}"
+# org.kde.plasma.private.brightnesscontrolplugin is owned by powerdevil (it builds the real module);
+# nothing in Plasma Mobile 6.7 imports it (BrightnessItem uses mobileshell.screenbrightnessplugin), and
+# shipping a QML stand-in here made plasma-mobile and powerdevil both own brightnesscontrolplugin/qmldir.
 
 wallpaper="$qml/org/kde/plasma/private/mobileshell/wallpaperimageplugin"
 mkdir -p "$wallpaper"

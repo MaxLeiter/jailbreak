@@ -138,7 +138,7 @@
     "linux-build/recipes/mutter.mk": 1,
     "linux-build/recipes/plasma-desktop-ios-qml-fixes.sh": 1,
     "linux-build/recipes/plasma-mobile-ios-fixes.sh": 16,
-    "linux-build/recipes/plasma-mobile-ios-qml-stubs.sh": 19,
+    "linux-build/recipes/plasma-mobile-ios-qml-stubs.sh": 18,
     "linux-build/recipes/plasma-workspace-ios-fixes.sh": 4,
     "linux-build/recipes/plasma-workspace-ios-package-fixes.sh": 11,
     "linux-build/recipes/polkit-kde-agent-1.mk": 2,

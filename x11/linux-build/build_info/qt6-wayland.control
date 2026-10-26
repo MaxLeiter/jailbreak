@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-base (>= 6.10)
+Depends: qt6-base (>= 6.10.3)
 Description: Transitional package: Qt 6 Wayland client now ships in qt6-base
  Qt 6.10 moved the Wayland client platform plugin into qtbase. This empty
  package keeps older dependency lines (qt6-wayland) satisfiable.

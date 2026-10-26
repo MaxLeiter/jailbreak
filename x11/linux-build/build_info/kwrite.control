@@ -6,6 +6,7 @@ Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://apps.kde.org/kwrite/
 Depends: qt6-base, qt6-declarative, kf6-coreaddons, kf6-crash, kf6-guiaddons, kf6-i18n, kf6-iconthemes, kf6-texteditor, kf6-textwidgets, kf6-widgetsaddons, kf6-windowsystem, libgtkintl
+Replaces: kate (<< 26.08.1+ios2)
 Description: KWrite text editor (Qt6/KF6)
  KDE's focused text editor, built from the Kate source tree. This first Xios
  package builds KWrite and its shared kateprivate runtime without Kate addons

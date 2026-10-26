@@ -3,6 +3,7 @@ Version: @DEB_LIBDISPLAYINFO_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@
 Depends: libdisplay-info2 (= @DEB_LIBDISPLAYINFO_V@)
+Replaces: libdisplay-info1 (<< 0.2.0)
 Section: Development
 Priority: optional
 Homepage: https://gitlab.freedesktop.org/emersion/libdisplay-info

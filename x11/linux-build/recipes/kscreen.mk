@@ -6,7 +6,7 @@ endif
 
 SUBPROJECTS += kscreen
 KSCREEN_VERSION = $(PLASMA_VERSION)
-DEB_KSCREEN_V ?= $(KSCREEN_VERSION)+ios2
+DEB_KSCREEN_V ?= $(KSCREEN_VERSION)+ios3
 
 kscreen-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kscreen))

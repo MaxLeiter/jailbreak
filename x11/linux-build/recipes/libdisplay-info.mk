@@ -6,9 +6,12 @@ endif
 # di_edid_get_*, di_displayid_* ...). Replaces the 0.1.1 link-only shim (kept as libdisplay-info.mk.shim-0.1.1.txt) now that
 # the API surface it would have to stub is large. Pure C, meson, no required dependencies.
 
+# ios2: libdisplay-info-dev Replaces libdisplay-info1 (<< 0.2.0). The 0.1.1 shim (libdisplay-info1) shipped the
+# unversioned libdisplay-info.dylib itself; the dev symlink now lives here, in -dev, where it belongs, and dpkg refused to
+# unpack it over the still-installed libdisplay-info1 0.1.1+ios1 during the KDE 6.7 upgrade.
 SUBPROJECTS += libdisplay-info
 LIBDISPLAYINFO_VERSION := 0.2.0
-DEB_LIBDISPLAYINFO_V   ?= $(LIBDISPLAYINFO_VERSION)+ios1
+DEB_LIBDISPLAYINFO_V   ?= $(LIBDISPLAYINFO_VERSION)+ios2
 
 libdisplay-info-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://gitlab.freedesktop.org/emersion/libdisplay-info/-/archive/$(LIBDISPLAYINFO_VERSION)/libdisplay-info-$(LIBDISPLAYINFO_VERSION).tar.bz2)

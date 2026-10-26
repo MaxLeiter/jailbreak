@@ -3,7 +3,9 @@ $(error Use the main Makefile)
 endif
 
 # breeze-icons.mk — kf6-breeze-icons for rootless iOS (KDE flavor, layer K; docs/kde-plasma-plan.md).
-# Data-only (icon files + cmake config in one deb, no SIGN). KIconThemes
+# Icon files + cmake config in one deb. Since 6.30 it also builds a real dylib
+# (libKF6BreezeIcons, 27 MB), so unlike ECM/pwp it must be SIGNed: ios1 shipped it
+# with no signature at all (the old comment here said "no SIGN"). KIconThemes
 # REQUIREs it at build on non-Android, so it sits in wave 1, not in theming
 # polish. BINARY_ICONS_RESOURCE=OFF skips the icons.rcc bake; plain files are
 # friendlier to the icon repack pipeline anyway.
@@ -12,7 +14,7 @@ endif
 
 SUBPROJECTS += breeze-icons
 BREEZEICONS_VERSION = $(KF6_VERSION)
-DEB_BREEZEICONS_V ?= $(BREEZEICONS_VERSION)+ios1
+DEB_BREEZEICONS_V ?= $(BREEZEICONS_VERSION)+ios2
 
 breeze-icons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call KF6_URL,breeze-icons))
@@ -41,6 +43,7 @@ endif
 breeze-icons-package: breeze-icons-stage
 	rm -rf $(BUILD_DIST)/kf6-breeze-icons
 	$(call KF6_COPY_ALL,breeze-icons,kf6-breeze-icons)
+	$(call SIGN,kf6-breeze-icons,general.xml)
 	$(call PACK,kf6-breeze-icons,DEB_BREEZEICONS_V)
 	rm -rf $(BUILD_DIST)/kf6-breeze-icons
 

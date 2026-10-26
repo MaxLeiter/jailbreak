@@ -90,7 +90,12 @@ KF6_COPY_DEV = \
 			mkdir -p "$$dst/$$(dirname $$d)"; \
 			cp -a "$$src/$$d" "$$dst/$$d"; \
 		fi; \
-	done
+	done; \
+	if [ -z "$$(find "$$dst" \( -type f -o -type l \) -print -quit)" ]; then \
+		mkdir -p "$$dst/share/xios-empty-dev"; \
+		echo "$(2)-dev has no headers or CMake files of its own. This file keeps the package from being all directories, which dpkg treats as completely replaced and drops on install." \
+			> "$$dst/share/xios-empty-dev/$(2)-dev.txt"; \
+	fi
 
 # Whole staged prefix in one deb (ECM, breeze-icons, plasma-wayland-protocols):
 # cmake configs stay in so cross consumers can still resolve them from

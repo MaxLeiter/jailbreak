@@ -3,10 +3,14 @@ $(error Use the main Makefile)
 endif
 
 # kwrite.mk - KWrite from the Kate source tree.
+#
+# kwrite owns everything the kwrite and kate apps share out of apps/lib: libkateprivate, the locale catalogs, kio_kateexec
+# and bin/exec_inspect.sh. kate.mk drops those from its deb and Depends on kwrite; the control Replaces kate (<< 26.08.1+ios2)
+# so upgrading from a kate that still shipped them does not hit a file conflict.
 
 SUBPROJECTS += kwrite
 KWRITE_VERSION = 26.08.1
-DEB_KWRITE_V ?= $(KWRITE_VERSION)+ios1
+DEB_KWRITE_V ?= $(KWRITE_VERSION)+ios2
 
 kwrite-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/kate-$(KWRITE_VERSION).tar.xz)

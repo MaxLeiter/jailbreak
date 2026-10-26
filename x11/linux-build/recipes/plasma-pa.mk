@@ -6,7 +6,7 @@ endif
 
 SUBPROJECTS += plasma-pa
 PLASMAPA_VERSION = $(PLASMA_VERSION)
-DEB_PLASMAPA_V ?= $(PLASMAPA_VERSION)+ios2
+DEB_PLASMAPA_V ?= $(PLASMAPA_VERSION)+ios3
 
 plasma-pa-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-pa))

@@ -215,10 +215,12 @@ TABLE = [
                 "the real style controls and lazy-loads the private text context menu so",
                 "the upstream public/private import path does not create a startup cycle."]),
     dict(t="breeze-icons", kind="kf", deb="kf6-breeze-icons", deps=[],
-         qt_deps=[], data_only=True, section="Themes",
+         qt_deps=[], data_only=True, section="Themes", sign=True, ios_rev=2,
          flags=["-DBINARY_ICONS_RESOURCE=OFF"],
          desc="Default KDE icon theme (Breeze).",
-         notes=["Data-only (icon files + cmake config in one deb, no SIGN). KIconThemes",
+         notes=["Icon files + cmake config in one deb. Since 6.30 it also builds a real dylib",
+                "(libKF6BreezeIcons, 27 MB), so unlike ECM/pwp it must be SIGNed: ios1 shipped it",
+                "with no signature at all (the old comment here said \"no SIGN\"). KIconThemes",
                 "REQUIREs it at build on non-Android, so it sits in wave 1, not in theming",
                 "polish. BINARY_ICONS_RESOURCE=OFF skips the icons.rcc bake; plain files are",
                 "friendlier to the icon repack pipeline anyway."]),
@@ -616,7 +618,8 @@ def emit_recipe(e):
     hdr.append("")
     hdr.append("SUBPROJECTS += %s" % t)
     hdr.append("%s_VERSION = %s" % (uv, version_ref(e)))
-    hdr.append("DEB_%s_V ?= $(%s_VERSION)+%s" % (uv, uv, "ios1"))  # 6.30 lane: fresh version restarts at ios1 (old rev= values are history)
+    # 6.30 lane: fresh version restarts at ios1 (old rev= values are history); ios_rev is the 6.30-lane revision.
+    hdr.append("DEB_%s_V ?= $(%s_VERSION)+ios%d" % (uv, uv, e.get("ios_rev", 1)))
     hdr.append("")
 
     setup = ["%s-setup: setup" % t,
@@ -666,8 +669,10 @@ def emit_recipe(e):
     pkg = ["%s-package: %s-stage" % (t, t)]
     if data_only:
         pkg += ["\trm -rf $(BUILD_DIST)/%s" % deb,
-                "\t$(call KF6_COPY_ALL,%s,%s)" % (t, deb),
-                "\t$(call PACK,%s,DEB_%s_V)" % (deb, uv),
+                "\t$(call KF6_COPY_ALL,%s,%s)" % (t, deb)]
+        if e.get("sign"):
+            pkg.append("\t$(call SIGN,%s,general.xml)" % deb)
+        pkg += ["\t$(call PACK,%s,DEB_%s_V)" % (deb, uv),
                 "\trm -rf $(BUILD_DIST)/%s" % deb]
     else:
         pkg += ["\trm -rf $(BUILD_DIST)/%s $(BUILD_DIST)/%s-dev" % (deb, deb),

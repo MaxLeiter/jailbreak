@@ -34,7 +34,7 @@ endif
 
 SUBPROJECTS += kate
 KATE_VERSION = 26.08.1
-DEB_KATE_V ?= $(KATE_VERSION)+ios1
+DEB_KATE_V ?= $(KATE_VERSION)+ios2
 
 kate-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/kate-$(KATE_VERSION).tar.xz)
@@ -77,6 +77,15 @@ kate-package: kate-stage
 	done
 	# libkateprivate is owned by the kwrite package; see the header comment.
 	rm -f $(BUILD_DIST)/kate/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libkateprivate*.dylib
+	# kio_kateexec (it links libkateprivate) and bin/exec_inspect.sh come out of the same shared apps/ install rules,
+	# so they are byte-for-byte kwrite's too: dpkg refused kwrite 26.08.1 with "trying to overwrite
+	# .../kf6/kio/kio_kateexec.so, which is also in package kate". kwrite owns them; kate Depends on kwrite
+	# (>= 26.08.1+ios2), the first one that Replaces kate for them. The install also lands the plugin a second time under
+	# lib/qt6/plugins/plugins/ (the KDE_INSTALL_PLUGINDIR double prefix every KDE app here has); drop that copy from kate too.
+	rm -f $(BUILD_DIST)/kate/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/qt6/plugins/kf6/kio/kio_kateexec.so \
+		$(BUILD_DIST)/kate/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/qt6/plugins/plugins/kf6/kio/kio_kateexec.so \
+		$(BUILD_DIST)/kate/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin/exec_inspect.sh
+	find $(BUILD_DIST)/kate -depth -type d -empty -delete
 	# share/locale is owned by kwrite too, for the same reason: both apps come out
 	# of the same tarball, so kwrite already installs every kate*.mo. 1584 of
 	# kate's 1601 files were duplicates and dpkg refused the install with
