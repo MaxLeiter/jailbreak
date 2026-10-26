@@ -4168,7 +4168,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.7.5+ios2
+Version: 6.7.5+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -4178,32 +4178,32 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-too
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
 Installed-Size: 33392
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.7.5+ios2_iphoneos-arm64.deb
-Size: 3619632
-MD5sum: 50ad847fdfbbf7cebe86b1c7014e48e9
-SHA1: 1557e1c5291c8976036f6cf775a5f2ff1caf33a8
-SHA256: ec00f76db82f1591ce0eaa4ab8ca6d95814b9569a7807404029503f0e773e053
+Filename: debs/kwin_6.7.5+ios3_iphoneos-arm64.deb
+Size: 3620034
+MD5sum: f75648c5e97906a8cfac141576df1b1f
+SHA1: 1e8e00a54eebc38ea5c1a600bc0c4b75612f8cef
+SHA256: 28473a2418701c86b926a622c9cfb0adf0a76d30f3efd30f20bd70d09592f31b
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin.json
 
 Package: kwin-dev
-Version: 6.7.5+ios2
+Version: 6.7.5+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: kwin (= 6.7.5+ios2), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
+Depends: kwin (= 6.7.5+ios3), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
 Description: Development files for KWin
 Installed-Size: 2428
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin-dev_6.7.5+ios2_iphoneos-arm64.deb
-Size: 329566
-MD5sum: bd7cf76b066adf6fd4f993a892f5a0b9
-SHA1: 83c39153a28b55caa8bfc7003e7cc479be11156e
-SHA256: ab39c2474fa1dce6e6e6c105f9e429ff3301372ee4b8825d443a8c2be0e9d2e4
+Filename: debs/kwin-dev_6.7.5+ios3_iphoneos-arm64.deb
+Size: 329570
+MD5sum: be71bd23558537ec6b8c7e3e197a23bf
+SHA1: 1c3773cde6cd870077bc9487de7e4109655883dc
+SHA256: 8f3e10d1d5924486d922eda0e0608222f7382c05849338b07720264b3e0e790c
 Icon: https://repo.maxleiter.com/icons/kwin-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwin-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
