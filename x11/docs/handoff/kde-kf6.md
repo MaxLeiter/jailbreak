@@ -551,3 +551,34 @@ old < bound <= new and the Plasma units that use Qt private API are all on it), 
 the install step now puts `qt6-base` last instead. The KF6 units that read
 `QGuiApplicationPrivate::platform_theme` (`kf6-colorscheme`, `-configwidgets`, `-iconthemes`, `-kio`) are
 not on it; that symbol is stable, so a partial upgrade is not expected to break them.
+
+### Device run 2 (2026-10-25): KWin 6.7 on the GPU, desktop fills the screen
+Installed the fixed 200-deb set (`KDE67-SET.txt`, xios-kde 0.1.24, `dpkg -i $(ls *.deb | grep -v '^qt6-base_') qt6-base_*.deb`,
+no force flags) with `kwin 6.7.5+ios2` swapped in for `+ios1`. Started from ioscd (`SESSION\tkde\t\t1440\t1080\t176\tkde-4df9`).
+`supportInformation`: Compositing Type `OpenGL ES 2.0` (KWin's label for any GLES), `OpenGL ES 3.0 (ANGLE 2.1.28223)`,
+`ANGLE Metal Renderer: Apple A10 GPU`, GLSL ES 3.00, Geometry `1047x785`, Scale `2.75`, `blur` active. plasmashell binds
+`iosc_iosurface` and renders desktop and panel into 3-buffer IOSurface swapchains. konsole and dolphin map and draw.
+The folder view shows `~/Desktop` (= `/var/jb/var/root/Desktop`, the session HOME) with no desktop:/ error.
+
+Root causes, all fixed in the kwin recipes (`+ios2`):
+- **ES 2.0 context.** KWin asks for `EGL_CONTEXT_CLIENT_VERSION 2` and expects the driver to hand out the newest
+  version; ANGLE gives exactly 2.0, and 6.7's `EglContext::checkSupported()` rejects that silently (3D textures need
+  ES 3 or `GL_OES_texture_3D`). The only log line was `Could not initialize rendering context`. The DRM node warnings
+  are harmless. Fix: an ES 3 candidate first on Apple (`ios-gpu-gles3-context`), plus a log line naming the failed
+  requirement (`ios-gpu-checksupported-diag`).
+- **Spec-strict GLSL.** ANGLE errors on `#if GL_OES_standard_derivatives` (an undefined identifier in `#if`), which
+  broke every `base.frag` variant: now `#if defined(...)`. The blur downsample shader (and two colour shaders) say
+  `#version 140` but call `texture2D`; GLES core shaders get `#define texture2D texture`.
+- **Black border.** 6.7's `WaylandOutput::init()` sends `xdg_toplevel.unset_fullscreen`; iosc answers with a
+  default-size (1360x1000) configure, which became the mode. 6.1 never sent it. Also 6.7 sizes the host surface by
+  viewport (`mode / scale`) and copies the host's preferred fractional scale (2) into KWin's scale. With
+  `KWIN_XIOS_HOST_OUTPUT_SCALE` set, the host surface is now `mode / hostScale`, KWin keeps its `--scale`, and input
+  is rescaled by `hostScale / scale` (the old `ceil(s)/s` factor assumed 6.1's buffer-scale path).
+
+Left as is:
+- A 1px black column/row at the right/bottom edge: 2880/2.75 and 2160/2.75 are not integers and KWin rounds the
+  logical size down (1047x785 -> 2879x2159 px). Upstream behaviour; a scale that divides both (2.25 or 2.5)
+  removes it.
+- Displays KCM scale changes are not applied to the nested output (upstream 6.7 ignores them there too); the scale
+  is the launcher's `--scale`.
+- `qt.qpa.wayland: EGL not available` comes from `kactivitymanagerd` (no GPU entitlement, no window), not plasmashell.
