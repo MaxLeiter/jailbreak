@@ -3,8 +3,11 @@ $(error Use the main Makefile)
 endif
 
 STRAPPROJECTS += p11-kit
-P11_VERSION   := 0.25.3
-DEB_P11_V     ?= $(P11_VERSION)
+# 0.25.3 -> 0.26.5. Soname libp11-kit.0 unchanged; still autotools. Patches come
+# from ports/p11-kit/patches (Procursus's fix-intl.diff; its strerror_r patch is
+# upstream now).
+P11_VERSION   := 0.26.5
+DEB_P11_V     ?= $(P11_VERSION)+ios1
 
 p11-kit-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/p11-glue/p11-kit/releases/download/$(P11_VERSION)/p11-kit-$(P11_VERSION).tar.xz{$(comma).sig})

@@ -7,8 +7,11 @@ STRAPPROJECTS += sudo
 else # ($(MEMO_TARGET),darwin-\*)
 SUBPROJECTS   += sudo
 endif # ($(MEMO_TARGET),darwin-\*)
-SUDO_VERSION  := 1.9.15p5
-DEB_SUDO_V    ?= $(SUDO_VERSION)
+# 1.9.15p5 -> 1.9.17p2 for CVE-2025-32463 (--chroot local root) and
+# CVE-2025-32462 (--host), both fixed in 1.9.17p1. Procursus's DPKG_COLORS patch
+# still applies.
+SUDO_VERSION  := 1.9.17p2
+DEB_SUDO_V    ?= $(SUDO_VERSION)+ios1
 
 sudo-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.sudo.ws/dist/sudo-$(SUDO_VERSION).tar.gz{$(comma).sig})

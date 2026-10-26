@@ -3,8 +3,10 @@ $(error Use the main Makefile)
 endif
 
 STRAPPROJECTS    += libtasn1
-LIBTASN1_VERSION := 4.19.0
-DEB_LIBTASN1_V   ?= $(LIBTASN1_VERSION)
+# 4.19.0 -> 4.21.0 for CVE-2024-12133 (quadratic DER decoding on a crafted
+# certificate, fixed in 4.20.0). Soname libtasn1.6 unchanged.
+LIBTASN1_VERSION := 4.21.0
+DEB_LIBTASN1_V   ?= $(LIBTASN1_VERSION)+ios1
 
 libtasn1-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftpmirror.gnu.org/libtasn1/libtasn1-$(LIBTASN1_VERSION).tar.gz{$(comma).sig})

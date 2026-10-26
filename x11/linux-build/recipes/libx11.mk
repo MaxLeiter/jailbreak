@@ -3,8 +3,12 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS    += libx11
-LIBX11_VERSION := 1.7.3.1
-DEB_LIBX11_V   ?= $(LIBX11_VERSION)
+# Ours since the July repack (1.7.3.1+ios1); 1.7.3.1 -> 1.8.14 for CVE-2023-3138 and
+# CVE-2023-43785/43786/43787 (fixed in 1.8.7). Every binary package of this source
+# moves together, libx11-xcb1 included: libX11-xcb reaches into libX11's private
+# Display layout, so a 1.7.3.1 libX11-xcb must never meet a 1.8 libX11.
+LIBX11_VERSION := 1.8.14
+DEB_LIBX11_V   ?= $(LIBX11_VERSION)+ios1
 
 libx11-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://xorg.freedesktop.org/archive/individual/lib/libX11-$(LIBX11_VERSION).tar.gz{$(comma).sig})

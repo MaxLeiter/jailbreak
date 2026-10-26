@@ -3,8 +3,11 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS   += lcms2
+# Same lcms2 2.12; +ios2 only relinks liblcms2-utils (tificc) from Procursus
+# libtiff5 4.2.0 onto our libtiff6 4.7.2. liblcms2-2 and -dev move with it
+# because liblcms2-dev pins liblcms2-2 (=).
 LCMS2_VERSION := 2.12
-DEB_LCMS2_V   ?= $(LCMS2_VERSION)
+DEB_LCMS2_V   ?= $(LCMS2_VERSION)+ios2
 
 lcms2-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE), \

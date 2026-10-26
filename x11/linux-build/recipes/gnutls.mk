@@ -3,8 +3,14 @@ $(error Use the main Makefile)
 endif
 
 STRAPPROJECTS  += gnutls
-GNUTLS_VERSION := 3.8.5
-DEB_GNUTLS_V   ?= $(GNUTLS_VERSION)
+# 3.8.5 -> 3.8.13: 20 advisories fixed in 3.8.9..3.8.13 (CVE-2026-42010 RSA-PSK
+# auth bypass, CVE-2026-33845/33846 DTLS heap overruns, the name-constraint
+# bypasses, CVE-2025-32989, CVE-2024-12243, ...). Soname libgnutls.30 unchanged.
+# Built against the nettle 3.10.2 / libtasn1 4.21.0 / p11-kit 0.26.5 / libidn2
+# 2.3.8 from this batch, so build_info/libgnutls30.control (and xx30, gnutls-bin)
+# version those Depends: apt links gnutls, and it must never meet nettle 3.9.1.
+GNUTLS_VERSION := 3.8.13
+DEB_GNUTLS_V   ?= $(GNUTLS_VERSION)+ios1
 
 gnutls-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.gnupg.org/ftp/gcrypt/gnutls/v$(shell echo $(GNUTLS_VERSION) | cut -d. -f-2)/gnutls-$(GNUTLS_VERSION).tar.xz)

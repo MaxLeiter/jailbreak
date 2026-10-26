@@ -3,12 +3,18 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS  += flac
-FLAC_VERSION := 1.3.3
-DEB_FLAC_V   ?= $(FLAC_VERSION)
+# 1.3.3 -> 1.3.4 (CVE-2020-0499, CVE-2021-0561) plus the CVE-2020-22219 backport
+# in ports/flac/patches. 1.3.4 is the newest release that keeps the libFLAC.8 /
+# libFLAC++.6 sonames every consumer (libsndfile1) links: flac 1.4 moved to
+# libFLAC.12 and 1.5 to libFLAC.14, which would need new package names and a
+# rebuild of every consumer, not a drop-in.
+FLAC_VERSION := 1.3.4
+DEB_FLAC_V   ?= $(FLAC_VERSION)+ios1
 
 flac-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.osuosl.org/pub/xiph/releases/flac/flac-$(FLAC_VERSION).tar.xz)
 	$(call EXTRACT_TAR,flac-$(FLAC_VERSION).tar.xz,flac-$(FLAC_VERSION),flac)
+	$(call DO_PATCH,flac,flac,-p1)
 	sed -i 's/-keep_private_externs -nostdlib/-keep_private_externs $(PLATFORM_VERSION_MIN) -arch $(MEMO_ARCH) -nostdlib/g' $(BUILD_WORK)/flac/configure
 
 ifneq ($(wildcard $(BUILD_WORK)/flac/.build_complete),)

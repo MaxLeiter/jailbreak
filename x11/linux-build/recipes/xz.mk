@@ -3,11 +3,15 @@ $(error Use the main Makefile)
 endif
 
 STRAPPROJECTS += xz
-XZ_VERSION    := 5.4.4
-DEB_XZ_V      ?= $(XZ_VERSION)
+# 5.4.4 -> 5.8.4 for CVE-2025-31115 (use-after-free in the multithreaded decoder,
+# 5.3.3alpha to 5.8.0). dpkg and apt link liblzma, so this must stay a strict
+# drop-in: same soname liblzma.5.dylib, exports a superset of 5.4.4's (checked by
+# bin/lib/check-procursus-shadow.py). Configure flags are Procursus's unchanged.
+XZ_VERSION    := 5.8.4
+DEB_XZ_V      ?= $(XZ_VERSION)+ios1
 
 xz-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://web.archive.org/web/20230930004231id_/https://tukaani.org/xz/xz-5.4.4.tar.xz{.sig$(comma)})
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://github.com/tukaani-project/xz/releases/download/v$(XZ_VERSION)/xz-$(XZ_VERSION).tar.xz{.sig$(comma)})
 	$(call PGP_VERIFY,xz-$(XZ_VERSION).tar.xz)
 	$(call EXTRACT_TAR,xz-$(XZ_VERSION).tar.xz,xz-$(XZ_VERSION),xz)
 

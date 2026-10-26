@@ -3,8 +3,14 @@ $(error Use the main Makefile)
 endif
 
 STRAPPROJECTS  += nettle
-NETTLE_VERSION := 3.9.1
-DEB_NETTLE_V   ?= $(NETTLE_VERSION)
+# 3.9.1 -> 3.10.2, staying on 3.10: nettle 4.0 bumps the sonames (libnettle.9,
+# libhogweed.7) and would force a rebuild of every consumer. The sonames stay
+# libnettle.8 / libhogweed.6, but the real files move from .8.8/.6.8 to
+# .8.11/.6.11, so the old fully-versioned names ship as compat symlinks: they are
+# file paths Procursus's packages own, and the shadow gate's parity rule checks
+# every one of them. Consumers link @rpath/libnettle.8.dylib, not those names.
+NETTLE_VERSION := 3.10.2
+DEB_NETTLE_V   ?= $(NETTLE_VERSION)+ios1
 
 nettle-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftpmirror.gnu.org/nettle/nettle-$(NETTLE_VERSION).tar.gz{$(comma).sig})
@@ -42,9 +48,13 @@ nettle-package: nettle-stage
 
 	# nettle.mk Prep libnettle8
 	cp -a $(BUILD_STAGE)/nettle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libnettle.8*.dylib $(BUILD_DIST)/libnettle8/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	[ -e $(BUILD_DIST)/libnettle8/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libnettle.8.8.dylib ] || \
+		ln -s $$(readlink $(BUILD_DIST)/libnettle8/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libnettle.8.dylib) $(BUILD_DIST)/libnettle8/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libnettle.8.8.dylib
 
 	# nettle.mk Prep libhogweed6
 	cp -a $(BUILD_STAGE)/nettle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libhogweed.6*.dylib $(BUILD_DIST)/libhogweed6/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib
+	[ -e $(BUILD_DIST)/libhogweed6/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libhogweed.6.8.dylib ] || \
+		ln -s $$(readlink $(BUILD_DIST)/libhogweed6/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libhogweed.6.dylib) $(BUILD_DIST)/libhogweed6/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libhogweed.6.8.dylib
 
 	# nettle.mk Prep nettle-dev
 	cp -a $(BUILD_STAGE)/nettle/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/{pkgconfig,lib{nettle,hogweed}.{dylib,a}} $(BUILD_DIST)/nettle-dev/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib

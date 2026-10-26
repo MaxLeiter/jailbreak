@@ -3,8 +3,9 @@ $(error Use the main Makefile)
 endif
 
 STRAPPROJECTS += libidn2
-IDN2_VERSION  := 2.3.7
-DEB_IDN2_V    ?= $(IDN2_VERSION)
+# 2.3.7 -> 2.3.8, the GnuTLS stack batch. Soname libidn2.0 unchanged.
+IDN2_VERSION  := 2.3.8
+DEB_IDN2_V    ?= $(IDN2_VERSION)+ios1
 
 libidn2-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftpmirror.gnu.org/libidn/libidn2-$(IDN2_VERSION).tar.gz{$(comma).sig})

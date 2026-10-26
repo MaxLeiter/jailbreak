@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/gdk-pixbuf
-Depends: libglib2.0-0, libpng16-16, libjpeg62-turbo, libtiff5
+Depends: libglib2.0-0, libpng16-16, libjpeg62-turbo, libtiff6 (>= 4.7.2)
 Description: GDK Pixbuf library
  The GDK Pixbuf library provides image loading, scaling and rendering
  facilities used by GTK and other GNOME applications.

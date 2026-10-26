@@ -5,7 +5,7 @@ endif
 SUBPROJECTS   += gtk4
 GTK4_MAJOR_V  := 4.14
 GTK4_VERSION  := $(GTK4_MAJOR_V).5
-DEB_LIBGTK4_V ?= $(GTK4_VERSION)+wl1
+DEB_LIBGTK4_V ?= $(GTK4_VERSION)+wl2
 
 gtk4-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://ftp.gnome.org/pub/gnome/sources/gtk/$(GTK4_MAJOR_V)/gtk-$(GTK4_VERSION).tar.xz)

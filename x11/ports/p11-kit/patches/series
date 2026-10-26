@@ -1,0 +1,3 @@
+# Procursus build_patch/p11-kit/fix-intl.diff. Its other patch (GNU strerror_r
+# compile check) is upstream since 0.25.x and is dropped.
+0001-trust-link-libintl.diff

@@ -329,24 +329,46 @@ def main() -> int:
 
         # symbols: our exports must be a superset of theirs, per shared dylib.
         try:
-            skey = f"sym:{key}"
+            skey = f"sym2:{key}"  # sym2: verdicts from the symlink-resolving pass
             if skey in verdicts:
                 dropped = json.loads(verdicts[skey])
             else:
                 dropped = {}
                 unread = []
                 with tempfile.TemporaryDirectory() as td:
+                    # realpath: macOS temp dirs sit behind the /var -> /private/var
+                    # symlink, and the containment test below compares resolved paths.
+                    td = os.path.realpath(td)
                     ours_root = os.path.join(td, "ours")
                     theirs_root = os.path.join(td, "theirs")
                     os.makedirs(ours_root)
                     os.makedirs(theirs_root)
                     deb_extract(path, ours_root)
                     deb_extract(fetch_procursus_deb(fields), theirs_root)
-                    for rel, is_link in deb_entries(path):
-                        if is_link or not rel.endswith(".dylib"):
-                            continue
-                        ours_f = os.path.join(ours_root, rel.lstrip("./"))
-                        theirs_f = os.path.join(theirs_root, rel.lstrip("./"))
+                    # Pairs to compare: every regular dylib we ship, and every
+                    # regular dylib Procursus ships, each resolved through the
+                    # other side's symlinks. The second half matters when a
+                    # version bump renames the real file: nettle 3.9.1 ships
+                    # libnettle.8.8.dylib as a file, 3.10.2 as libnettle.8.11.dylib
+                    # with libnettle.8.8.dylib kept as a compat symlink, and
+                    # walking only our regular files would never pair them, so
+                    # the superset claim would pass unchecked.
+                    pairs = {
+                        rel.lstrip("./")
+                        for rel, is_link in deb_entries(path)
+                        if not is_link and rel.endswith(".dylib")
+                    }
+                    pairs |= {
+                        rel.lstrip("./")
+                        for rel, is_link in deb_entries(fetch_procursus_deb(fields))
+                        if not is_link and rel.endswith(".dylib")
+                    }
+                    for rel in sorted(pairs):
+                        ours_f = os.path.realpath(os.path.join(ours_root, rel))
+                        theirs_f = os.path.realpath(os.path.join(theirs_root, rel))
+                        if not (ours_f.startswith(ours_root + os.sep)
+                                and theirs_f.startswith(theirs_root + os.sep)):
+                            continue  # a symlink pointing outside the package
                         if not (os.path.isfile(ours_f) and os.path.isfile(theirs_f)):
                             continue
                         ours_syms = dylib_exports(ours_f)

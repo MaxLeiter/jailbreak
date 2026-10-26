@@ -3,8 +3,11 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS        += libarchive
-LIBARCHIVE_VERSION := 3.7.2
-DEB_LIBARCHIVE_V   ?= $(LIBARCHIVE_VERSION)
+# Ours since the July repack (3.7.2+ios1); 3.7.2 -> 3.8.10 for CVE-2024-26256 (RAR
+# RCE, 3.7.4), CVE-2024-48957/48958 (3.7.5), CVE-2025-5914 (double free, 3.8.0)
+# and the 3.8.x point fixes. Soname libarchive.13 unchanged.
+LIBARCHIVE_VERSION := 3.8.10
+DEB_LIBARCHIVE_V   ?= $(LIBARCHIVE_VERSION)+ios1
 
 libarchive-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.libarchive.org/downloads/libarchive-$(LIBARCHIVE_VERSION).tar.xz)
