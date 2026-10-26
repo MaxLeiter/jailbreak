@@ -610,9 +610,79 @@ black background) and taps that "don't seem to work, or are slow".
   - Plasma popups are CPU-bound in plasmashell: 250-600 ms of polish and QML work at 100% of one A10 core,
     because QML is interpreted on iOS (no V4 JIT). A cold Kickoff takes ~2.5 s. Animations then run at ~30 fps,
     matching the app's display clock.
-  - The remaining lever is QML/JS execution, for example trying Qt's V4 JIT with the mmap+mprotect(RX) path that
-    works for bun. That is a qtdeclarative project, not a KWin one.
+  - The remaining lever looked like QML/JS execution, for example trying Qt's V4 JIT with the mmap+mprotect(RX)
+    path that works for bun. That is now done (see "QML JIT" below) and buys only about 10-15% of plasmashell CPU.
 - `qt.qpa.wayland: wl_output.name received after output has been initialized` comes from a Qt client of iosc when
   iosc re-advertises its outputs on rotation (iosc re-sends `name` to existing resources). It is cosmetic.
 - Seen once in five SSH launches: plasmashell came up without its panel (no `PanelView` in the log). The next
   launch was fine. Not investigated.
+
+### QML JIT (2026-10-26): qt6-declarative 6.10.3+ios2
+QV4's baseline JIT (and the Yarr regexp JIT) now run on the device. Built and device-tested, not published.
+
+**Why it was off.** `qtdeclarative.mk` said the JIT would need W^X juggling and that `Q_OS_IOS` disables it at
+runtime. Neither was the real reason. Two things kept it off, and neither is an iOS rule:
+- `src/qml/configure.cmake` allows arm64 JIT only for `ANDROID OR LINUX OR IOS OR ...`. We configure as Darwin,
+  where CMake's `IOS` is false, so `-DFEATURE_qml_jit=ON` would have been refused.
+- `masm/wtf/OSAllocatorPosix.cpp` maps JIT chunks with `MAP_JIT` on Darwin, and `canAllocateExecutableMemory()`
+  probes with `MAP_JIT`. `MAP_JIT` is `EINVAL` for our fakesigned processes, so the engine fell back to the
+  interpreter without saying so.
+
+The JIT itself already does the right thing for this device: with `ENABLE_ASSEMBLER_WX_EXCLUSIVE` every link
+mprotects its page range RW, writes, flushes the icache and flips it to RX. That is the mmap RW -> write -> mprotect
+RX pattern that also works for bun and mozjs (see `linux-build/probes-bun-jit/README.md`).
+
+**What changed** (`linux-build/recipes/qtdeclarative-ios-jit.patch`, applied in `qtdeclarative-setup`):
+- `configure.cmake`: an extra `arm64 AND APPLE` entry. Real macOS arm64 stays off through
+  `QT_QML_JIT_SUPPORTED_IMPL`, which keys on `Q_OS_MACOS`.
+- `OSAllocatorPosix.cpp`: no `MAP_JIT` on iOS (chunks are plain RW anonymous memory). `canAllocateExecutableMemory()`
+  on iOS is a real test, run once per process: two RW -> write `mov w0,#n; ret` -> RX -> call rounds on one page,
+  under a SIGBUS/SIGSEGV/SIGILL handler that only catches faults on the probing thread. If it faults or returns the
+  wrong value, the engine interprets as before. It costs about 40 us.
+- `MathExtras.h`: the old Mac OS X `#define ceil(x) wtf_ceil(x)` is skipped on iOS. It renamed `std::ceil` in
+  `qjsnumbercoercion.h` and broke `YarrJIT.cpp`, which is only compiled with the JIT on.
+- `qv4executableallocator.cpp`: `QV4_JIT_PROBE_LOG=1` prints the probe verdict and every new code chunk. A failed
+  probe is always printed.
+
+The rebuild also needed `-DCMAKE_DISABLE_FIND_PACKAGE_Qt6Test=ON`, `-DCMAKE_DISABLE_FIND_PACKAGE_Qt6Svg=ON` and
+`-DFEATURE_quick_vectorimage=OFF`: Qt6Test and Qt6Svg were staged into `procursus-vol-kde610` after +ios1 was built,
+and they turn on QuickTest and VectorImage, whose host tools (`qmltestrunner`, `svgtoqml`) the host Qt lacks. The
++ios2 runtime deb has exactly the +ios1 file list. No entitlement changes: plasmashell and KWin keep their GPU sets,
+and neither needs `dynamic-codesigning`.
+
+**Knobs.** `QV4_FORCE_INTERPRETER=1` turns the JIT off; `QV4_JIT_CALL_THRESHOLD` (default 3) sets how many
+interpreted calls a function gets before it is compiled. QV4 has no on-stack replacement, so a function only runs
+JIT code from its 4th call.
+
+**How to tell it is on.** `linux-build/probes-qv4-jit/vmrx.py <pid>` counts VM regions with tag 64
+(`VM_TAG_FOR_EXECUTABLEALLOCATOR_MEMORY`, how QV4 tags its chunks). After a fresh start plasmashell had 28-34 r-x
+chunks (460-580 KiB) with +ios2 and none with +ios1. KWin had none: its QML did not reach the call threshold.
+
+**Device results** (A10, landscape, slot kde-0b85, fresh session each; plasmashell CPU from `proc_pid_rusage`):
+
+| | +ios1 interpreter | +ios2 JIT |
+|---|---|---|
+| `jsbench2.qml` pure JS (fib 25 x6 / int loop) | 87-89 / 193-194 ms | 64-66 / 106 ms |
+| `jsbench.qml` QML-scope mix, total | 1391-1434 ms | 1179-1201 ms |
+| plasmashell CPU, start + 60 s idle | 10.9-11.5 s | 10.3-11.0 s |
+| first Kickoff open, plasmashell CPU | 676-880 ms | 590-595 ms |
+| warm Kickoff open, CPU | 146-168 ms | 129-154 ms |
+| first clock popup open, CPU | 1.2-1.7 s | 1.1-1.3 s |
+| warm clock open / close, CPU (mean) | 396 / 660 ms | 358 / 575 ms |
+| 15-popup sequence, CPU | 9.3-11.7 s | 8.6-9.7 s |
+
+So the JIT gives 1.4-1.8x on plain JS but only 10-15% of plasmashell's CPU per popup. Most of the popup cost is not
+JS: it is object creation, bindings plumbing, layout and text in C++, plus functions that never reach the call
+threshold. Wall-clock times from this run are not usable: the Xios app was not presenting (iosc paced itself,
+`pacing=event-loop`), and fileproviderd, photoanalysisd and mediaanalysisd used 1-2 cores the whole time, so cold
+opens ranged from 1 to 15 s on both builds. The next lever needs a profile of plasmashell's main thread, not more JS
+speed.
+
+**Stability.** No SIGBUS or JIT-related crash: 4 fresh sessions on +ios2, 30+ timed popups, a 125-popup soak
+(plasmashell and KWin pids unchanged), and `qml` runs of both benches. The only crash reports are the
+`kwin_wayland` SIGABRTs (`QMessageLogger::fatal`) written whenever a slot is stopped. Those happen identically on
++ios1 and predate this work.
+
+**Install the way it was tested.** `dpkg -i` both debs (dpkg renames into place, so nothing is overwritten while
+mapped), then re-sign every Mach-O on the device: copy to a new file, `ldid -S` with the file's own entitlements,
+`mv` over. `probes-qv4-jit/` has the scripts (`abrun.sh` is one full measurement pass).
