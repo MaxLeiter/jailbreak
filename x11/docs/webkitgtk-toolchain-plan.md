@@ -309,3 +309,39 @@ the mtime bump made ninja rebuild everything each time. Fixed (idempotent writes
 Not done / flagged: WebGL is compiled (`ENABLE_WEBGL=ON`) but untested on device; JIT stays off
 (C-loop), hardware compositing is the dormant lane's work (patches 0015-0018 there need a forward port
 to 2.54). Device tests are the next gate.
+
+## 14. JIT + hardware-GL WIP vs 2.54 (assessment, 2026-10-25)
+
+Source: commit `0898414b` on `worktree-webkit-jit-hwgl` (written against 2.44.4; plan
+`docs/webkitgtk-jit-hwgl-plan.md` on that branch). Checked by reading the 2.54.0 tree in
+`procursus-vol-gtk` and `patch --dry-run` against it. Not built.
+
+**Verdict: does not port cleanly; not built.** The two halves are very different sizes.
+
+Hardware GL (patches 0015-0018 of the 2.44 dir; numbering collides with this stack's 0015-0018):
+
+| WIP patch | 2.54 status |
+|---|---|
+| 0016 gate (`rendererBufferMode` accepts the iosc shim's `EGL_*_platform_wayland`) | target moved: now `AcceleratedBackingStore::rendererBufferTransportMode()` in `UIProcess/gtk/AcceleratedBackingStore.cpp:88`, same two-extension test, enum renamed `RendererBufferTransportMode`. A ~15-line re-port. On its own it buys GPU raster with one readback per frame (SharedMemory mode). |
+| 0015 IOSurface render target (514 lines) | does not apply. `UIProcess/gtk/AcceleratedBackingStoreDMABuf.*`, `UIProcess/dmabuf/*.messages.in` and `WebProcess/WebPage/dmabuf/AcceleratedSurfaceDMABuf.*` are gone; the swap chain is now `WebProcess/WebPage/CoordinatedGraphics/AcceleratedSurface.{h,cpp}` (`SwapChain::Type`, `RenderTarget*` classes) and the UI side is `AcceleratedBackingStore::Buffer{DMABuf,EGLImage,GBM,SHM}`. Layer content is rasterized by Skia now (TextureMapper still composites), so the render-target code is Skia-shaped. A rewrite, not a rebase: new `BufferIOSurface` + `RenderTargetIOSurface`, messages, swap-chain selection at `PlatformDisplay::Type::Surfaceless`. Its CMake hunk is `if (APPLE)`, which our 0018 shadows to false; it would need a Darwin test instead. It also needs the compositor/broker half (`wayland/iosc.c`, `xios-metal-event-broker.m`) that never landed from `claude/geary-web-black-screen-a10d4d`. |
+| 0017 typedefs outside the GBM guard | obsolete (header removed). |
+| 0018 per-site EGLConfig | partly obsolete: 2.54 `GLContext` has `eglConfig()`; whatever replaces 0015 can use it. |
+
+Estimate: gate alone half a day; the zero-copy IOSurface path 2-4 days plus the unlanded
+compositor work, and device time.
+
+JIT: the WIP's premise ("CMake flags plus an entitlement, no source patch") is contradicted by
+what Bun's JSC measured on this exact iPad (`linux-build/patches/bun-webkit/0002-ios-separated-wx-jit.patch`):
+an RWX anonymous mapping is created fine and then SIGBUSes on first instruction fetch, and
+`MAP_JIT` is EINVAL. The GTK port's JSC uses exactly that RWX pool (`EXECUTABLE_POOL_WRITABLE`,
+`ENABLE_SEPARATED_WX_HEAP` 0 off Cocoa), so flag-only JIT would crash at the first compiled
+function. The 2.54 gates are the same as 2.44's (`HAVE_REMAP_JIT` / `ENABLE_SEPARATED_WX_HEAP`
+Cocoa-only, `HAVE_MACH_EXCEPTIONS` excludes GTK, `HAVE_IOS_JIT_RESTRICTIONS` IOS_FAMILY-only).
+The good news: Bun's 0002 keys everything on `OS(IOS_FAMILY)`, not on a port, and **dry-runs clean
+against the patched 2.54 tree** (offsets only). So the realistic JIT build is Bun 0002 + `ENABLE_JIT`
++ `ENABLE_DFG_JIT` ON, `ENABLE_FTL_JIT`/WebAssembly OFF (Bun's device-proven tier set; FTL drags in
+B3 and the whole wasm chain), `ENABLE_C_LOOP` OFF. Risks: first non-C-loop build of this tree
+(offlineasm ARM64 Mach-O output under clang-19), whether the web process under the app case needs
+`dynamic-codesigning` (Bun runs bare-fakesigned as a CLI), and Bun's lesson that DFG + concurrent
+JIT races only show on real workloads. Suggested as a separate `+ios4` after `+ios3` passes on
+device, in its own work dir so the C-loop tree stays resumable.

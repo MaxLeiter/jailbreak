@@ -235,3 +235,110 @@ Use `TARGETS="webkitgtk-configure"` for configure only,
 `TARGETS="webkitgtk-package geary-package"` after a completed engine install.
 Compile-only targets skip deb collection/relinking. The build driver also
 supports `gnome-keyring-package` for Geary's Secret Service runtime.
+
+## 2026-10-25: WebKitGTK 2.54.0+ios3 device test plan
+
+Branch `claude/webkitgtk-254` (from origin/main). Recipe `recipes/webkitgtk-modern.mk`, patch stack
+`ports/webkitgtk-modern/patches` (0039 is the newest), driver `linux-build/build-webkit-modern.sh`,
+volume `procursus-vol-gtk` (work dir `build_work/.../webkitgtk-modern`). Plan and port history:
+`docs/webkitgtk-toolchain-plan.md`. Nothing here is published; prod still serves 2.44.4+ios1.
+
++ios3 is +ios2 plus patch 0039 (SQLite init deadlock). The two earlier iPad rounds found 0037
+(SOCK_SEQPACKET socketpair assert in `createPlatformConnection`) and 0039; 0038 (executable path
+without /proc) went in with 0037.
+
+### What to install
+
+Built 2026-10-25 from a full 2,790-step rebuild (the old tree's objects were all stale) at the
+driver's `-j6`, peak about 3 GiB RAM, no OOM. Output is in `x11/linux-build/out-webkit-modern/` of
+the `agent-abcd844133ebce204` worktree (gitignored):
+
+```
+8b2d0bcae4a3a722694733d028204fab04fa15a14c1ee62a7487f2f725c08063  libjavascriptcoregtk-4.1-0_2.54.0+ios3_iphoneos-arm64.deb    (5.2 MB)
+17c492ed1743fff461101ccfd191fa073ded2035e5dad5c2f60791c57ac9f021  libjavascriptcoregtk-4.1-dev_2.54.0+ios3_iphoneos-arm64.deb  (62 KB)
+8d75d9a06a60ccdea98b4576cc5b3d814f61420786fc2f864a3481de27f3223a  libwebkit2gtk-4.1-0_2.54.0+ios3_iphoneos-arm64.deb          (27 MB)
+b558ea11f4cc8432c5f4f9580798f36c22abc773f4efbfdbe02c993943fb5155  libwebkit2gtk-4.1-dev_2.54.0+ios3_iphoneos-arm64.deb        (142 KB)
+```
+
+minos 16.0 on every Mach-O, and the stamp-minos
+dry-run gives 16.0 for all four; the solvability gate passes on a scratch copy of `repo/Packages`
+with these four stanzas swapped in.
+
+The two `-dev` debs are only for building against it; they exact-pin the runtime, so install all
+four or only the two runtimes. Then:
+
+```sh
+scp libjavascriptcoregtk-4.1-0_2.54.0+ios3_*.deb libwebkit2gtk-4.1-0_2.54.0+ios3_*.deb root@$IP:/var/jb/tmp/
+ssh root@$IP 'cd /var/jb/tmp && apt install -y ./libjavascriptcoregtk-4.1-0_2.54.0+ios3_iphoneos-arm64.deb ./libwebkit2gtk-4.1-0_2.54.0+ios3_iphoneos-arm64.deb'
+```
+
+Check delivery by hash (`shasum -a 256` both ends) and record `dpkg -l | grep -E 'webkit|javascriptcore|epiphany|geary'`
+before and after, so the test says which consumer bytes it ran. Keep the **published** consumers
+first: `epiphany 43.1+ios4`, `epiphany-native 43.1+ios4`, `geary 46.0+ios1`. All 624 WebKit/JSC
+symbols they import resolve in the 2.54 dylibs, and both dylibs keep compatibility version 0.0.0, so
+no consumer rebuild should be needed. One difference to watch: 2.54's install names are
+`@rpath/lib*-4.1.0.dylib`, while the 2.44-built consumers load the absolute
+`/var/jb/usr/lib/lib*-4.1.0.dylib` (the same files). If anything looks like a library loaded twice
+(duplicate GType registration warnings, `g_type_register_static` criticals at startup), that is the
+cause, and the fix is the rebuilt consumers (`epiphany 43.1+ios5`, `geary 46.0+ios2`).
+
+Rollback: `apt install libwebkit2gtk-4.1-0=2.44.4+ios1 libjavascriptcoregtk-4.1-0=2.44.4+ios1` from
+the prod source (with the `-dev` packages too if installed).
+
+Signing: the web process is signed with `iosc-gpu-client-ent.xml` (no `general.xml`). If a helper
+dies with exit 137 and no output, or WebGL reports no GPU, re-sign on the device before blaming the
+build (`host-ldid-signature-rejected` memory): `ldid -S/var/jb/tmp/iosc-gpu-client-ent.xml
+/var/jb/usr/libexec/webkit2gtk-4.1/WebKitWebProcess`, same for `WebKitNetworkProcess`.
+
+### Checks, in order
+
+1. **JSC shell (JIT state).** This build is the C-loop interpreter: JIT, DFG, FTL and WebAssembly
+   are all off at compile time, so `JSC_useJIT` and friends do nothing. Expect:
+   `/var/jb/usr/libexec/webkit2gtk-4.1/jsc -e 'print(6*7)'` prints `42`, and
+   `jsc -e 'typeof WebAssembly'` prints `undefined`. Record a baseline for the later JIT build:
+   `jsc -e 'let t=Date.now(),s=0;for(let i=0;i<2e7;i++)s+=i%7;print(Date.now()-t)'` (ms).
+2. **Process launch (0037/0038 regression).** Launch "Web" (`epiphany-native`). `WebKitWebProcess`
+   and `WebKitNetworkProcess` must appear in `ps -A` and stay up; no `createPlatformConnection`
+   assertion and no "could not find executable" in the app's stderr/`/var/jb/tmp` logs.
+3. **SQLite deadlock (0039 regression).** This was a UI-process hang: `sqlite3_initialize()` waited on
+   the main thread while the main thread waited on the favicon (IconDatabase) queue. Repro shape:
+   start Web with a **fresh profile** (move `~/.local/share/epiphany` and `~/.cache/epiphany` aside),
+   load a page that has a favicon (https://en.wikipedia.org), then open a second tab and a third
+   page. Pass = the window keeps repainting and accepts input, the favicon appears in the tab, and
+   after quitting and relaunching, History shows the visits and the favicon is still there (the
+   databases were written). Fail = the window freezes within the first page load; grab
+   `sample`/`lldb bt all` of the UI process if it does.
+4. **Rendering.** https://example.com, a long Wikipedia article (scroll, zoom with ctrl +/-), a page
+   with web fonts and SVG, and a form (type into a text field with the iOS keyboard). 2.54 is
+   Skia-only; text must be crisp and scrolling must not leave stale tiles. Expect `wl_shm` buffers
+   (software path, same as 2.44: accelerated compositing is still gated off, see the toolchain
+   plan section 14).
+5. **JavaScript.** https://html5test.co or any JS-heavy page loads; a page that uses
+   `localStorage`/IndexedDB keeps data across a relaunch (IndexedDB is SQLite too, so this is the
+   second half of check 3).
+6. **WebGL (compiled in, never tested).** https://get.webgl.org: either a spinning cube or a clean
+   "not supported". A crash of `WebKitWebProcess` here is a finding, not a blocker for the browser.
+7. **Geary (inside a GNOME session, `xios-session -d gnome`; Geary has no native launcher).** Open
+   Geary with the existing manual IMAP account (or the account setup dialog if none). Pass =
+   message list loads, an HTML message renders in the viewer (that is the web process plus
+   `libgeary-web-process.dylib`, the web extension), links are clickable, and Compose opens an
+   editable body (the composer is a WebKit editor). Quit and reopen once (SQLite again).
+8. **Memory.** With three tabs open in Web, note RSS of the UI and web processes (`ps -o rss,comm`).
+   The A10 has 3 GB; anything that gets jetsam-killed at idle is a finding.
+
+Report per check: pass/fail, the package versions from `dpkg -l`, and any stderr. If 1-3 pass and
+4-7 show no regression against 2.44, the build is ready for the staging publish (by Max/main, not
+this lane).
+
+### Build notes (2026-10-25)
+
+- The 2026-10-02 +ios3 attempt died in `build-gnome.sh`'s host-tool `apt-get install`. It did not
+  recur: in the same image, DNS resolved and `apt-get update` fetched from deb.debian.org,
+  security and apt.llvm.org in about a second. The cause cannot be recovered because that step sent
+  all output to /dev/null. It now logs to `/tmp/xios-host-apt.log`, retries once, and prints the
+  tail plus the container's nameserver on failure.
+- Pre-existing, not new in 2.54 (the control template is shared with 2.44): `libwebkit2gtk-4.1-0`
+  links `libsqlite3.1`, `libgpg-error.0`, ICU 78 and `libz.1` without naming `libsqlite3-1`,
+  `libgpg-error0`, `libicu78` or `libz1` in Depends. Epiphany and Geary pull those in, so it only
+  bites a bare install of the library. The only new link in 2.54 is `libwebpmux.3` (already in
+  Depends) and the system `/usr/lib/libexpat.1.dylib`.
