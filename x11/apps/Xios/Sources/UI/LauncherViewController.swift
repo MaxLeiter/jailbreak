@@ -383,23 +383,44 @@ final class NewDesktopCell: UICollectionViewCell {
         contentView.layer.borderColor = UIColor.white.withAlphaComponent(0.22).cgColor
         contentView.backgroundColor = UIColor.white.withAlphaComponent(0.04)
 
+        // Same skeleton as DesktopCardCell (a 0.625 preview area, then a title and a
+        // detail line with the same fonts and insets) so it is exactly as tall as the
+        // desktop cards beside it in a row.
+        let preview = UIView()
+        preview.backgroundColor = UIColor.white.withAlphaComponent(0.04)
         let icon = UIImageView(image: UIImage(systemName: "plus.circle.fill"))
         icon.tintColor = Style.accent
         icon.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 44)
-        let label = UILabel()
-        label.text = "New Desktop"
-        label.font = .systemFont(ofSize: 17, weight: .semibold)
-        label.textColor = .white
-        let stack = UIStackView(arrangedSubviews: [icon, label])
-        stack.axis = .vertical
-        stack.spacing = 8
-        stack.alignment = .center
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(stack)
+        let title = UILabel()
+        title.text = "New Desktop"
+        title.font = .systemFont(ofSize: 18, weight: .semibold)
+        title.textColor = .white
+        let detail = UILabel()
+        detail.text = "Start another desktop"
+        detail.font = .systemFont(ofSize: 13)
+        detail.textColor = Style.secondaryText
+        let text = UIStackView(arrangedSubviews: [title, detail])
+        text.axis = .vertical
+        text.spacing = 4
+        text.alignment = .leading
+
+        for v in [preview, icon, text] as [UIView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(v)
+        }
+        let aspect = preview.heightAnchor.constraint(equalTo: preview.widthAnchor, multiplier: 0.625)
+        aspect.priority = .required
         NSLayoutConstraint.activate([
-            stack.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            stack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            contentView.heightAnchor.constraint(greaterThanOrEqualToConstant: 220),
+            preview.topAnchor.constraint(equalTo: contentView.topAnchor),
+            preview.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            preview.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            aspect,
+            icon.centerXAnchor.constraint(equalTo: preview.centerXAnchor),
+            icon.centerYAnchor.constraint(equalTo: preview.centerYAnchor),
+            text.topAnchor.constraint(equalTo: preview.bottomAnchor, constant: 12),
+            text.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 14),
+            text.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -14),
+            text.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -14),
         ])
     }
 

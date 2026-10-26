@@ -6,6 +6,11 @@
   "description": "**Xios** is the one app iOS sees. It appears on the Home Screen as **X11**, owns a Metal layer and the UIKit input surface, and renders nothing of its own: the compositor hands it an output IOSurface over a mach port, the app draws that as a Metal texture every frame, and your touches and keystrokes go back to the compositor. Nothing is streamed and nothing is copied.\n\nIt opens to a **launcher**: a card for every desktop that is running (KDE, GNOME, the iosc shell), each with a thumbnail, its state and its size. Tap a card to go full screen into it, touch and hold for Stop, Open app in it or Change size, and use **New Desktop** to start another; it offers the flavors you have installed and names the package for the rest. Desktops run side by side; the app only draws the one in front of you.\n\nThe fullscreen flavors need it, so you normally do not install it directly: **xios-gnome**, **xios-kde**, and **xios-x11** pull it in through **xios-core**. The per-app **xios-native** flavor doesn't use it.\n\nYou can also start a desktop from the shell with `xios-session gnome` (or `kde`, `iosc`). Inside a desktop there is nothing but the desktop:\n\n- **three-finger tap**, or a pull down from the top edge, opens the switcher (Home, other desktops, Apps, Keyboard pad, Stop)\n- **touch and hold** or a **two-finger tap** is a right click\n- **pinch** zooms, **two-finger drag** scrolls\n- **swipe up from the lower edge** raises the iOS keyboard\n\nThe app is unsigned, so it needs **AppSync Unified** (from the https://cydia.akemi.ai/ repo) to launch. Rootless jailbreaks only (/var/jb), iOS/iPadOS 16 or newer, iPad.",
   "changelog": [
     {
+      "version": "0.2.2",
+      "date": "2026-10-25",
+      "notes": "- The New Desktop card is the same size and shape as the desktop cards next to it"
+    },
+    {
       "version": "0.2.1",
       "date": "2026-10-25",
       "notes": "- Asks ioscd which desktops are installed, so New Desktop matches exactly what xios-session can start\n- Falls back to checking the files itself when ioscd is older than 0.1.14"
