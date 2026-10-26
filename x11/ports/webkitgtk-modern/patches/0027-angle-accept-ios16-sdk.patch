@@ -1,0 +1,16 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] ANGLE: accept the iOS 16.5 SDK (the cross toolchain's sysroot)
+
+--- a/Source/ThirdParty/ANGLE/src/common/platform.h	2026-10-01 21:43:11
++++ b/Source/ThirdParty/ANGLE/src/common/platform.h	2026-10-01 21:43:11
+@@ -130,8 +130,8 @@
+ #        if TARGET_OS_VISION  // Must be checked before iOS
+ #            define ANGLE_PLATFORM_VISIONOS 1
+ #        elif TARGET_OS_IOS
+-#            if __IPHONE_OS_VERSION_MAX_ALLOWED < 170000
+-#                error iOS 17 SDK or newer is required.
++#            if __IPHONE_OS_VERSION_MAX_ALLOWED < 160000
++#                error iOS 16 SDK or newer is required.
+ #            endif
+ #            define ANGLE_PLATFORM_IOS 1
+ #            if TARGET_OS_MACCATALYST

@@ -1,0 +1,68 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Link gaps for the GTK port on Darwin: Skia dump/strike files, ANGLE system info + dma-buf utils, DMABufBuffer stub without GBM
+
+--- a/Source/ThirdParty/skia/CMakeLists.txt	2026-10-01 23:22:07
++++ b/Source/ThirdParty/skia/CMakeLists.txt	2026-10-01 23:22:07
+@@ -175,6 +175,8 @@
+     src/core/SkPaint.cpp
+     src/core/SkPaintPriv.cpp
+     src/core/SkPath.cpp
++    src/core/SkPathDump.cpp
++    src/core/SkStrikeRef.cpp
+     src/core/SkPathBuilder.cpp
+     src/core/SkPathData.cpp
+     src/core/SkPathEffect.cpp
+--- /dev/null	2026-10-01 23:22:07
++++ b/Source/ThirdParty/ANGLE/src/gpu_info_util/SystemInfo_xios.cpp	2026-10-01 23:22:08
+@@ -0,0 +1,17 @@
++//
++// Xios: GetSystemInfo() for the GTK port on iOS. SystemInfo_apple.mm (Foundation/Metal) is not used;
++// the EGL backend only needs a vendor/device identity to pick driver feature workarounds.
++//
++
++#include "gpu_info_util/SystemInfo.h"
++#include "gpu_info_util/SystemInfo_internal.h"
++
++namespace angle
++{
++
++bool GetSystemInfo(SystemInfo *info)
++{
++    return GetSystemInfo_ios(info);
++}
++
++}  // namespace angle
+--- a/Source/ThirdParty/ANGLE/PlatformGTK.cmake	2026-10-01 23:22:08
++++ b/Source/ThirdParty/ANGLE/PlatformGTK.cmake	2026-10-01 23:22:08
+@@ -27,4 +27,12 @@
+         ANGLE_ENABLE_OPENGL
+     )
+ 
++    if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++        list(APPEND ANGLE_SOURCES
++            src/common/linux/dma_buf_utils.cpp
++            src/common/linux/dma_buf_utils.h
++            src/gpu_info_util/SystemInfo_xios.cpp
++        )
++    endif ()
++
+ endif ()
+--- a/Source/WebCore/platform/graphics/DMABufBuffer.cpp	2026-10-01 23:22:08
++++ b/Source/WebCore/platform/graphics/DMABufBuffer.cpp	2026-10-01 23:22:08
+@@ -179,4 +179,16 @@
+ 
+ } // namespace WebCore
+ 
++#else // !USE(GBM)
++
++namespace WebCore {
++
++// The GTK UI process still links BufferEGLImage::create(); without GBM there are no dma-bufs.
++EGLImage DMABufBuffer::createEGLImage(GLDisplay&, const Attributes&)
++{
++    return nullptr;
++}
++
++} // namespace WebCore
++
+ #endif // USE(GBM)

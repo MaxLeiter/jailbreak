@@ -1,0 +1,19 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] GTK port on Darwin: build without TZone allocation like the Linux GTK port
+
+--- a/Source/cmake/OptionsGTK.cmake	2026-10-01 21:16:47
++++ b/Source/cmake/OptionsGTK.cmake	2026-10-01 21:16:47
+@@ -1,6 +1,13 @@
+ include(GNUInstallDirs)
+ include(VersioningUtils)
+ 
++# Xios: bmalloc turns TZone allocation on for every OS(DARWIN) arm64 target, but the GTK port
++# classes (e.g. ScrollbarsControllerGeneric) are written for the non-TZone configuration the Linux
++# GTK port uses and trip WTF_DEPRECATED_MAKE_FAST_ALLOCATED static_asserts. Match Linux.
++if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++    WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-DBUSE_TZONE=0 -DUSE_TZONE_MALLOC=0)
++endif ()
++
+ WEBKIT_OPTION_BEGIN()
+ 
+ SET_PROJECT_VERSION(2 54 0)

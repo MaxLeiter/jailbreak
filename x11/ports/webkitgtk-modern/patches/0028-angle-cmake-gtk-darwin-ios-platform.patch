@@ -1,0 +1,67 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] ANGLE: select the iOS/Apple platform sources (not Linux) for the GTK port on Darwin
+
+--- a/Source/ThirdParty/ANGLE/CMakeLists.txt	2026-10-01 21:51:03
++++ b/Source/ThirdParty/ANGLE/CMakeLists.txt	2026-10-01 21:51:03
+@@ -1,8 +1,10 @@
+ set_property(DIRECTORY . PROPERTY FOLDER "ANGLE")
+ 
+-if (APPLE)
++if (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++    # GTK port cross-built for iOS: APPLE is shadowed by Source/cmake/WebKitCommon.cmake, but ANGLE
++    # must still pick the Apple/iOS platform sources (ANGLE_PLATFORM_APPLE comes from __APPLE__).
+     set(is_apple TRUE)
+-    if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
++    if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR PORT STREQUAL "GTK")
+         set(is_ios TRUE)
+     else ()
+         set(is_mac TRUE)
+--- a/Source/ThirdParty/ANGLE/GLESv2.cmake	2026-10-01 21:51:03
++++ b/Source/ThirdParty/ANGLE/GLESv2.cmake	2026-10-01 21:51:03
+@@ -159,6 +159,11 @@
+     if(is_ios)
+         list(APPEND libangle_common_sources "src/common/system_utils_ios.cpp")
+     endif()
++
++    if(PORT STREQUAL "GTK")
++        # Foundation/Metal helper for ANGLE's Metal backend; the GTK port only uses the EGL backend.
++        list(REMOVE_ITEM libangle_common_sources "src/common/apple_platform_utils.mm")
++    endif()
+ endif()
+ 
+ if(is_win)
+--- a/Source/ThirdParty/ANGLE/GL.cmake	2026-10-01 21:51:03
++++ b/Source/ThirdParty/ANGLE/GL.cmake	2026-10-01 21:51:03
+@@ -124,7 +124,7 @@
+     )
+ endif()
+ 
+-if(is_android OR is_linux OR is_chromeos)
++if(is_android OR is_linux OR is_chromeos OR (is_ios AND PORT STREQUAL "GTK"))
+     list(APPEND gl_backend_sources
+         "src/libANGLE/renderer/gl/egl/ContextEGL.cpp"
+         "src/libANGLE/renderer/gl/egl/ContextEGL.h"
+--- a/Source/ThirdParty/ANGLE/PlatformGTK.cmake	2026-10-01 21:51:03
++++ b/Source/ThirdParty/ANGLE/PlatformGTK.cmake	2026-10-01 21:51:03
+@@ -1,4 +1,11 @@
+-list(APPEND ANGLE_DEFINITIONS ANGLE_PLATFORM_LINUX EGL_NO_PLATFORM_SPECIFIC_TYPES USE_SYSTEM_EGL)
++if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++    # ANGLE_PLATFORM_APPLE / _IOS are derived from __APPLE__ in common/platform.h.
++    list(APPEND ANGLE_DEFINITIONS EGL_NO_PLATFORM_SPECIFIC_TYPES USE_SYSTEM_EGL)
++    set(xios_angle_gpu_info_util_platform_sources src/gpu_info_util/SystemInfo_ios.cpp)
++else ()
++    list(APPEND ANGLE_DEFINITIONS ANGLE_PLATFORM_LINUX EGL_NO_PLATFORM_SPECIFIC_TYPES USE_SYSTEM_EGL)
++    set(xios_angle_gpu_info_util_platform_sources ${libangle_gpu_info_util_linux_sources})
++endif ()
+ include(linux.cmake)
+ 
+ if (USE_OPENGL)
+@@ -20,7 +27,7 @@
+         ${libangle_gl_sources}
+ 
+         ${libangle_gpu_info_util_sources}
+-        ${libangle_gpu_info_util_linux_sources}
++        ${xios_angle_gpu_info_util_platform_sources}
+     )
+ 
+     list(APPEND ANGLE_DEFINITIONS

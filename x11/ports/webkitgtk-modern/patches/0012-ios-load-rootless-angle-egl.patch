@@ -1,0 +1,14 @@
+--- a/Source/ThirdParty/ANGLE/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
++++ b/Source/ThirdParty/ANGLE/src/libANGLE/renderer/gl/egl/DisplayEGL.cpp
+@@ -105,7 +105,10 @@ EGLSyncImpl *DisplayEGL::createSync()
+ 
+ const char *DisplayEGL::getEGLPath() const
+ {
+-#if defined(ANGLE_PLATFORM_ANDROID)
++#if defined(__APPLE__)
++    // Xios packages the real ANGLE/Metal EGL implementation at this stable path.
++    return "/var/jb/lib/angle/libEGL.angle.dylib";
++#elif defined(ANGLE_PLATFORM_ANDROID)
+ #    if defined(__LP64__)
+     return "/system/lib64/libEGL.so";
+ #    else

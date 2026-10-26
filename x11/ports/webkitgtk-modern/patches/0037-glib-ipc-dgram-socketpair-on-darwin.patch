@@ -1,0 +1,37 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] GTK on Darwin: socketpair(SOCK_SEQPACKET) is unsupported; use SOCK_DGRAM like ConnectionUnix does
+
+--- a/Source/WebKit/UIProcess/Launcher/glib/ProcessLauncherGLib.cpp	2026-10-02 01:28:06
++++ b/Source/WebKit/UIProcess/Launcher/glib/ProcessLauncherGLib.cpp	2026-10-02 01:28:06
+@@ -105,7 +105,13 @@
+ 
+     GUniquePtr<gchar> processIdentifier(g_strdup_printf("%" PRIu64, m_launchOptions.processIdentifier.toUInt64()));
+ 
+-    IPC::SocketPair webkitSocketPair = IPC::createPlatformConnection(SOCK_SEQPACKET, connectionOptions());
++    IPC::SocketPair webkitSocketPair = IPC::createPlatformConnection(
++#if OS(DARWIN)
++        SOCK_DGRAM, // SOCK_SEQPACKET socketpairs are not supported on Darwin (see ConnectionUnix.cpp).
++#else
++        SOCK_SEQPACKET,
++#endif
++        connectionOptions());
+     GUniquePtr<gchar> webkitSocket(g_strdup_printf("%d", webkitSocketPair.client.value()));
+ 
+ #if OS(ANDROID)
+--- a/Source/WebKit/Platform/IPC/glib/ConnectionGLib.cpp	2026-10-02 01:28:06
++++ b/Source/WebKit/Platform/IPC/glib/ConnectionGLib.cpp	2026-10-02 01:28:06
+@@ -513,7 +513,13 @@
+ 
+ std::optional<Connection::ConnectionIdentifierPair> Connection::createConnectionIdentifierPair()
+ {
+-    SocketPair socketPair = createPlatformConnection(SOCK_SEQPACKET);
++    SocketPair socketPair = createPlatformConnection(
++#if OS(DARWIN)
++        SOCK_DGRAM
++#else
++        SOCK_SEQPACKET
++#endif
++        );
+     return { { Identifier { WTF::move(socketPair.server) }, ConnectionHandle { WTF::move(socketPair.client) } } };
+ }
+ 

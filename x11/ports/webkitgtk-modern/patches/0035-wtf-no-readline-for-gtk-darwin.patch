@@ -1,0 +1,14 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: do not enable HAVE(READLINE) for the GTK port on Darwin (jsc would need libreadline)
+
+--- a/Source/WTF/wtf/PlatformHave.h	2026-10-02 00:27:42
++++ b/Source/WTF/wtf/PlatformHave.h	2026-10-02 00:27:42
+@@ -221,7 +221,7 @@
+ #define HAVE_PTHREAD_SETNAME_NP 1
+ #endif
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !defined(BUILDING_GTK__)
+ #define HAVE_READLINE 1
+ #endif
+ 

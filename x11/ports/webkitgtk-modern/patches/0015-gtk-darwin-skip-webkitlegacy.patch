@@ -1,0 +1,23 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Do not link WebKitLegacy for the GTK port on Darwin
+
+--- a/Source/WebKit/CMakeLists.txt	2026-10-01 19:38:18
++++ b/Source/WebKit/CMakeLists.txt	2026-10-01 19:38:18
+@@ -774,7 +774,7 @@
+     WebCore
+     bmalloc
+ )
+-if (APPLE)
++if (APPLE AND NOT "${PORT}" STREQUAL "GTK")
+     list(APPEND WebKit_FRAMEWORKS WebKitLegacy)
+ endif ()
+ if (USE_APPLE_INTERNAL_SDK)
+@@ -1503,7 +1503,7 @@
+     endif ()
+ endif ()
+ 
+-if (APPLE)
++if (APPLE AND NOT "${PORT}" STREQUAL "GTK")
+     WEBKIT_ADD_TARGET_CXX_FLAGS(WebKit -fobjc-weak)
+     set_property(TARGET WebKit
+         PROPERTY LINK_LIBRARY_OVERRIDE_WebKitLegacy REEXPORT_FRAMEWORK)

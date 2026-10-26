@@ -1,0 +1,20 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: build OSLogPrintStream (plain C++ over the os_log C API) for the GTK port on Darwin
+
+--- a/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:48:50
++++ b/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:48:50
+@@ -104,3 +104,14 @@
+         SysProfCapture::SysProfCapture
+     )
+ endif ()
++
++if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
++    # OSLogPrintStream.mm is plain C++ over the os_log C API; Options.cpp wants it on OS(DARWIN).
++    list(APPEND WTF_SOURCES
++        darwin/OSLogPrintStream.mm
++    )
++    set_source_files_properties(darwin/OSLogPrintStream.mm PROPERTIES LANGUAGE CXX)
++    list(APPEND WTF_PUBLIC_HEADERS
++        darwin/OSLogPrintStream.h
++    )
++endif ()

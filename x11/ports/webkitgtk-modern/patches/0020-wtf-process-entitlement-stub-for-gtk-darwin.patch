@@ -1,0 +1,57 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: processHasEntitlement() stub for the GTK port on Darwin (no Security.framework dependency)
+
+--- /dev/null	2026-10-01 20:36:15
++++ b/Source/WTF/wtf/darwin/EntitlementsGTK.cpp	2026-10-01 20:36:15
+@@ -0,0 +1,17 @@
++#include "config.h"
++#include <wtf/cocoa/Entitlements.h>
++
++#if OS(DARWIN) && !PLATFORM(COCOA)
++
++namespace WTF {
++
++// The GTK port runs on iOS as an ordinary rootless-jailbreak process. JSC consults entitlements
++// only to enable Apple-specific JIT/VM features; answering "no" selects the portable paths.
++bool processHasEntitlement(ASCIILiteral)
++{
++    return false;
++}
++
++} // namespace WTF
++
++#endif
+--- a/Source/WTF/wtf/cocoa/Entitlements.h	2026-10-01 20:36:15
++++ b/Source/WTF/wtf/cocoa/Entitlements.h	2026-10-01 20:36:15
+@@ -49,3 +49,13 @@
+ } // namespace WTF
+ 
+ #endif
++
++#if OS(DARWIN) && !PLATFORM(COCOA)
++
++#include <wtf/text/ASCIILiteral.h>
++
++namespace WTF {
++WTF_EXPORT_PRIVATE bool processHasEntitlement(ASCIILiteral entitlement);
++} // namespace WTF
++
++#endif
+--- a/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:36:15
++++ b/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:36:15
+@@ -62,6 +62,15 @@
+     unix/UnixFileDescriptor.h
+ )
+ 
++if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
++    list(APPEND WTF_SOURCES
++        darwin/EntitlementsGTK.cpp
++    )
++    list(APPEND WTF_PUBLIC_HEADERS
++        cocoa/Entitlements.h
++    )
++endif ()
++
+ if (CMAKE_SYSTEM_NAME MATCHES "Linux")
+     list(APPEND WTF_SOURCES
+         linux/CurrentProcessMemoryStatus.cpp

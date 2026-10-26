@@ -1,0 +1,41 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] ANGLE: use the EGL GL backend (DisplayEGL) on iOS for the GTK port
+
+--- a/Source/ThirdParty/ANGLE/src/libANGLE/Display.cpp	2026-10-01 22:07:22
++++ b/Source/ThirdParty/ANGLE/src/libANGLE/Display.cpp	2026-10-01 22:07:22
+@@ -69,7 +69,7 @@
+ #        include "libANGLE/renderer/gl/wgl/DisplayWGL.h"
+ #    elif ANGLE_ENABLE_CGL
+ #        include "libANGLE/renderer/gl/cgl/DisplayCGL.h"
+-#    elif defined(ANGLE_PLATFORM_LINUX)
++#    elif defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_IOS)
+ #        include "libANGLE/renderer/gl/egl/DisplayEGL.h"
+ #        if defined(ANGLE_USE_X11)
+ #            include "libANGLE/renderer/gl/glx/DisplayGLX_api.h"
+@@ -551,7 +551,7 @@
+             impl = new rx::DisplayCGL(state);
+             break;
+ 
+-#    elif defined(ANGLE_PLATFORM_LINUX)
++#    elif defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_IOS)
+ #        if defined(ANGLE_USE_GBM) || defined(ANGLE_USE_WAYLAND)
+             if (platformType == 0)
+             {
+@@ -609,7 +609,7 @@
+ #if defined(ANGLE_ENABLE_OPENGL)
+ #    if defined(ANGLE_PLATFORM_WINDOWS)
+             impl = new rx::DisplayWGL(state);
+-#    elif defined(ANGLE_PLATFORM_LINUX)
++#    elif defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_IOS)
+ #        if defined(ANGLE_USE_GBM) || defined(ANGLE_USE_WAYLAND)
+             if (platformType == 0)
+             {
+@@ -2212,7 +2212,7 @@
+     extensions.platformWaylandEXT = true;
+ #endif
+ 
+-#if defined(ANGLE_PLATFORM_LINUX) && (defined(ANGLE_ENABLE_OPENGL) || defined(ANGLE_ENABLE_VULKAN))
++#if (defined(ANGLE_PLATFORM_LINUX) || defined(ANGLE_PLATFORM_IOS)) && (defined(ANGLE_ENABLE_OPENGL) || defined(ANGLE_ENABLE_VULKAN))
+     extensions.platformSurfacelessMESA = true;
+ #endif
+ 

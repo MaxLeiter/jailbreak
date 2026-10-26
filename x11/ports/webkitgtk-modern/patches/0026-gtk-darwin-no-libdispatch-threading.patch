@@ -1,0 +1,17 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] GTK port on Darwin: use generic ParallelJobs threading, not libdispatch
+
+--- a/Source/cmake/OptionsGTK.cmake	2026-10-01 21:26:12
++++ b/Source/cmake/OptionsGTK.cmake	2026-10-01 21:26:12
+@@ -5,6 +5,11 @@
+ 
+ SET_PROJECT_VERSION(2 54 0)
+ 
++if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
++    # HAVE(DISPATCH_H) selects ParallelJobsLibdispatch.h, which needs Cocoa-only wtf/darwin/DispatchExtras.h.
++    WEBKIT_APPEND_GLOBAL_COMPILER_FLAGS(-DENABLE_THREADING_LIBDISPATCH=0)
++endif ()
++
+ set(USER_AGENT_BRANDING "" CACHE STRING "Branding to add to user agent string")
+ 
+ set(ENABLE_UNSAFE_BUFFER_USAGE_WARNING ON)

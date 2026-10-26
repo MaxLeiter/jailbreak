@@ -1,0 +1,23 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: currentExecutablePath() via _NSGetExecutablePath on Darwin (no /proc)
+
+--- a/Source/WTF/wtf/glib/FileSystemGlib.cpp	2026-10-02 01:28:52
++++ b/Source/WTF/wtf/glib/FileSystemGlib.cpp	2026-10-02 01:28:52
+@@ -87,6 +87,17 @@
+         return { };
+     return CString(unsafeMakeSpan(readBuffer, static_cast<size_t>(result)));
+ }
++#elif OS(DARWIN)
++#include <mach-o/dyld.h>
++#include <limits.h>
++CString currentExecutablePath()
++{
++    static char pathBuffer[PATH_MAX];
++    uint32_t size = sizeof(pathBuffer);
++    if (_NSGetExecutablePath(pathBuffer, &size))
++        return { };
++    return CString(pathBuffer);
++}
+ #elif OS(UNIX)
+ #if OS(NETBSD)
+ #define _PROC_CURPROC_PATH "/proc/curproc/exe"

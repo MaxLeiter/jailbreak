@@ -1,0 +1,12 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] Guard WKBundle testing viewport API by its feature
+
+The iPhone SDK defines TARGET_OS_IPHONE even for the GTK port, while GTK does
+not enable META_VIEWPORT. Keep the C API call under the same feature guard as
+the WebPage method it invokes.
+
+--- a/Source/WebKit/WebProcess/InjectedBundle/API/c/WKBundlePage.cpp
++++ b/Source/WebKit/WebProcess/InjectedBundle/API/c/WKBundlePage.cpp
+@@ -727,1 +727,1 @@
+-#if TARGET_OS_IPHONE
++#if TARGET_OS_IPHONE && ENABLE(META_VIEWPORT)

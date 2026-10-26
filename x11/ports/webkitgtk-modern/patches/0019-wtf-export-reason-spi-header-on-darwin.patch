@@ -1,0 +1,19 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: export spi/darwin/ReasonSPI.h for the GTK port on Darwin
+
+--- a/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:28:18
++++ b/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:28:18
+@@ -83,6 +83,13 @@
+     )
+ endif ()
+ 
++if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
++    # Assertions.h includes this SPI header on every OS(DARWIN) target.
++    list(APPEND WTF_PUBLIC_HEADERS
++        spi/darwin/ReasonSPI.h
++    )
++endif ()
++
+ list(APPEND WTF_LIBRARIES
+     GLib::Gio
+     Threads::Threads

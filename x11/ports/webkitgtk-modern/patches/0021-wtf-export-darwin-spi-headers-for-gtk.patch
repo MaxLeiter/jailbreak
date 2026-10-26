@@ -1,0 +1,25 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: export the spi/darwin headers on the GTK port for Darwin
+
+--- a/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:43:23
++++ b/Source/WTF/wtf/PlatformGTK.cmake	2026-10-01 20:43:23
+@@ -1,5 +1,19 @@
+ set(WTF_OUTPUT_NAME WTFGTK)
+ 
++if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
++    list(APPEND WTF_PUBLIC_HEADERS
++        spi/darwin/CodeSignSPI.h
++        spi/darwin/DataVaultSPI.h
++        spi/darwin/DispatchSPI.h
++        spi/darwin/MemoryStatusSPI.h
++        spi/darwin/OSVariantSPI.h
++        spi/darwin/ProcessMemoryFootprint.h
++        spi/darwin/SandboxSPI.h
++        spi/darwin/XPCSPI.h
++        spi/darwin/dyldSPI.h
++    )
++endif ()
++
+ list(APPEND WTF_SOURCES
+     generic/MainThreadGeneric.cpp
+     generic/WorkQueueGeneric.cpp

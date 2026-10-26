@@ -1,0 +1,30 @@
+From: Xios Project <xios@localhost>
+Subject: [PATCH] WTF: memoryFootprint() via task_info on Darwin for the GTK port
+
+--- a/Source/WTF/wtf/generic/MemoryFootprintGeneric.cpp	2026-10-01 19:47:27
++++ b/Source/WTF/wtf/generic/MemoryFootprintGeneric.cpp	2026-10-01 19:47:27
+@@ -29,12 +29,24 @@
+ #include <wtf/MemoryFootprint.h>
+ #include <wtf/Platform.h>
+ 
++#if OS(DARWIN)
++#include <mach/mach.h>
++#endif
++
+ namespace WTF {
+ 
+ size_t memoryFootprint()
+ {
++#if OS(DARWIN)
++    task_vm_info_data_t info;
++    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
++    if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS)
++        return 0;
++    return static_cast<size_t>(info.phys_footprint);
++#else
+     auto memoryUse = memoryStatus();
+     return memoryUse.memoryFootprint;
++#endif
+ }
+ 
+ } // namespace WTF
