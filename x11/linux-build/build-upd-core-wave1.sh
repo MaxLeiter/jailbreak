@@ -67,6 +67,52 @@ EOF
 done
 export PATH="$CCSHIM:$PATH"
 
+# The GTK volumes' sysroot libintl is not gettext's. build-gtk.sh points libintl.dylib at
+# libgtkintl, and include/libintl.h is GLib's proxy-libintl header, which renames gettext()
+# to g_libintl_gettext(). Linked against that, the first p11-kit and libidn2 builds here
+# recorded @rpath/libgtkintl.dylib (a package nothing here depends on; libidn2 sits under apt
+# via gnutls), and with the symlink fixed, configure found no usable gettext and built
+# libidn2 without NLS. These libraries replace Procursus packages, so link them against the
+# exact libintl the device has: Procursus libintl8 + libintl-dev 0.22 (debs in
+# /out/wave1-20261025/procursus-base, sha256 checked against the 1900 index). The sysroot's
+# own files are backed up and put back on exit, so later GTK builds see what they expect.
+INTL_BAK="$XIOS_BUILD_WORK/.wave1-intl-backup"
+PBASE=/out/wave1-20261025/procursus-base
+restore_intl() {
+  [ -d "$INTL_BAK" ] || return 0
+  echo "==> restoring the sysroot's own libintl files"
+  rm -f "$XIOS_USR/include/libintl.h" "$XIOS_USR/lib/libintl.8.dylib" "$XIOS_USR/lib/libintl.dylib" "$XIOS_USR/lib/libintl.a"
+  cp -a "$INTL_BAK/." "$XIOS_USR/"
+  rm -rf "$INTL_BAK"
+}
+if ! want libtiff-stage || [ "$(echo $TARGETS)" != libtiff-stage ]; then
+  for d in libintl8_0.22 libintl-dev_0.22; do
+    [ -f "$PBASE/${d}_$XIOS_DEB_ARCH.deb" ] || { echo "ERROR: missing $PBASE/${d}_$XIOS_DEB_ARCH.deb" >&2; exit 1; }
+  done
+  [ -d "$INTL_BAK" ] || {
+    mkdir -p "$INTL_BAK/include" "$INTL_BAK/lib"
+    cp -a "$XIOS_USR/include/libintl.h" "$INTL_BAK/include/" 2>/dev/null || true
+    cp -a "$XIOS_USR"/lib/libintl.8.dylib "$XIOS_USR"/lib/libintl.dylib "$XIOS_USR"/lib/libintl.a "$INTL_BAK/lib/" 2>/dev/null || true
+  }
+  trap restore_intl EXIT
+  rm -f "$XIOS_USR/include/libintl.h" "$XIOS_USR/lib/libintl.8.dylib" "$XIOS_USR/lib/libintl.dylib" "$XIOS_USR/lib/libintl.a"
+  dpkg-deb -x "$PBASE/libintl8_0.22_$XIOS_DEB_ARCH.deb" "$XIOS_BUILD_BASE"
+  dpkg-deb -x "$PBASE/libintl-dev_0.22_$XIOS_DEB_ARCH.deb" "$XIOS_BUILD_BASE"
+  rm -rf "$XIOS_USR/share/doc/libintl-dev"
+  echo "==> sysroot libintl = Procursus libintl8/libintl-dev 0.22 for this run"
+  # Same idea for zlib: the sysroot carries our libz1 (libz.1.dylib), so -lz binds
+  # @rpath/libz.1.dylib, a package Procursus does not have. Procursus links the system
+  # /usr/lib/libz.1.dylib (the SDK's libz.tbd). Hide ours for the run (header and API are
+  # the same) so gnutls & co. keep linking the system zlib, as the packages they replace do.
+  for f in libz.dylib libz.1.dylib pkgconfig/zlib.pc; do
+    if [ -e "$XIOS_USR/lib/$f" ] || [ -L "$XIOS_USR/lib/$f" ]; then
+      mkdir -p "$INTL_BAK/lib/$(dirname "$f")"
+      mv "$XIOS_USR/lib/$f" "$INTL_BAK/lib/$f"
+    fi
+  done
+  ls "$XIOS_USR"/lib/libz.*.dylib >/dev/null 2>&1 && echo "   NOTE: other libz dylibs remain: $(ls "$XIOS_USR"/lib/libz.*.dylib)"
+fi
+
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 CORE_COUNT=${JOBS:-4}"
 BW=$XIOS_BUILD_WORK; BS=$XIOS_BUILD_STAGE; BB=$XIOS_SYSROOT
 RAW=/out/wave1-20261025/raw

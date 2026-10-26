@@ -16,6 +16,11 @@ gnutls-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://www.gnupg.org/ftp/gcrypt/gnutls/v$(shell echo $(GNUTLS_VERSION) | cut -d. -f-2)/gnutls-$(GNUTLS_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gnutls-$(GNUTLS_VERSION).tar.xz,gnutls-$(GNUTLS_VERSION),gnutls)
 	sed -i 's/-keep_private_externs -nostdlib/-keep_private_externs $(PLATFORM_VERSION_MIN) -arch $(MEMO_ARCH) -nostdlib/g' $(BUILD_WORK)/gnutls/configure
+	# lib/crau/crau.h only defines CRAU_MAYBE_UNUSED when __has_c_attribute knows
+	# __maybe_unused__. The cctools clang has __has_c_attribute but not that
+	# attribute, so the macro stays undefined and every no-op stub fails to parse
+	# ("expected ')'"). Fall back to the GNU attribute, as the header does for GCC.
+	sed -i 's|^#  endif /\* CRAU_MAYBE_UNUSED \*/|#  endif /* CRAU_MAYBE_UNUSED */\n#  ifndef CRAU_MAYBE_UNUSED\n#   define CRAU_MAYBE_UNUSED __attribute__((__unused__))\n#  endif|' $(BUILD_WORK)/gnutls/lib/crau/crau.h
 
 ifneq ($(wildcard $(BUILD_WORK)/gnutls/.build_complete),)
 gnutls:

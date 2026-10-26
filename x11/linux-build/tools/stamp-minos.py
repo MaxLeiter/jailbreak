@@ -28,7 +28,9 @@ import os, io, sys, re, json, struct, tarfile, lzma, gzip
 from compression import zstd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT  = os.path.normpath(os.path.join(HERE, "..", "out"))
+# STAMP_MINOS_DIR stamps a different deb set, e.g. a staging dir that holds a
+# build wave plus the repo debs its dependency closure reaches.
+OUT  = os.environ.get("STAMP_MINOS_DIR") or os.path.normpath(os.path.join(HERE, "..", "out"))
 APPLY = "--apply" in sys.argv
 
 PROVIDES_FIX = {
