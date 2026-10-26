@@ -238,6 +238,20 @@ These carry no urgent CVEs, but they sit under the shell, ssh and apt. Rebuildin
 
 ## Loose ends from this pass
 
-- The gsd and EDS rpath bugs above need one on-device confirmation each, followed by a fix in their build scripts.
-- `libwayland-dev`'s `libexpat1-dev` dependency should become `firmware | libexpat1-dev` like fontconfig's, or be dropped.
+- The gsd and EDS rpath bugs above need one on-device confirmation each, followed by a fix in their build scripts. (Fixed in packaging, see below; the device confirmation is still owed.)
+- `libwayland-dev`'s `libexpat1-dev` dependency should become `firmware | libexpat1-dev` like fontconfig's, or be dropped. (Dropped, see below.)
 - The scanning scripts should become a gate (runtime-deps in `audit-deb-set.py`), so that undeclared and unresolved loads fail before publish rather than after a fresh install.
+
+## Packaging fixes (2026-10-26)
+
+Not published. 36 repacked debs, each at a new version, are in `x11/linux-build/out/loose-ends-20261025/` with a `FIXED.txt` (package, version, sha256, file, change, superseded deb). `tools/repack-loose-ends-20261025.py` made them from the published payloads; the same fixes are in the recipes and control sources, so a rebuild keeps them.
+
+- Missing Procursus Depends: `build_info/*.control` and `stamp-minos.py` `DEPENDS_ADD` now name them (kf6-archive: libzstd1, libssl3; libappstream5, libxmlb2: libzstd1; libexo-2-0, libxfce4ui-2-0, thunar: libice6, libsm6; libaccountsservice0: libcrypt2; libmutter-14-0: libxtst6, libx11-xcb1, libxcb-randr0, libxcb-res0). The tigervnc entries were already in `DEPENDS_ADD` but the published debs were never stamped with them.
+- The libintl trap: `recipes/relink-gtkintl.sh` retargets `@rpath/libintl.dylib` to `@rpath/libintl.8.dylib` and adds `Depends: libintl8`. Every one of the 71 loads was dead (no symbol bound from libintl), so the retarget changes nothing at run time beyond making the load resolvable. No package loads `libintl.dylib` any more.
+- `libwayland-dev`: `libexpat1-dev` dropped. wayland-scanner links the system `/usr/lib/libexpat.1.dylib`, and no header or `.pc` in the package needs expat.
+- EDS: `CMAKE_INSTALL_RPATH` adds `lib/evolution-data-server`.
+- gsd: the four plugins' build-tree rpath is replaced with `lib/gnome-settings-daemon-46`.
+- libmutter-14-0: `lib/mutter-14` added as an rpath, so its sublibs no longer depend on the launcher's `DYLD_LIBRARY_PATH`. gnome-shell has the same problem for its own binaries and is not fixed here.
+- ladybird-tls: `libssl.3.dylib` loads `@loader_path/libcrypto.3.dylib`. There is no ladybird-tls packaging script in the tree, so the rule is a comment in `recipes-ladybird/openssl.mk`.
+
+Each edited Mach-O is re-signed by `tools/resign-like.sh`, which first proves which signer made the shipped file (it re-signs the original and requires identical bytes), so only the load commands differ. The scan re-run over the full index with these 36 swapped in: in the fixed set, 0 unresolved loads (44 before) and 0 undeclared Procursus loads (41 package/library pairs before). Repo-wide, unresolved went from 83 to 39 (gnome-shell 9, gobject-introspection 3, ladybird-app 5, the expected OpenJDK libjvm 22), and the only undeclared Procursus loads left are the three tweaks' ellekit. `audit-deb-set.py`, `check-repo-solvable.py` and `check-ladybird-tls-rpath.py` pass on the set, and `dpkg-deb` extracts all 36 with clean md5sums.

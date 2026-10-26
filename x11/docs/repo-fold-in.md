@@ -126,8 +126,10 @@ lives:
   the recipe's control at the next rebuild.
 - **Unversioned libintl links** (`@rpath/libintl.dylib` instead of
   `libintl.8.dylib`). They resolve only through Procursus `libintl-dev`'s symlink,
-  which we must not ship ourselves (dpkg conflict), so `DEPENDS_ADD` adds
-  `libintl-dev` to the affected packages until they are relinked.
+  which we must not ship ourselves (dpkg conflict). `recipes/relink-gtkintl.sh`
+  now retargets them to `@rpath/libintl.8.dylib` and adds `Depends: libintl8`
+  (ladybird-wayland and the stublibs do the same in their own packaging). The old
+  `libintl-dev` bridge in `DEPENDS_ADD` is gone.
 - **One version per package in `repo/debs`.** `make-repo.py` indexes every deb in
   the directory, so two versions of a package make duplicate stanzas. Replace,
   don't accumulate.
