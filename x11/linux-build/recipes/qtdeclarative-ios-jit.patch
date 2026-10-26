@@ -1,0 +1,223 @@
+--- a/src/3rdparty/masm/wtf/MathExtras.h
++++ b/src/3rdparty/masm/wtf/MathExtras.h
+@@ -79,9 +79,11 @@
+ const float piOverFourFloat = static_cast<float>(M_PI_4);
+ #endif
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !OS(IOS)
+ 
+ // Work around a bug in the Mac OS X libc where ceil(-0.1) return +0.
++// Xios: not on iOS. The macro renames std::ceil in every header included after this one, which
++// breaks qjsnumbercoercion.h once the JIT sources (YarrJIT.cpp) are compiled in.
+ inline double wtf_ceil(double x) { return copysign(ceil(x), x); }
+ 
+ #define ceil(x) wtf_ceil(x)
+--- a/src/3rdparty/masm/wtf/OSAllocatorPosix.cpp
++++ b/src/3rdparty/masm/wtf/OSAllocatorPosix.cpp
+@@ -44,6 +44,15 @@
+ #endif
+ #endif
+ 
++#if OS(IOS)
++#include <libkern/OSCacheControl.h>
++#include <pthread.h>
++#include <setjmp.h>
++#include <signal.h>
++#include <stdint.h>
++#include <stdio.h>
++#endif
++
+ #if defined(__ANDROID__) && defined(SYS_memfd_create)
+    // On Android it's been observed that permissions of memory mappings
+    // backed by a memfd could not be changed via mprotect for no obvious
+@@ -139,10 +148,15 @@
+         protection |= PROT_EXEC;
+ 
+     int flags = MAP_PRIVATE | MAP_ANON;
+-#if OS(DARWIN)
++#if OS(DARWIN) && !OS(IOS)
+     if (executable || usage == OSAllocator::JSJITCodePages)
+         flags |= MAP_JIT;
+ #endif
++    // Xios (jailbroken iOS): MAP_JIT is EINVAL for our fakesigned processes, but a plain anonymous
++    // RW mapping that is written and then mprotect()ed to RX executes. That is exactly the W^X
++    // flip ExecutableAllocator::makeWritable()/makeExecutable() already do for every link
++    // (ENABLE_ASSEMBLER_WX_EXCLUSIVE), so JIT chunks are ordinary RW pages here. Never map them
++    // RWX: an RWX mapping succeeds and then SIGBUSes on the first instruction fetch.
+ 
+ #if OS(DARWIN)
+     int fd = usage;
+@@ -292,6 +306,122 @@
+         return false;
+     munmap(testPage, size);
+     return true;
++}
++
++#elif OS(IOS)
++
++// Xios (jailbroken iOS, fakesigned processes). What the A10 / iPadOS 17 kernel allows:
++//  - MAP_JIT: EINVAL (no usable dynamic-codesigning here), so upstream's probe below always
++//    failed and QV4 silently stayed in the interpreter.
++//  - mmap RWX: succeeds, then SIGBUS on the first instruction fetch.
++//  - mmap RW, write, mprotect RX, execute: works, and so does flipping the same page back to RW,
++//    writing more code and flipping it to RX again. iOS refuses to fault a dirty anonymous page into a
++//    fresh executable mapping, but re-protecting a page that already has an entry in the mapping is
++//    fine. That is the W^X flip the assembler does for every link.
++// So prove the real thing once per process: two RW -> write -> RX -> execute rounds on one page, the
++// second one reusing the page the way ExecutableAllocator reuses a chunk. A fault while executing is
++// caught (SIGBUS/SIGSEGV/SIGILL on this thread only) and turns the JIT off; QV4 then interprets, as
++// it did before. QV4_JIT_PROBE_LOG=1 prints the verdict; a failure is always printed.
++
++namespace {
++
++sigjmp_buf s_jitProbeJump;
++volatile sig_atomic_t s_jitProbeActive = 0;
++pthread_t s_jitProbeThread;
++const int s_jitProbeSignals[3] = { SIGBUS, SIGSEGV, SIGILL };
++struct sigaction s_jitProbeOldActions[3];
++
++void jitProbeSignalHandler(int sig, siginfo_t *, void *)
++{
++    if (s_jitProbeActive && pthread_equal(pthread_self(), s_jitProbeThread))
++        siglongjmp(s_jitProbeJump, sig);
++    // Not the probe: put the previous disposition back and return, so the faulting instruction
++    // runs again and reaches whatever was installed before us.
++    for (int i = 0; i < 3; ++i) {
++        if (s_jitProbeSignals[i] == sig)
++            sigaction(sig, &s_jitProbeOldActions[i], nullptr);
++    }
++}
++
++bool jitProbeCall(void *code, int expected, const char **why)
++{
++    struct sigaction sa;
++    memset(&sa, 0, sizeof sa);
++    sa.sa_sigaction = jitProbeSignalHandler;
++    sa.sa_flags = SA_SIGINFO;
++    sigemptyset(&sa.sa_mask);
++    for (int i = 0; i < 3; ++i)
++        sigaction(s_jitProbeSignals[i], &sa, &s_jitProbeOldActions[i]);
++    s_jitProbeThread = pthread_self();
++
++    bool ok = false;
++    const int sig = sigsetjmp(s_jitProbeJump, 1);
++    if (sig == 0) {
++        s_jitProbeActive = 1;
++        const int result = reinterpret_cast<int (*)()>(code)();
++        s_jitProbeActive = 0;
++        ok = result == expected;
++        if (!ok)
++            *why = "probe code returned the wrong value";
++    } else {
++        s_jitProbeActive = 0;
++        *why = sig == SIGBUS ? "SIGBUS executing probe code"
++             : sig == SIGSEGV ? "SIGSEGV executing probe code"
++                              : "SIGILL executing probe code";
++    }
++
++    for (int i = 0; i < 3; ++i)
++        sigaction(s_jitProbeSignals[i], &s_jitProbeOldActions[i], nullptr);
++    return ok;
++}
++
++bool jitProbe(const char **why)
++{
++    const size_t size = pageSize();
++    void *page = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
++    if (page == MAP_FAILED) {
++        *why = "mmap RW failed";
++        return false;
++    }
++    bool ok = true;
++    for (int round = 0; ok && round < 2; ++round) {
++        if (round && mprotect(page, size, PROT_READ | PROT_WRITE) != 0) {
++            *why = "mprotect RX -> RW failed";
++            ok = false;
++            break;
++        }
++        uint32_t *code = static_cast<uint32_t *>(page) + 4 * round;
++        const int expected = 42 + round;
++        code[0] = 0x52800000u | (uint32_t(expected) << 5); // movz w0, #expected
++        code[1] = 0xd65f03c0u;                              // ret
++        sys_cache_control(kCacheFunctionPrepareForExecution, page, size);
++        if (mprotect(page, size, PROT_READ | PROT_EXEC) != 0) {
++            *why = "mprotect RW -> RX failed";
++            ok = false;
++            break;
++        }
++        ok = jitProbeCall(code, expected, why);
++    }
++    munmap(page, size);
++    return ok;
++}
++
++} // namespace
++
++bool OSAllocator::canAllocateExecutableMemory()
++{
++    static const bool result = [] {
++        const char *why = "ok";
++        const bool ok = jitProbe(&why);
++        const char *log = getenv("QV4_JIT_PROBE_LOG");
++        if (!ok || (log && *log && strcmp(log, "0") != 0)) {
++            fprintf(stderr, "QV4 JIT: executable memory probe %s (%s); %s\n",
++                    ok ? "passed" : "FAILED", why,
++                    ok ? "JIT on (mmap RW + mprotect RX)" : "using the bytecode interpreter");
++        }
++        return ok;
++    }();
++    return result;
+ }
+ 
+ #else
+--- a/src/qml/configure.cmake
++++ b/src/qml/configure.cmake
+@@ -97,7 +97,11 @@
+     CONDITION ( ( TEST_architecture_arch STREQUAL i386 AND QT_FEATURE_sse2 ) OR
+         ( TEST_architecture_arch STREQUAL x86_64 AND QT_FEATURE_sse2 ) OR
+         ( TEST_architecture_arch STREQUAL arm AND TEST_arm_fp AND TEST_arm_thumb AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX OR VXWORKS ) ) OR
+-        ( TEST_architecture_arch STREQUAL arm64 AND TEST_arm_fp AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX OR INTEGRITY OR VXWORKS ) ) )
++        ( TEST_architecture_arch STREQUAL arm64 AND TEST_arm_fp AND ( ANDROID OR LINUX OR IOS OR TVOS OR QNX OR INTEGRITY OR VXWORKS ) ) OR
++        # Xios: the rootless iOS build configures as Darwin (CMake's IOS is false, MACOS is true), so the IOS
++        # arm64 entry above never matches. Real macOS arm64 stays off through QT_QML_JIT_SUPPORTED_IMPL below,
++        # which keys on Q_OS_MACOS, and Q_OS_MACOS is not defined for an arm64-apple-ios target.
++        ( TEST_architecture_arch STREQUAL arm64 AND TEST_arm_fp AND APPLE ) )
+ )
+ # special case begin
+ # When doing macOS universal builds, JIT needs to be disabled for the ARM slice.
+--- a/src/qml/jsruntime/qv4executableallocator.cpp
++++ b/src/qml/jsruntime/qv4executableallocator.cpp
+@@ -8,6 +8,11 @@
+ #include <wtf/StdLibExtras.h>
+ #include <wtf/PageAllocation.h>
+ 
++#if defined(Q_OS_IOS)
++#include <QtCore/qatomic.h>
++#include <cstdio>
++#endif
++
+ using namespace QV4;
+ 
+ void *ExecutableAllocator::Allocation::exceptionHandlerStart() const
+@@ -159,6 +164,20 @@
+         allocation->size = allocSize;
+         allocation->free = true;
+         chunk->firstAllocation = allocation;
++#if defined(Q_OS_IOS)
++        // Xios: QV4_JIT_PROBE_LOG=1 logs each new executable chunk, so a device run can prove the
++        // JIT is really emitting code (see OSAllocatorPosix.cpp for the iOS executable-memory probe).
++        static const bool logChunks = qEnvironmentVariableIntValue("QV4_JIT_PROBE_LOG") > 0;
++        if (logChunks) {
++            static QBasicAtomicInteger<quint64> totalBytes = Q_BASIC_ATOMIC_INITIALIZER(0);
++            static QBasicAtomicInteger<quint32> totalChunks = Q_BASIC_ATOMIC_INITIALIZER(0);
++            const quint64 total = totalBytes.fetchAndAddRelaxed(allocSize) + allocSize;
++            const quint32 count = totalChunks.fetchAndAddRelaxed(1) + 1;
++            fprintf(stderr, "QV4 JIT: executable chunk %u at %p, %zu bytes (allocator %p, %llu bytes mapped so far)\n",
++                    count, chunk->pages->base(), allocSize, static_cast<void *>(this),
++                    static_cast<unsigned long long>(total));
++        }
++#endif
+     }
+ 
+     Q_ASSERT(allocation);
