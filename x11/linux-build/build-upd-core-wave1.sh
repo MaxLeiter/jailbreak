@@ -201,7 +201,8 @@ run lcms2 'usr/lib/liblcms2.*' 'usr/lib/pkgconfig/lcms2.pc' 'usr/include/lcms2.h
 run gdk-pixbuf 'usr/lib/libgdk_pixbuf-2.0.*' 'usr/lib/pkgconfig/gdk-pixbuf-2.0.pc' 'usr/include/gdk-pixbuf-2.0'
 
 echo; echo "==> collect debs built by this run -> $RAW"
-find ./build_dist -name "*_$XIOS_DEB_ARCH.deb" -newermt "@$START" -exec cp -v {} "$RAW/" \;
+# _all too: libx11-data and libx11-doc are Architecture: all.
+find ./build_dist \( -name "*_$XIOS_DEB_ARCH.deb" -o -name "*_all.deb" \) -newermt "@$START" -exec cp -v {} "$RAW/" \;
 echo "==================== SUMMARY ===================="
 for p in libtasn1 nettle libidn2 p11-kit gnutls xz flac libsndfile sudo fribidi libarchive libx11 libtiff-stage lcms2 gdk-pixbuf; do
   want $p && printf '  %-14s %s\n' $p "${RESULT[$p]:-SKIPPED}"
