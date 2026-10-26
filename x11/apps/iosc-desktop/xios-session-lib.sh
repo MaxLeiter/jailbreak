@@ -1009,7 +1009,10 @@ xs_find_bringup() {
 # session started by an older launcher). Recorded process groups are reaped
 # first, and anything provably owned by a slot is subtracted before a single
 # signal is sent, so a non-slot start or stop never touches a running slot.
-xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-sysintd|dbus-daemon.*--session|dbus-run-session'
+# ioscd starts the classic iosc with a bare argv[0] ("iosc -classic ..."), and iosc's
+# XWM spawns Xwayland; neither matched, so a stop deleted wayland-0 and left that iosc
+# and its Xwayland running. Slot-owned processes are subtracted before this applies.
+xs_kill_pattern='/bin/iosc( |$)|/bin/iosc-|^iosc -classic( |$)|/bin/Xwayland .*-rootless -wm|ioscbar|ioscdock|ioscoverview|ioscbg|run-kde-plasma\.sh|/usr/bin/mutter|/usr/bin/gnome-shell|gnome-session|kwin_wayland|plasmashell|plasmawindowed|kactivitymanagerd|org_kde_powerdevil|/Applications/KDE/[^ ]+\.app\/[^ ]+|/bin/kgx|gnome-text-editor|gnome-calculator|xios-a11yd|xios-sysintd|dbus-daemon.*--session|dbus-run-session'
 # Shared desktop services (one per device, used by every desktop). Only an
 # everything-is-stopping teardown may touch these; switching or stopping one
 # desktop must leave another desktop's audio alone.
