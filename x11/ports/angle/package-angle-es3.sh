@@ -22,6 +22,11 @@
 # QtWayland's facade and nested compositor requests.
 # -16 revision: exports and returns the EGL 1.5 eglWaitSync core entry point so
 # iosc can enqueue the Xios consumer-release event on ANGLE's Metal stream.
+# -17 revision: a swap that finds every buffer still attached waits on the window's
+# queue (poll under prepare_read) instead of looping wl_display_roundtrip_queue, and
+# after 250 ms without a wl_buffer.release reuses the oldest buffer. The roundtrip loop
+# burned a core and never ended when the compositor stopped compositing the surface,
+# which froze plasmashell's GUI thread behind its render thread (shim-only repack).
 set -euo pipefail
 _xt="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 while [ "$_xt" != / ] && [ ! -f "$_xt/linux-build/target-lib.sh" ]; do _xt="$(dirname "$_xt")"; done
@@ -42,7 +47,7 @@ BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3
 STAGE="$STAGEROOT/angle"
 BASE_STAGE="$STAGEROOT/base"
-VER="2.1.0+git20260630.a32d31d+es3-16"
+VER="2.1.0+git20260630.a32d31d+es3-17"
 DEB="angle_${VER}_$XIOS_DEB_ARCH.deb"
 
 rm -rf "$STAGEROOT"
