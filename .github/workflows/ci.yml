@@ -86,7 +86,6 @@ jobs:
       - name: Regenerate derived index from committed Packages
         run: |
           python bin/lib/make-repo.py --from-index
-          XIOS_REPO_PROFILE=rootful python bin/lib/make-repo.py --from-index
 
       - name: Committed index must match what the generator produces
         run: |

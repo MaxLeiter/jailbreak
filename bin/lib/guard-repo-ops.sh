@@ -108,8 +108,9 @@ def forced_deb_adds(cmd):
 # strip_heredocs(command), never the raw command.
 if tool in ("Edit", "Write", "NotebookEdit"):
     path = tool_input.get("file_path") or ""
-    # Each profile (repo/profiles/<name>/, e.g. rootful) is its own generated
-    # tree with the same layout as the rootless one at repo/.
+    # Each profile (repo/profiles/<name>/, e.g. the retired rootful suite) is its
+    # own generated tree with the same layout as the rootless one at repo/. The
+    # retired ones are frozen, so hand edits stay blocked there too.
     generated = (
         r"/repo/(profiles/[^/]+/)?"
         r"(Packages(\.gz|\.pv|\.sha)?|Release(\.gpg)?|InRelease"

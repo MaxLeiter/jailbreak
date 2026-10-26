@@ -164,13 +164,8 @@ case "$PROFILE" in
     PROFILE_URL_PATH=""
     BLOB_PREFIX="debs"
     ;;
-  rootful)
-    PROFILE_REPO_REL="profiles/rootful"
-    PROFILE_URL_PATH="/profiles/rootful"
-    BLOB_PREFIX="profiles/rootful/debs"
-    ;;
   *)
-    echo "ERROR: unsupported repo profile: $PROFILE (expected rootless or rootful)" >&2
+    echo "ERROR: unsupported repo profile: $PROFILE (rootless is the only profile; rootful was dropped)" >&2
     exit 2
     ;;
 esac
@@ -237,7 +232,6 @@ snapshot_debs() {
 }
 
 finalize_x11_graphics_debs() {
-  [ "$PROFILE" = rootless ] || return 0
   local signer="$REPO_ROOT/x11/linux-build/resign-graphics-packages.py"
   local gpu_ent="$REPO_ROOT/x11/linux-build/build_info/iosc-gpu-client-ent.xml"
   local gl_ent="$REPO_ROOT/x11/linux-build/build_info/iosc-gl-ent.xml"
@@ -295,25 +289,17 @@ sign_index() {
   fi
 }
 
-# Rootless and rootful are independent APT suites but share one static Vercel
-# deployment. Refresh every sibling suite from its committed Packages manifest
-# before uploading the tree so publishing one profile can never leave another
-# profile with Release hashes or signatures from an older generation.
-refresh_sibling_profiles() {
-  local sibling sibling_dir
-  for sibling in rootless rootful; do
-    [ "$sibling" = "$PROFILE" ] && continue
-    if [ "$sibling" = rootless ]; then
-      sibling_dir="$REPO_ROOT/repo"
-    else
-      sibling_dir="$REPO_ROOT/repo/profiles/$sibling"
-    fi
-    [ -s "$sibling_dir/Packages" ] || continue
-    echo "==> Refreshing sibling $sibling metadata from its Packages manifest"
-    XIOS_REPO_PROFILE="$sibling" "$PY" "$REPO_ROOT/bin/lib/make-repo.py" --from-index
-    "$PY" "$REPO_ROOT/bin/lib/check-repo-solvable.py" "$sibling_dir/Packages"
-    "$PY" "$REPO_ROOT/bin/lib/audit-repo.py" --repo "$sibling_dir" --no-payloads
-    sign_index "$sibling_dir"
+# repo/profiles/<name>/ holds retired suites (rootful, dropped 2026-10-25) that
+# are still live. Nothing regenerates, audits or re-signs them any more; they ride
+# along in the static deployment exactly as they sit on disk. Say so, so a missing
+# Release/InRelease in a fresh checkout is not a surprise on the live URL.
+note_frozen_profiles() {
+  local d
+  [ -d "$REPO_ROOT/repo/profiles" ] || return 0
+  for d in "$REPO_ROOT"/repo/profiles/*/; do
+    [ -d "$d" ] || continue
+    echo "==> NOTE: ${d#"$REPO_ROOT"/}: retired profile, deployed as-is (no longer regenerated or re-signed)"
+    [ -s "${d}InRelease" ] || echo "   WARNING: ${d#"$REPO_ROOT"/}InRelease is absent here; the live copy of that suite will break if this tree is deployed" >&2
   done
 }
 
@@ -490,12 +476,10 @@ else
   # Drop-in-superset gate for debs shadowing Procursus package names (soname/file
   # parity + upstream-version pinning + -dev runtime-dylib lint). Waivers with
   # reasons in bin/lib/shadow-waivers.json. Born from the 2026-07-08 device brick.
-  if [ "$PROFILE" = rootless ]; then
-    "$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
-  fi
+  "$PY" "$REPO_ROOT/bin/lib/check-procursus-shadow.py"
   # Ladybird's @rpath OpenSSL must resolve to the vendored ladybird-tls 3.5, not the
   # base 3.2.1. Born from wl4, which shipped without the rpath prepend and could not
-  # start a renderer at all. Both profiles: it no-ops when no ladybird debs are staged.
+  # start a renderer at all. It no-ops when no ladybird debs are staged.
   "$PY" "$REPO_ROOT/bin/lib/check-ladybird-tls-rpath.py" --debs "$PROFILE_REPO_DIR/debs"
 
   AFTER_INDEX="$(snapshot_debs)"
@@ -530,7 +514,7 @@ fi
 
 echo "==> Signing the index (InRelease + Release.gpg)"
 sign_index "$PROFILE_REPO_DIR"
-refresh_sibling_profiles
+note_frozen_profiles
 
 if [ "$SOURCE" = debs ]; then
   AFTER_SIGN="$(snapshot_debs)"

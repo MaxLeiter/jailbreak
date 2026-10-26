@@ -36,10 +36,14 @@ import argparse, functools, os, io, gzip, json, hashlib, tarfile, html, shutil, 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "repo"))
 
-# Rootless and rootful builds share package names but install into incompatible
-# prefixes, so each profile owns an independent index and payload tree.
+# Rootless is the only profile. A rootful profile (repo/profiles/rootful/) was
+# dropped on 2026-10-25; that directory is still served but is frozen: nothing in
+# this file reads, writes or prunes anything under repo/profiles/.
 PROFILE = os.environ.get("XIOS_REPO_PROFILE", "rootless")
-REPO = REPO_ROOT if PROFILE == "rootless" else os.path.join(REPO_ROOT, "profiles", PROFILE)
+if PROFILE != "rootless":
+    raise SystemExit(f"ERROR: unsupported repo profile {PROFILE!r}: rootless is the only "
+                     "profile (rootful was dropped)")
+REPO = REPO_ROOT
 DEBS = os.path.join(REPO, "debs")
 META = os.path.join(REPO_ROOT, "meta")
 LOGO_SOURCES = os.path.join(HERE, "logo-sources")
@@ -62,13 +66,11 @@ APP_SECTION_PACKAGES = {
 
 # ── identity / theme ─────────────────────────────────────────────────────────
 DEFAULT_BASE_URL = "https://repo.maxleiter.com"
-if PROFILE != "rootless":
-    DEFAULT_BASE_URL += f"/profiles/{PROFILE}"
 BASE_URL    = os.environ.get("XIOS_REPO_BASE_URL", DEFAULT_BASE_URL)
 REPO_NAME   = "Max's Repo"
 ORIGIN      = REPO_NAME
 DESCRIPTION = "Jailbreak packages by Max"
-ARCH        = "iphoneos-arm64" if PROFILE == "rootless" else "iphoneos-arm"
+ARCH        = "iphoneos-arm64"
 PUBLISHER   = "Max Leiter <maxwell.leiter@gmail.com>"
 ACCENT      = (85, 170, 255)      # #55aaff (maxleiter.com brand blue)
 ACCENT_HEX  = "#55aaff"
@@ -124,7 +126,11 @@ def control_dict(deb_bytes):
     return d
 
 def deb_payload_profile(deb_bytes):
-    """Infer rootless/rootful ownership from a package's payload paths."""
+    """Infer rootless/rootful ownership from a package's payload paths.
+
+    "rootful" here only means "has files, none under /var/jb": such a deb does
+    not belong in the (rootless-only) repo.
+    """
     m = ar_members(deb_bytes)
     dn = next((n for n in m if n.startswith("data.tar")), None)
     if dn is None:
@@ -1355,15 +1361,9 @@ def write_index(pkgs):
     tweak_rows = "".join(row(p, min(3 + j, 16))
                          for j, p in enumerate(sorted(tweaks, key=lambda p: name(p).lower())))
 
-    if PROFILE == "rootless":
-        index_description = ("Rootless jailbreak packages and xiOS desktop apps for iPad, "
-                             "including GIMP, GNOME, KDE Plasma, X11, and Wayland software.")
-        tweak_lede = "Small quality-of-life tweaks and companion apps for iOS and iPadOS on rootless jailbreaks."
-    else:
-        index_description = (f"{PROFILE.title()} jailbreak packages for 64-bit iPhone and iPad "
-                             "on iOS or iPadOS 16 and newer.")
-        tweak_lede = (f"Apps and packages built for {PROFILE} jailbreaks on "
-                      "iOS and iPadOS 16 or newer.")
+    index_description = ("Rootless jailbreak packages and xiOS desktop apps for iPad, "
+                         "including GIMP, GNOME, KDE Plasma, X11, and Wayland software.")
+    tweak_lede = "Small quality-of-life tweaks and companion apps for iOS and iPadOS on rootless jailbreaks."
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#0a0a0b">
@@ -1421,8 +1421,6 @@ def write_index(pkgs):
 
 def write_seo_files(pkgs):
     """Write deterministic crawler discovery files for the public rootless repo."""
-    if PROFILE != "rootless":
-        return
     robots = f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n"
     open(os.path.join(REPO, "robots.txt"), "w").write(robots)
 
@@ -1524,10 +1522,9 @@ def main():
             payload_profile = deb_payload_profile(blob)
             if payload_profile is not None and payload_profile != PROFILE:
                 raise SystemExit(
-                    f"ERROR: {fn} has {payload_profile} payload paths but this is the "
-                    f"{PROFILE} profile.\n"
-                    f"       Put it in repo/profiles/{payload_profile}/debs/ and generate "
-                    f"with XIOS_REPO_PROFILE={payload_profile}."
+                    f"ERROR: {fn} has no /var/jb payload paths, so it is not a rootless "
+                    f"package.\n"
+                    f"       Rootful packages are no longer supported; rebuild it rootless."
                 )
             normalize_section(ctrl)
             normalize_publisher(ctrl)
