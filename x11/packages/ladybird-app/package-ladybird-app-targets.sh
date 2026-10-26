@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Produce the two architecture variants that expose one ladybird-app package id:
+# Re-target and re-sign the container-built ladybird-app deb for each supported
+# target. There is only one now (rootful-1900 was dropped on 2026-10-25):
 #   rootless-1900 -> iphoneos-arm64, /var/jb/Applications
-#   rootful-1900  -> iphoneos-arm,   /Applications
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -14,12 +14,7 @@ OUT_ROOT="${2:-}"
 }
 OUT_ROOT="${OUT_ROOT:-$(dirname "$IN")}"
 
-for target in rootless-1900 rootful-1900; do
-    if [ "$target" = rootless-1900 ]; then
-        target_out="$OUT_ROOT"
-    else
-        target_out="$OUT_ROOT/targets/$target"
-    fi
+for target in rootless-1900; do
     echo "==> Ladybird package target: $target"
-    XIOS_TARGET="$target" "$HERE/resign-ladybird-app-deb.sh" "$IN" "$target_out"
+    XIOS_TARGET="$target" "$HERE/resign-ladybird-app-deb.sh" "$IN" "$OUT_ROOT"
 done

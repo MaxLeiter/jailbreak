@@ -4,8 +4,8 @@
 These are not about any one package -- they are what makes the cctools-port
 cross toolchain and the staged macOS SDK work at all, so every target needs them
 before `make setup`. Extracted from build.sh so a cold volume can be bootstrapped
-without dragging the X server along with it (the rootful bring-up starts on the
-Wayland path, where Xvfb is not wanted).
+without dragging the X server along with it (the Wayland path does not want
+Xvfb).
 
 Run from inside the Procursus checkout, in the container:
 

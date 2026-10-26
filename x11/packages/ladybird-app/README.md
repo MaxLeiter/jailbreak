@@ -69,13 +69,13 @@ must be bundled inside the `.app` and spawned.
   `"<app_dir>/<HelperName>"` is always compiled** (line 111). We make `application_directory()`
   return the bundle root by passing `[NSBundle mainBundle].bundlePath` to `WebView::Application`
   as the "ladybird binary path". So `WebContent` etc. resolve to
-  `<Ladybird.app>/WebContent`, where both package variants ship them.
+  `<Ladybird.app>/WebContent`, where the package ships them.
 - Resources: the iOS default resource root (`find_prefix(app_dir)/share/Lagom`) points
   *outside* the bundle, so `IOSApplication::boot` **explicitly reinstalls**
   `Core::ResourceImplementationFile` at `<bundle>/share/Lagom`. No engine source patch needed.
 
-**Bundle layout** (self-contained). Rootless uses `/var/jb/Applications`; rootful uses
-`/Applications`:
+**Bundle layout** (self-contained). Installs under `/var/jb/Applications`
+(a rootful `/Applications` variant was dropped on 2026-10-25):
 ```
 <application root>/Ladybird.app/
   Ladybird        UI exe (statically links the engine)
@@ -121,22 +121,19 @@ The current production path is:
 2. `linux-build/build-ladybird-app-bundle.sh` assembles the self-contained `.app` deb inside
    the Linux container. This package is only preliminarily signed.
 3. `packages/ladybird-app/package-ladybird-app-targets.sh <deb> <out-root>` runs on macOS and
-   emits `iphoneos-arm64` rootless and `iphoneos-arm` rootful packages with the same package id
-   and version. The host `xsign`/`ldid` pass emits DER entitlements; without that,
+   emits the `iphoneos-arm64` rootless package. The host `xsign`/`ldid` pass emits DER entitlements; without that,
    `IOSurfaceCreate()` returns `NULL` on device even though `ldid -e` prints the XML keys.
-
-The two payloads are one user-facing package, not two products:
 
 | Target | App path | Architecture |
 |---|---|---|
 | `rootless-1900` | `/var/jb/Applications/Ladybird.app` | `iphoneos-arm64` |
-| `rootful-1900` | `/Applications/Ladybird.app` | `iphoneos-arm` |
 
-The app and helper Mach-Os are generic arm64 and shared between the variants. Packaging adds the
-scheme-correct `libiosexec` rpath, renders the filesystem entitlements, moves the bundle to the
-correct application root, and registers that exact path with `uicache`. Both variants require
-iOS/iPadOS 16.0 or newer. Both profiles are publishable after their host package audits pass;
-release notes must state when physical-device runtime validation is still pending.
+The app and helper Mach-Os are generic arm64. Packaging adds the `libiosexec` rpath, renders the
+filesystem entitlements, moves the bundle to the application root, and registers that exact path
+with `uicache`. The package requires iOS/iPadOS 16.0 or newer. It is publishable after the host
+package audit passes; release notes must state when physical-device runtime validation is still
+pending. (The former `rootful-1900` variant, `/Applications/Ladybird.app` in `iphoneos-arm`, is
+retired.)
 
 `build-ladybird-app.sh` remains a lower-level packaging driver for prebuilt artifacts. It
 expects `LADYBIRD_ENGINE_STAGE` (the staged helpers + `share/Lagom`) and `LADYBIRD_UI_BIN`

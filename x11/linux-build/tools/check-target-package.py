@@ -2,8 +2,8 @@
 """Verify a staged package tree (or a built .deb) matches its target descriptor.
 
 This is the local half of the migration plan's Phase 8 gate. It is what stops a
-rootful package shipping rootless paths -- the failure the publish gate would
-otherwise only catch on a device, long after the build.
+package shipping paths outside the target's install prefix -- the failure the
+publish gate would otherwise only catch on a device, long after the build.
 
   check-target-package.py <staged-root|package.deb> [target-id]
 
@@ -29,7 +29,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TARGETS = ROOT / "targets"
 
 # Prefixes owned by some target in the matrix. A package built for one of them
-# must not mention any of the others.
+# must not mention any of the others. (Rootless is the only target now, so this
+# is a single entry and the foreign-prefix scans below have nothing to find.)
 KNOWN_PREFIXES = ("/var/jb",)
 
 # Opt-out marker for lines that must name a foreign prefix (runtime probes).
@@ -218,13 +219,8 @@ def check(root: Path, target: dict[str, str]) -> list[str]:
 
     for path in payload:
         rel = "/" + str(path.relative_to(root))
-        if prefix:
-            if not rel.startswith(prefix + "/"):
-                problems.append(f"payload path outside {prefix}: {rel}")
-        else:
-            for bad in foreign:
-                if rel.startswith(bad + "/"):
-                    problems.append(f"payload path uses {bad} on a rootful target: {rel}")
+        if not rel.startswith(prefix + "/"):
+            problems.append(f"payload path outside {prefix}: {rel}")
 
     # Maintainer scripts plus any shipped text: a stale /var/jb in a postinst is
     # just as broken as one in a path, and far easier to miss.
@@ -297,7 +293,7 @@ def main() -> int:
             print(f"  {problem}", file=sys.stderr)
         return 1
 
-    print(f"OK   {src.name} matches {args.target} (prefix {target['package_path_prefix'] or '/'})")
+    print(f"OK   {src.name} matches {args.target} (prefix {target['package_path_prefix']})")
     return 0
 
 

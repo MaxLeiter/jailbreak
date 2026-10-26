@@ -37,29 +37,21 @@ for env_file in "$LB"/targets/*.env; do
       *) echo "  !! id does not match <repo_profile>-<memo_cfver> ($XIOS_REPO_PROFILE-$XIOS_MEMO_CFVER)"; exit 1 ;;
     esac
 
-    # Rootless installs under a prefix; rootful owns the filesystem root.
-    if [ -n "$XIOS_PREFIX" ]; then
-      case "$XIOS_MEMO_TARGET" in
-        *-rootless) ;;
-        *) echo "  !! prefix $XIOS_PREFIX with non-rootless MEMO_TARGET $XIOS_MEMO_TARGET"; exit 1 ;;
-      esac
-      case "$XIOS_RUNTIME_TMP" in
-        "$XIOS_PREFIX"/*) ;;
-        *) echo "  !! runtime_tmp $XIOS_RUNTIME_TMP is outside the prefix"; exit 1 ;;
-      esac
-    else
-      case "$XIOS_MEMO_TARGET" in
-        *-rootless) echo "  !! empty prefix with rootless MEMO_TARGET $XIOS_MEMO_TARGET"; exit 1 ;;
-      esac
-      case "$XIOS_RUNTIME_TMP" in
-        /var/jb/*) echo "  !! rootful runtime_tmp points into a rootless prefix"; exit 1 ;;
-      esac
-    fi
+    # Every target is rootless: it installs under a prefix.
+    [ -n "$XIOS_PREFIX" ] || { echo "  !! empty prefix (only rootless targets are supported)"; exit 1; }
+    case "$XIOS_MEMO_TARGET" in
+      *-rootless) ;;
+      *) echo "  !! prefix $XIOS_PREFIX with non-rootless MEMO_TARGET $XIOS_MEMO_TARGET"; exit 1 ;;
+    esac
+    case "$XIOS_RUNTIME_TMP" in
+      "$XIOS_PREFIX"/*) ;;
+      *) echo "  !! runtime_tmp $XIOS_RUNTIME_TMP is outside the prefix"; exit 1 ;;
+    esac
 
     [ "$XIOS_PACKAGE_PATH_PREFIX" = "$XIOS_PREFIX" ] ||
       { echo "  !! package_path_prefix ($XIOS_PACKAGE_PATH_PREFIX) != prefix ($XIOS_PREFIX)"; exit 1; }
 
-    echo "   prefix=${XIOS_PREFIX:-/}  arch=$XIOS_DEB_ARCH  profile=$XIOS_REPO_PROFILE  tmp=$XIOS_RUNTIME_TMP  sh=$XIOS_SHELL_PATH"
+    echo "   prefix=$XIOS_PREFIX  arch=$XIOS_DEB_ARCH  profile=$XIOS_REPO_PROFILE  tmp=$XIOS_RUNTIME_TMP  sh=$XIOS_SHELL_PATH"
   ) || fail=1
 done
 

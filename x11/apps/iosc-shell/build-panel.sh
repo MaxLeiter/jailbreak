@@ -11,7 +11,7 @@
 #
 # All are pure libwayland-CLIENT programs (own poll() loop). The GTK-stack
 # dylibs (cairo/pango/glib/…) resolve on device from the selected Procursus
-# prefix via @rpath (/var/jb/usr/lib for rootless, /usr/lib for rootful).
+# prefix via @rpath (/var/jb/usr/lib).
 #
 # Usage: ./build-panel.sh
 # Output: out/ioscbar, out/ioscdock, out/ioscoverview, out/ioscbg.
@@ -31,12 +31,8 @@ case "$SCHEME" in
     MEMO_TARGET_DEFAULT=iphoneos-arm64-rootless
     MEMO_PREFIX_DEFAULT=/var/jb
     ;;
-  rootful)
-    MEMO_TARGET_DEFAULT=iphoneos-arm64
-    MEMO_PREFIX_DEFAULT=
-    ;;
   *)
-    echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless or rootful (got $SCHEME)" >&2
+    echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless (got $SCHEME; rootful support was dropped)" >&2
     exit 1
     ;;
 esac

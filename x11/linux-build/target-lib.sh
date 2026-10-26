@@ -102,8 +102,8 @@ xios_load_target() {
 
 # Resolve a target from an optional first positional argument, falling back to
 # $XIOS_TARGET and then rootless-1900. An argument that is not a descriptor is an
-# error: `script rootful-1900` silently building rootless is the failure mode
-# this exists to prevent.
+# error: a typo'd target id silently building rootless is the failure mode this
+# exists to prevent.
 xios_load_target_arg() {
   if [ "$#" -gt 0 ] && [ -n "$1" ]; then
     if [ -f "$XIOS_TARGETS_DIR/$1.env" ]; then

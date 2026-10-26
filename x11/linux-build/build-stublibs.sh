@@ -41,13 +41,9 @@ done
 xios_load_target "$TARGET"
 
 IMAGE="${XIOS_PROC_IMAGE:-procursus-xbuild:bookworm-arm64}"
-# Same volume rule as build-procursus-target.sh, whose glib build the sysroot
-# check below points at: rootless keeps procursus-vol, other profiles get their own.
-if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
-  VOLUME="${PROCURSUS_VOL:-procursus-vol}"
-else
-  VOLUME="${PROCURSUS_VOL:-procursus-vol-$XIOS_REPO_PROFILE}"
-fi
+# Same volume as build-procursus-target.sh, whose glib build the sysroot
+# check below points at.
+VOLUME="${PROCURSUS_VOL:-procursus-vol}"
 SDK_SRC="${SDK_SRC:-$HOME/theos/sdks/iPhoneOS16.5.sdk}"
 MACOS_SDK_SRC="${MACOS_SDK_SRC:-$(xcrun --sdk macosx --show-sdk-path 2>/dev/null || true)}"
 SCRIPTS=(

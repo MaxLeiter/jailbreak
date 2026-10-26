@@ -42,7 +42,6 @@ apt-get install -y --no-install-recommends \
   cmake ninja-build quilt pkg-config libglib2.0-bin libglib2.0-dev-bin >/dev/null
 
 # See build-ladybird-wave4c.sh: the staged prefix is exposed at its device path.
-xios_require_rootless "the engine build stages the device prefix as a container symlink"
 if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
 mkdir -p "$SHIM"
 for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \

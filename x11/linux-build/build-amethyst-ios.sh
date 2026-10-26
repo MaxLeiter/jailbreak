@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 # Build AngelAuraMC Amethyst as a graphical Minecraft launcher for Xios.
 #
-# The application payload is identical for rootless and rootful devices. The
-# selected target controls the package architecture, dependency version and
+# The selected target controls the package architecture, dependency version and
 # install prefix:
 #   XIOS_TARGET=rootless-1900 bash linux-build/build-amethyst-ios.sh
-#   XIOS_TARGET=rootful-1900  bash linux-build/build-amethyst-ios.sh
 set -euo pipefail
 umask 022
 export LC_ALL=C
@@ -19,11 +17,7 @@ xios_load_target "${XIOS_TARGET:-rootless-1900}"
 source "$ROOT/lib/xlib.sh"
 
 BASE_OUT="$HERE/out"
-if [ "$XIOS_REPO_PROFILE" = rootless ]; then
-  OUT="${OUT:-$BASE_OUT}"
-else
-  OUT="${OUT:-$BASE_OUT/targets/$XIOS_TARGET_ID}"
-fi
+OUT="${OUT:-$BASE_OUT}"
 WORK="${WORK:-$BASE_OUT/amethyst-ios-work}"
 SOURCE="$WORK/Amethyst-iOS"
 CACHE="$WORK/cache"

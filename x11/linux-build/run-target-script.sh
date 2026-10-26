@@ -10,11 +10,9 @@
 # them silently builds rootless no matter which target you meant.
 #
 # This wrapper is the one place that knows the standard mount set and env, so a
-# target selection actually reaches the script. Volumes follow the same rule as
-# the other wrappers: rootless keeps its historical name, other profiles get
-# their own, so a rootful bootstrap never lands in the working rootless tree.
+# target selection actually reaches the script.
 #
-#   bash linux-build/run-target-script.sh rootful-1900 build-wayland.sh
+#   bash linux-build/run-target-script.sh rootless-1900 build-wayland.sh
 #   PROCURSUS_VOL=procursus-vol-wayland bash linux-build/run-target-script.sh build-wayland.sh
 set -euo pipefail
 
@@ -51,18 +49,11 @@ done
 xios_load_target "$TARGET"
 
 IMAGE="${XIOS_PROC_IMAGE:-procursus-xbuild:bookworm-arm64}"
-if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
-  VOLUME="${PROCURSUS_VOL:-procursus-vol}"
-else
-  VOLUME="${PROCURSUS_VOL:-procursus-vol-$XIOS_REPO_PROFILE}"
-fi
+VOLUME="${PROCURSUS_VOL:-procursus-vol}"
 OUT="${XIOS_OUT:-$HERE/out}"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  OUT="$OUT/targets/$XIOS_TARGET_ID"
-fi
 mkdir -p "$OUT"
 
-echo "==> target: $XIOS_TARGET_ID ($XIOS_MEMO_TARGET / CFVER $XIOS_MEMO_CFVER / prefix ${XIOS_PREFIX:-/})"
+echo "==> target: $XIOS_TARGET_ID ($XIOS_MEMO_TARGET / CFVER $XIOS_MEMO_CFVER / prefix $XIOS_PREFIX)"
 echo "==> script: $SCRIPT_PATH"
 echo "==> volume: $VOLUME"
 echo "==> out:    $OUT"

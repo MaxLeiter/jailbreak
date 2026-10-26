@@ -8,8 +8,7 @@
 # place — session-files.sh — shared with install-xios-session.sh, so the deb
 # and the scp fast path cannot diverge.
 #
-# Pure shell — nothing to compile or sign. Rootless output also copies to repo/debs;
-# non-rootless outputs stay under x11/linux-build/out/targets/<target-id>/.
+# Pure shell — nothing to compile or sign. The output also copies to repo/debs.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -36,9 +35,6 @@ done
 xios_load_target "$TARGET"
 
 OUTDIR="$X11DIR/linux-build/out"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-fi
 REPODEBS="$REPO_ROOT/repo/debs"
 STAGEROOT="/private/tmp/xios-session-deb/$XIOS_TARGET_ID"
 STAGE="$STAGEROOT/xios-session"
@@ -51,7 +47,6 @@ DEB="xios-session_${VER}_${ARCH}.deb"
 rm -rf "$STAGEROOT"
 mkdir -p "$STAGE/DEBIAN"
 PAYLOAD_ROOT="$STAGE$XIOS_PACKAGE_PATH_PREFIX"
-[ -n "$PAYLOAD_ROOT" ] || PAYLOAD_ROOT="$STAGE"
 stage_session_files "$PAYLOAD_ROOT"
 
 INSTKB=$(du -sk "$PAYLOAD_ROOT" | cut -f1)
@@ -107,7 +102,7 @@ EOF
 
 # 2b. prerm — the iOS-app desktop entries are generated at runtime, so dpkg does
 # not own them and would otherwise leave ~60 dead launchers behind on removal.
-# The helper path follows the target prefix (rootful has no jailbreak prefix).
+# The helper path follows the target prefix.
 cat > "$STAGE/DEBIAN/prerm" <<EOF
 #!/bin/sh
 set -e
@@ -133,14 +128,8 @@ fi
 xdeb_refuse_published "$STAGE"
 mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
-if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
-  mkdir -p "$REPODEBS"
-  cp "$built" "$REPODEBS/${DEB}"
-fi
+mkdir -p "$REPODEBS"
+cp "$built" "$REPODEBS/${DEB}"
 echo "=== DEB BUILT ==="
 ls -la "$OUTDIR/${DEB}"
-if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
-  ls -la "$REPODEBS/${DEB}"
-else
-  echo "target artifact kept out of repo/debs: $built"
-fi
+ls -la "$REPODEBS/${DEB}"

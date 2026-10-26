@@ -34,11 +34,7 @@ case "$OPENJDK_VARIANT" in
     exit 2
     ;;
 esac
-if [ "$XIOS_REPO_PROFILE" = rootless ]; then
-  OUT="${OUT:-$HERE/out}"
-else
-  OUT="${OUT:-$HERE/out/targets/$XIOS_TARGET_ID}"
-fi
+OUT="${OUT:-$HERE/out}"
 if [ "$OPENJDK_VARIANT" = "awt-x11" ]; then
   WORK="${WORK:-$HERE/out/openjdk-awt-ios-work}"
   CONF="${OPENJDK_CONF:-ios-aarch64-server-awt-x11-release}"
@@ -67,13 +63,6 @@ else
 fi
 IOS_MIN="${IOS_MIN:-$XIOS_DEFAULT_MIN_IOS}"
 JOBS="${JOBS:-$(sysctl -n hw.ncpu)}"
-
-if [ "$XIOS_REPO_PROFILE" != rootless ] && [ "$MODE" != "--package-only" ]; then
-  echo "OpenJDK's arm64 iOS image is target-neutral, but source builds use the rootless" >&2
-  echo "development sysroot. Build it once with rootless-1900, then repackage with:" >&2
-  echo "  XIOS_TARGET=$XIOS_TARGET_ID $0 --package-only" >&2
-  exit 2
-fi
 
 
 OPENJDK_REPO="${OPENJDK_REPO:-https://github.com/openjdk/jdk21u.git}"

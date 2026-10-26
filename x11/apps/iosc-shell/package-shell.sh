@@ -16,9 +16,8 @@
 #   run-shell.sh      on-device bring-up script
 #   panel-ent.xml     the (non-GPU) client entitlement set
 # Output: iosc-shell_<ver>_iphoneos-arm64.deb in x11/linux-build/out and repo/debs.
-# Env: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME=rootless|rootful (default rootless).
-#      A rootful deb takes the rootful-1900 target's arch (iphoneos-arm) and
-#      stays in linux-build/out/targets/rootful-1900 (repo/debs is the rootless repo).
+# Env: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME=rootless (the default and the only
+#      scheme; rootful support was dropped on 2026-10-25).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -38,16 +37,8 @@ case "$SCHEME" in
     DEB_PREFIX=/var/jb
     VERSION_SUFFIX="${IOSC_VERSION_SUFFIX:-}"
     ;;
-  rootful)
-    # Procursus names rootful debs iphoneos-arm; this used to ship them as
-    # iphoneos-arm64 (the rootless arch) and copy them into the rootless repo.
-    xios_load_target rootful-1900
-    DEB_PREFIX=
-    VERSION_SUFFIX="${IOSC_VERSION_SUFFIX:-+rootful}"
-    OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-    ;;
   *)
-    echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless or rootful (got $SCHEME)" >&2
+    echo "ERROR: IOSC_PACKAGE_SCHEME/THEOS_PACKAGE_SCHEME must be rootless (got $SCHEME; rootful support was dropped)" >&2
     exit 1
     ;;
 esac
@@ -79,22 +70,11 @@ done
 
 if command -v otool >/dev/null; then
   for b in ioscbar ioscdock ioscoverview ioscbg; do
-    case "$SCHEME" in
-      rootless)
-        otool -l "$BIN/$b" | grep -q "/var/jb/usr/lib" || {
-          echo "ERROR: $b is not linked for rootless (/var/jb/usr/lib rpath missing)" >&2
-          echo "       Rebuild with IOSC_PACKAGE_SCHEME=rootless ./build-panel.sh" >&2
-          exit 1
-        }
-        ;;
-      rootful)
-        if otool -l "$BIN/$b" | grep -q "/var/jb"; then
-          echo "ERROR: $b still contains /var/jb paths; refusing rootful package" >&2
-          echo "       Rebuild with IOSC_PACKAGE_SCHEME=rootful ./build-panel.sh" >&2
-          exit 1
-        fi
-        ;;
-    esac
+    otool -l "$BIN/$b" | grep -q "/var/jb/usr/lib" || {
+      echo "ERROR: $b is not linked for rootless (/var/jb/usr/lib rpath missing)" >&2
+      echo "       Rebuild with IOSC_PACKAGE_SCHEME=rootless ./build-panel.sh" >&2
+      exit 1
+    }
   done
 else
   echo "WARNING: otool not found; skipping scheme/rpath validation" >&2
@@ -155,7 +135,7 @@ EOF
 
 echo "=== staged tree ==="
 find "$STAGE" -type f | sed "s#$STAGE##" | sort
-echo "scheme=${SCHEME} prefix=${DEB_PREFIX:-/} installed=${INSTKB}KB"
+echo "scheme=${SCHEME} prefix=${DEB_PREFIX} installed=${INSTKB}KB"
 echo "=== ioscbar entitlements (client set, no GPU classes) ==="
 ldid -e "$BIN/ioscbar" | grep -E "no-container|get-task-allow|absolute-path" | sed 's/^/   /' || true
 
@@ -164,11 +144,6 @@ ldid -e "$BIN/ioscbar" | grep -E "no-container|get-task-allow|absolute-path" | s
 xdeb_refuse_published "$STAGE"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
 echo "=== DEB BUILT ==="
-if [ "$SCHEME" = rootless ]; then
-  mkdir -p "$REPODEBS"
-  cp "$built" "$REPODEBS/${DEB}"
-  ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
-else
-  ls -la "$built"
-  echo "rootful artifact kept out of repo/debs"
-fi
+mkdir -p "$REPODEBS"
+cp "$built" "$REPODEBS/${DEB}"
+ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"

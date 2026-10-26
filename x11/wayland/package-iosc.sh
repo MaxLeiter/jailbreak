@@ -24,19 +24,12 @@ _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname
 . "$_x/lib/xlib.sh"
 
 WAYLAND="$HERE"
-# Binaries come from the target's own output dir; build-iosc.sh writes rootless
-# to wayland/out and every other target to wayland/out/targets/<id>.
+# Binaries come from build-iosc.sh's output dir, wayland/out.
 BINDIR="$HERE/out"
-[ "$XIOS_TARGET_ID" = "rootless-1900" ] || BINDIR="$BINDIR/targets/$XIOS_TARGET_ID"
 [ -d "$BINDIR" ] || { echo "ERROR: no iosc build for $XIOS_TARGET_ID at $BINDIR" >&2
   echo "       Build it first: XIOS_TARGET=$XIOS_TARGET_ID bash wayland/build-iosc.sh" >&2; exit 1; }
 OUTDIR="$XLIB_ROOT/linux-build/out"
 REPODEBS="$(cd "$XLIB_ROOT/.." && pwd)/repo/debs"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-  # repo/debs is the published rootless repo; other profiles do not go there.
-  REPODEBS=""
-fi
 mkdir -p "$OUTDIR"
 STAGEROOT=/private/tmp/iosc-deb
 STAGE="$STAGEROOT/iosc"
@@ -237,15 +230,11 @@ ldid -e "$BIN/iosc" | grep -E "iokit-user-client-class|AGXDevice|IOGPU|no-contai
 #    macOS host, or directly when already running as root inside one.
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
 echo "=== DEB BUILT ==="
-if [ -n "$REPODEBS" ] && [ ! -d "$REPODEBS" ]; then
+if [ ! -d "$REPODEBS" ]; then
   # A worktree has no repo/debs (it is untracked); staging is a separate step.
   echo "   $REPODEBS absent: not staging (mkdir it and cp the deb to publish)"
   ls -la "$OUTDIR/${DEB}"
-elif [ -n "$REPODEBS" ]; then
+else
   cp "$built" "$REPODEBS/${DEB}"
   ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
-else
-  # Non-rootless profiles stay out of repo/debs: that tree is the published
-  # rootless repo, and make-repo.py refuses a foreign payload there anyway.
-  ls -la "$OUTDIR/${DEB}"
 fi

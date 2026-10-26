@@ -15,11 +15,6 @@ _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname
 
 xios_load_target "${1:-${XIOS_TARGET:-rootless-1900}}"
 echo "==> target: $XIOS_TARGET_ID ($XIOS_MEMO_TARGET / CFVER $XIOS_MEMO_CFVER)"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  echo "ERROR: linux-build/run.sh still drives rootless-only follow-up steps; use rootless-1900 for now." >&2
-  echo "       Rootful support starts with target-aware package generation and smoke tests." >&2
-  exit 2
-fi
 
 IMAGE="procursus-xbuild:bookworm-arm64"
 # Named volume holding the cloned + already-built Procursus tree. Persisting it

@@ -50,10 +50,7 @@ step "STAGE prep: $XIOS_PREFIX symlink, shim toolchain, fake xcrun, rustup"
 # Expose the staged Procursus tree at its device-absolute path so .pc / CMake-config / -I/var/jb
 # resolve on the host.
 # The staged Procursus tree is exposed at its device-absolute path so .pc files,
-# CMake configs and -I flags resolve the same way they will on device. Rootful
-# would have to stage /usr, which is the container's own Debian userland, so it
-# needs a --sysroot pass rather than this symlink.
-xios_require_rootless "the engine build stages the device prefix as a container symlink"
+# CMake configs and -I flags resolve the same way they will on device.
 if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
 ls -ld "$XIOS_PREFIX"; echo "$XIOS_PREFIX -> $(readlink -f "$XIOS_PREFIX")"
 

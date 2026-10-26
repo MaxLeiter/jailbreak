@@ -78,10 +78,7 @@ step "STAGE prep: /var/jb symlink + shim + fake xcrun + re-apply M0 patches (ide
 # ================================================================================================
 if run_stage engine || run_stage package; then
   # The engine build compiles the device prefix into its binaries, and gets there
-  # by making the container's own /var/jb the staged sysroot. A rootful target
-  # would need /usr staged instead, which collides with the Debian userland the
-  # cross toolchain runs on — so it needs a --sysroot pass, not a symlink.
-  xios_require_rootless "the engine build stages the device prefix as a container symlink"
+  # by making the container's own /var/jb the staged sysroot.
   if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
   mkdir -p "$SHIM"
   for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \

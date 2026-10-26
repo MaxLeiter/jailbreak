@@ -59,36 +59,18 @@ if [ "${IOSC_XBUILD_INNER:-0}" != "1" ]; then
   rm -rf "$IOSC_PLAN_TEST_DIR"
   mkdir -p "$HERE/out"
 
-  # Output is per-target: a rootful iosc must not land on top of the rootless one.
   OUT_DIR="$HERE/out"
-  [ "$XIOS_TARGET_ID" = "rootless-1900" ] || OUT_DIR="$OUT_DIR/targets/$XIOS_TARGET_ID"
   mkdir -p "$OUT_DIR"
   mounts=(-v "$X11_DIR:/work/x11:ro" -v "$OUT_DIR:/out")
 
-  # Deb inputs must match the target. linux-build/out and the published repo are
-  # both rootless trees; feeding them to a rootful build would stage /var/jb
-  # payloads into its sysroot and link against the wrong prefix.
+  # Deb inputs: linux-build/out and the staged repo are both rootless trees,
+  # which is what this build links against.
   found_debs=0
-  if [ "$XIOS_TARGET_ID" = "rootless-1900" ]; then
-    if [ -d "$X11_DIR/linux-build/out" ]; then
-      mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
-    fi
-    if [ -d "$REPO_ROOT/repo/debs" ]; then
-      mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
-    fi
-  else
-    TARGET_DEBS="$X11_DIR/linux-build/out/targets/$XIOS_TARGET_ID"
-    if [ -d "$TARGET_DEBS" ]; then
-      mounts+=(-v "$TARGET_DEBS:/work/debs:ro"); found_debs=1
-    fi
-    [ "$found_debs" = 1 ] || {
-      echo "ERROR: no debs for $XIOS_TARGET_ID at $TARGET_DEBS." >&2
-      echo "       Build the Wayland base and an ANGLE package for this target first:" >&2
-      echo "         JOBS=4 bash linux-build/run-target-script.sh $XIOS_TARGET_ID build-wayland.sh" >&2
-      echo "         ANGLE_NO_SHIM=1 ANGLE_BASE_DEB=<published angle deb> \\" >&2
-      echo "           bash ports/angle/package-angle-es3.sh $XIOS_TARGET_ID" >&2
-      exit 1
-    }
+  if [ -d "$X11_DIR/linux-build/out" ]; then
+    mounts+=(-v "$X11_DIR/linux-build/out:/work/debs:ro"); found_debs=1
+  fi
+  if [ -d "$REPO_ROOT/repo/debs" ]; then
+    mounts+=(-v "$REPO_ROOT/repo/debs:/work/repo-debs:ro"); found_debs=1
   fi
   [ "$found_debs" = 1 ] || {
     echo "ERROR: no deb dir found (looked for $X11_DIR/linux-build/out and $REPO_ROOT/repo/debs)" >&2

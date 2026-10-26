@@ -33,9 +33,6 @@ xios_load_target "$TARGET"
 STAGEROOT="$X11DIR/linux-build/stage/$XIOS_TARGET_ID/openttd-opengfx"
 STAGE="$STAGEROOT/root"
 OUTDIR="$X11DIR/linux-build/out"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-fi
 WORK="$STAGEROOT/work"
 
 rm -rf "$STAGEROOT"

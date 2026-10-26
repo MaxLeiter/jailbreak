@@ -40,17 +40,11 @@ icons); this is the chrome *inside* the Xios display.
 ./package-shell.sh      # -> iosc-shell_<ver>_iphoneos-arm64.deb (out/ + repo/debs)
 ```
 
-Rootless is the default scheme. For rootful builds/packages, use:
-
-```sh
-IOSC_PACKAGE_SCHEME=rootful ./build-panel.sh
-IOSC_PACKAGE_SCHEME=rootful ./package-shell.sh
-```
-
-`build-panel.sh` maps `rootless` to Procursus target `iphoneos-arm64-rootless`
-with prefix `/var/jb`, and `rootful` to target `iphoneos-arm64` with prefix `/`.
-Use `IOSC_PROC_VOL`/`GTK_VOL` if the rootful Procursus sysroot lives in a
-different Docker volume.
+Rootless is the only scheme (rootful support was dropped on 2026-10-25;
+`IOSC_PACKAGE_SCHEME=rootful` is rejected). `build-panel.sh` builds against
+Procursus target `iphoneos-arm64-rootless` with prefix `/var/jb`. Use
+`IOSC_PROC_VOL`/`GTK_VOL` if the Procursus sysroot lives in a different Docker
+volume.
 
 Gotcha: the *link* lines need `-miphoneos-version-min` too, or ld64 stamps the
 SDK version (16.5) as the dyld floor and the deb's stamped minos overshoots.

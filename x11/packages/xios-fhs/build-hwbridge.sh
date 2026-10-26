@@ -25,21 +25,11 @@ mkdir -p "$OUT"
 
 MEMO_TARGET="${XIOS_MEMO_TARGET:-${MEMO_TARGET:-iphoneos-arm64-rootless}}"
 MEMO_CFVER="${XIOS_MEMO_CFVER:-${MEMO_CFVER:-1900}}"
-if [ "${XIOS_PREFIX+x}" = x ]; then
-  TARGET_PREFIX="$XIOS_PREFIX"
-elif [ "$MEMO_TARGET" = "iphoneos-arm64-rootless" ]; then
-  TARGET_PREFIX="/var/jb"
-else
-  TARGET_PREFIX=""
-fi
+TARGET_PREFIX="${XIOS_PREFIX:-/var/jb}"
 TARGET_SUBPREFIX="${XIOS_SUBPREFIX:-/usr}"
 TARGET_MIN_IOS="${XIOS_DEFAULT_MIN_IOS:-16.0}"
 TARGET_INSTALL_PREFIX="$TARGET_PREFIX$TARGET_SUBPREFIX"
-[ -n "$TARGET_PREFIX" ] || TARGET_INSTALL_PREFIX="$TARGET_SUBPREFIX"
-TARGET_SYS_ROOT="${XIOS_SYS_ROOT:-}"
-if [ -z "$TARGET_SYS_ROOT" ]; then
-  if [ -n "$TARGET_PREFIX" ]; then TARGET_SYS_ROOT="$TARGET_PREFIX/sys"; else TARGET_SYS_ROOT="/sys"; fi
-fi
+TARGET_SYS_ROOT="${XIOS_SYS_ROOT:-$TARGET_PREFIX/sys}"
 TARGET_PACKAGE_PATH_PREFIX="${XIOS_PACKAGE_PATH_PREFIX:-$TARGET_PREFIX}"
 XIOS_PROTOCOL_INCLUDE="${XIOS_PROTOCOL_INCLUDE:-$SRC/../../apps/shared}"
 [ -f "$XIOS_PROTOCOL_INCLUDE/XiosProtocol.h" ] || {
@@ -84,7 +74,7 @@ LDRPATH="-Wl,-rpath,$TARGET_INSTALL_PREFIX/lib"
 # dlopen. -lobjc for the objc_msgSend torch calls (AVCaptureDevice).
 DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreFoundation -lobjc $LDRPATH"
 SENSOR_DEPFLAGS="$(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -L$SYSROOT/lib -framework CoreMotion -lobjc $LDRPATH"
-echo "   target=$MEMO_TARGET/$MEMO_CFVER prefix=${TARGET_PREFIX:-/} sys=$TARGET_SYS_ROOT"
+echo "   target=$MEMO_TARGET/$MEMO_CFVER prefix=$TARGET_PREFIX sys=$TARGET_SYS_ROOT"
 echo "   CC=$CC  SDK=$SDK  pkgconfig-libdir=$PKG_CONFIG_LIBDIR"
 
 INT=""
@@ -132,8 +122,8 @@ echo "==> build xios-sensord"
 $CC "${CFLAGS[@]}" "$s" $SENSOR_DEPFLAGS -o "$o2"
 fixup_and_sign "$o2" "$SRC/sensor-entitlements.plist"
 
-# Drop the binaries into the package tree, where package-fhs.sh (rootless) and
-# build-template-package.sh xios-fhs (any target) pack them.
+# Drop the binaries into the package tree, where package-fhs.sh and
+# build-template-package.sh xios-fhs pack them.
 DEST="$SRC$TARGET_PACKAGE_PATH_PREFIX$TARGET_SUBPREFIX/libexec"
 mkdir -p "$DEST"
 cp -a "$OUT/xios-hwbridged" "$DEST/xios-hwbridged"

@@ -35,12 +35,8 @@ _x="$HERE"; while [ "$_x" != / ] && [ ! -f "$_x/lib/xlib.sh" ]; do _x="$(dirname
 BUILD="${ANGLE_BUILD_DIR:-/private/tmp/angle-ios-build/angle/out/ios-arm64}"
 INC="${ANGLE_INC_DIR:-/private/tmp/angle-ios-build/angle/include}"
 # Was an absolute path into a specific checkout, so running this from a worktree
-# wrote its output into a different tree entirely. Derive it, and split
-# non-rootless targets into their own directory like every other builder.
+# wrote its output into a different tree entirely. Derive it.
 OUTDIR="$XLIB_ROOT/linux-build/out"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-fi
 SHIM="${IOSC_EGL_SHIM:-$XLIB_ROOT/wayland/out/libiosc_egl.dylib}"
 BASE_DEB=${ANGLE_BASE_DEB:-}
 STAGEROOT=/private/tmp/angle-deb-es3

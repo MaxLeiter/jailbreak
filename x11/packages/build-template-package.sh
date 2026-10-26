@@ -56,9 +56,6 @@ fi
 STAGEROOT="$X11DIR/linux-build/stage/$XIOS_TARGET_ID/$PKG"
 STAGE="$STAGEROOT/root"
 OUTDIR="$X11DIR/linux-build/out"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-fi
 
 render_template() {
   local src="$1" dst="$2"
@@ -141,7 +138,6 @@ render_debian "$STAGE/DEBIAN"
 
 if [ -d "$TMPL/files" ]; then
   payload_root="$STAGE$XIOS_PACKAGE_PATH_PREFIX"
-  [ -n "$payload_root" ] || payload_root="$STAGE"
   mkdir -p "$payload_root"
   while IFS= read -r src; do
     rel="${src#"$TMPL/files/"}"
@@ -157,7 +153,6 @@ fi
 
 if [ -f "$TMPL/files.manifest" ]; then
   payload_root="$STAGE$XIOS_PACKAGE_PATH_PREFIX"
-  [ -n "$payload_root" ] || payload_root="$STAGE"
   mkdir -p "$payload_root"
   while IFS=$'\t' read -r src rel mode; do
     case "$src" in
@@ -196,9 +191,8 @@ done
 
 echo "==> staged $PKG for $XIOS_TARGET_ID at $STAGE"
 
-# Gate every staged tree, not just rootful ones: on rootless it catches a
-# template that forgot to go through the payload root, and on rootful it is the
-# check that keeps /var/jb out of a package that must not contain it.
+# Gate every staged tree: it catches a template that forgot to go through the
+# payload root, and keeps paths outside the target's install prefix out.
 python3 "$X11DIR/linux-build/tools/check-target-package.py" "$STAGE" "$XIOS_TARGET_ID"
 
 if [ "$STAGE_ONLY" = 1 ]; then

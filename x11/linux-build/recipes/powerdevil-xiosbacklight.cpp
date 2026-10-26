@@ -14,10 +14,10 @@
  * defaults to DEFAULT_SYS_ROOT, so keep both halves in step with that daemon.
  *
  * The guard mirrors xios-hwbridged.c and xios-sensord.m, whose builder passes
- * -DDEFAULT_SYS_ROOT="$TARGET_SYS_ROOT" from the target descriptor (/var/jb/sys
- * rootless, /sys rootful). This file had the value hardcoded, so it could not
- * follow them off rootless. The default is unchanged; powerdevil's recipe still
- * needs to pass the define before a rootful KDE build would be correct. */
+ * -DDEFAULT_SYS_ROOT="$TARGET_SYS_ROOT" from the target descriptor (/var/jb/sys,
+ * the only target now). The fallback below is that same value, so the define is
+ * optional here; powerdevil's recipe does not need to pass it, and the default
+ * is unchanged. */
 #ifndef DEFAULT_SYS_ROOT
 #define DEFAULT_SYS_ROOT "/var/jb/sys"
 #endif

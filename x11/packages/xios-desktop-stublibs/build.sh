@@ -48,10 +48,6 @@ STAGE="$STAGEROOT/xios-desktop-stublibs"
 PAYLOAD_LIB="$STAGE$XIOS_PACKAGE_PATH_PREFIX$XIOS_SUBPREFIX/lib"
 PKGOUT="$OUT"
 PKGCOPY="$PKGDIR"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  PKGOUT="$OUT/targets/$XIOS_TARGET_ID"
-  PKGCOPY="$PKGDIR/targets/$XIOS_TARGET_ID"
-fi
 rm -rf "$STAGEROOT"; mkdir -p "$PAYLOAD_LIB" "$STAGE/DEBIAN"
 render_control "$X11DIR/packages/templates/xios-desktop-stublibs/DEBIAN/control.in" "$STAGE/DEBIAN/control"
 

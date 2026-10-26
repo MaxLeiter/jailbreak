@@ -49,10 +49,7 @@ NM=/root/cctools/bin/aarch64-apple-darwin-nm
 # ---- shim + fake xcrun/sw_vers + /var/jb (idempotent, mirrors wave4c) ----------------------
 step "prep: shim + $XIOS_PREFIX symlink + fake xcrun"
 # The staged Procursus tree is exposed at its device-absolute path so .pc files,
-# CMake configs and -I flags resolve the same way they will on device. Rootful
-# would have to stage /usr, which is the container's own Debian userland, so it
-# needs a --sysroot pass rather than this symlink.
-xios_require_rootless "the engine build stages the device prefix as a container symlink"
+# CMake configs and -I flags resolve the same way they will on device.
 if [ ! -e "$XIOS_PREFIX" ]; then ln -s "$BB" "$XIOS_PREFIX"; fi
 mkdir -p "$SHIM"
 for t in ld ranlib libtool install_name_tool otool nm strip lipo dsymutil codesign_allocate \

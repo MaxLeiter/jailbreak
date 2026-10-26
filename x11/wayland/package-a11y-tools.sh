@@ -73,18 +73,10 @@ Description: accessibility smoke tools for Xios
  traits, state values, and focused node updates for VoiceOver focus sync smokes.
 EOF
 
-if [ "$XIOS_TARGET_ID" != rootless-1900 ]; then
-  OUTDIR="$OUTDIR/targets/$XIOS_TARGET_ID"
-fi
 xdeb_refuse_published "$STAGE"
 mkdir -p "$OUTDIR"
 built="$(xmkdeb "$STAGE" "$OUTDIR")"
 echo "=== DEB BUILT ==="
-if [ "$XIOS_TARGET_ID" = rootless-1900 ]; then
-  mkdir -p "$REPODEBS"
-  cp "$built" "$REPODEBS/${DEB}"
-  ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"
-else
-  ls -la "$built"
-  echo "target artifact kept out of repo/debs"
-fi
+mkdir -p "$REPODEBS"
+cp "$built" "$REPODEBS/${DEB}"
+ls -la "$OUTDIR/${DEB}" "$REPODEBS/${DEB}"

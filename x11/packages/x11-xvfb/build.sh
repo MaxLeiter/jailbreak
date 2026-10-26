@@ -27,12 +27,9 @@ xios_load_target "$TARGET"
 TMPL="$X11DIR/packages/templates/x11-xvfb"
 OUT="$X11DIR/linux-build/out"
 PKGOUT="$OUT"
-if [ "$XIOS_TARGET_ID" != "rootless-1900" ]; then
-  PKGOUT="$OUT/targets/$XIOS_TARGET_ID"
-fi
 
 XVFB_SRC="$OUT/targets/$XIOS_TARGET_ID/Xvfb"
-if [ "$XIOS_TARGET_ID" = "rootless-1900" ] && [ ! -f "$XVFB_SRC" ]; then
+if [ ! -f "$XVFB_SRC" ]; then
   XVFB_SRC="$PKGDIR/var/jb/usr/bin/Xvfb"
 fi
 [ -f "$XVFB_SRC" ] || {

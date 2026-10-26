@@ -10,8 +10,7 @@
 #   out/icons/<IconName>.svg   when a vector source exists, else
 #   out/icons/<IconName>.png   for raster-only apps.
 #
-# Deploy rootless: scp -r out/icons/* root@ipad:/var/jb/usr/share/iosc-shell/icons/
-# Deploy rootful:  scp -r out/icons/* root@ipad:/usr/share/iosc-shell/icons/
+# Deploy: scp -r out/icons/* root@ipad:/var/jb/usr/share/iosc-shell/icons/
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
