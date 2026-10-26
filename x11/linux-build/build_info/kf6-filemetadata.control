@@ -1,0 +1,13 @@
+Package: kf6-filemetadata
+Version: @DEB_KFILEMETADATA_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, kf6-archive, kf6-coreaddons, kf6-i18n
+Description: KFileMetaData for the Xios desktop
+ File metadata extraction library.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

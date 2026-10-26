@@ -2,7 +2,7 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# dolphin.mk - KDE file manager (KDE Gear 24.08.0).
+# dolphin.mk - KDE file manager (KDE Gear 26.08.1).
 #
 # iOS cuts in this first package, and exactly what each one costs:
 #   - Baloo: upstream sets HAVE_BALOO only when KF6Baloo AND KF6BalooWidgets AND
@@ -35,11 +35,11 @@ endif
 # runtime through KPluginFactory, so it is a Recommends on konsole, not a build dep.
 
 SUBPROJECTS += dolphin
-DOLPHIN_VERSION = 24.08.0
+DOLPHIN_VERSION = 26.08.1
 DEB_DOLPHIN_V ?= $(DOLPHIN_VERSION)+ios1
 
 dolphin-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/dolphin-$(DOLPHIN_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/dolphin-$(DOLPHIN_VERSION).tar.xz)
 	$(call EXTRACT_TAR,dolphin-$(DOLPHIN_VERSION).tar.xz,dolphin-$(DOLPHIN_VERSION),dolphin)
 	sed -i 's/^add_subdirectory(doc)/# ios-bringup-no-doc: add_subdirectory(doc)/;s/^add_subdirectory(appiumtests)/# ios-bringup-no-appiumtests: add_subdirectory(appiumtests)/' $(BUILD_WORK)/dolphin/CMakeLists.txt
 	sed -i '/^install(TARGETS servicemenuinstaller/i # ios-bringup-no-bundle: a CLI helper must not become an .app under KDE_INSTALL_BUNDLEDIR\nset_target_properties(servicemenuinstaller PROPERTIES MACOSX_BUNDLE FALSE)' $(BUILD_WORK)/dolphin/src/settings/contextmenu/servicemenuinstaller/CMakeLists.txt
@@ -58,7 +58,6 @@ dolphin: dolphin-setup phonon
 		$(KF6_CMAKE_FLAGS) \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KF6Baloo=TRUE \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KF6BalooWidgets=TRUE \
-		-DCMAKE_DISABLE_FIND_PACKAGE_KF6FileMetaData=TRUE \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KF6UserFeedback=TRUE \
 		-DCMAKE_DISABLE_FIND_PACKAGE_PackageKitQt6=TRUE \
 		-DCMAKE_DISABLE_FIND_PACKAGE_X11=TRUE \

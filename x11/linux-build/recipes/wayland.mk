@@ -4,7 +4,7 @@ endif
 
 # wayland — libwayland-client/server/cursor/egl + protocol data, for iOS/Darwin.
 #
-# BUILT/PUBLISHED — libwayland0 1.23.1+ios1. Recipe integration:
+# BUILT/PUBLISHED — libwayland0 1.24.0+ios2 (1.24 adds core wl_fixes, which kwayland/kwin/libkscreen 6.7 need). Recipe integration:
 #   recipe        -> Procursus/makefiles/wayland.mk
 #   control files -> Procursus/build_info/libwayland0.control, libwayland-dev.control
 #
@@ -20,8 +20,8 @@ endif
 #     we build the scanner natively from this same tarball first, then cross-build the libs.
 
 SUBPROJECTS     += wayland
-WAYLAND_VERSION := 1.23.1
-DEB_WAYLAND_V   ?= $(WAYLAND_VERSION)+ios1
+WAYLAND_VERSION := 1.24.0
+DEB_WAYLAND_V   ?= $(WAYLAND_VERSION)+ios2
 
 # Host (build-machine) prefix holding the version-matched native wayland-scanner + its .pc,
 # consumed by the cross build's native pkg-config. Self-contained under BUILD_WORK.

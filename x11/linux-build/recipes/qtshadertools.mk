@@ -7,7 +7,7 @@ endif
 # this recipe provides the target half. glslang + SPIRV-Cross are bundled by Qt.
 
 SUBPROJECTS           += qtshadertools
-QTSHADERTOOLS_VERSION := 6.6.3
+QTSHADERTOOLS_VERSION := 6.10.3
 DEB_QTSHADERTOOLS_V   ?= $(QTSHADERTOOLS_VERSION)+ios1
 
 qtshadertools-setup: setup
@@ -28,8 +28,8 @@ qtshadertools: qtshadertools-setup
 	cd $(BUILD_WORK)/qtshadertools/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS)
-	+ninja -C $(BUILD_WORK)/qtshadertools/build
-	+DESTDIR="$(BUILD_STAGE)/qtshadertools" ninja -C $(BUILD_WORK)/qtshadertools/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtshadertools/build
+	+DESTDIR="$(BUILD_STAGE)/qtshadertools" ninja -j12 -C $(BUILD_WORK)/qtshadertools/build install
 	$(call AFTER_BUILD,copy)
 endif
 

@@ -27,6 +27,7 @@ plasma-workspace: plasma-workspace-setup
 		-G Ninja \
 		$(KF6_CMAKE_FLAGS) \
 		-DWITH_X11=OFF \
+		-DWITH_X11_SESSION=OFF \
 		-DBUILD_QCH=OFF \
 		-DBUILD_TESTING=OFF \
 		-DCMAKE_DISABLE_FIND_PACKAGE_KF6DocTools=TRUE

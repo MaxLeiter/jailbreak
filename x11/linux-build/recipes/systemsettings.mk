@@ -11,7 +11,7 @@ DEB_SYSTEMSETTINGS_V ?= $(SYSTEMSETTINGS_VERSION)+ios8
 systemsettings-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,systemsettings))
 	$(call EXTRACT_TAR,systemsettings-$(PLASMA_VERSION).tar.xz,systemsettings-$(PLASMA_VERSION),systemsettings)
-	bash /work/recipes/systemsettings-ios-fixes.sh $(BUILD_WORK)/systemsettings
+	bash /work/recipes/run-fixes.sh systemsettings-ios-fixes.sh $(BUILD_WORK)/systemsettings
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

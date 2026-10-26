@@ -1,0 +1,10 @@
+Package: libdisplay-info2
+Version: @DEB_LIBDISPLAYINFO_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://gitlab.freedesktop.org/emersion/libdisplay-info
+Description: EDID and DisplayID parsing library
+ libdisplay-info 0.2.x: parses EDID and DisplayID blobs (monitor identity, color
+ primaries, HDR static metadata). KWin 6.7 requires it.

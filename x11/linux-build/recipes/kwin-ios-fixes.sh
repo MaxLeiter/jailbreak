@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Porting aid: keep going past failing python hunks and report everything at once (never for real builds).
+[ "${KWIN_FIXES_REPORT:-0}" = 1 ] && set +e
 
 src=${1:?usage: kwin-ios-fixes.sh <kwin-source-dir>}
+
+# pperl '<perl code>' <file>: like `perl -0pi -e`, but remembers when the substitution changed NOTHING. The old
+# one-liners "applied" by silently matching nothing; across the 6.1 -> 6.7 port that hid every moved hunk. Every
+# no-match is listed at the end and fails the script (KWIN_FIXES_REPORT=1 lists them and exits 0, for porting).
+# pperl_opt: a no-match is EXPECTED (hunk obsolete in Plasma 6.7 or inert with our OpenGL Qt); see plan section 9.
+pperl_opt() { perl -0pi -e "$1" "$2" 2>/dev/null || true; }
+NOMATCH=()
+pperl() {
+    local code=$1 file=$2 before after
+    [ -f "$file" ] || { NOMATCH+=("MISSING FILE $file :: ${code:0:70}"); return 0; }
+    before=$(cksum < "$file")
+    perl -0pi -e "$code" "$file"
+    after=$(cksum < "$file")
+    [ "$before" != "$after" ] || NOMATCH+=("${file#"$src"/} :: ${code:0:90}")
+}
 
 # No host Qt LinguistTools in this bring-up stack.
 sed -i '/^[[:space:]]*ecm_install_po_files_as_qm(/s/^/# ios-bringup-no-linguist: /' "$src/CMakeLists.txt"
 
 # First-light target: nested Wayland compositor. Keep Linux-only dependencies out of
 # feature_summary and avoid probing X11 as a required package when KWIN_BUILD_X11=OFF.
-perl -0pi -e 's/set_package_properties\(Libinput PROPERTIES TYPE REQUIRED/set_package_properties(Libinput PROPERTIES TYPE OPTIONAL/g' "$src/CMakeLists.txt"
-perl -0pi -e 's/TYPE REQUIRED\n([ \t]*PURPOSE "Required for input handling on Wayland\."\n\))/TYPE OPTIONAL\n$1/g' "$src/CMakeLists.txt"
-perl -0pi -e 's/find_package\(X11\)\nset_package_properties\(X11 PROPERTIES\n    DESCRIPTION "X11 libraries"\n    URL "https:\/\/www\.x\.org"\n    TYPE REQUIRED\n\)/find_package(X11)\nset_package_properties(X11 PROPERTIES\n    DESCRIPTION "X11 libraries"\n    URL "https:\/\/www.x.org"\n    TYPE OPTIONAL\n)/g' "$src/CMakeLists.txt"
+pperl 's/set_package_properties\(Libinput PROPERTIES TYPE REQUIRED/set_package_properties(Libinput PROPERTIES TYPE OPTIONAL/g' "$src/CMakeLists.txt"
+pperl 's/TYPE REQUIRED\n([ \t]*PURPOSE "Required for input handling on Wayland\."\n\))/TYPE OPTIONAL\n$1/g' "$src/CMakeLists.txt"
+pperl_opt 's/find_package\(X11\)\nset_package_properties\(X11 PROPERTIES\n    DESCRIPTION "X11 libraries"\n    URL "https:\/\/www\.x\.org"\n    TYPE REQUIRED\n\)/find_package(X11)\nset_package_properties(X11 PROPERTIES\n    DESCRIPTION "X11 libraries"\n    URL "https:\/\/www.x.org"\n    TYPE OPTIONAL\n)/g' "$src/CMakeLists.txt"
 sed -i '/^[[:space:]]*UDev::UDev[[:space:]]*$/d' "$src/src/CMakeLists.txt"
 
 # Only the nested Wayland and fake-input backends are useful on iOS right now. The
@@ -29,19 +46,53 @@ EOF
 # shims and epoll-shim's eventfd provider for the shared kwin library.
 cat > "$src/src/backends/wayland/CMakeLists.txt" <<'EOF'
 target_sources(kwin PRIVATE
+    color_manager.cpp
+    ios_link_stubs.cpp
     wayland_backend.cpp
     wayland_display.cpp
     wayland_egl_backend.cpp
+    wayland_layer.cpp
     wayland_logging.cpp
     wayland_output.cpp
     wayland_qpainter_backend.cpp
 )
 
 find_library(EPOLL_SHIM_LIBRARY epoll-shim)
-target_link_libraries(kwin PRIVATE Plasma::KWaylandClient Wayland::Client gbm::gbm Libdrm::Libdrm)
+target_link_libraries(kwin PRIVATE Plasma::KWaylandClient Wayland::Client gbm::gbm Libdrm::Libdrm PkgConfig::Libxcvt)
 if (EPOLL_SHIM_LIBRARY)
     target_link_libraries(kwin PRIVATE ${EPOLL_SHIM_LIBRARY})
 endif()
+EOF
+
+# Symbols libkwin references that this stack has no provider for. The nested backend never creates a Vulkan
+# device or a DRM syncobj (no DRM fd exists), so inert definitions are exact, not approximations: the callers
+# only reach them behind a valid DRM fd / VkPhysicalDevice. Kept here, not in the shared libdrm shim deb.
+cat > "$src/src/backends/wayland/ios_link_stubs.cpp" <<'EOF'
+// iOS: link-only stubs, see kwin-ios-fixes.sh. Never reached at runtime (no DRM fd, no Vulkan device).
+#include <cerrno>
+#include <cstdint>
+#include <vulkan/vulkan.h>
+
+extern "C" {
+__attribute__((visibility("default"))) int drmSyncobjHandleToFD(int, uint32_t, int *)
+{
+    return -ENOSYS;
+}
+__attribute__((visibility("default"))) int drmSyncobjTimelineWait(int, uint32_t *, uint64_t *, unsigned, int64_t, unsigned, uint32_t *)
+{
+    return -ENOSYS;
+}
+__attribute__((visibility("default"))) VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceFormatProperties2(VkPhysicalDevice, VkFormat, VkFormatProperties2 *properties)
+{
+    if (properties) {
+        properties->formatProperties = {};
+    }
+}
+__attribute__((visibility("default"))) VKAPI_ATTR VkResult VKAPI_CALL vkGetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice, const VkPhysicalDeviceImageFormatInfo2 *, VkImageFormatProperties2 *)
+{
+    return VK_ERROR_FORMAT_NOT_SUPPORTED;
+}
+}
 EOF
 
 # src/plugins/CMakeLists.txt is left as UPSTREAM ships it.
@@ -75,18 +126,26 @@ done
 # KWin's libepoxy OpenGL wrappers in the same translation units. That is a
 # separate GL polish track; the compositor can still boot nested Wayland with
 # QPainter surfaces while the main kwin binary keeps the GPU entitlements.
-perl -0pi -e 's/[ \t]*eglhelpers\.cpp\n//g; s/[ \t]*eglplatformcontext\.cpp\n//g' "$src/src/plugins/qpa/CMakeLists.txt"
-perl -0pi -e 's/#include <EGL\/egl\.h>\n\n//g' "$src/src/plugins/qpa/integration.h"
-perl -0pi -e 's/#include "eglplatformcontext\.h"\n//g; s/#include "core\/outputbackend\.h"\n//g; s/#include <QtGui\/private\/qgenericunixthemes_p\.h>\n//g' "$src/src/plugins/qpa/integration.cpp"
-# Anchored on the newline so a re-run cannot match kwin-ios-gpu-backend.sh's
-# "return true; // ios-gpu-qpa-capability" and silently turn QPA GL back off.
-perl -0pi -e 's/case OpenGL:\n        return true;\n/case OpenGL:\n        return false;\n/g' "$src/src/plugins/qpa/integration.cpp"
-perl -0pi -e 's/QPlatformTheme \*Integration::createPlatformTheme\(const QString &name\) const\n\{\n    return QGenericUnixTheme::createUnixTheme\(name\);\n\}/QPlatformTheme *Integration::createPlatformTheme(const QString \&name) const\n{\n    Q_UNUSED(name)\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
-perl -0pi -e 's/QStringList Integration::themeNames\(\) const\n\{\n    if \(qEnvironmentVariableIsSet\("KDE_FULL_SESSION"\)\) \{\n        return QStringList\(\{QStringLiteral\("kde"\)\}\);\n    \}\n    return QStringList\(\{QLatin1String\(QGenericUnixTheme::name\)\}\);\n\}/QStringList Integration::themeNames() const\n{\n    return {};\n}/g' "$src/src/plugins/qpa/integration.cpp"
-perl -0pi -e 's/QPlatformOpenGLContext \*Integration::createPlatformOpenGLContext\(QOpenGLContext \*context\) const\n\{\n    if \(kwinApp\(\)->outputBackend\(\)->sceneEglGlobalShareContext\(\) == EGL_NO_CONTEXT\) \{\n        qCWarning\(KWIN_QPA\) << "Attempting to create a QOpenGLContext before the scene is initialized";\n        return nullptr;\n    \}\n    const auto eglDisplay = kwinApp\(\)->outputBackend\(\)->sceneEglDisplayObject\(\);\n    if \(eglDisplay\) \{\n        EGLPlatformContext \*platformContext = new EGLPlatformContext\(context, eglDisplay\);\n        return platformContext;\n    \}\n    return nullptr;\n\}/QPlatformOpenGLContext *Integration::createPlatformOpenGLContext(QOpenGLContext *context) const\n{\n    Q_UNUSED(context)\n    qCWarning(KWIN_QPA) << "QPA OpenGL contexts are disabled on the iOS first-light build";\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
-perl -0pi -e 's/#include "core\/outputbackend\.h"\n//g; s/#include "main\.h"\n//g; s/#include "opengl\/egldisplay\.h"\n//g' "$src/src/plugins/qpa/offscreensurface.cpp"
-perl -0pi -e 's@// this needs to be on top, epoxy has an error if you include it after GL/gl.h,\n// which Qt does include\n#include "utils/drm_format_helper\.h"\n\n@@g; s/#include "core\/drmdevice\.h"\n//g; s/#include "core\/renderbackend\.h"\n//g' "$src/src/plugins/qpa/window.cpp"
-perl -0pi -e 's/        GraphicsBufferAllocator \*allocator;\n        if \(software\) \{\n            static ShmGraphicsBufferAllocator shmAllocator;\n            allocator = \&shmAllocator;\n        \} else \{\n            allocator = Compositor::self\(\)->backend\(\)->drmDevice\(\)->allocator\(\);\n        \}\n\n        for \(auto it = formats\.begin\(\); it != formats\.end\(\); it\+\+\) \{\n            if \(auto info = FormatInfo::get\(it\.key\(\)\); info && info->bitsPerColor == 8 && info->alphaBits == 8\) \{\n                const auto options = GraphicsBufferOptions\{\n                    \.size = nativeSize,\n                    \.format = it\.key\(\),\n                    \.modifiers = it\.value\(\),\n                    \.software = software,\n                \};\n                auto buffer = allocator->allocate\(options\);\n                if \(!buffer\) \{\n                    continue;\n                \}\n                m_swapchain = std::make_unique<Swapchain>\(allocator, options, buffer\);\n                m_eglContext = context;\n                break;\n            \}\n        \}/        if (!software) {\n            qCWarning(KWIN_QPA) << "QPA OpenGL windows are disabled on the iOS first-light build";\n            return nullptr;\n        }\n\n        static ShmGraphicsBufferAllocator shmAllocator;\n        GraphicsBufferAllocator *allocator = \&shmAllocator;\n        const auto modifiers = formats.value(DRM_FORMAT_ARGB8888, {DRM_FORMAT_MOD_LINEAR});\n        const auto options = GraphicsBufferOptions{\n            .size = nativeSize,\n            .format = DRM_FORMAT_ARGB8888,\n            .modifiers = modifiers,\n            .software = true,\n        };\n        auto buffer = allocator->allocate(options);\n        if (buffer) {\n            m_swapchain = std::make_unique<Swapchain>(allocator, options, buffer);\n            m_eglContext = context;\n        }/g' "$src/src/plugins/qpa/window.cpp"
+pperl 's/[ \t]*eglhelpers\.cpp\n//g; s/[ \t]*eglplatformcontext\.cpp\n//g' "$src/src/plugins/qpa/CMakeLists.txt"
+pperl 's/#include <EGL\/egl\.h>\n\n//g' "$src/src/plugins/qpa/integration.h"
+pperl 's/#include "eglplatformcontext\.h"\n//g; s/#include "core\/outputbackend\.h"\n//g; s/#include <QtGui\/private\/qgenericunixthemes_p\.h>\n//g' "$src/src/plugins/qpa/integration.cpp"
+# Anchored on the newline so a re-run cannot match a "return true; // ios-gpu-qpa-capability" line and
+# silently turn QPA GL back off (main 61087ff8).
+pperl_opt 's/case OpenGL:\n        return true;\n/case OpenGL:\n        return false;\n/g' "$src/src/plugins/qpa/integration.cpp"
+pperl 's/QPlatformTheme \*Integration::createPlatformTheme\(const QString &name\) const\n\{\n    return QGenericUnixTheme::createUnixTheme\(name\);\n\}/QPlatformTheme *Integration::createPlatformTheme(const QString \&name) const\n{\n    Q_UNUSED(name)\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
+pperl_opt 's/QStringList Integration::themeNames\(\) const\n\{\n    if \(qEnvironmentVariableIsSet\("KDE_FULL_SESSION"\)\) \{\n        return QStringList\(\{QStringLiteral\("kde"\)\}\);\n    \}\n    return QStringList\(\{QLatin1String\(QGenericUnixTheme::name\)\}\);\n\}/QStringList Integration::themeNames() const\n{\n    return {};\n}/g' "$src/src/plugins/qpa/integration.cpp"
+pperl_opt 's/QPlatformOpenGLContext \*Integration::createPlatformOpenGLContext\(QOpenGLContext \*context\) const\n\{\n    if \(kwinApp\(\)->outputBackend\(\)->sceneEglGlobalShareContext\(\) == EGL_NO_CONTEXT\) \{\n        qCWarning\(KWIN_QPA\) << "Attempting to create a QOpenGLContext before the scene is initialized";\n        return nullptr;\n    \}\n    const auto eglDisplay = kwinApp\(\)->outputBackend\(\)->sceneEglDisplayObject\(\);\n    if \(eglDisplay\) \{\n        EGLPlatformContext \*platformContext = new EGLPlatformContext\(context, eglDisplay\);\n        return platformContext;\n    \}\n    return nullptr;\n\}/QPlatformOpenGLContext *Integration::createPlatformOpenGLContext(QOpenGLContext *context) const\n{\n    Q_UNUSED(context)\n    qCWarning(KWIN_QPA) << "QPA OpenGL contexts are disabled on the iOS first-light build";\n    return nullptr;\n}/g' "$src/src/plugins/qpa/integration.cpp"
+pperl 's/#include "core\/outputbackend\.h"\n//g; s/#include "main\.h"\n//g; s/#include "opengl\/egldisplay\.h"\n//g' "$src/src/plugins/qpa/offscreensurface.cpp"
+# 6.7 shape of the QPA GL context factory (the 6.1 one-liner above never matched): replace the whole body.
+pperl 's/QPlatformOpenGLContext \*Integration::createPlatformOpenGLContext\(QOpenGLContext \*context\) const\n\{\n.*?\n\}\n/QPlatformOpenGLContext *Integration::createPlatformOpenGLContext(QOpenGLContext *context) const\n{\n    Q_UNUSED(context)\n    qCWarning(KWIN_QPA) << "QPA OpenGL contexts are disabled on the iOS first-light build";\n    return nullptr;\n}\n/s' "$src/src/plugins/qpa/integration.cpp"
+# window.h pulls core/drm_formats.h (epoxy) before QtGui's qopengl.h, which on iOS takes the OpenGLES.framework
+# branch. Enable the epoxy/GLES coexistence shim (see kwin-ios-compat.h) for the QPA objects too.
+grep -q 'ios-bringup-gl-coexist-target' "$src/src/plugins/qpa/CMakeLists.txt" || cat >> "$src/src/plugins/qpa/CMakeLists.txt" <<'EOF'
+target_compile_definitions(KWinQpaPlugin PRIVATE KWIN_IOS_GL_COEXIST=1) # ios-bringup-gl-coexist-target
+EOF
+
+pperl 's@// this needs to be on top, epoxy has an error if you include it after GL/gl.h,\n// which Qt does include\n#include "utils/drm_format_helper\.h"\n\n@@g; s/#include "core\/drmdevice\.h"\n//g; s/#include "core\/renderbackend\.h"\n//g' "$src/src/plugins/qpa/window.cpp"
+pperl 's/        GraphicsBufferAllocator \*allocator;\n        if \(software\) \{\n            static ShmGraphicsBufferAllocator shmAllocator;\n            allocator = \&shmAllocator;\n        \} else \{\n            allocator = Compositor::self\(\)->backend\(\)->drmDevice\(\)->allocator\(\);\n        \}\n\n        for \(auto it = formats\.begin\(\); it != formats\.end\(\); it\+\+\) \{\n            if \(auto info = FormatInfo::get\(it\.key\(\)\); info && info->bitsPerColor == 8 && info->alphaBits == 8\) \{\n                const auto options = GraphicsBufferOptions\{\n                    \.size = nativeSize,\n                    \.format = it\.key\(\),\n                    \.modifiers = it\.value\(\),\n                    \.software = software,\n                \};\n                auto buffer = allocator->allocate\(options\);\n                if \(!buffer\) \{\n                    continue;\n                \}\n                m_swapchain = std::make_unique<Swapchain>\(allocator, options, buffer\);\n                m_eglContext = context;\n                break;\n            \}\n        \}/        if (!software) {\n            qCWarning(KWIN_QPA) << "QPA OpenGL windows are disabled on the iOS first-light build";\n            return nullptr;\n        }\n\n        static ShmGraphicsBufferAllocator shmAllocator;\n        GraphicsBufferAllocator *allocator = \&shmAllocator;\n        const auto modifiers = formats.value(DRM_FORMAT_ARGB8888, {DRM_FORMAT_MOD_LINEAR});\n        const auto options = GraphicsBufferOptions{\n            .size = nativeSize,\n            .format = DRM_FORMAT_ARGB8888,\n            .modifiers = modifiers,\n            .software = true,\n        };\n        auto buffer = allocator->allocate(options);\n        if (buffer) {\n            m_swapchain = std::make_unique<Swapchain>(allocator, options, buffer);\n            m_eglContext = context;\n        }/g' "$src/src/plugins/qpa/window.cpp"
 
 # The killer helper includes private Qt X11 headers unconditionally. It is not on the
 # critical compositor path, so drop it for the iOS first-light build.
@@ -106,9 +165,9 @@ EOF
 # epoxy<->QtGui-GLES header collision is resolved by the ios-bringup-gl-coexist shim in
 # kwin-ios-compat.h, ENABLED only on the kwin library target so CMake's GLESv2 probes
 # stay clean. Strip any stale QT_NO_OPENGL from an older tree, then scope-enable the shim.
-perl -0pi -e 's/^target_compile_definitions\(kwin PRIVATE QT_NO_OPENGL=1\).*# ios-bringup-target-no-qt-opengl\n//mg' "$src/src/CMakeLists.txt"
+pperl_opt 's/^target_compile_definitions\(kwin PRIVATE QT_NO_OPENGL=1\).*# ios-bringup-target-no-qt-opengl\n//mg' "$src/src/CMakeLists.txt"
 if ! grep -q 'ios-bringup-gl-coexist-target' "$src/src/CMakeLists.txt"; then
-    perl -0pi -e 's/add_library\(kwin SHARED\)/add_library(kwin SHARED)\ntarget_compile_definitions(kwin PRIVATE KWIN_IOS_GL_COEXIST=1) # ios-bringup-gl-coexist-target/g' "$src/src/CMakeLists.txt"
+    pperl 's/add_library\(kwin SHARED\)/add_library(kwin SHARED)\ntarget_compile_definitions(kwin PRIVATE KWIN_IOS_GL_COEXIST=1) # ios-bringup-gl-coexist-target/g' "$src/src/CMakeLists.txt"
 fi
 
 # iOS/ANGLE clients use the local iosc_iosurface protocol instead of dma-buf.
@@ -116,12 +175,17 @@ fi
 # CPU-readable GraphicsBuffer so the existing QPainter compositor can copy them.
 cp /work/x11/wayland/iosc-iosurface.xml "$src/src/wayland/protocols/iosc-iosurface.xml"
 if ! grep -q 'ios-bringup-iosurface-protocol' "$src/src/wayland/CMakeLists.txt"; then
-    perl -0pi -e 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    PROTOCOL \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n    BASENAME iosc-iosurface\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
+    pperl 's/target_sources\(kwin PRIVATE/ecm_add_qtwayland_server_protocol_kde(WaylandProtocols_xml\n    FILES \${PROJECT_SOURCE_DIR}\/src\/wayland\/protocols\/iosc-iosurface.xml\n) # ios-bringup-iosurface-protocol\n\ntarget_sources(kwin PRIVATE\n    ioscclientbuffer.cpp/g' "$src/src/wayland/CMakeLists.txt"
 fi
 if ! grep -q 'ios-bringup-iosurface-display' "$src/src/wayland/display.cpp"; then
-    perl -0pi -e 's/#include "linuxdmabufv1clientbuffer_p\.h"/#include "linuxdmabufv1clientbuffer_p.h"\n#include "ioscclientbuffer.h" \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
-    perl -0pi -e 's/    new ShmClientBufferIntegration\(this\);/    new ShmClientBufferIntegration(this);\n    new IoscClientBufferIntegration(this); \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
-    perl -0pi -e 's/    \} else if \(auto buffer = ShmClientBuffer::get\(resource\)\) \{\n        return buffer;/    } else if (auto buffer = ShmClientBuffer::get(resource)) {\n        return buffer;\n    } else if (auto buffer = IoscClientBuffer::get(resource)) {\n        return buffer;/g' "$src/src/wayland/display.cpp"
+    pperl 's/#include "linuxdmabufv1clientbuffer_p\.h"/#include "linuxdmabufv1clientbuffer_p.h"\n#include "ioscclientbuffer.h" \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
+    pperl 's/    new ShmClientBufferIntegration\(this\);/    new ShmClientBufferIntegration(this);\n    new IoscClientBufferIntegration(this); \/\/ ios-bringup-iosurface-display/g' "$src/src/wayland/display.cpp"
+    pperl 's/    \} else if \(auto buffer = ShmClientBuffer::get\(resource\)\) \{\n        return buffer;/    } else if (auto buffer = ShmClientBuffer::get(resource)) {\n        return buffer;\n    } else if (auto buffer = IoscClientBuffer::get(resource)) {\n        return buffer;/g' "$src/src/wayland/display.cpp"
+fi
+# GraphicsBuffer::iosurface(): the native handle of an IOSurface-backed buffer (nullptr for every other type).
+if ! grep -q 'ios-gpu-native-iosurface' "$src/src/core/graphicsbuffer.h"; then
+    pperl 's/    virtual const ShmAttributes \*shmAttributes\(\) const;\n/    virtual const ShmAttributes *shmAttributes() const;\n    virtual void *iosurface() const; \/\/ ios-gpu-native-iosurface\n/' "$src/src/core/graphicsbuffer.h"
+    pperl 's/const ShmAttributes \*GraphicsBuffer::shmAttributes\(\) const\n\{\n    return nullptr;\n\}\n/const ShmAttributes *GraphicsBuffer::shmAttributes() const\n{\n    return nullptr;\n}\n\nvoid *GraphicsBuffer::iosurface() const \/\/ ios-gpu-native-iosurface-impl\n{\n    return nullptr;\n}\n/' "$src/src/core/graphicsbuffer.cpp"
 fi
 cat > "$src/src/wayland/ioscclientbuffer.h" <<'EOF'
 /*
@@ -131,6 +195,7 @@ cat > "$src/src/wayland/ioscclientbuffer.h" <<'EOF'
 #pragma once
 
 #include "core/graphicsbuffer.h"
+#include "core/graphicsbufferallocator.h"
 
 #include <QByteArray>
 #include <QObject>
@@ -160,7 +225,9 @@ private:
 class IoscClientBuffer : public GraphicsBuffer
 {
 public:
-    IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client);
+    IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client, bool topLeft = false);
+    // Compositor-owned buffer (swapchains): no wl_resource behind it.
+    IoscClientBuffer(void *iosurface, const QSize &size, bool topLeft);
     ~IoscClientBuffer() override;
 
     Map map(MapFlags flags) override;
@@ -169,6 +236,12 @@ public:
     QSize size() const override;
     bool hasAlphaChannel() const override;
     const ShmAttributes *shmAttributes() const override;
+
+    void *iosurface() const override;
+    bool isTopLeft() const;
+    // Compositor-owned buffers: the Metal acquire fence of the most recent render into this surface.
+    void setPendingAcquireFence(const void *token, size_t tokenSize, uint64_t value);
+    bool pendingAcquireFence(QByteArray *token, uint64_t *value) const;
 
     static IoscClientBuffer *get(wl_resource *resource);
     static const struct wl_buffer_interface implementation;
@@ -185,10 +258,19 @@ private:
     ShmAttributes m_attributes;
     QByteArray m_flippedData;
     bool m_external = false;
+    bool m_topLeft = false;
+    QByteArray m_pendingToken;
+    uint64_t m_pendingValue = 0;
     void *m_acquireEvent = nullptr;
     QByteArray m_acquireToken;
     uint64_t m_acquireValue = 0;
     std::mutex m_acquireMutex;
+};
+
+class IoscGraphicsBufferAllocator : public GraphicsBufferAllocator
+{
+public:
+    GraphicsBuffer *allocate(const GraphicsBufferOptions &options) override;
 };
 
 } // namespace KWin
@@ -280,7 +362,6 @@ protected:
     {
         Q_UNUSED(width)
         Q_UNUSED(height)
-        Q_UNUSED(format)
 
         pid_t pid = 0;
         wl_client_get_credentials(resource->client(), &pid, nullptr, nullptr);
@@ -299,7 +380,8 @@ protected:
             return;
         }
 
-        new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client());
+        new IoscClientBuffer(surface, QSize(importedWidth, importedHeight), id, resource->client(),
+                             (format & format_flag_top_left) != 0);
     }
 
     void iosc_iosurface_set_acquire_fence(Resource *resource, wl_resource *buffer,
@@ -320,9 +402,10 @@ const struct wl_buffer_interface IoscClientBuffer::implementation = {
     .destroy = bufferDestroy,
 };
 
-IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client)
+IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t id, wl_client *client, bool topLeft)
     : m_iosurface(iosurface)
     , m_external(true)
+    , m_topLeft(topLeft)
 {
     const IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
     m_attributes.stride = static_cast<int>(IOSurfaceGetBytesPerRow(surface));
@@ -330,7 +413,7 @@ IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t 
     m_attributes.size = size;
     m_attributes.format = DRM_FORMAT_ARGB8888;
 
-    connect(this, &GraphicsBuffer::released, [this]() {
+    connect(this, &GraphicsBuffer::released, this, [this]() {
         if (m_resource) {
             wl_buffer_send_release(m_resource);
         }
@@ -343,6 +426,71 @@ IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, uint32_t 
         return;
     }
     wl_resource_set_implementation(m_resource, &implementation, this, bufferDestroyResource);
+}
+
+IoscClientBuffer::IoscClientBuffer(void *iosurface, const QSize &size, bool topLeft)
+    : m_iosurface(iosurface)
+    , m_topLeft(topLeft)
+{
+    const IOSurfaceRef surface = static_cast<IOSurfaceRef>(m_iosurface);
+    m_attributes.stride = static_cast<int>(IOSurfaceGetBytesPerRow(surface));
+    m_attributes.offset = 0;
+    m_attributes.size = size;
+    m_attributes.format = DRM_FORMAT_ARGB8888;
+}
+
+static void setIOSurfaceNumber(CFMutableDictionaryRef dict, CFStringRef key, int32_t value)
+{
+    CFNumberRef number = CFNumberCreate(nullptr, kCFNumberSInt32Type, &value);
+    CFDictionarySetValue(dict, key, number);
+    CFRelease(number);
+}
+
+GraphicsBuffer *IoscGraphicsBufferAllocator::allocate(const GraphicsBufferOptions &options)
+{
+    if (options.software || options.format != DRM_FORMAT_ARGB8888 || options.size.isEmpty()) {
+        return nullptr;
+    }
+    const size_t stride = IOSurfaceAlignProperty(kIOSurfaceBytesPerRow, size_t(options.size.width()) * 4);
+    const size_t allocation = IOSurfaceAlignProperty(kIOSurfaceAllocSize, stride * size_t(options.size.height()));
+    CFMutableDictionaryRef dict = CFDictionaryCreateMutable(nullptr, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    setIOSurfaceNumber(dict, kIOSurfaceWidth, options.size.width());
+    setIOSurfaceNumber(dict, kIOSurfaceHeight, options.size.height());
+    setIOSurfaceNumber(dict, kIOSurfaceBytesPerElement, 4);
+    setIOSurfaceNumber(dict, kIOSurfaceBytesPerRow, int32_t(stride));
+    setIOSurfaceNumber(dict, kIOSurfaceAllocSize, int32_t(allocation));
+    setIOSurfaceNumber(dict, kIOSurfacePixelFormat, 0x42475241); // 'BGRA'
+    IOSurfaceRef surface = IOSurfaceCreate(dict);
+    CFRelease(dict);
+    // GL-style bottom-left origin: this is what ANGLE renders into a bound IOSurface texture.
+    return surface ? new IoscClientBuffer(surface, options.size, false) : nullptr;
+}
+
+void *IoscClientBuffer::iosurface() const
+{
+    return m_iosurface;
+}
+
+bool IoscClientBuffer::isTopLeft() const
+{
+    return m_topLeft;
+}
+
+void IoscClientBuffer::setPendingAcquireFence(const void *token, size_t tokenSize, uint64_t value)
+{
+    std::lock_guard<std::mutex> lock(m_acquireMutex);
+    m_pendingToken = QByteArray(static_cast<const char *>(token), static_cast<qsizetype>(tokenSize));
+    m_pendingValue = value;
+}
+
+bool IoscClientBuffer::pendingAcquireFence(QByteArray *token, uint64_t *value) const
+{
+    if (m_pendingToken.isEmpty() || m_pendingValue == 0) {
+        return false;
+    }
+    *token = m_pendingToken;
+    *value = m_pendingValue;
+    return true;
 }
 
 IoscClientBuffer::~IoscClientBuffer()
@@ -373,8 +521,9 @@ GraphicsBuffer::Map IoscClientBuffer::map(MapFlags flags)
     const auto *src = static_cast<const unsigned char *>(IOSurfaceGetBaseAddress(surface));
     auto *dst = reinterpret_cast<unsigned char *>(m_flippedData.data());
     for (int y = 0; y < height; ++y) {
+        const int srcRow = m_topLeft ? y : height - 1 - y; // GL-origin buffers are stored bottom row first
         std::memcpy(dst + static_cast<size_t>(y) * stride,
-                    src + static_cast<size_t>(height - 1 - y) * stride,
+                    src + static_cast<size_t>(srcRow) * stride,
                     stride);
     }
 
@@ -477,7 +626,7 @@ EOF
 
 # KWin has Linux/FreeBSD executable path backends only. The sysctl backend is the closest
 # Darwin-family implementation and compiles against the iOS SDK.
-perl -0pi -e 's/elseif\(CMAKE_SYSTEM_NAME MATCHES "FreeBSD"\)\n    target_sources\(kwin PRIVATE executable_path_sysctl\.cpp\)\nelse\(\)\n    message\(FATAL_ERROR "Unsupported platform \$\{CMAKE_SYSTEM_NAME\}"\)\nendif\(\)/elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")\n    target_sources(kwin PRIVATE executable_path_sysctl.cpp)\nelseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")\n    target_sources(kwin PRIVATE executable_path_sysctl.cpp)\nelse()\n    message(FATAL_ERROR "Unsupported platform \${CMAKE_SYSTEM_NAME}")\nendif()/g' "$src/src/utils/CMakeLists.txt"
+pperl 's/elseif\(CMAKE_SYSTEM_NAME MATCHES "FreeBSD"\)\n    target_sources\(kwin PRIVATE executable_path_sysctl\.cpp\)\nelse\(\)\n    message\(FATAL_ERROR "Unsupported platform \$\{CMAKE_SYSTEM_NAME\}"\)\nendif\(\)/elseif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")\n    target_sources(kwin PRIVATE executable_path_sysctl.cpp)\nelseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")\n    target_sources(kwin PRIVATE executable_path_sysctl.cpp)\nelse()\n    message(FATAL_ERROR "Unsupported platform \${CMAKE_SYSTEM_NAME}")\nendif()/g' "$src/src/utils/CMakeLists.txt"
 cat > "$src/src/utils/executable_path_sysctl.cpp" <<'EOF'
 /*
    SPDX-FileCopyrightText: 2021 Tobias C. Berner <tcberner@FreeBSD.org>
@@ -535,33 +684,33 @@ EOF
 
 # qtx11extras_p.h is only needed inside the KWIN_BUILD_X11 sections.
 if ! grep -q 'ios-bringup-qtx11extras' "$src/src/main.cpp"; then
-    perl -0pi -e 's/#include <private\/qtx11extras_p\.h>/#if KWIN_BUILD_X11\n#include <private\/qtx11extras_p.h>\n#endif \/\/ ios-bringup-qtx11extras/g' "$src/src/main.cpp"
+    pperl 's/#include <private\/qtx11extras_p\.h>/#if KWIN_BUILD_X11\n#include <private\/qtx11extras_p.h>\n#endif \/\/ ios-bringup-qtx11extras/g' "$src/src/main.cpp"
 fi
 if ! grep -q 'ios-bringup-xcb-cursor' "$src/src/cursor.cpp"; then
-    perl -0pi -e 's/#include <xcb\/xcb_cursor\.h>/#if KWIN_BUILD_X11\n#include <xcb\/xcb_cursor.h>\n#endif \/\/ ios-bringup-xcb-cursor/g' "$src/src/cursor.cpp"
+    pperl_opt 's/#include <xcb\/xcb_cursor\.h>/#if KWIN_BUILD_X11\n#include <xcb\/xcb_cursor.h>\n#endif \/\/ ios-bringup-xcb-cursor/g' "$src/src/cursor.cpp"
 fi
 
 if ! grep -q 'ios-bringup-no-drm-lease' "$src/src/wayland/CMakeLists.txt"; then
-    perl -0pi -e 's/    drmlease_v1\.cpp\n/    # ios-bringup-no-drm-lease: disabled with the DRM backend on Apple\n/g' "$src/src/wayland/CMakeLists.txt"
-    perl -0pi -e 's/    drmlease_v1\.h\n/    # ios-bringup-no-drm-lease-header: disabled with the DRM backend on Apple\n/g' "$src/src/wayland/CMakeLists.txt"
+    pperl 's/    drmlease_v1\.cpp\n/    # ios-bringup-no-drm-lease: disabled with the DRM backend on Apple\n/g' "$src/src/wayland/CMakeLists.txt"
+    pperl 's/    drmlease_v1\.h\n/    # ios-bringup-no-drm-lease-header: disabled with the DRM backend on Apple\n/g' "$src/src/wayland/CMakeLists.txt"
 fi
 if ! grep -q 'ios-bringup-no-drm-lease' "$src/src/wayland_server.cpp"; then
-    perl -0pi -e 's/#include "wayland\/drmlease_v1\.h"/#if !defined(__APPLE__)\n#include "wayland\/drmlease_v1.h"\n#endif \/\/ ios-bringup-no-drm-lease/g' "$src/src/wayland_server.cpp"
-    perl -0pi -e 's/    if \(auto backend = qobject_cast<DrmBackend \*>\(kwinApp\(\)->outputBackend\(\)\)\) {\n        m_leaseManager = new DrmLeaseManagerV1\(backend, m_display, m_display\);\n    }/#if !defined(__APPLE__)\n    if (auto backend = qobject_cast<DrmBackend *>(kwinApp()->outputBackend())) {\n        m_leaseManager = new DrmLeaseManagerV1(backend, m_display, m_display);\n    }\n#endif/g' "$src/src/wayland_server.cpp"
+    pperl 's/#include "wayland\/drmlease_v1\.h"/#if !defined(__APPLE__)\n#include "wayland\/drmlease_v1.h"\n#endif \/\/ ios-bringup-no-drm-lease/g' "$src/src/wayland_server.cpp"
+    pperl 's/    if \(auto backend = qobject_cast<DrmBackend \*>\(kwinApp\(\)->outputBackend\(\)\)\) {\n        m_leaseManager = new DrmLeaseManagerV1\(backend, m_display, m_display\);\n    }/#if !defined(__APPLE__)\n    if (auto backend = qobject_cast<DrmBackend *>(kwinApp()->outputBackend())) {\n        m_leaseManager = new DrmLeaseManagerV1(backend, m_display, m_display);\n    }\n#endif/g' "$src/src/wayland_server.cpp"
 fi
 if ! grep -q 'ios-bringup-no-drm-lease' "$src/src/wayland_server.h"; then
-    perl -0pi -e 's/class DrmLeaseManagerV1;/#if !defined(__APPLE__)\nclass DrmLeaseManagerV1;\n#endif \/\/ ios-bringup-no-drm-lease/g' "$src/src/wayland_server.h"
-    perl -0pi -e 's/    DrmLeaseManagerV1 \*m_leaseManager = nullptr;/#if !defined(__APPLE__)\n    DrmLeaseManagerV1 *m_leaseManager = nullptr;\n#endif/g' "$src/src/wayland_server.h"
+    pperl 's/class DrmLeaseManagerV1;/#if !defined(__APPLE__)\nclass DrmLeaseManagerV1;\n#endif \/\/ ios-bringup-no-drm-lease/g' "$src/src/wayland_server.h"
+    pperl 's/    DrmLeaseManagerV1 \*m_leaseManager = nullptr;/#if !defined(__APPLE__)\n    DrmLeaseManagerV1 *m_leaseManager = nullptr;\n#endif/g' "$src/src/wayland_server.h"
 fi
-perl -0pi -e 's/target_link_libraries\(kwin_wayland\n(?:(?:    (?:KWinQpaPlugin|KF6WindowSystemKWinPlugin|KF6IdleTimeKWinPlugin)\n)|(?:    # ios-bringup-no-qpa-link:[^\n]*\n))+\)/target_link_libraries(kwin_wayland\n    KWinQpaPlugin\n    # ios-bringup-no-qpa-link: KWindowSystem\/IdleTime static plugins disabled for first-light\n)/g' "$src/src/CMakeLists.txt"
+pperl 's/target_link_libraries\(kwin_wayland\n(?:(?:    (?:KWinQpaPlugin|KF6WindowSystemKWinPlugin|KF6IdleTimeKWinPlugin)\n)|(?:    # ios-bringup-no-qpa-link:[^\n]*\n))+\)/target_link_libraries(kwin_wayland\n    KWinQpaPlugin\n    # ios-bringup-no-qpa-link: KWindowSystem\/IdleTime static plugins disabled for first-light\n)/g' "$src/src/CMakeLists.txt"
 
-perl -0pi -e 's@#include "backends/drm/drm_backend\.h"\n#include "backends/virtual/virtual_backend\.h"@#if !defined(__APPLE__)\n#include "backends/drm/drm_backend.h"\n#include "backends/virtual/virtual_backend.h"\n#endif // ios-bringup-main-wayland@g' "$src/src/main_wayland.cpp"
-perl -0pi -e 's@Q_IMPORT_PLUGIN\(KWindowSystemKWinPlugin\)\nQ_IMPORT_PLUGIN\(KWinIdleTimePoller\)@#if !defined(__APPLE__)\nQ_IMPORT_PLUGIN(KWindowSystemKWinPlugin)\nQ_IMPORT_PLUGIN(KWinIdleTimePoller)\n#endif // ios-bringup-main-wayland@g' "$src/src/main_wayland.cpp"
-perl -0pi -e 's@    if \(parser\.isSet\(drmOption\)\) {\n        backendType = BackendType::Kms;@    if (parser.isSet(drmOption)) {\n#if defined(__APPLE__)\n        std::cerr << "FATAL ERROR: drm backend is not built on Apple/iOS first-light KWin" << std::endl;\n        return 1;\n#else\n        backendType = BackendType::Kms;\n#endif@g' "$src/src/main_wayland.cpp"
-perl -0pi -e 's@    } else if \(parser\.isSet\(virtualFbOption\)\) {\n        backendType = BackendType::Virtual;@    } else if (parser.isSet(virtualFbOption)) {\n#if defined(__APPLE__)\n        std::cerr << "FATAL ERROR: virtual backend is not built on Apple/iOS first-light KWin; use --wayland-display" << std::endl;\n        return 1;\n#else\n        backendType = BackendType::Virtual;\n#endif@g' "$src/src/main_wayland.cpp"
-perl -0pi -e 's@        } else if \(qEnvironmentVariableIsSet\("DISPLAY"\)\) {\n            qInfo\("No backend specified, automatically choosing X11 because DISPLAY is set"\);\n            backendType = BackendType::X11;\n        } else {\n            qInfo\("No backend specified, automatically choosing drm"\);\n            backendType = BackendType::Kms;\n        }@        }\n#if KWIN_BUILD_X11\n        else if (qEnvironmentVariableIsSet("DISPLAY")) {\n            qInfo("No backend specified, automatically choosing X11 because DISPLAY is set");\n            backendType = BackendType::X11;\n        }\n#endif\n        else {\n#if defined(__APPLE__)\n            qInfo("No backend specified, automatically choosing nested Wayland on Apple/iOS");\n            backendType = BackendType::Wayland;\n#else\n            qInfo("No backend specified, automatically choosing drm");\n            backendType = BackendType::Kms;\n#endif\n        }@g' "$src/src/main_wayland.cpp"
-perl -0pi -e 's@    switch \(backendType\) {\n    case BackendType::Kms:@    switch (backendType) {\n#if !defined(__APPLE__)\n    case BackendType::Kms:@g' "$src/src/main_wayland.cpp"
-perl -0pi -e 's@        a\.setOutputBackend\(std::move\(outputBackend\)\);\n        break;\n    }\n#if KWIN_BUILD_X11@        a.setOutputBackend(std::move(outputBackend));\n        break;\n    }\n#endif // ios-bringup-main-wayland\n#if KWIN_BUILD_X11@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@#include "backends/drm/drm_backend\.h"\n#include "backends/virtual/virtual_backend\.h"@#if !defined(__APPLE__)\n#include "backends/drm/drm_backend.h"\n#include "backends/virtual/virtual_backend.h"\n#endif // ios-bringup-main-wayland@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@Q_IMPORT_PLUGIN\(KWindowSystemKWinPlugin\)\nQ_IMPORT_PLUGIN\(KWinIdleTimePoller\)@#if !defined(__APPLE__)\nQ_IMPORT_PLUGIN(KWindowSystemKWinPlugin)\nQ_IMPORT_PLUGIN(KWinIdleTimePoller)\n#endif // ios-bringup-main-wayland@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@    if \(parser\.isSet\(drmOption\)\) {\n        backendType = BackendType::Kms;@    if (parser.isSet(drmOption)) {\n#if defined(__APPLE__)\n        std::cerr << "FATAL ERROR: drm backend is not built on Apple/iOS first-light KWin" << std::endl;\n        return 1;\n#else\n        backendType = BackendType::Kms;\n#endif@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@    } else if \(parser\.isSet\(virtualFbOption\)\) {\n        backendType = BackendType::Virtual;@    } else if (parser.isSet(virtualFbOption)) {\n#if defined(__APPLE__)\n        std::cerr << "FATAL ERROR: virtual backend is not built on Apple/iOS first-light KWin; use --wayland-display" << std::endl;\n        return 1;\n#else\n        backendType = BackendType::Virtual;\n#endif@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@        } else if \(qEnvironmentVariableIsSet\("DISPLAY"\)\) {\n            qInfo\("No backend specified, automatically choosing X11 because DISPLAY is set"\);\n            backendType = BackendType::X11;\n        } else {\n            qInfo\("No backend specified, automatically choosing drm"\);\n            backendType = BackendType::Kms;\n        }@        }\n#if KWIN_BUILD_X11\n        else if (qEnvironmentVariableIsSet("DISPLAY")) {\n            qInfo("No backend specified, automatically choosing X11 because DISPLAY is set");\n            backendType = BackendType::X11;\n        }\n#endif\n        else {\n#if defined(__APPLE__)\n            qInfo("No backend specified, automatically choosing nested Wayland on Apple/iOS");\n            backendType = BackendType::Wayland;\n#else\n            qInfo("No backend specified, automatically choosing drm");\n            backendType = BackendType::Kms;\n#endif\n        }@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@    switch \(backendType\) {\n    case BackendType::Kms:@    switch (backendType) {\n#if !defined(__APPLE__)\n    case BackendType::Kms:@g' "$src/src/main_wayland.cpp"
+pperl_opt 's@        a\.setOutputBackend\(std::move\(outputBackend\)\);\n        break;\n    }\n#if KWIN_BUILD_X11@        a.setOutputBackend(std::move(outputBackend));\n        break;\n    }\n#endif // ios-bringup-main-wayland\n#if KWIN_BUILD_X11@g' "$src/src/main_wayland.cpp"
 
 # KWIN_IOS_QT_NO_OPENGL guards for the effects renderer. These are a CAPABILITY fallback,
 # not leftovers: kwin-ios-compat.h defines the macro itself when `QT_FEATURE_opengl < 0`,
@@ -570,54 +719,71 @@ perl -0pi -e 's@        a\.setOutputBackend\(std::move\(outputBackend\)\);\n    
 # defined and every guard compiles as upstream, which is why the GL path is the live one.
 # Deleting them would turn "builds with a no-OpenGL Qt" into a silent compile break.
 if ! grep -q 'ios-bringup-no-opengl-quickview' "$src/src/effect/offscreenquickview.cpp"; then
-    perl -0pi -e 's/#include "opengl\/glutils\.h"\n#include "opengl\/openglcontext\.h"/#include "opengl\/glutils.h"\n#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include "opengl\/openglcontext.h"\n#endif \/\/ ios-bringup-no-opengl-quickview/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/#include <QOpenGLContext>\n#include <QOpenGLFramebufferObject>\n#include <QQuickGraphicsDevice>\n#include <QQuickOpenGLUtils>\n#include <QQuickRenderTarget>/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include <QOpenGLContext>\n#include <QOpenGLFramebufferObject>\n#include <QQuickGraphicsDevice>\n#include <QQuickOpenGLUtils>\n#include <QQuickRenderTarget>\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    std::unique_ptr<QOpenGLContext> m_glcontext;\n    std::unique_ptr<QOpenGLFramebufferObject> m_fbo;/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    std::unique_ptr<QOpenGLContext> m_glcontext;\n    std::unique_ptr<QOpenGLFramebufferObject> m_fbo;\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    const bool usingGl = d->m_view->rendererInterface\(\)->graphicsApi\(\) == QSGRendererInterface::OpenGL;/#if defined(KWIN_IOS_QT_NO_OPENGL)\n    const bool usingGl = false;\n#else\n    const bool usingGl = d->m_view->rendererInterface()->graphicsApi() == QSGRendererInterface::OpenGL;\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    } else {\n        QSurfaceFormat format;(.+?)    }\n\n    auto updateSize/    }\n#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    else {\n        QSurfaceFormat format;$1    }\n#endif\n\n    auto updateSize/s' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    if \(d->m_glcontext\) {\n        \/\/ close the view whilst we have an active GL context\n        d->m_glcontext->makeCurrent\(d->m_offscreenSurface\.get\(\)\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (d->m_glcontext) {\n        \/\/ close the view whilst we have an active GL context\n        d->m_glcontext->makeCurrent(d->m_offscreenSurface.get());\n    }\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    bool usingGl = d->m_glcontext != nullptr;\n    OpenGlContext \*previousContext = OpenGlContext::currentContext\(\);/#if defined(KWIN_IOS_QT_NO_OPENGL)\n    bool usingGl = false;\n#else\n    bool usingGl = d->m_glcontext != nullptr;\n    OpenGlContext *previousContext = OpenGlContext::currentContext();\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    if \(usingGl\) {\n        if \(!d->m_glcontext->makeCurrent\(d->m_offscreenSurface\.get\(\)\)\) {(.+?)        d->m_view->setRenderTarget\(renderTarget\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (usingGl) {\n        if (!d->m_glcontext->makeCurrent(d->m_offscreenSurface.get())) {$1        d->m_view->setRenderTarget(renderTarget);\n    }\n#endif/s' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    if \(usingGl\) {\n        QQuickOpenGLUtils::resetOpenGLState\(\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (usingGl) {\n        QQuickOpenGLUtils::resetOpenGLState();\n    }\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/        if \(usingGl\) {\n            d->m_image = d->m_fbo->toImage\(\);\n            d->m_image\.setDevicePixelRatio\(d->m_view->devicePixelRatio\(\)\);\n        } else {\n            d->m_image = d->m_view->grabWindow\(\);\n        }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n        if (usingGl) {\n            d->m_image = d->m_fbo->toImage();\n            d->m_image.setDevicePixelRatio(d->m_view->devicePixelRatio());\n        } else\n#endif\n        {\n            d->m_image = d->m_view->grabWindow();\n        }/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    if \(usingGl\) {\n        QOpenGLFramebufferObject::bindDefault\(\);\n        d->m_glcontext->doneCurrent\(\);\n        if \(previousContext\) {\n            previousContext->makeCurrent\(\);\n        }\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (usingGl) {\n        QOpenGLFramebufferObject::bindDefault();\n        d->m_glcontext->doneCurrent();\n        if (previousContext) {\n            previousContext->makeCurrent();\n        }\n    }\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/GLTexture \*OffscreenQuickView::bufferAsTexture\(\)\n\{\n    if \(d->m_useBlit\) {/GLTexture *OffscreenQuickView::bufferAsTexture()\n{\n#if defined(KWIN_IOS_QT_NO_OPENGL)\n    return nullptr;\n#else\n    if (d->m_useBlit) {/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    return d->m_textureExport\.get\(\);\n}\n\nQImage OffscreenQuickView::bufferAsImage/    return d->m_textureExport.get();\n#endif\n}\n\nQImage OffscreenQuickView::bufferAsImage/g' "$src/src/effect/offscreenquickview.cpp"
-    perl -0pi -e 's/    if \(m_glcontext\) {\n        m_glcontext->makeCurrent\(m_offscreenSurface\.get\(\)\);\n        m_view->releaseResources\(\);\n        m_glcontext->doneCurrent\(\);\n    } else {\n        m_view->releaseResources\(\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (m_glcontext) {\n        m_glcontext->makeCurrent(m_offscreenSurface.get());\n        m_view->releaseResources();\n        m_glcontext->doneCurrent();\n    } else\n#endif\n    {\n        m_view->releaseResources();\n    }/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/#include "opengl\/glutils\.h"\n#include "opengl\/openglcontext\.h"/#include "opengl\/glutils.h"\n#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include "opengl\/openglcontext.h"\n#endif \/\/ ios-bringup-no-opengl-quickview/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/#include <QOpenGLContext>\n#include <QOpenGLFramebufferObject>\n#include <QQuickGraphicsDevice>\n#include <QQuickOpenGLUtils>\n#include <QQuickRenderTarget>/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n#include <QOpenGLContext>\n#include <QOpenGLFramebufferObject>\n#include <QQuickGraphicsDevice>\n#include <QQuickOpenGLUtils>\n#include <QQuickRenderTarget>\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    std::unique_ptr<QOpenGLContext> m_glcontext;\n    std::unique_ptr<QOpenGLFramebufferObject> m_fbo;/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    std::unique_ptr<QOpenGLContext> m_glcontext;\n    std::unique_ptr<QOpenGLFramebufferObject> m_fbo;\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    const bool usingGl = d->m_view->rendererInterface\(\)->graphicsApi\(\) == QSGRendererInterface::OpenGL;/#if defined(KWIN_IOS_QT_NO_OPENGL)\n    const bool usingGl = false;\n#else\n    const bool usingGl = d->m_view->rendererInterface()->graphicsApi() == QSGRendererInterface::OpenGL;\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    } else {\n        QSurfaceFormat format;(.+?)    }\n\n    auto updateSize/    }\n#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    else {\n        QSurfaceFormat format;$1    }\n#endif\n\n    auto updateSize/s' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    if \(d->m_glcontext\) {\n        \/\/ close the view whilst we have an active GL context\n        d->m_glcontext->makeCurrent\(d->m_offscreenSurface\.get\(\)\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (d->m_glcontext) {\n        \/\/ close the view whilst we have an active GL context\n        d->m_glcontext->makeCurrent(d->m_offscreenSurface.get());\n    }\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    bool usingGl = d->m_glcontext != nullptr;\n    OpenGlContext \*previousContext = OpenGlContext::currentContext\(\);/#if defined(KWIN_IOS_QT_NO_OPENGL)\n    bool usingGl = false;\n#else\n    bool usingGl = d->m_glcontext != nullptr;\n    OpenGlContext *previousContext = OpenGlContext::currentContext();\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    if \(usingGl\) {\n        if \(!d->m_glcontext->makeCurrent\(d->m_offscreenSurface\.get\(\)\)\) {(.+?)        d->m_view->setRenderTarget\(renderTarget\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (usingGl) {\n        if (!d->m_glcontext->makeCurrent(d->m_offscreenSurface.get())) {$1        d->m_view->setRenderTarget(renderTarget);\n    }\n#endif/s' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    if \(usingGl\) {\n        QQuickOpenGLUtils::resetOpenGLState\(\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (usingGl) {\n        QQuickOpenGLUtils::resetOpenGLState();\n    }\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/        if \(usingGl\) {\n            d->m_image = d->m_fbo->toImage\(\);\n            d->m_image\.setDevicePixelRatio\(d->m_view->devicePixelRatio\(\)\);\n        } else {\n            d->m_image = d->m_view->grabWindow\(\);\n        }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n        if (usingGl) {\n            d->m_image = d->m_fbo->toImage();\n            d->m_image.setDevicePixelRatio(d->m_view->devicePixelRatio());\n        } else\n#endif\n        {\n            d->m_image = d->m_view->grabWindow();\n        }/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    if \(usingGl\) {\n        QOpenGLFramebufferObject::bindDefault\(\);\n        d->m_glcontext->doneCurrent\(\);\n        if \(previousContext\) {\n            previousContext->makeCurrent\(\);\n        }\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (usingGl) {\n        QOpenGLFramebufferObject::bindDefault();\n        d->m_glcontext->doneCurrent();\n        if (previousContext) {\n            previousContext->makeCurrent();\n        }\n    }\n#endif/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/GLTexture \*OffscreenQuickView::bufferAsTexture\(\)\n\{\n    if \(d->m_useBlit\) {/GLTexture *OffscreenQuickView::bufferAsTexture()\n{\n#if defined(KWIN_IOS_QT_NO_OPENGL)\n    return nullptr;\n#else\n    if (d->m_useBlit) {/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    return d->m_textureExport\.get\(\);\n}\n\nQImage OffscreenQuickView::bufferAsImage/    return d->m_textureExport.get();\n#endif\n}\n\nQImage OffscreenQuickView::bufferAsImage/g' "$src/src/effect/offscreenquickview.cpp"
+    pperl_opt 's/    if \(m_glcontext\) {\n        m_glcontext->makeCurrent\(m_offscreenSurface\.get\(\)\);\n        m_view->releaseResources\(\);\n        m_glcontext->doneCurrent\(\);\n    } else {\n        m_view->releaseResources\(\);\n    }/#if !defined(KWIN_IOS_QT_NO_OPENGL)\n    if (m_glcontext) {\n        m_glcontext->makeCurrent(m_offscreenSurface.get());\n        m_view->releaseResources();\n        m_glcontext->doneCurrent();\n    } else\n#endif\n    {\n        m_view->releaseResources();\n    }/g' "$src/src/effect/offscreenquickview.cpp"
 fi
 
 if ! grep -q 'ios-bringup-no-libinput' "$src/src/input.cpp"; then
-    perl -0pi -e 's/#include "backends\/libinput\/connection\.h"\n#include "backends\/libinput\/device\.h"/#if !defined(KWIN_IOS_NO_LIBINPUT)\n#include "backends\/libinput\/connection.h"\n#include "backends\/libinput\/device.h"\n#endif \/\/ ios-bringup-no-libinput/g' "$src/src/input.cpp"
-    perl -0pi -e 's/    void integrateDevice\(InputDevice \*inputDevice\)\n    \{\n        auto device = qobject_cast<LibInput::Device \*>\(inputDevice\);/    void integrateDevice(InputDevice *inputDevice)\n    {\n#if defined(KWIN_IOS_NO_LIBINPUT)\n        Q_UNUSED(inputDevice)\n        return;\n#else\n        auto device = qobject_cast<LibInput::Device *>(inputDevice);/g' "$src/src/input.cpp"
-    perl -0pi -e 's/(            tabletSeat->addTabletPad\(device->sysName\(\), device->name\(\), \{QString::fromUtf8\(devnode\)\}, buttonsCount, ringsCount, stripsCount, modes, libinput_tablet_pad_mode_group_get_mode\(firstGroup\), tablet\);\n        \}\n)    \}\n\n    static void trackNextOutput/$1#endif \/\/ ios-bringup-no-libinput-integrate\n    }\n\n    static void trackNextOutput/s' "$src/src/input.cpp"
-    perl -0pi -e 's/    void removeDevice\(InputDevice \*inputDevice\)\n    \{\n        auto device = qobject_cast<LibInput::Device \*>\(inputDevice\);/    void removeDevice(InputDevice *inputDevice)\n    {\n#if defined(KWIN_IOS_NO_LIBINPUT)\n        Q_UNUSED(inputDevice)\n        return;\n#else\n        auto device = qobject_cast<LibInput::Device *>(inputDevice);/g' "$src/src/input.cpp"
-    perl -0pi -e 's/(            \}\n        \}\n)    \}\n\n    TabletToolV2Interface::Type getType/$1#endif \/\/ ios-bringup-no-libinput-remove\n    }\n\n    TabletToolV2Interface::Type getType/s' "$src/src/input.cpp"
+    pperl_opt 's/#include "backends\/libinput\/connection\.h"\n#include "backends\/libinput\/device\.h"/#if !defined(KWIN_IOS_NO_LIBINPUT)\n#include "backends\/libinput\/connection.h"\n#include "backends\/libinput\/device.h"\n#endif \/\/ ios-bringup-no-libinput/g' "$src/src/input.cpp"
+    pperl_opt 's/    void integrateDevice\(InputDevice \*inputDevice\)\n    \{\n        auto device = qobject_cast<LibInput::Device \*>\(inputDevice\);/    void integrateDevice(InputDevice *inputDevice)\n    {\n#if defined(KWIN_IOS_NO_LIBINPUT)\n        Q_UNUSED(inputDevice)\n        return;\n#else\n        auto device = qobject_cast<LibInput::Device *>(inputDevice);/g' "$src/src/input.cpp"
+    pperl_opt 's/(            tabletSeat->addTabletPad\(device->sysName\(\), device->name\(\), \{QString::fromUtf8\(devnode\)\}, buttonsCount, ringsCount, stripsCount, modes, libinput_tablet_pad_mode_group_get_mode\(firstGroup\), tablet\);\n        \}\n)    \}\n\n    static void trackNextOutput/$1#endif \/\/ ios-bringup-no-libinput-integrate\n    }\n\n    static void trackNextOutput/s' "$src/src/input.cpp"
+    pperl_opt 's/    void removeDevice\(InputDevice \*inputDevice\)\n    \{\n        auto device = qobject_cast<LibInput::Device \*>\(inputDevice\);/    void removeDevice(InputDevice *inputDevice)\n    {\n#if defined(KWIN_IOS_NO_LIBINPUT)\n        Q_UNUSED(inputDevice)\n        return;\n#else\n        auto device = qobject_cast<LibInput::Device *>(inputDevice);/g' "$src/src/input.cpp"
+    pperl_opt 's/(            \}\n        \}\n)    \}\n\n    TabletToolV2Interface::Type getType/$1#endif \/\/ ios-bringup-no-libinput-remove\n    }\n\n    TabletToolV2Interface::Type getType/s' "$src/src/input.cpp"
 fi
 if ! grep -q 'ios-bringup-inputdevice-include' "$src/src/input.cpp"; then
-    perl -0pi -e 's/#include "core\/inputbackend\.h"/#include "core\/inputbackend.h"\n#include "core\/inputdevice.h" \/\/ ios-bringup-inputdevice-include/g' "$src/src/input.cpp"
+    pperl_opt 's/#include "core\/inputbackend\.h"/#include "core\/inputbackend.h"\n#include "core\/inputdevice.h" \/\/ ios-bringup-inputdevice-include/g' "$src/src/input.cpp"
 fi
 
 if ! grep -q 'ios-bringup-no-opengl-thumbnails' "$src/src/scripting/windowthumbnailitem.cpp"; then
-    perl -0pi -e 's/static bool useGlThumbnails\(\)\n\{\n    static bool qtQuickIsSoftware/static bool useGlThumbnails()\n{\n#if defined(KWIN_IOS_QT_NO_OPENGL)\n    return false;\n#endif \/\/ ios-bringup-no-opengl-thumbnails\n    static bool qtQuickIsSoftware/g' "$src/src/scripting/windowthumbnailitem.cpp"
-    perl -0pi -e 's/    if \(m_nativeTexture != nativeTexture\) {\n        const GLuint textureId = nativeTexture->texture\(\);/ #if defined(KWIN_IOS_QT_NO_OPENGL)\n    Q_UNUSED(nativeTexture)\n    m_nativeTexture = nullptr;\n    m_texture.reset();\n#else\n    if (m_nativeTexture != nativeTexture) {\n        const GLuint textureId = nativeTexture->texture();/g' "$src/src/scripting/windowthumbnailitem.cpp"
-    perl -0pi -e 's/    }\n\n    \/\/ The textureChanged signal must be emitted also if only texture data changes\.\n    Q_EMIT textureChanged\(\);\n}/    }\n#endif\n\n    \/\/ The textureChanged signal must be emitted also if only texture data changes.\n    Q_EMIT textureChanged();\n}/g' "$src/src/scripting/windowthumbnailitem.cpp"
+    pperl 's/static bool useGlThumbnails\(\)\n\{\n    static bool qtQuickIsSoftware/static bool useGlThumbnails()\n{\n#if defined(KWIN_IOS_QT_NO_OPENGL)\n    return false;\n#endif \/\/ ios-bringup-no-opengl-thumbnails\n    static bool qtQuickIsSoftware/g' "$src/src/scripting/windowthumbnailitem.cpp"
+    pperl 's/    if \(m_nativeTexture != nativeTexture\) {\n        const GLuint textureId = nativeTexture->texture\(\);/ #if defined(KWIN_IOS_QT_NO_OPENGL)\n    Q_UNUSED(nativeTexture)\n    m_nativeTexture = nullptr;\n    m_texture.reset();\n#else\n    if (m_nativeTexture != nativeTexture) {\n        const GLuint textureId = nativeTexture->texture();/g' "$src/src/scripting/windowthumbnailitem.cpp"
+    pperl 's/    }\n\n    \/\/ The textureChanged signal must be emitted also if only texture data changes\.\n    Q_EMIT textureChanged\(\);\n}/    }\n#endif\n\n    \/\/ The textureChanged signal must be emitted also if only texture data changes.\n    Q_EMIT textureChanged();\n}/g' "$src/src/scripting/windowthumbnailitem.cpp"
 fi
 
 if ! grep -q 'ios-bringup-no-libinput' "$src/src/tabletmodemanager.cpp"; then
-    perl -0pi -e 's/#include "backends\/libinput\/device\.h"/#if !defined(KWIN_IOS_NO_LIBINPUT)\n#include "backends\/libinput\/device.h"\n#endif \/\/ ios-bringup-no-libinput/g' "$src/src/tabletmodemanager.cpp"
-    perl -0pi -e 's/    auto libinput_device = qobject_cast<LibInput::Device \*>\(device\);/#if defined(KWIN_IOS_NO_LIBINPUT)\n    Q_UNUSED(device)\n    return false;\n#else\n    auto libinput_device = qobject_cast<LibInput::Device *>(device);/g' "$src/src/tabletmodemanager.cpp"
-    perl -0pi -e 's/    return ignore;\n}/    return ignore;\n#endif\n}/g' "$src/src/tabletmodemanager.cpp"
+    pperl 's/#include "backends\/libinput\/device\.h"/#if !defined(KWIN_IOS_NO_LIBINPUT)\n#include "backends\/libinput\/device.h"\n#endif \/\/ ios-bringup-no-libinput/g' "$src/src/tabletmodemanager.cpp"
+    pperl_opt 's/    auto libinput_device = qobject_cast<LibInput::Device \*>\(device\);/#if defined(KWIN_IOS_NO_LIBINPUT)\n    Q_UNUSED(device)\n    return false;\n#else\n    auto libinput_device = qobject_cast<LibInput::Device *>(device);/g' "$src/src/tabletmodemanager.cpp"
+    pperl_opt 's/    return ignore;\n}/    return ignore;\n#endif\n}/g' "$src/src/tabletmodemanager.cpp"
 fi
 
+# 6.7 tabletmodemanager: blocksTabletMode() casts to LibInput::Device and queries libudev; neither exists here.
+python3 - "$src/src/tabletmodemanager.cpp" <<'PY'
+import sys
+from pathlib import Path
+p = Path(sys.argv[1]); s = p.read_text()
+if "ios-bringup-no-libinput-blocks" not in s:
+    old = "static bool blocksTabletMode(InputDevice *device)\n{\n"
+    if old not in s:
+        print("kwin-ios-fixes.sh: tabletmodemanager blocksTabletMode anchor not found (6.1 layout?)", file=sys.stderr)
+    else:
+        i = s.index(old)
+        j = s.index("\n}\n", i)
+        body = s[i + len(old):j]
+        s = s[:i] + old + "#if defined(KWIN_IOS_NO_LIBINPUT) // ios-bringup-no-libinput-blocks\n    Q_UNUSED(device)\n    return false;\n#else\n" + body + "\n#endif" + s[j:]
+        p.write_text(s)
+PY
+
 if ! grep -q 'ios-bringup-no-sealed-ramfile' "$src/src/utils/ramfile.cpp"; then
-    perl -0pi -e 's/    int seals = F_SEAL_SHRINK \| F_SEAL_GROW \| F_SEAL_SEAL;\n    if \(flags\.testFlag\(RamFile::Flag::SealWrite\)\) {\n        seals \|= F_SEAL_WRITE;\n    }\n    \/\/ This can fail for QTemporaryFile based on the underlying file system\.\n    if \(fcntl\(fd\(\), F_ADD_SEALS, seals\) != 0\) {\n        qCDebug\(KWIN_CORE\)\.nospace\(\) << name << ": Failed to seal RamFile: " << strerror\(errno\);\n    }/#if !defined(__APPLE__)\n    int seals = F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL;\n    if (flags.testFlag(RamFile::Flag::SealWrite)) {\n        seals |= F_SEAL_WRITE;\n    }\n    \/\/ This can fail for QTemporaryFile based on the underlying file system.\n    if (fcntl(fd(), F_ADD_SEALS, seals) != 0) {\n        qCDebug(KWIN_CORE).nospace() << name << ": Failed to seal RamFile: " << strerror(errno);\n    }\n#else\n    qCDebug(KWIN_CORE).nospace() << name << ": RamFile sealing is not available on Darwin";\n#endif \/\/ ios-bringup-no-sealed-ramfile/g' "$src/src/utils/ramfile.cpp"
-    perl -0pi -e 's/    const int seals = fcntl\(fd\(\), F_GET_SEALS\);\n    if \(seals > 0\) {\n        if \(seals & F_SEAL_WRITE\) {\n            flags\.setFlag\(Flag::SealWrite\);\n        }\n    }/#if !defined(__APPLE__)\n    const int seals = fcntl(fd(), F_GET_SEALS);\n    if (seals > 0) {\n        if (seals & F_SEAL_WRITE) {\n            flags.setFlag(Flag::SealWrite);\n        }\n    }\n#endif/g' "$src/src/utils/ramfile.cpp"
+    pperl 's/    int seals = F_SEAL_SHRINK \| F_SEAL_GROW \| F_SEAL_SEAL;\n    if \(flags\.testFlag\(RamFile::Flag::SealWrite\)\) {\n        seals \|= F_SEAL_WRITE;\n    }\n    \/\/ This can fail for QTemporaryFile based on the underlying file system\.\n    if \(fcntl\(fd\(\), F_ADD_SEALS, seals\) != 0\) {\n        qCDebug\(KWIN_CORE\)\.nospace\(\) << name << ": Failed to seal RamFile: " << strerror\(errno\);\n    }/#if !defined(__APPLE__)\n    int seals = F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL;\n    if (flags.testFlag(RamFile::Flag::SealWrite)) {\n        seals |= F_SEAL_WRITE;\n    }\n    \/\/ This can fail for QTemporaryFile based on the underlying file system.\n    if (fcntl(fd(), F_ADD_SEALS, seals) != 0) {\n        qCDebug(KWIN_CORE).nospace() << name << ": Failed to seal RamFile: " << strerror(errno);\n    }\n#else\n    qCDebug(KWIN_CORE).nospace() << name << ": RamFile sealing is not available on Darwin";\n#endif \/\/ ios-bringup-no-sealed-ramfile/g' "$src/src/utils/ramfile.cpp"
+    pperl 's/    const int seals = fcntl\(fd\(\), F_GET_SEALS\);\n    if \(seals > 0\) {\n        if \(seals & F_SEAL_WRITE\) {\n            flags\.setFlag\(Flag::SealWrite\);\n        }\n    }/#if !defined(__APPLE__)\n    const int seals = fcntl(fd(), F_GET_SEALS);\n    if (seals > 0) {\n        if (seals & F_SEAL_WRITE) {\n            flags.setFlag(Flag::SealWrite);\n        }\n    }\n#endif/g' "$src/src/utils/ramfile.cpp"
 fi
 if ! grep -q 'ios-bringup-no-sealed-shm' "$src/src/wayland/shmclientbuffer.cpp"; then
-    perl -0pi -e 's/#if HAVE_MEMFD\n    const int seals = fcntl\(this->fd\.get\(\), F_GET_SEALS\);/#if HAVE_MEMFD \&\& !defined(__APPLE__) \/\/ ios-bringup-no-sealed-shm\n    const int seals = fcntl(this->fd.get(), F_GET_SEALS);/g' "$src/src/wayland/shmclientbuffer.cpp"
+    pperl 's/#if HAVE_MEMFD\n    const int seals = fcntl\(this->fd\.get\(\), F_GET_SEALS\);/#if HAVE_MEMFD \&\& !defined(__APPLE__) \/\/ ios-bringup-no-sealed-shm\n    const int seals = fcntl(this->fd.get(), F_GET_SEALS);/g' "$src/src/wayland/shmclientbuffer.cpp"
 fi
 if ! grep -q 'ios-bringup-no-memfd-shm-allocator' "$src/src/core/shmgraphicsbufferallocator.cpp"; then
-    perl -0pi -e 's/#if HAVE_MEMFD\n    FileDescriptor fd = FileDescriptor\(memfd_create\("shm", MFD_CLOEXEC \| MFD_ALLOW_SEALING\)\);/#if HAVE_MEMFD \&\& !defined(__APPLE__) \/\/ ios-bringup-no-memfd-shm-allocator\n    FileDescriptor fd = FileDescriptor(memfd_create("shm", MFD_CLOEXEC | MFD_ALLOW_SEALING));/g' "$src/src/core/shmgraphicsbufferallocator.cpp"
+    pperl 's/#if HAVE_MEMFD\n    FileDescriptor fd = FileDescriptor\(memfd_create\("shm", MFD_CLOEXEC \| MFD_ALLOW_SEALING\)\);/#if HAVE_MEMFD \&\& !defined(__APPLE__) \/\/ ios-bringup-no-memfd-shm-allocator\n    FileDescriptor fd = FileDescriptor(memfd_create("shm", MFD_CLOEXEC | MFD_ALLOW_SEALING));/g' "$src/src/core/shmgraphicsbufferallocator.cpp"
 fi
 
 # No udev on iOS. The DRM/libinput backends that consume real udev are disabled above, so
@@ -654,7 +820,12 @@ std::unique_ptr<UdevDevice> Udev::deviceFromSyspath(const char *syspath)
     return {};
 }
 
-std::unique_ptr<UdevMonitor> Udev::monitor()
+std::vector<std::unique_ptr<UdevDevice>> Udev::listRenderNodes()
+{
+    return {};
+}
+
+std::unique_ptr<UdevMonitor> Udev::createMonitor()
 {
     return nullptr;
 }
@@ -665,6 +836,11 @@ UdevDevice::UdevDevice(udev_device *device)
 }
 
 UdevDevice::~UdevDevice() = default;
+
+QByteArrayView UdevDevice::sysName() const
+{
+    return {};
+}
 
 QString UdevDevice::devNode() const
 {
@@ -923,6 +1099,14 @@ if "ios-bringup-fractional-scale" in text:
     print("wayland_backend.cpp: ios-bringup-fractional-scale already applied")
     sys.exit(0)
 
+def sub_any(pairs):
+    global text
+    for old, new in pairs:
+        if text.count(old) == 1:
+            text = text.replace(old, new)
+            return
+    raise SystemExit("wayland_backend.cpp: none of the alternative anchors matched exactly once: %r" % (pairs[0][0],))
+
 def sub(old, new):
     global text
     n = text.count(old)
@@ -965,9 +1149,14 @@ sub(
 )
 
 # 3) pointer motion: absolute surface-local position
-sub(
-    "        const QPointF absolutePos = output->geometry().topLeft() + relativeToSurface;\n",
-    "        const QPointF absolutePos = output->geometry().topLeft() + relativeToSurface * xiosSurfaceToLogicalFactor(output); // ios-bringup-fractional-scale\n",
+#    6.7 builds it from output->position() + relativeToSurface (+ subsurface offset); 6.1 used output->geometry().topLeft().
+sub_any(
+    [
+        ("        const QPointF absolutePos = output->geometry().topLeft() + relativeToSurface;\n",
+         "        const QPointF absolutePos = output->geometry().topLeft() + relativeToSurface * xiosSurfaceToLogicalFactor(output); // ios-bringup-fractional-scale\n"),
+        ("        const QPointF absolutePos = output->position() + relativeToSurface\n",
+         "        const QPointF absolutePos = output->position() + relativeToSurface * xiosSurfaceToLogicalFactor(output) // ios-bringup-fractional-scale\n"),
+    ]
 )
 
 # 4) pinch gesture: surface-local delta vector (same space, same factor)
@@ -992,38 +1181,13 @@ sub(
     "        });\n",
 )
 
-# 6) touch down (sequenceStarted + pointAdded) and touch motion (pointMoved):
-#    tp->position() is emitted with NO transform and NO output-origin offset. Rescale by
-#    the same factor AND add the output-origin offset the pointer path already has
-#    (findOutput(surface) — latent multi-output fix, a no-op for the single output at 0,0).
-sub(
-    "    connect(touch, &Touch::sequenceStarted, this, [this](TouchPoint *tp) {\n"
-    "        Q_EMIT touchDown(tp->id(), tp->position(), std::chrono::milliseconds(tp->time()), this);\n"
-    "    });\n"
-    "    connect(touch, &Touch::pointAdded, this, [this](TouchPoint *tp) {\n"
-    "        Q_EMIT touchDown(tp->id(), tp->position(), std::chrono::milliseconds(tp->time()), this);\n"
-    "    });\n",
-    "    connect(touch, &Touch::sequenceStarted, this, [this](TouchPoint *tp) {\n"
-    "        WaylandOutput *output = m_seat->backend()->findOutput(tp->surface()); // ios-bringup-fractional-scale\n"
-    "        const QPointF pos = (output ? QPointF(output->geometry().topLeft()) : QPointF(0, 0)) + tp->position() * xiosSurfaceToLogicalFactor(output);\n"
-    "        Q_EMIT touchDown(tp->id(), pos, std::chrono::milliseconds(tp->time()), this);\n"
-    "    });\n"
-    "    connect(touch, &Touch::pointAdded, this, [this](TouchPoint *tp) {\n"
-    "        WaylandOutput *output = m_seat->backend()->findOutput(tp->surface()); // ios-bringup-fractional-scale\n"
-    "        const QPointF pos = (output ? QPointF(output->geometry().topLeft()) : QPointF(0, 0)) + tp->position() * xiosSurfaceToLogicalFactor(output);\n"
-    "        Q_EMIT touchDown(tp->id(), pos, std::chrono::milliseconds(tp->time()), this);\n"
-    "    });\n",
-)
-sub(
-    "    connect(touch, &Touch::pointMoved, this, [this](TouchPoint *tp) {\n"
-    "        Q_EMIT touchMotion(tp->id(), tp->position(), std::chrono::milliseconds(tp->time()), this);\n"
-    "    });\n",
-    "    connect(touch, &Touch::pointMoved, this, [this](TouchPoint *tp) {\n"
-    "        WaylandOutput *output = m_seat->backend()->findOutput(tp->surface()); // ios-bringup-fractional-scale\n"
-    "        const QPointF pos = (output ? QPointF(output->geometry().topLeft()) : QPointF(0, 0)) + tp->position() * xiosSurfaceToLogicalFactor(output);\n"
-    "        Q_EMIT touchMotion(tp->id(), pos, std::chrono::milliseconds(tp->time()), this);\n"
-    "    });\n",
-)
+# 6) touch down (sequenceStarted + pointAdded) and touch motion (pointMoved): rescale by the same factor.
+#    6.7 already adds the output origin (o->position() + tp->position()); 6.1 emitted tp->position() untransformed.
+old_touch = "        const QPointF position = o->position() + tp->position();\n"
+if text.count(old_touch) == 3:
+    text = text.replace(old_touch, "        const QPointF position = o->position() + tp->position() * xiosSurfaceToLogicalFactor(o); // ios-bringup-fractional-scale\n")
+else:
+    raise SystemExit("wayland_backend.cpp: expected 3 touch position sites, found %d" % text.count(old_touch))
 
 path.write_text(text)
 print("wayland_backend.cpp: applied ios-bringup-fractional-scale inbound-coordinate correction")
@@ -1081,16 +1245,35 @@ new = """void WaylandOutput::applyConfigure(const QSize &size, quint32 serial)
     }
 }
 """
-if text.count(old) != 1:
+old_67 = """        auto mode = std::make_shared<OutputMode>(OutputModeline(size * m_pendingScale, m_refreshRate));
+"""
+new_67 = """        // ios-bringup-fixed-host-pixel-size (6.7 shape): the nested output mode follows the host's fixed physical
+        // IOSurface (hostConfigureSize * KWIN_XIOS_HOST_OUTPUT_SCALE), while next.scale below stays KWin's own
+        // pending scale, so changing the scale shrinks logical geometry instead of growing the buffer.
+        bool hostScaleOk = false;
+        const qreal hostScale = qEnvironmentVariable("KWIN_XIOS_HOST_OUTPUT_SCALE").toDouble(&hostScaleOk);
+        auto mode = std::make_shared<OutputMode>(OutputModeline(size * ((hostScaleOk && hostScale > 0.0) ? hostScale : m_pendingScale), m_refreshRate));
+"""
+if text.count(old) == 1:
+    path.write_text(text.replace(old, new))
+elif text.count(old_67) == 1:
+    path.write_text(text.replace(old_67, new_67))
+else:
     raise SystemExit("wayland_output.cpp: applyConfigure scale block not found exactly once")
-path.write_text(text.replace(old, new))
 print(f"wayland_output.cpp: applied {marker}")
 PY
 
 # Keep the accelerated ANGLE/IOSurface phase separate from the first-light
 # compatibility edits above. This makes the stable QPainter bring-up easy to
 # audit while the GPU path can evolve as one recipe-owned patch stage.
-bash "$(dirname "$0")/kwin-ios-gpu-backend.sh" "$src"
+# The GPU (ANGLE/IOSurface) backend is the default. It was re-ported to KWin 6.7's RenderDevice/EglBackend/layer
+# architecture (see kwin-ios-gpu-backend.sh); KWIN_IOS_GPU=0 builds the nested QPainter (software) compositor instead.
+# The mode is part of the source tree state: switch it only on a fresh build_work/kwin (rm -rf the unit first).
+if [ "${KWIN_IOS_GPU:-1}" = 1 ]; then
+    bash "$(dirname "$0")/kwin-ios-gpu-backend.sh" "$src"
+else
+    echo "kwin-ios-fixes.sh: KWIN_IOS_GPU=0, skipping the GPU backend (software compositor build)" >&2
+fi
 
 # KWIN_BUILD_KCMS=ON builds kwin-applywindowdecoration, a CLI helper with no
 # ecm_mark_nongui_executable(). Under ECM/KDECMakeSettings on Apple an un-marked
@@ -1135,3 +1318,48 @@ if MARKER not in text:
     text = text.replace(anchor, anchor + "    " + MARKER + " on the include path.\n    Qt::DBus\n", 1)
     path.write_text(text)
 PY
+
+# --- Plasma 6.7 additions ---------------------------------------------------------------------------------------
+python3 - "$src" <<'PY'
+import sys
+from pathlib import Path
+src = Path(sys.argv[1])
+
+def edit(rel, old, new, marker, required=True):
+    p = src / rel
+    s = p.read_text()
+    if marker in s:
+        return
+    if old not in s:
+        msg = f"kwin-ios-fixes.sh: {rel}: anchor not found for {marker}"
+        if required:
+            raise SystemExit(msg)
+        print(msg, file=sys.stderr)
+        return
+    p.write_text(s.replace(old, new, 1))
+
+# Vulkan: 6.7 compiles its Vulkan render path unconditionally. Headers only (no loader on iOS; vk::raii dlopens lazily).
+edit("CMakeLists.txt", "find_package(Vulkan REQUIRED)\n",
+     "# ios-vulkan-headers-only: no Vulkan loader on iOS and the nested backend never creates a device.\n"
+     "find_path(Vulkan_INCLUDE_DIR vulkan/vulkan.h REQUIRED)\n"
+     "add_library(Vulkan::Vulkan INTERFACE IMPORTED)\n"
+     "set_target_properties(Vulkan::Vulkan PROPERTIES INTERFACE_INCLUDE_DIRECTORIES \"${Vulkan_INCLUDE_DIR}\")\n",
+     "ios-vulkan-headers-only")
+
+# Canberra: REQUIRED unconditionally in 6.7, used only by the systembell plugin: demote and skip that plugin.
+edit("CMakeLists.txt", "find_package(Canberra REQUIRED)\n", "find_package(Canberra) # ios-no-canberra\n", "ios-no-canberra")
+edit("src/plugins/CMakeLists.txt", "add_subdirectory(systembell)\n",
+     "if(Canberra_FOUND) # ios-no-canberra\n    add_subdirectory(systembell)\nendif()\n", "ios-no-canberra")
+PY
+
+if [ "${#NOMATCH[@]}" -gt 0 ]; then
+    if [ -f "$src/.xios-kwin-fixes-applied" ]; then
+        # Re-run on an already-patched tree: every hunk is a no-op by design. The stamp is only written after a clean run.
+        echo "kwin-ios-fixes.sh: tree already patched (stamp present), ${#NOMATCH[@]} hunk(s) no-op"
+    else
+        echo "kwin-ios-fixes.sh: ${#NOMATCH[@]} perl hunk(s) matched nothing in this KWin source:" >&2
+        printf '  - %s\n' "${NOMATCH[@]}" >&2
+        [ "${KWIN_FIXES_REPORT:-0}" = 1 ] || exit 1
+    fi
+fi
+[ "${KWIN_FIXES_REPORT:-0}" = 1 ] || touch "$src/.xios-kwin-fixes-applied"

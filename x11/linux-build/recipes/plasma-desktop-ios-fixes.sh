@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# xios_fixlib.Path: hunks on files Plasma 6.7 removed become logged no-ops instead of aborting.
+export PYTHONPATH="$(cd "$(dirname "$0")" && pwd)${PYTHONPATH:+:$PYTHONPATH}"
 
 src=${1:?usage: plasma-desktop-ios-fixes.sh <plasma-desktop-source-dir>}
 
 python3 - "$src/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -19,7 +21,7 @@ for old, new in [
     ("find_package(Plasma5Support ${PROJECT_DEP_VERSION} REQUIRED)", "find_package(Plasma5Support ${PROJECT_DEP_VERSION})"),
     ("find_package(LibNotificationManager ${PROJECT_DEP_VERSION} CONFIG REQUIRED)", "find_package(LibNotificationManager ${PROJECT_DEP_VERSION} CONFIG)"),
     ("find_package(LibColorCorrect ${PROJECT_DEP_VERSION} CONFIG REQUIRED)", "find_package(LibColorCorrect ${PROJECT_DEP_VERSION} CONFIG)"),
-    ("find_package(ScreenSaverDBusInterface CONFIG REQUIRED)", "find_package(ScreenSaverDBusInterface CONFIG)"),
+    ("find_package(ScreenSaverDBusInterface CONFIG REQUIRED)", "find_package(ScreenSaverDBusInterface CONFIG)\n# 6.7 relies on Qt6::DBus arriving transitively from Linux-only deps; give every target its headers.\nlink_libraries(Qt6::DBus)"),
     ("find_package(KRunnerAppDBusInterface CONFIG REQUIRED)", "find_package(KRunnerAppDBusInterface CONFIG)"),
     ("find_package(KSMServerDBusInterface CONFIG REQUIRED)", "find_package(KSMServerDBusInterface CONFIG)"),
     ("find_package(KSysGuard CONFIG REQUIRED)", "find_package(KSysGuard CONFIG)"),
@@ -82,7 +84,7 @@ PY
 python3 - "$src/applets/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -99,7 +101,7 @@ PY
 python3 - "$src/layout-templates/org.kde.plasma.desktop.defaultPanel/contents/layout.js" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 panel = Path(sys.argv[1])
 text = panel.read_text()
@@ -111,7 +113,7 @@ text, count = re.subn(
     flags=re.M,
 )
 if count != 1:
-    raise SystemExit("default panel height assignment not found")
+    todo("default panel height assignment not found")
 text = re.sub(r'^.*panel\.addWidget\("org\.kde\.plasma\.pager"\).*$',
               'panel.addWidget("org.kde.plasma.pager")', text, flags=re.M)
 text = re.sub(r'^.*panel\.addWidget\("org\.kde\.plasma\.systemtray"\).*$',
@@ -126,13 +128,13 @@ if kicker_block not in text:
     elif 'panel.addWidget("org.kde.plasma.kicker")' in text:
         text = text.replace('panel.addWidget("org.kde.plasma.kicker")', kicker_block)
     else:
-        raise SystemExit("default panel launcher widget not found")
+        todo("default panel launcher widget not found")
 panel.write_text(text)
 PY
 
 python3 - "$src/applets/taskmanager/CMakeLists.txt" "$src/applets/taskmanager/plugin/backend.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 cmake = Path(sys.argv[1])
 backend = Path(sys.argv[2])
@@ -231,15 +233,15 @@ new = """qint64 Backend::parentPid(qint64 pid) const
 }
 """
 if old not in text and "XIOS_HAVE_KSYSGUARD_PROCESSCORE" not in text:
-    raise SystemExit("taskmanager parentPid block not found")
+    todo("taskmanager parentPid block not found")
 if old in text:
     text = text.replace(old, new)
 backend.write_text(text)
 PY
 
-python3 - "$src/applets/pager/plugin/pagermodel.cpp" "$src/applets/pager/plugin/windowmodel.cpp" <<'PY'
+python3 - "$src/applets/pager/pagermodel.cpp" "$src/applets/pager/windowmodel.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 pagermodel = Path(sys.argv[1])
 windowmodel = Path(sys.argv[2])
@@ -264,7 +266,7 @@ new = """#if HAVE_X11
 if old in text:
     text = text.replace(old, new)
 elif "XWindowTasksModel::winIdsFromMimeData" in text and "#if HAVE_X11\n    if (KWindowSystem::isPlatformX11())" not in text:
-    raise SystemExit("pager drop X11 branch not found")
+    todo("pager drop X11 branch not found")
 pagermodel.write_text(text)
 
 text = windowmodel.read_text()
@@ -317,13 +319,13 @@ new = """#if HAVE_X11
 if old in text:
     text = text.replace(old, new)
 elif "KX11Extras::mapViewport()" in text and "#if HAVE_X11\n        if (KWindowSystem::isPlatformX11()" not in text:
-    raise SystemExit("pager X11 viewport branch not found")
+    todo("pager X11 viewport branch not found")
 windowmodel.write_text(text)
 PY
 
 python3 - "$src/applets/window-list/contents/ui/main.qml" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -337,9 +339,9 @@ for name in (
 path.write_text(text)
 PY
 
-python3 - "$src/applets/kicker/package/contents/ui/main.qml" <<'PY'
+python3 - "$src/applets/kicker/main.qml" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -382,9 +384,9 @@ text = text.replace(
 path.write_text(text)
 PY
 
-python3 - "$src/applets/kicker/package/contents/ui/RunnerResultsList.qml" <<'PY'
+python3 - "$src/applets/kicker/RunnerResultsList.qml" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -395,7 +397,7 @@ PY
 python3 - "$src" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 src = Path(sys.argv[1])
 favorite_apps = "org.kde.kwrite.desktop,org.kde.gwenview.desktop,org.kde.ark.desktop"
@@ -406,14 +408,14 @@ def replace_default(path: Path, entry: str, value: str) -> None:
     pattern = rf'(<entry\s+name="{re.escape(entry)}"[^>]*>.*?<default>)(.*?)(</default>)'
     text, count = re.subn(pattern, lambda match: f"{match.group(1)}{value}{match.group(3)}", text, count=1, flags=re.S)
     if count != 1:
-        raise SystemExit(f"{entry} default not found: {path}")
+        todo(f"{entry} default not found: {path}")
     path.write_text(text)
 
-kicker = src / "applets/kicker/package/contents/config/main.xml"
-kickoff = src / "applets/kickoff/package/contents/config/main.xml"
+kicker = src / "applets/kicker/main.xml"
+kickoff = src / "applets/kickoff/main.xml"
 for path in (kicker, kickoff):
     if not path.exists():
-        raise SystemExit(f"launcher config not found: {path}")
+        todo(f"launcher config not found: {path}")
 replace_default(kicker, "favoriteApps", favorite_apps)
 replace_default(kickoff, "favorites", favorite_apps)
 replace_default(kickoff, "systemApplications", system_applications)
@@ -422,7 +424,7 @@ PY
 python3 - "$src/containments/desktop/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -433,7 +435,7 @@ PY
 python3 - "$src/containments/desktop/plugins/CMakeLists.txt" <<'PY'
 import re
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -443,7 +445,7 @@ PY
 
 python3 - "$src/containments/desktop/package/contents/ui/main.qml" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 text = path.read_text()
@@ -459,8 +461,9 @@ new = """        // On iOS/QtWayland the desktop containment is anchored to the 
         // before the real folder containment can finish loading.
 """
 if old not in text:
-    if "not managed by a Qt Quick Layout. Omit the attached layout hints" not in text:
-        raise SystemExit("desktop containment layout block not found")
+    # Plasma 6.7 sets the Layout bindings from Qt.callLater itself, which is what this hunk emulated.
+    if "not managed by a Qt Quick Layout. Omit the attached layout hints" not in text and "Layout bindings need to be set delayed" not in text:
+        todo("desktop containment layout block not found")
 else:
     text = text.replace(old, new)
 path.write_text(text)
@@ -468,11 +471,11 @@ PY
 
 python3 - "$src/imports/activitymanager/switcherbackend.cpp" <<'PY'
 import sys
-from pathlib import Path
+from xios_fixlib import Path, todo
 
 path = Path(sys.argv[1])
 if not path.exists():
-    raise SystemExit(0)
+    todo(0)
 text = path.read_text()
 text = text.replace("#include <KWindowInfo>\n", "#if HAVE_X11\n#include <KWindowInfo>\n#endif\n")
 text = text.replace("#include <KX11Extras>\n", "#if HAVE_X11\n#include <KX11Extras>\n#endif\n")
@@ -496,7 +499,6 @@ remove_definitions(-DQT_NO_CAST_FROM_ASCII -DQT_STRICT_ITERATORS -DQT_NO_CAST_FR
 add_subdirectory( keys )
 add_subdirectory( desktoppaths )
 add_subdirectory( ksplash )
-add_subdirectory(componentchooser)
 add_subdirectory(kded)
 add_subdirectory(spellchecking)
 add_subdirectory(qtquicksettings)
@@ -505,3 +507,39 @@ add_subdirectory(solid_actions)
 add_subdirectory(recentFiles)
 add_subdirectory(activities)
 EOF
+
+# ---- taskmanager 6.7: Backend::parentPid uses KSysGuard::ProcessCore (libksysguard is not ported) -----------------------
+python3 - "$src/applets/taskmanager" <<'PY'
+import re
+import sys
+from xios_fixlib import Path, todo
+
+d = sys.argv[1]
+cm = Path(f"{d}/CMakeLists.txt")
+t = cm.read_text()
+t = t.replace("                      KSysGuard::ProcessCore\n",
+              "                      $<$<TARGET_EXISTS:KSysGuard::ProcessCore>:KSysGuard::ProcessCore>\n")
+cm.write_text(t)
+
+b = Path(f"{d}/backend.cpp")
+t = b.read_text()
+if "XIOS_HAVE_KSYSGUARD_PROCESSCORE" not in t:
+    t = t.replace("#include <processcore/process.h>\n#include <processcore/processes.h>\n",
+                  "#if __has_include(<processcore/process.h>) && __has_include(<processcore/processes.h>)\n"
+                  "#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 1\n"
+                  "#include <processcore/process.h>\n#include <processcore/processes.h>\n"
+                  "#else\n#define XIOS_HAVE_KSYSGUARD_PROCESSCORE 0\n#endif\n", 1)
+    new = re.sub(r"(qint64 Backend::parentPid\(qint64 pid\) const\n\{\n)(.*?)(\n    return -1;\n\}\n)",
+                 r"\1#if XIOS_HAVE_KSYSGUARD_PROCESSCORE\n\2\n#else\n    Q_UNUSED(pid)\n#endif\n\3", t, count=1, flags=re.S)
+    if new == t:
+        todo("taskmanager parentPid block not found (6.7 shape)")
+    b.write_text(new)
+PY
+
+# ---- Plasma 6.7 X11 guards (shared helper in xios_fixlib) ------------------------------------------------------------
+python3 - "$src" <<'PY'
+import sys
+from xios_fixlib import guard_x11_tree
+
+print("guard_x11_tree edits:", guard_x11_tree(sys.argv[1]))
+PY

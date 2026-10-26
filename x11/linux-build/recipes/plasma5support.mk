@@ -12,7 +12,7 @@ DEB_PLASMA5SUPPORT_V ?= $(PLASMA5SUPPORT_VERSION)+ios1
 plasma5support-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma5support))
 	$(call EXTRACT_TAR,plasma5support-$(PLASMA_VERSION).tar.xz,plasma5support-$(PLASMA_VERSION),plasma5support)
-	bash /work/recipes/plasma5support-ios-fixes.sh $(BUILD_WORK)/plasma5support
+	bash /work/recipes/run-fixes.sh plasma5support-ios-fixes.sh $(BUILD_WORK)/plasma5support
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

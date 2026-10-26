@@ -62,8 +62,30 @@ for rel, target, anchor in targets:
     fix = f"set_target_properties({target} PROPERTIES MACOSX_BUNDLE FALSE)"
     if fix in text:
         continue
-    if anchor not in text:
-        raise SystemExit(f"{target}: add_executable line not found in {rel}")
-    text = text.replace(anchor, f"{anchor}\n{fix}", 1)
+    import re
+    # exact anchor first; else any add_executable(<target> ...) line (6.7 appended header names to the lists).
+    if anchor in text:
+        found = anchor
+    else:
+        m = re.search(r"^[ \t]*add_executable\(" + re.escape(target) + r"(?=[\s)])[^\n]*\)[ \t]*$", text, re.M)
+        if not m:
+            raise SystemExit(f"{target}: add_executable line not found in {rel}")
+        found = m.group(0).strip()
+    text = text.replace(found, f"{found}\n{fix}", 1)
     path.write_text(text)
+PY
+
+# 6.7 relies on Qt6::DBus arriving transitively (Linux-only deps); give every target its headers.
+python3 - "$src/CMakeLists.txt" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+text = path.read_text()
+if "xios: Qt6::DBus for every target" not in text:
+    new = re.sub(r"^(project\([^)]*\)\n)", r"\1link_libraries(Qt6::DBus) # xios: Qt6::DBus for every target\n", text, count=1, flags=re.M)
+    if new == text:
+        raise SystemExit("kde-cli-tools project() line not found")
+    path.write_text(new)
 PY

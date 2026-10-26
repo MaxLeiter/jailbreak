@@ -2,8 +2,8 @@
   "rules": [
     {
       "match": "linux-build/recipes/qt*.mk:*_VERSION",
-      "track": "6.6",
-      "hold": "Qt 6.6 is the validated iOS toolchain and KDE ABI cohort; upgrade it as one lane.",
+      "track": "6.10",
+      "hold": "Qt 6.10 is the KDE cohort (Plasma 6.7, KF6 6.30, Gear 26.08) and the Ladybird Qt UI floor; upgrade it as one lane.",
       "source": {
         "kind": "git",
         "url": "https://code.qt.io/qt/qt5.git",
@@ -23,7 +23,7 @@
         "linux-build/recipes/poppler.mk:*_VERSION",
         "linux-build/recipes/poppler-qt6.mk:*_VERSION"
       ],
-      "track": "24.08",
+      "track": "26.08",
       "hold": "KDE release-service applications must move together with the Qt/KF6 cohort."
     },
     {
@@ -70,8 +70,8 @@
   ],
   "overrides": {
     "linux-build/recipes/qt6-common.mk:QT6_VERSION": {
-      "track": "6.6",
-      "hold": "Qt 6.6 is the validated iOS toolchain and KDE ABI cohort; upgrade it as one lane.",
+      "track": "6.10",
+      "hold": "Qt 6.10 is the KDE cohort (Plasma 6.7, KF6 6.30, Gear 26.08) and the Ladybird Qt UI floor; upgrade it as one lane.",
       "source": {
         "kind": "git",
         "url": "https://code.qt.io/qt/qt5.git",
@@ -79,8 +79,8 @@
       }
     },
     "linux-build/recipes/kf6-common.mk:KF6_VERSION": {
-      "track": "6.3",
-      "hold": "KF6 6.3 is the validated Plasma 6.1 and Qt 6.6 cohort.",
+      "track": "6.30",
+      "hold": "KF6 6.30 is the Plasma 6.7 and Qt 6.10 cohort.",
       "source": {
         "kind": "git",
         "url": "https://invent.kde.org/frameworks/extra-cmake-modules.git",
@@ -88,8 +88,8 @@
       }
     },
     "linux-build/recipes/kf6-common.mk:PLASMA_VERSION": {
-      "track": "6.1",
-      "hold": "Plasma 6.1 is the validated KF6 6.3 and Qt 6.6 cohort.",
+      "track": "6.7",
+      "hold": "Plasma 6.7 is the KF6 6.30 and Qt 6.10 cohort.",
       "source": {
         "kind": "git",
         "url": "https://invent.kde.org/plasma/plasma-workspace.git",
@@ -97,8 +97,8 @@
       }
     },
     "linux-build/recipes/kf6-common.mk:PWP_VERSION": {
-      "track": "1.13",
-      "hold": "Plasma Wayland protocols are part of the validated Plasma 6.1 build cohort.",
+      "track": "1.21",
+      "hold": "Plasma Wayland protocols are part of the Plasma 6.7 build cohort.",
       "source": {
         "kind": "html",
         "url": "https://download.kde.org/stable/plasma-wayland-protocols/",

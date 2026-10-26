@@ -2,13 +2,13 @@ ifneq ($(PROCURSUS),1)
 $(error Use the main Makefile)
 endif
 
-# konsole.mk - KDE terminal emulator (KDE Gear 24.08.0).
+# konsole.mk - KDE terminal emulator (KDE Gear 26.08.1).
 #
 # Requires the kf6-pty unit (kpty.mk) - a terminal cannot be faked without it.
 # See kpty.mk for the evidence that openpty()/forkpty() are real on iPhoneOS.
 #
 # iOS cuts in this first package, all forced by what the Qt/KF6 stack here ships:
-#   - Qt::Multimedia is dropped. konsole 24.08.0 lists it in the top-level
+#   - Qt::Multimedia is dropped. konsole 26.08.1 lists it in the top-level
 #     find_package(Qt6 ...) COMPONENTS and in konsole_LIBS, but no konsole source in
 #     this release includes a Multimedia header: the bell is KNotification +
 #     QApplication::beep in terminalDisplay/TerminalBell.{h,cpp}, and Session.cpp,
@@ -36,11 +36,11 @@ endif
 # into a bundle here.
 
 SUBPROJECTS += konsole
-KONSOLE_VERSION = 24.08.0
+KONSOLE_VERSION = 26.08.1
 DEB_KONSOLE_V ?= $(KONSOLE_VERSION)+ios1
 
 konsole-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/konsole-$(KONSOLE_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/konsole-$(KONSOLE_VERSION).tar.xz)
 	$(call EXTRACT_TAR,konsole-$(KONSOLE_VERSION).tar.xz,konsole-$(KONSOLE_VERSION),konsole)
 	bash $(BUILD_INFO)/konsole-ios-fixes.sh $(BUILD_WORK)/konsole
 	perl -0777 -i -pe 's/\n    Multimedia\n/\n/s' $(BUILD_WORK)/konsole/CMakeLists.txt

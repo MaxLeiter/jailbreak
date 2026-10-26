@@ -1,0 +1,13 @@
+Package: kf6-holidays
+Version: @DEB_KHOLIDAYS_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://kde.org/
+Depends: qt6-base, qt6-declarative
+Description: KHolidays for the Xios desktop
+ Holiday calendar computation library.
+ .
+ Part of the KDE Frameworks 6 tier for the KDE Plasma Mobile flavor of the
+ Xios desktop.

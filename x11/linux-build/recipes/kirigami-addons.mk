@@ -8,7 +8,7 @@ endif
 
 SUBPROJECTS += kirigami-addons
 KIRIGAMIADDONS_VERSION = 1.3.0
-DEB_KIRIGAMIADDONS_V ?= $(KIRIGAMIADDONS_VERSION)+ios1
+DEB_KIRIGAMIADDONS_V ?= $(KIRIGAMIADDONS_VERSION)+ios2
 
 kirigami-addons-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/kirigami-addons/kirigami-addons-$(KIRIGAMIADDONS_VERSION).tar.xz)

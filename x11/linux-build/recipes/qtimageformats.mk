@@ -6,13 +6,14 @@ endif
 # libtiff/libwebp deb family for one plugin each. mng/jasper have no bundled copy: OFF.
 
 SUBPROJECTS            += qtimageformats
-QTIMAGEFORMATS_VERSION := 6.6.3
+QTIMAGEFORMATS_VERSION := 6.10.3
 DEB_QTIMAGEFORMATS_V   ?= $(QTIMAGEFORMATS_VERSION)+ios1
 
 qtimageformats-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call QT6_MODULE_URL,qtimageformats))
 	$(call EXTRACT_TAR,qtimageformats-everywhere-src-$(QTIMAGEFORMATS_VERSION).tar.xz,qtimageformats-everywhere-src-$(QTIMAGEFORMATS_VERSION),qtimageformats)
 	$(call QT6_DISABLE_MACOS_CONDITIONS,qtimageformats)
+	$(call QT6_APPLY_CVE,qtimageformats)
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 
@@ -31,8 +32,8 @@ qtimageformats: qtimageformats-setup
 		-DFEATURE_system_webp=OFF \
 		-DFEATURE_mng=OFF \
 		-DFEATURE_jasper=OFF
-	+ninja -C $(BUILD_WORK)/qtimageformats/build
-	+DESTDIR="$(BUILD_STAGE)/qtimageformats" ninja -C $(BUILD_WORK)/qtimageformats/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtimageformats/build
+	+DESTDIR="$(BUILD_STAGE)/qtimageformats" ninja -j12 -C $(BUILD_WORK)/qtimageformats/build install
 	$(call AFTER_BUILD,copy)
 endif
 

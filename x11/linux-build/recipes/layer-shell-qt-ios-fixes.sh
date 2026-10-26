@@ -354,14 +354,8 @@ public:
         return m_configured || m_pendingConfigureSerial;
     }
 
-    bool handleExpose(const QRegion &region) override
-    {
-        if (!isExposed() && !region.isEmpty()) {
-            m_exposeRegion = region;
-            return true;
-        }
-        return false;
-    }
+    // Qt 6.10 removed QWaylandShellSurface::handleExpose/QWaylandWindow::handleExpose: QWaylandWindow::applyConfigure
+    // now sends the expose itself once the shell surface reports isExposed(), so no deferred-expose bookkeeping here.
 
     void applyConfigure() override
     {
@@ -382,11 +376,6 @@ public:
         m_appliedConfigureSerial = m_pendingConfigureSerial;
         m_configured = true;
         ack_configure(m_appliedConfigureSerial);
-
-        if (!m_exposeRegion.isEmpty()) {
-            m_window->handleExpose(m_exposeRegion);
-            m_exposeRegion = QRegion();
-        }
     }
 
     void setWindowGeometry(const QRect &rect) override
@@ -400,7 +389,6 @@ protected:
         m_pendingConfigureSerial = serial;
         if (!m_configured) {
             applyConfigure();
-            m_exposeRegion = QRegion(QRect(QPoint(), m_window->geometry().size()));
         } else {
             m_window->applyConfigureWhenPossible();
         }
@@ -443,7 +431,6 @@ private:
     Popup *m_popup = nullptr;
     ::xdg_popup *m_popupObject = nullptr;
     QRect m_pendingGeometry;
-    QRegion m_exposeRegion;
     uint m_pendingConfigureSerial = 0;
     uint m_appliedConfigureSerial = 0;
     bool m_configured = false;

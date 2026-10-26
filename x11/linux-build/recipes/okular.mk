@@ -3,11 +3,11 @@ $(error Use the main Makefile)
 endif
 
 SUBPROJECTS    += okular
-OKULAR_VERSION := 24.08.0
-DEB_OKULAR_V   ?= $(OKULAR_VERSION)+ios3
+OKULAR_VERSION := 26.08.1
+DEB_OKULAR_V   ?= $(OKULAR_VERSION)+ios1
 
 okular-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/okular-$(OKULAR_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/okular-$(OKULAR_VERSION).tar.xz)
 	$(call EXTRACT_TAR,okular-$(OKULAR_VERSION).tar.xz,okular-$(OKULAR_VERSION),okular)
 	# The comicbook backend tries to require KF6Pty on all UNIX platforms. iOS has
 	# no packaged KPty yet, and the backend can still build without shelling out.

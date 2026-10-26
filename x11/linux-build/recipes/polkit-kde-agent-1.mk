@@ -20,7 +20,7 @@ DEB_POLKITKDEAGENT1_V ?= $(POLKITKDEAGENT1_VERSION)+ios1
 polkit-kde-agent-1-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,polkit-kde-agent-1))
 	$(call EXTRACT_TAR,polkit-kde-agent-1-$(PLASMA_VERSION).tar.xz,polkit-kde-agent-1-$(PLASMA_VERSION),polkit-kde-agent-1)
-	bash /work/recipes/polkit-kde-agent-1-ios-fixes.sh $(BUILD_WORK)/polkit-kde-agent-1
+	bash /work/recipes/run-fixes.sh polkit-kde-agent-1-ios-fixes.sh $(BUILD_WORK)/polkit-kde-agent-1
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

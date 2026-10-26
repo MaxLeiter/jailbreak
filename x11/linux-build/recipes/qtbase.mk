@@ -21,8 +21,8 @@ endif
 # native host qtbase 6.6.3 into build_tools/ once, persisted in the volume.
 
 SUBPROJECTS    += qtbase
-QTBASE_VERSION := 6.6.3
-QT_MINOR       := 6.6
+QTBASE_VERSION := 6.10.3
+QT_MINOR       := 6.10
 # dbus is RUNTIME (dlopen), not linked: QtDBus's loader uses QLibrary("dbus-1",3), which on
 # a Darwin target deterministically resolves libdbus-1.dylib — the finicky
 # WrapDBus1/DBus1Config linked path isn't needed.
@@ -30,8 +30,8 @@ QT_MINOR       := 6.6
 # (qprintdialog_unix.cpp needs CUPS, qprintdialog_mac.mm needs AppKit), so the feature turns
 # on but links dead — force printdialog + printpreviewdialog OFF. kxmlgui only wants the
 # module for QPrinter, not the picker UI.
-DEB_QTBASE_V   ?= $(QTBASE_VERSION)-5+ios1
-QTBASE_NINJA_JOBS ?= 4
+DEB_QTBASE_V   ?= $(QTBASE_VERSION)-2+ios1
+QTBASE_NINJA_JOBS ?= 12
 
 # Host Qt (QT_HOST_PATH) — built by build-qt.sh stage 1 from the same source tarball.
 QT_HOST_PATH      := $(BUILD_TOOLS)/host-qt-$(QTBASE_VERSION)
@@ -123,7 +123,7 @@ qtbase-setup: setup
 	#    gets an empty XKB_VERSION and fails the version check. Un-gate only the plain-xkbcommon
 	#    find and replace FindXKB with a synth target from the staged libxkbcommon; leave the
 	#    xcb/xkbcommon-x11 blocks gated. NOTE the make-escaped $$1 — a bare $1 is eaten by make.
-	perl -0pi -e 's{if\(\(X11_SUPPORTED\) OR QT_FIND_ALL_PACKAGES_ALWAYS\)\n(\s*qt_find_package\(XKB 0\.5\.0 PROVIDED_TARGETS XKB::XKB[^\n]*\n)\s*endif\(\)}{if(TRUE)  # xios: xkbcommon without X11\n$$1endif()}g' \
+	perl -0pi -e 's{if\(\(X11_SUPPORTED\) OR QT_FIND_ALL_PACKAGES_ALWAYS\)\n(\s*qt_find_package\(XKB [0-9.]+ [^\n]*PROVIDED_TARGETS XKB::XKB[^\n]*\n)\s*endif\(\)}{if(TRUE)  # xios: xkbcommon without X11\n$$1endif()}g' \
 		$(BUILD_WORK)/qtbase/src/gui/configure.cmake
 	printf '%s\n' \
 		'if(NOT TARGET XKB::XKB)' \
@@ -155,6 +155,58 @@ qtbase-setup: setup
 		perl -0pi -e 's{#if QT_CONFIG\(opengles2\) && !QT_CONFIG\(opengles32\)\ntypedef void \(QOPENGLF_APIENTRY  \*GLDEBUGPROC\)\(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar \*message,const void \*userParam\);\n#endif}{#if QT_CONFIG(opengles2)\n#ifndef GLDEBUGPROC\ntypedef void (QOPENGLF_APIENTRY  *GLDEBUGPROC)(GLenum source,GLenum type,GLuint id,GLenum severity,GLsizei length,const GLchar *message,const void *userParam);\n#endif\n#endif}g' \
 			$(BUILD_WORK)/qtbase/src/gui/opengl/qopenglextrafunctions.h ; \
 	fi
+
+	# --- Qt 6.10 lane additions ---
+	# 10) Official Qt CVE diffs (x11/ports/qt610-cve).
+	$(call QT6_APPLY_CVE,qtbase)
+	# 13) Qt 6.10's fontconfig FEATURE condition itself now says `NOT APPLE AND ...` (6.6 had it only as AUTODETECT);
+	#     forcing it ON under the masquerade then "breaks its condition". Drop the NOT APPLE from the condition.
+	sed -i 's/CONDITION NOT APPLE AND NOT WIN32 AND QT_FEATURE_system_freetype AND Fontconfig_FOUND/CONDITION NOT WIN32 AND QT_FEATURE_system_freetype AND Fontconfig_FOUND/' \
+		$(BUILD_WORK)/qtbase/src/gui/configure.cmake
+	# 14) With the Wayland client now in qtbase, QGenericUnixTheme/gnome/kde theme sources become enabled by the
+	#     `... OR QT_FEATURE_wayland` clause, but the QtDBus helpers they include (qdbuslistener, qdbustrayicon) sit
+	#     behind the same condition WITHOUT that clause. Give both the same wayland escape hatch.
+	sed -i -e 's/(QT_FEATURE_xcb OR NOT MACOS)/(QT_FEATURE_xcb OR QT_FEATURE_wayland OR NOT MACOS)/g' \
+		-e 's/(QT_FEATURE_xcb OR NOT UIKIT)/(QT_FEATURE_xcb OR QT_FEATURE_wayland OR NOT UIKIT)/g' \
+		$(BUILD_WORK)/qtbase/src/gui/CMakeLists.txt
+	# 11) Qt 6.10 moved the Wayland client QPA from the qtwayland module INTO qtbase
+	#     (src/plugins/platforms/wayland). Its Wayland/EGL finds are gated on `LINUX OR FREEBSD`, false under the
+	#     Darwin masquerade, and ECM's FindWayland/FindWaylandScanner are pkg-config-only (Qt's pkg_config is OFF
+	#     cross). Un-gate, then synthesise Wayland::{Client,Server,Cursor,Egl} from the staged libwayland deb and
+	#     Wayland::Scanner from the HOST wayland-scanner (the staged one is arm64-iOS: "Exec format error").
+	sed -i 's/^if(LINUX OR FREEBSD OR QT_FIND_ALL_PACKAGES_ALWAYS)$$/if(TRUE) # xios: wayland client under the Darwin masquerade/' \
+		$(BUILD_WORK)/qtbase/src/gui/configure.cmake
+	printf '%s\n' \
+		'foreach(_c Client Server Cursor Egl)' \
+		'  string(TOLOWER "$${_c}" _l)' \
+		'  if(_l STREQUAL "egl")' \
+		'    set(_lib "$(QT_SYSROOT)/lib/libwayland-egl.dylib")' \
+		'  else()' \
+		'    set(_lib "$(QT_SYSROOT)/lib/libwayland-$${_l}.dylib")' \
+		'  endif()' \
+		'  if(NOT TARGET Wayland::$${_c})' \
+		'    add_library(Wayland::$${_c} UNKNOWN IMPORTED)' \
+		'    set_target_properties(Wayland::$${_c} PROPERTIES IMPORTED_LOCATION "$${_lib}" INTERFACE_INCLUDE_DIRECTORIES "$(QT_SYSROOT)/include")' \
+		'  endif()' \
+		'endforeach()' \
+		'set_property(TARGET Wayland::Egl APPEND PROPERTY INTERFACE_COMPILE_DEFINITIONS WL_EGL_PLATFORM=1)' \
+		'set(Wayland_VERSION 1.23.1)' \
+		'set(Wayland_FOUND TRUE)' \
+		'set(Wayland_DATADIR "$(QT_SYSROOT)/share/wayland")' \
+		'include(FindPackageHandleStandardArgs)' \
+		'find_package_handle_standard_args(Wayland REQUIRED_VARS Wayland_VERSION)' \
+		> $(BUILD_WORK)/qtbase/cmake/3rdparty/extra-cmake-modules/find-modules/FindWayland.cmake
+	printf '%s\n' \
+		'if(NOT TARGET Wayland::Scanner)' \
+		'  add_executable(Wayland::Scanner IMPORTED)' \
+		'  set_target_properties(Wayland::Scanner PROPERTIES IMPORTED_LOCATION /usr/bin/wayland-scanner)' \
+		'endif()' \
+		'set(WaylandScanner_FOUND TRUE)' \
+		'set(WaylandScanner_EXECUTABLE /usr/bin/wayland-scanner)' \
+		> $(BUILD_WORK)/qtbase/cmake/3rdparty/extra-cmake-modules/find-modules/FindWaylandScanner.cmake
+	# 12) Wayland client source edits carried over from the old qtwayland-ios-fixes.sh (popup attach order,
+	#     surfaceRole RTTI across dylibs, qgenericunixthemes hookup nulled), re-homed to the new paths.
+	bash /work/recipes/qtbase-wayland-ios-fixes.sh $(BUILD_WORK)/qtbase
 
 ifneq ($(wildcard $(BUILD_WORK)/qtbase/.build_complete),)
 qtbase:
@@ -217,7 +269,7 @@ qtbase: qtbase-setup
 		-DFEATURE_sql=ON \
 		-DFEATURE_sql_sqlite=ON \
 		-DFEATURE_system_sqlite=ON \
-		-DFEATURE_testlib=OFF \
+		-DFEATURE_testlib=ON \
 		-DFEATURE_printsupport=ON \
 		-DFEATURE_cups=OFF \
 		-DFEATURE_printdialog=OFF \
@@ -258,6 +310,17 @@ qtbase: qtbase-setup
 		-DINSTALL_PLUGINSDIR=lib/qt6/plugins \
 		-DINSTALL_QMLDIR=lib/qt6/qml \
 		-DINSTALL_LIBEXECDIR=lib/qt6/libexec \
+		-DFEATURE_wayland=ON \
+		-DFEATURE_wayland_client=ON \
+		-DFEATURE_wayland_server=OFF \
+		-DFEATURE_wayland_egl=ON \
+		-DFEATURE_egl_extension_platform_wayland=OFF \
+		-DFEATURE_wayland_drm_egl_server_buffer=OFF \
+		-DFEATURE_wayland_libhybris_egl_server_buffer=OFF \
+		-DFEATURE_wayland_shm_emulation_server_buffer=OFF \
+		-DFEATURE_wayland_dmabuf_server_buffer=OFF \
+		-DFEATURE_wayland_vulkan_server_buffer=OFF \
+		-DWaylandScanner_EXECUTABLE=/usr/bin/wayland-scanner \
 		-DQT_QPA_DEFAULT_PLATFORM=offscreen
 	+ninja -j$(QTBASE_NINJA_JOBS) -C $(BUILD_WORK)/qtbase/build
 	+DESTDIR="$(BUILD_STAGE)/qtbase" ninja -j$(QTBASE_NINJA_JOBS) -C $(BUILD_WORK)/qtbase/build install

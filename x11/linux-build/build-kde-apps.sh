@@ -3,12 +3,13 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+. /work/x11/linux-build/tools/kde-lane-env.sh   # cmake >= 3.29
 
-QTVER=6.6.3
+QTVER=6.10.3
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 BB=$XIOS_SYSROOT
-TARGETS="${TARGETS:-exiv2-package phonon-package ksyntaxhighlighting-package ktexteditor-package ark-package gwenview-package kwrite-package kate-package kcalc-package kpty-package konsole-package dolphin-package}"
-COLLECT_DEBS=(libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
+TARGETS="${TARGETS:-phonon-package ksyntaxhighlighting-package ktexteditor-package poppler-package poppler-qt6-package kpty-package ark-package okular-package kwrite-package kate-package kcalc-package konsole-package dolphin-package}"
+COLLECT_DEBS=(kf6-threadweaver kf6-filemetadata libpoppler154 libpoppler-glib8 libpoppler-dev libpoppler-qt6-3 libpoppler-qt6-dev okular libexiv2 phonon4qt6 kf6-syntax-highlighting kf6-texteditor ark gwenview kwrite kate kcalc kf6-pty konsole dolphin)
 
 cd /work/Procursus
 
@@ -43,9 +44,23 @@ else
   echo "NOTE: ICU 74.2 debs not in /out; konsole will not configure." >&2
 fi
 
+# gwenview 26.08 hard-requires Qt6Multimedia/MultimediaWidgets (24.08 used Phonon): deferred until a Qt Multimedia module
+# exists in the lane (needs an FFmpeg or AVFoundation backend decision). Build it explicitly with TARGETS=gwenview-package.
+# Lane staging (see build-kf6.sh/build-plasma-desktop.sh): libwayland >= 1.24, wayland-protocols, libgtkintl shim,
+# exiv2/poppler runtime+dev debs from /out, then mode B (clang-19 + LLVM-19 libc++ headers, minos 16.5).
+for pkg in libwayland0 libwayland-dev wayland-protocols libexiv2-28 libexiv2-dev libpoppler154 libpoppler-dev libpoppler-glib8; do
+  d=$(ls /out/${pkg}_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+  [ -n "$d" ] && { echo "==> staging $(basename "$d")"; rm -rf /tmp/stg && mkdir -p /tmp/stg && dpkg-deb -x "$d" /tmp/stg && cp -a /tmp/stg$XIOS_PREFIX/* "$BB"/; }
+done
+bash /work/recipes/ensure-gtkintl-build-shim.sh
+. /work/x11/linux-build/tools/xios-clang19-env.sh
+export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
+xios_clang19_setup
+kde_lane_pmr_setup
+
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gettext python3 perl gzip libwayland-bin >/dev/null 2>&1 || true
+  gettext python3 perl gzip libmount-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin >/dev/null 2>&1 || true
 
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
@@ -61,7 +76,7 @@ echo "==> installing KDE app recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
 for r in \
   qt6-common.mk kf6-common.mk \
-  exiv2.mk phonon.mk ksyntaxhighlighting.mk ktexteditor.mk \
+  threadweaver.mk poppler.mk poppler-qt6.mk okular.mk phonon.mk ksyntaxhighlighting.mk ktexteditor.mk \
   ark.mk gwenview.mk kwrite.mk \
   kate.mk kcalc.mk kpty.mk konsole.mk dolphin.mk; do
   cp -v /work/recipes/$r makefiles/
@@ -73,6 +88,8 @@ cp -v /work/build_info/* build_info/ 2>/dev/null || true
 cp -v /work/build_info/iosc-*.xml build_misc/entitlements/ 2>/dev/null || true
 
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
+  PATH=$KDE_CMAKE_DIR/bin:/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"

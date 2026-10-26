@@ -17,6 +17,7 @@ target_link_libraries(KF6ScreenDpms PUBLIC Qt::Gui
                                             Qt::GuiPrivate Qt::WaylandClient Wayland::Client
 )
 """
+original_dpmsh = original.replace("dpms.cpp abstractdpmshelper.cpp", "dpms.cpp dpms.h abstractdpmshelper.cpp")
 previous = """add_library(KF6ScreenDpms SHARED)
 set(kscreen_dpms_SRCS
     dpms.cpp
@@ -43,17 +44,17 @@ if(NOT APPLE)
     list(APPEND kscreen_dpms_SRCS waylanddpmshelper.cpp xcbdpmshelper.cpp)
 endif()
 target_sources(KF6ScreenDpms PRIVATE ${kscreen_dpms_SRCS})
-target_link_libraries(KF6ScreenDpms PUBLIC Qt::Gui)
+# 6.7 generates the dpms Wayland protocol code unconditionally, so the Wayland libs are linked on APPLE too.
+target_link_libraries(KF6ScreenDpms PUBLIC Qt::Gui PRIVATE Qt::GuiPrivate Qt::WaylandClient Wayland::Client)
 if(NOT APPLE)
-    target_link_libraries(KF6ScreenDpms PRIVATE
-        XCB::XCB XCB::DPMS XCB::RANDR
-        Qt::GuiPrivate Qt::WaylandClient Wayland::Client
-    )
+    target_link_libraries(KF6ScreenDpms PRIVATE XCB::XCB XCB::DPMS XCB::RANDR)
 endif()
 """
 if new not in text:
     if original in text:
         text = text.replace(original, new)
+    elif original_dpmsh in text:
+        text = text.replace(original_dpmsh, new)
     elif previous in text:
         text = text.replace(previous, new)
     else:
@@ -137,6 +138,12 @@ if "#endif\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged
     connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged, this, &Dpms::supportedChanged);
 """,
     )
+if "#endif\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged" not in text:
+    # 6.7 words the final else-branch differently (Platform is not Wayland or X11...), so close the #else generically.
+    anchor = "    }\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged"
+    if anchor not in text:
+        raise SystemExit("dpms: constructor tail not found for #endif")
+    text = text.replace(anchor, "    }\n#endif\n\n    connect(m_helper.data(), &AbstractDpmsHelper::supportedChanged", 1)
 trigger_call = "    m_helper->trigger(mode, screens.isEmpty() ? qGuiApp->screens() : screens);\n"
 guarded_trigger = (
     "    if (m_helper.isNull()) {\n"
@@ -179,11 +186,15 @@ new = """#if !defined(__APPLE__)
             backendFilter = QStringLiteral("QScreen");
         }
 """
-if old not in text:
-    if "#if !defined(__APPLE__)\n        if (QX11Info::isPlatformX11())" not in text:
-        raise SystemExit("preferred backend selection block not found")
-else:
+# KF 6.7: upstream dropped the QScreen fallback branch.
+old_67 = old.replace('        } else {\n            backendFilter = QStringLiteral("QScreen");\n        }\n', '        }\n')
+new_67 = new.replace('        } else {\n            backendFilter = QStringLiteral("QScreen");\n        }\n', '        }\n')
+if old in text:
     text = text.replace(old, new)
+elif old_67 in text:
+    text = text.replace(old_67, new_67)
+elif "#if !defined(__APPLE__)\n        if (QX11Info::isPlatformX11())" not in text:
+    raise SystemExit("preferred backend selection block not found")
 path.write_text(text)
 PY
 
@@ -231,8 +242,10 @@ for arg, target, anchor in [
     fix = f"set_target_properties({target} PROPERTIES MACOSX_BUNDLE FALSE)"
     if fix in text:
         continue
-    if anchor not in text:
+    import re
+    m = re.search(r"^add_executable\(" + re.escape(target) + r"[^\n]*\)$", text, re.M)
+    if not m:
         raise SystemExit(f"{target} add_executable line not found")
-    text = text.replace(anchor, f"{anchor}\n{fix}")
+    text = text.replace(m.group(0), f"{m.group(0)}\n{fix}", 1)
     path.write_text(text)
 PY

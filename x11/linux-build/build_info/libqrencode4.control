@@ -1,0 +1,10 @@
+Package: libqrencode4
+Version: @DEB_LIBQRENCODE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://fukuchi.org/works/qrencode/
+Description: QR code encoding library
+ libqrencode creates QR Code symbols. Required by KDE Prison (barcode API) for
+ the clipboard barcode feature in the Plasma workspace.

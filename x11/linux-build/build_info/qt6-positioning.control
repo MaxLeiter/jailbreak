@@ -1,0 +1,10 @@
+Package: qt6-positioning
+Version: @DEB_QTPOSITIONING_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Libraries
+Priority: optional
+Homepage: https://www.qt.io/
+Depends: qt6-base, qt6-declarative
+Description: Qt 6 Positioning for the Xios desktop
+ QtPositioning (C++ and QML) with NMEA position sources. Required by plasma-workspace (libcolorcorrect) and the Ladybird Qt frontend.

@@ -9,13 +9,16 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+export KDE_NINJA_K="${KDE_NINJA_K:-0}"   # list every compile error per pass while porting
+. /work/x11/linux-build/tools/kde-lane-env.sh   # cmake >= 3.29
 
-QTVER=6.6.3
+QTVER=6.10.3
 BB=$XIOS_SYSROOT
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 
 TARGETS="${TARGETS:-libplasma-package}"
 SUPPORT_RECIPE_TARGETS=(
+  qcoro
   attica
   kdeclarative
   krunner
@@ -41,6 +44,9 @@ SUPPORT_RECIPE_TARGETS=(
   breeze
   plasma-integration
   powerdevil
+  polkit-kde-agent-1
+  xdg-desktop-portal-kde
+  kde-cli-tools
 )
 SUPPORT_RECIPE_HELPERS=(
   kactivitymanagerd-ios-fixes.sh
@@ -54,8 +60,12 @@ SUPPORT_RECIPE_HELPERS=(
   systemsettings-prune-actions.py
   plasma-integration-ios-fixes.sh
   powerdevil-ios-fixes.sh
+  polkit-kde-agent-1-ios-fixes.sh
+  xdg-desktop-portal-kde-ios-fixes.sh
+  kde-cli-tools-ios-fixes.sh
 )
 COLLECT_DEBS=(
+  qcoro6
   shared-mime-info
   libplasma
   plasma-activities-stats
@@ -88,6 +98,9 @@ COLLECT_DEBS=(
   breeze
   plasma-integration
   powerdevil
+  polkit-kde-agent-1
+  xdg-desktop-portal-kde
+  kde-cli-tools
 )
 LOCAL_STAGE_DEBS=(
   libpulse0
@@ -154,7 +167,7 @@ for f in \
   usr/lib/cmake/KF6XmlGui/KF6XmlGuiConfig.cmake \
   usr/lib/cmake/KF6WindowSystem/KF6WindowSystemConfig.cmake \
   usr/lib/cmake/PlasmaActivities/PlasmaActivitiesConfig.cmake \
-  usr/lib/cmake/PlasmaWaylandProtocols/PlasmaWaylandProtocolsConfig.cmake \
+  usr/share/cmake/PlasmaWaylandProtocols/PlasmaWaylandProtocolsConfig.cmake \
   usr/lib/pkgconfig/wayland-client.pc; do
   if [ ! -e "${BB}/${f}" ]; then
     if [ "$f" = "usr/lib/cmake/Qt6Sql/Qt6SqlConfig.cmake" ] && [ "$TARGETS" = "libplasma-package" ]; then
@@ -211,11 +224,22 @@ fi
 
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gettext python3 gzip libboost-dev libxml2-utils libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  gettext python3 gzip libboost-dev libxml2-utils libmount-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
 if [ ! -f /usr/include/boost/range/algorithm/binary_search.hpp ]; then
   echo "ERROR: missing Boost headers; kactivitymanagerd needs libboost-dev in the build container." >&2
   exit 1
 fi
+# Lane staging (see build-kf6.sh): libwayland >= 1.24, wayland-protocols, libgtkintl shim; then mode B (clang-19 +
+# LLVM-19 libc++ headers, minos 16.5) via kf6-common.mk's KF6_MODEB_FLAGS.
+for pkg in libwayland0 libwayland-dev wayland-protocols; do
+  d=$(ls /out/${pkg}_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+  [ -n "$d" ] && { echo "==> staging $(basename "$d")"; rm -rf /tmp/stg && mkdir -p /tmp/stg && dpkg-deb -x "$d" /tmp/stg && cp -a /tmp/stg$XIOS_PREFIX/* "$BB"/; }
+done
+bash /work/recipes/ensure-gtkintl-build-shim.sh
+. /work/x11/linux-build/tools/xios-clang19-env.sh
+export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
+xios_clang19_setup
+kde_lane_pmr_setup
 mkdir -p build_tools/boost-host-include
 ln -sfn /usr/include/boost build_tools/boost-host-include/boost
 
@@ -252,7 +276,7 @@ done
 cp -v /work/build_info/iosc-gpu-client-ent.xml /work/build_info/iosc-gl-ent.xml build_misc/entitlements/ 2>/dev/null || true
 
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
-  PATH=/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  PATH=$KDE_CMAKE_DIR/bin:/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
   LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 

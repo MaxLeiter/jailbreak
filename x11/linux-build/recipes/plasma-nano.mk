@@ -9,7 +9,7 @@ DEB_PLASMANANO_V ?= $(PLASMANANO_VERSION)+ios3
 plasma-nano-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,plasma-nano))
 	$(call EXTRACT_TAR,plasma-nano-$(PLASMA_VERSION).tar.xz,plasma-nano-$(PLASMA_VERSION),plasma-nano)
-	bash /work/recipes/plasma-nano-ios-fixes.sh $(BUILD_WORK)/plasma-nano
+	bash /work/recipes/run-fixes.sh plasma-nano-ios-fixes.sh $(BUILD_WORK)/plasma-nano
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

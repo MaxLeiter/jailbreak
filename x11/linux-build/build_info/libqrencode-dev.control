@@ -1,0 +1,10 @@
+Package: libqrencode-dev
+Version: @DEB_LIBQRENCODE_V@
+Architecture: @DEB_ARCH@
+Maintainer: @DEB_MAINTAINER@
+Section: Development
+Priority: optional
+Homepage: https://fukuchi.org/works/qrencode/
+Depends: libqrencode4 (= @DEB_LIBQRENCODE_V@)
+Description: Development files for libqrencode
+ Headers and pkg-config file for libqrencode.

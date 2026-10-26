@@ -5,11 +5,11 @@ endif
 # gwenview.mk - KDE image viewer.
 
 SUBPROJECTS += gwenview
-GWENVIEW_VERSION = 24.08.0
+GWENVIEW_VERSION = 26.08.1
 DEB_GWENVIEW_V ?= $(GWENVIEW_VERSION)+ios1
 
 gwenview-setup: setup
-	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/24.08.0/src/gwenview-$(GWENVIEW_VERSION).tar.xz)
+	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),https://download.kde.org/stable/release-service/26.08.1/src/gwenview-$(GWENVIEW_VERSION).tar.xz)
 	$(call EXTRACT_TAR,gwenview-$(GWENVIEW_VERSION).tar.xz,gwenview-$(GWENVIEW_VERSION),gwenview)
 	sed -i 's/add_subdirectory(tests)/# ios-bringup-no-tests: add_subdirectory(tests)/;s/add_subdirectory(doc)/# ios-bringup-no-doc: add_subdirectory(doc)/' $(BUILD_WORK)/gwenview/CMakeLists.txt
 	sed -i '/add_definitions(-DTRANSLATION_DOMAIN/a add_definitions(-DGWENVIEW_NO_WAYLAND_GESTURES)' $(BUILD_WORK)/gwenview/lib/CMakeLists.txt
@@ -23,7 +23,7 @@ ifneq ($(wildcard $(BUILD_WORK)/gwenview/.build_complete),)
 gwenview:
 	@echo "Using previously built gwenview."
 else
-gwenview: gwenview-setup phonon exiv2
+gwenview: gwenview-setup phonon
 	rm -rf $(BUILD_WORK)/gwenview/build
 	mkdir -p $(BUILD_WORK)/gwenview/build
 	cd $(BUILD_WORK)/gwenview/build && cmake .. \

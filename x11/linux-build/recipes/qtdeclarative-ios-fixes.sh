@@ -9,9 +9,9 @@ from pathlib import Path
 
 path = Path(sys.argv[1])
 text = path.read_text()
-old = """    , deceleration(QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickDeceleration).toReal())
+old = """    , deceleration(QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::FlickDeceleration).toReal())
     , wheelDeceleration(15000)
-    , maxVelocity(QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickMaximumVelocity).toReal())
+    , maxVelocity(QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::FlickMaximumVelocity).toReal())
 """
 new = """#if defined(Q_OS_IOS)
     // The Darwin/iOS target is not using Qt's UIKit QPA, so the platform
@@ -22,9 +22,9 @@ new = """#if defined(Q_OS_IOS)
     , wheelDeceleration(15000)
     , maxVelocity(2500)
 #else
-    , deceleration(QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickDeceleration).toReal())
+    , deceleration(QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::FlickDeceleration).toReal())
     , wheelDeceleration(15000)
-    , maxVelocity(QGuiApplicationPrivate::platformIntegration()->styleHint(QPlatformIntegration::FlickMaximumVelocity).toReal())
+    , maxVelocity(QGuiApplicationPrivate::platformTheme()->themeHint(QPlatformTheme::FlickMaximumVelocity).toReal())
 #endif
 """
 if old in text:

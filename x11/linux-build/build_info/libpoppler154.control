@@ -1,4 +1,4 @@
-Package: libpoppler140
+Package: libpoppler154
 Version: @DEB_POPPLER_V@
 Architecture: @DEB_ARCH@
 Maintainer: @DEB_MAINTAINER@

@@ -6,7 +6,7 @@ endif
 # refined later after first compositor bring-up.
 
 SUBPROJECTS       += qtsensors
-QTSENSORS_VERSION := 6.6.3
+QTSENSORS_VERSION := 6.10.3
 DEB_QTSENSORS_V   ?= $(QTSENSORS_VERSION)+ios1
 
 qtsensors-setup: setup
@@ -25,8 +25,8 @@ qtsensors: qtsensors-setup
 	cd $(BUILD_WORK)/qtsensors/build && cmake .. \
 		-G Ninja \
 		$(QT6_MODULE_CMAKE_FLAGS)
-	+ninja -C $(BUILD_WORK)/qtsensors/build
-	+DESTDIR="$(BUILD_STAGE)/qtsensors" ninja -C $(BUILD_WORK)/qtsensors/build install
+	+ninja -j12 -C $(BUILD_WORK)/qtsensors/build
+	+DESTDIR="$(BUILD_STAGE)/qtsensors" ninja -j12 -C $(BUILD_WORK)/qtsensors/build install
 	$(call AFTER_BUILD,copy)
 endif
 

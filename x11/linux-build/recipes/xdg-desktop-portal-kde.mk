@@ -22,7 +22,7 @@ DEB_XDGDESKTOPPORTALKDE_V ?= $(XDGDESKTOPPORTALKDE_VERSION)+ios1
 xdg-desktop-portal-kde-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,xdg-desktop-portal-kde))
 	$(call EXTRACT_TAR,xdg-desktop-portal-kde-$(PLASMA_VERSION).tar.xz,xdg-desktop-portal-kde-$(PLASMA_VERSION),xdg-desktop-portal-kde)
-	bash /work/recipes/xdg-desktop-portal-kde-ios-fixes.sh $(BUILD_WORK)/xdg-desktop-portal-kde
+	bash /work/recipes/run-fixes.sh xdg-desktop-portal-kde-ios-fixes.sh $(BUILD_WORK)/xdg-desktop-portal-kde
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

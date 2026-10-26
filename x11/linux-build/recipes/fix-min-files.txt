@@ -1,0 +1,19 @@
+# script  min-files-changed   (measured on the host against Plasma 6.7.5 sources unless noted)
+libkscreen-ios-fixes.sh 7
+kscreen-ios-fixes.sh 2
+powerdevil-ios-fixes.sh 7
+kactivitymanagerd-ios-fixes.sh 2
+kde-cli-tools-ios-fixes.sh 7
+libplasma-ios-fixes.sh 5
+systemsettings-ios-fixes.sh 2
+plasma5support-ios-fixes.sh 2
+plasma-integration-ios-fixes.sh 4
+plasma-pa-ios-fixes.sh 5
+polkit-kde-agent-1-ios-fixes.sh 2
+xdg-desktop-portal-kde-ios-fixes.sh 1
+layer-shell-qt-ios-fixes.sh 3
+# KNOWN PARTIAL on 6.7.5: plasma-mobile's minimum below (25) is the count measured on 6.7.5; the 6.1.5 count was 41, so
+# 15 files' worth of QML hunks (moved/removed upstream) are NOT ported: see plan section 9. plasma-nano: its two
+# desktoptoolbox hunks are obsolete (6.7 removed that directory); the 3 remaining hunks all apply.
+plasma-mobile-ios-fixes.sh 25
+plasma-nano-ios-fixes.sh 3

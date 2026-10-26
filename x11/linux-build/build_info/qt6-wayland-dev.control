@@ -5,8 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: qt6-wayland (= @DEB_QTWAYLAND_V@), qt6-base-dev, libwayland-dev
-Description: Development files for the Qt 6 Wayland client
- Headers, CMake package files and private API glue for QtWaylandClient.
- Needed for KDE components that use Wayland client APIs and for a future
- IOSurface graphics-integration plugin if the stock EGL path needs replacing.
+Depends: qt6-wayland (= @DEB_QTWAYLAND_V@), qt6-base-dev (>= 6.10), libwayland-dev
+Description: Transitional package: Qt 6 Wayland client headers now ship in qt6-base-dev
+ Qt 6.10 moved QtWaylandClient into qtbase. This empty package keeps older
+ dependency lines (qt6-wayland-dev) satisfiable.

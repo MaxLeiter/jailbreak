@@ -5,12 +5,14 @@
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+export KDE_NINJA_K="${KDE_NINJA_K:-0}"   # list every compile error per pass during the kwin port
+. /work/x11/linux-build/tools/kde-lane-env.sh   # cmake >= 3.29
 
-QTVER=6.6.3
+QTVER=6.10.3
 BB=$XIOS_SYSROOT
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
 
-TARGETS="${TARGETS:-libdrm-package gbm-package libdisplay-info-package kwin-package}"
+TARGETS="${TARGETS:-vulkan-headers-package libdrm-package gbm-package libdisplay-info-package kwin-package}"
 
 cd /work/Procursus
 
@@ -20,7 +22,8 @@ for f in \
   usr/lib/cmake/Qt6UiTools/Qt6UiToolsConfig.cmake \
   usr/lib/cmake/Qt6Sensors/Qt6SensorsConfig.cmake \
   usr/lib/cmake/KF6CoreAddons/KF6CoreAddonsConfig.cmake \
-  usr/lib/cmake/KDecoration2/KDecoration2Config.cmake \
+  usr/lib/cmake/KDecoration3/KDecoration3Config.cmake \
+  usr/lib/cmake/KNightTime/KNightTimeConfig.cmake \
   usr/lib/cmake/KGlobalAccelD/KGlobalAccelDConfig.cmake \
   usr/lib/cmake/KWayland/KWaylandConfig.cmake \
   usr/lib/pkgconfig/wayland-client.pc \
@@ -29,9 +32,20 @@ for f in \
   [ -e "${BB}/${f}" ] || { echo "ERROR: missing staged dependency ${f}" >&2; exit 1; }
 done
 
+# Lane staging + mode B (clang-19, LLVM-19 libc++ headers, minos 16.5) + std::pmr shim; see build-kf6.sh.
+for pkg in libwayland0 libwayland-dev wayland-protocols; do
+  d=$(ls /out/${pkg}_*_$XIOS_DEB_ARCH.deb 2>/dev/null | sort -V | tail -1 || true)
+  [ -n "$d" ] && { echo "==> staging $(basename "$d")"; rm -rf /tmp/stg && mkdir -p /tmp/stg && dpkg-deb -x "$d" /tmp/stg && cp -a /tmp/stg$XIOS_PREFIX/* "$BB"/; }
+done
+bash /work/recipes/ensure-gtkintl-build-shim.sh
+. /work/x11/linux-build/tools/xios-clang19-env.sh
+export XIOS_IOS_MIN=${XIOS_IOS_MIN:-16.5}
+xios_clang19_setup
+kde_lane_pmr_setup
+
 apt-get update >/dev/null 2>&1 || true
 apt-get install -y --no-install-recommends \
-  gettext python3 libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
+  gettext python3 meson hwdata libmount-dev libdbus-1-dev libxkbcommon-dev libwayland-dev libwayland-bin wayland-protocols >/dev/null 2>&1 || true
 
 cat > build_tools/cc-nounused <<'EOF'
 #!/usr/bin/env bash
@@ -45,7 +59,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 echo "==> installing KWin recipes into makefiles/"
 mkdir -p build_info build_misc/entitlements
-for r in qt6-common.mk kf6-common.mk libdrm.mk gbm.mk libdisplay-info.mk kwin.mk; do
+for r in qt6-common.mk kf6-common.mk vulkan-headers.mk libdrm.mk gbm.mk libdisplay-info.mk kwin.mk; do
   cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/*.control build_info/ 2>/dev/null || true
@@ -68,10 +82,8 @@ stage_deb() {
     dpkg-deb -x "$deb" build_base/$XIOS_TRIPLE
   fi
 }
-stage_deb /out/libepoll-shim0_0.0.20240608_$XIOS_DEB_ARCH.deb
-stage_deb /out/libepoll-shim-dev_0.0.20240608_$XIOS_DEB_ARCH.deb
-stage_deb /out/libxcvt0_0.1.2_$XIOS_DEB_ARCH.deb
-stage_deb /out/libxcvt-dev_0.1.2_$XIOS_DEB_ARCH.deb
+for d in /out/libepoll-shim0_0.0.20240608*_$XIOS_DEB_ARCH.deb /out/libepoll-shim-dev_0.0.20240608*_$XIOS_DEB_ARCH.deb; do stage_deb "$d"; done
+for d in /out/libxcvt0_0.1.2*_$XIOS_DEB_ARCH.deb /out/libxcvt-dev_0.1.2*_$XIOS_DEB_ARCH.deb; do stage_deb "$d"; done
 
 # KWin's nested IOSurface consumer uses the GPU-fence ABI exported by the
 # matched ANGLE libEGL. Do not silently link against whichever older ANGLE
@@ -111,6 +123,8 @@ if [ "${FORCE_KWIN_SHIM_REBUILD:-0}" = "1" ]; then
 fi
 
 COMMON="$XIOS_MEMO_ARGS NO_PGP=1 \
+  PATH=$KDE_CMAKE_DIR/bin:/root/cctools/bin:/work/Procursus/build_tools:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  LD_LIBRARY_PATH=/root/cctools/lib \
   CC=/work/Procursus/build_tools/cc-nounused CXX=/work/Procursus/build_tools/cxx-nounused"
 
 XIOS_CACHE_COMMON_INPUTS="/work/recipes/qt6-common.mk /work/recipes/kf6-common.mk"
@@ -132,7 +146,8 @@ for deb in \
   build_dist/$XIOS_TRIPLE/libdrm/libdrm-dev_*+ios*.deb \
   build_dist/$XIOS_TRIPLE/gbm/libgbm1_*+ios*.deb \
   build_dist/$XIOS_TRIPLE/gbm/libgbm-dev_*+ios*.deb \
-  build_dist/$XIOS_TRIPLE/libdisplay-info/libdisplay-info1_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/libdisplay-info/libdisplay-info2_*+ios*.deb \
+  build_dist/$XIOS_TRIPLE/vulkan-headers/vulkan-headers_*+ios*.deb \
   build_dist/$XIOS_TRIPLE/libdisplay-info/libdisplay-info-dev_*+ios*.deb; do
   [ -e "$deb" ] && cp -v "$deb" /out/
 done

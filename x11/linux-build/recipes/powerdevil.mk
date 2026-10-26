@@ -19,7 +19,7 @@ DEB_POWERDEVIL_V ?= $(POWERDEVIL_VERSION)+ios2
 powerdevil-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,powerdevil))
 	$(call EXTRACT_TAR,powerdevil-$(PLASMA_VERSION).tar.xz,powerdevil-$(PLASMA_VERSION),powerdevil)
-	bash /work/recipes/powerdevil-ios-fixes.sh $(BUILD_WORK)/powerdevil
+	bash /work/recipes/run-fixes.sh powerdevil-ios-fixes.sh $(BUILD_WORK)/powerdevil
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
 

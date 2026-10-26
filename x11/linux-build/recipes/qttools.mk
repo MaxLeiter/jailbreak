@@ -7,7 +7,7 @@ endif
 # CMake metadata are built.
 
 SUBPROJECTS      += qttools
-QTTOOLS_VERSION  := 6.6.3
+QTTOOLS_VERSION  := 6.10.3
 DEB_QTTOOLS_V    ?= $(QTTOOLS_VERSION)+ios1
 
 qttools-setup: setup
@@ -37,8 +37,8 @@ qttools: qttools-setup
 		-DFEATURE_qtattributionsscanner=OFF \
 		-DFEATURE_qtdiag=OFF \
 		-DFEATURE_qtplugininfo=OFF
-	+ninja -C $(BUILD_WORK)/qttools/build
-	+DESTDIR="$(BUILD_STAGE)/qttools" ninja -C $(BUILD_WORK)/qttools/build install
+	+ninja -j12 -C $(BUILD_WORK)/qttools/build
+	+DESTDIR="$(BUILD_STAGE)/qttools" ninja -j12 -C $(BUILD_WORK)/qttools/build install
 	$(call AFTER_BUILD,copy)
 endif
 

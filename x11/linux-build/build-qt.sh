@@ -1,26 +1,28 @@
 #!/usr/bin/env bash
 # Cross-builds Qt 6 (qtbase first) for rootless iOS, OFF-DEVICE — foundation of the KDE Plasma
 # Mobile track. Companion to build-gnome.sh/build-mutter.sh (shares their host-tool preamble +
-# cc-nounused wrappers). Runs on a DEDICATED volume (procursus-vol-qt) so it never races the
+# cc-nounused wrappers). Runs on a DEDICATED volume (procursus-vol-kde610 in the 6.10 lane) so it never races the
 # active GNOME agents on procursus-vol-gtk.
 #
 #   docker run --rm --platform linux/arm64 --cpus=8 \
-#     -v procursus-vol-qt:/work/Procursus \
+#     -v procursus-vol-kde610:/work/Procursus \
 #     -v "$PWD/build-qt.sh:/work/build-qt.sh:ro" -v "$PWD/recipes:/work/recipes:ro" \
 #     -v "$PWD/build_info:/work/build_info:ro" -v "$PWD/out:/out" \
 #     -e TARGETS="qtbase" \
 #     procursus-xbuild:bookworm-arm64 -c 'bash /work/build-qt.sh' 2>&1 | tee qt-build.log
 #
 # Two-stage build: cross-building qtbase needs moc/rcc/uic/syncqt from a host Qt of the identical
-# version (QT_HOST_PATH). No Debian ships 6.6.3, so stage 1 builds a native host qtbase into
-# build_tools/host-qt-6.6.3 (one-time, ~25 min, persisted in the volume). Stage 2 is the
+# version (QT_HOST_PATH). No Debian ships 6.10.3, so stage 1 builds a native host qtbase into
+# build_tools/host-qt-6.10.3 (one-time, ~25 min, persisted in the volume). Stage 2 is the
 # Procursus cross build via recipes/qtbase.mk.
 set -euo pipefail
 [ -r "${XIOS_TARGET_ENV:=/work/target-env.sh}" ] || { echo "ERROR: $XIOS_TARGET_ENV missing; rebuild the toolchain image (docker build x11/linux-build) or mount target-env.sh there" >&2; exit 1; }
 . "$XIOS_TARGET_ENV"
+# KDE 6.10 lane: cmake >= 3.29 from the volume (see tools/kde-lane-env.sh)
+. /work/x11/linux-build/tools/kde-lane-env.sh
 
-QTVER=6.6.3
-QTMINOR=6.6
+QTVER=6.10.3
+QTMINOR=6.10
 TARBALL=qtbase-everywhere-src-${QTVER}.tar.xz
 SRCURL=https://download.qt.io/archive/qt/${QTMINOR}/${QTVER}/submodules/${TARBALL}
 HOSTQT=/work/Procursus/build_tools/host-qt-${QTVER}
@@ -44,7 +46,7 @@ fi
 if [ ! -x "${HOSTQT}/libexec/moc" ]; then
   echo "==> building HOST Qt ${QTVER} into ${HOSTQT} (one-time)"
   apt-get update >/dev/null 2>&1 || true
-  apt-get install -y --no-install-recommends libdbus-1-dev >/dev/null 2>&1 || true
+  apt-get install -y --no-install-recommends libdbus-1-dev libwayland-dev libwayland-bin libxkbcommon-dev >/dev/null 2>&1 || true
   rm -rf /work/host-qt-src
   mkdir -p /work/host-qt-src "${HOSTQT_BUILD}"
   tar xf build_source/${TARBALL} -C /work/host-qt-src --strip-components=1
@@ -56,12 +58,13 @@ if [ ! -x "${HOSTQT}/libexec/moc" ]; then
     -DFEATURE_dbus=ON -DFEATURE_dbus_linked=OFF \
     -DFEATURE_network=OFF -DFEATURE_sql=OFF -DFEATURE_testlib=OFF \
     -DFEATURE_printsupport=OFF -DFEATURE_opengl=OFF -DINPUT_opengl=no \
-    -DFEATURE_vulkan=OFF -DFEATURE_xcb=OFF -DFEATURE_xkbcommon=OFF \
+    -DFEATURE_vulkan=OFF -DFEATURE_xcb=OFF -DFEATURE_xkbcommon=ON \
+    -DFEATURE_wayland=ON -DFEATURE_wayland_server=OFF \
     -DFEATURE_fontconfig=OFF -DFEATURE_glib=OFF -DFEATURE_icu=OFF \
     -DFEATURE_openssl=OFF -DINPUT_openssl=no \
     -DQT_QPA_DEFAULT_PLATFORM=offscreen
-  ninja -C "${HOSTQT_BUILD}"
-  ninja -C "${HOSTQT_BUILD}" install
+  ninja -j"${KDE_NINJA_JOBS:-12}" -C "${HOSTQT_BUILD}"
+  ninja -j"${KDE_NINJA_JOBS:-12}" -C "${HOSTQT_BUILD}" install
   rm -rf /work/host-qt-src "${HOSTQT_BUILD}"
   echo "==> host Qt done: $(${HOSTQT}/libexec/moc --version)"
 else
@@ -71,6 +74,12 @@ fi
 # The SDK-shadowing xpc/ headers in build_base are removed by qtbase.mk's setup step, not here:
 # Procursus `setup` re-stages them on every make run, so a driver-level parking gets undone by
 # the next build.
+
+# Qt 6.10's cross qtbase builds the Wayland client, which runs the HOST wayland-scanner (the staged one is arm64-iOS).
+# Installed here (not only in stage 1) because stage 1 is skipped once the host Qt exists in the volume.
+apt-get update >/dev/null 2>&1 || true
+apt-get install -y --no-install-recommends libwayland-bin >/dev/null 2>&1 || true
+[ -x /usr/bin/wayland-scanner ] || { echo "ERROR: host wayland-scanner missing" >&2; exit 1; }
 
 # --- cc-nounused wrappers (same as build-mutter.sh: neutralise meson/cmake probe -Werror) ---
 cat > build_tools/cc-nounused <<'EOF'
@@ -85,7 +94,7 @@ chmod +x build_tools/cc-nounused build_tools/cxx-nounused
 
 # --- stage 2: Procursus cross build (recipes + control files, then make <target>-package) ---
 echo "==> installing qt recipes into makefiles/"
-for r in qtbase.mk; do
+for r in qt6-common.mk qtbase.mk; do
   [ -f /work/recipes/$r ] && cp -v /work/recipes/$r makefiles/
 done
 cp -v /work/build_info/qt6-*.control build_info/ 2>/dev/null || true

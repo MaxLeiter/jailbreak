@@ -13,7 +13,7 @@ DEB_KACTIVITYMANAGERD_V ?= $(KACTIVITYMANAGERD_VERSION)+ios1
 kactivitymanagerd-setup: setup
 	$(call DOWNLOAD_FILES,$(BUILD_SOURCE),$(call PLASMA_URL,kactivitymanagerd))
 	$(call EXTRACT_TAR,kactivitymanagerd-$(PLASMA_VERSION).tar.xz,kactivitymanagerd-$(PLASMA_VERSION),kactivitymanagerd)
-	bash /work/recipes/kactivitymanagerd-ios-fixes.sh $(BUILD_WORK)/kactivitymanagerd
+	bash /work/recipes/run-fixes.sh kactivitymanagerd-ios-fixes.sh $(BUILD_WORK)/kactivitymanagerd
 	sed -i '/^[[:space:]]*ki18n_install[[:space:]]*(po)/s/^/# ios-bringup-no-linguist: /' $(BUILD_WORK)/kactivitymanagerd/CMakeLists.txt
 	$(call QT6_WRITE_IOSEXEC_FIXUP)
 	$(call QT6_RM_SHADOW_HEADERS)
