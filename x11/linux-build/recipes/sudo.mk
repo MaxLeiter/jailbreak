@@ -9,7 +9,10 @@ SUBPROJECTS   += sudo
 endif # ($(MEMO_TARGET),darwin-\*)
 # 1.9.15p5 -> 1.9.17p2 for CVE-2025-32463 (--chroot local root) and
 # CVE-2025-32462 (--host), both fixed in 1.9.17p1. Procursus's DPKG_COLORS patch
-# still applies.
+# still applies. --disable-tmpfiles.d: configure turns systemd tmpfiles.d on when the
+# BUILD host has /usr/lib/tmpfiles.d/systemd.conf, which this Debian image does, and
+# the deb then ships /usr/lib/tmpfiles.d/sudo.conf outside /var/jb, a path a rootless
+# dpkg cannot create.
 SUDO_VERSION  := 1.9.17p2
 DEB_SUDO_V    ?= $(SUDO_VERSION)+ios1
 
@@ -45,6 +48,7 @@ endif
 		--with-passprompt="[sudo] password for %p: " \
 		--with-vardir=$(MEMO_PREFIX)/var/db/sudo \
 		--with-rundir=$(MEMO_PREFIX)/var/run/sudo \
+		--disable-tmpfiles.d \
 		sudo_cv___func__=yes \
 		ac_cv_have_working_snprintf=yes \
 		ac_cv_have_working_vsnprintf=yes \

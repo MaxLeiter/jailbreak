@@ -17,6 +17,12 @@
 #                   dylib (from the gimp-stack stage in /out/gimp-stage/libtiff) and clear the
 #                   gdk-pixbuf/gtk4 markers; build-gtk.sh then rebuilds those two against it
 #   lcms2           liblcms2-utils relink onto libtiff6 (needs libtiff-stage first)
+#   gdk-pixbuf      libgdk-pixbuf-2.0-0 relink onto libtiff6. Built here rather than by
+#                   build-gtk.sh so it links under the same Procursus-libintl sysroot as the
+#                   published +ios1 (libintl_* from libintl.8): a build-gtk.sh run that also
+#                   asks for gtk4 points libintl.dylib at libgtkintl first, and gdk-pixbuf then
+#                   picks up g_libintl_* from libgtkintl instead. gtk4 itself goes through
+#                   build-gtk.sh (TARGETS=gtk4-package) after this.
 #
 # Like build-upd-core-ladybird.sh, every target wipes its build_work/build_stage trees and the
 # build_base files it shadows first: the recipes no-op on an existing .build_complete, and a stale
@@ -37,11 +43,11 @@ if [ -r /work/procursus-common-edits.py ]; then
 fi
 
 echo "==> wave 1 recipes and control templates"
-for m in libtasn1 nettle libidn2 p11-kit gnutls xz flac libsndfile sudo fribidi libarchive libx11 lcms2; do
+for m in libtasn1 nettle libidn2 p11-kit gnutls xz flac libsndfile sudo fribidi libarchive libx11 lcms2 gdk-pixbuf; do
   cp -v "/work/recipes/$m.mk" makefiles/
 done
 for c in libgnutls30 libgnutlsxx30 gnutls-bin p11-kit p11-kit-modules nettle-bin liblcms2-utils \
-         sudo xzdec; do
+         sudo xzdec libgdk-pixbuf-2.0-0 libgdk-pixbuf-2.0-dev; do
   cp -v "/work/build_info/$c.control" build_info/
 done
 for p in nettle flac libsndfile p11-kit; do
@@ -52,6 +58,13 @@ done
 if want p11-kit && ! command -v autopoint >/dev/null 2>&1; then
   apt-get update -qq >/dev/null 2>&1 || true
   apt-get install -y -qq --no-install-recommends autopoint gettext >/dev/null 2>&1 || true
+fi
+
+# gdk-pixbuf's meson build runs the native glib codegen tools and gdk-pixbuf-pixdata.
+if want gdk-pixbuf && ! command -v glib-mkenums >/dev/null 2>&1; then
+  apt-get update -qq >/dev/null 2>&1 || true
+  apt-get install -y -qq --no-install-recommends libglib2.0-dev-bin libglib2.0-bin libgdk-pixbuf2.0-bin >/dev/null 2>&1 \
+    || { echo "ERROR: could not install host glib tools" >&2; exit 1; }
 fi
 
 # Same PATH-level compiler shim build-gtk.sh installs (see the long note there): it keeps the
@@ -101,17 +114,25 @@ if ! want libtiff-stage || [ "$(echo $TARGETS)" != libtiff-stage ]; then
   dpkg-deb -x "$PBASE/libintl-dev_0.22_$XIOS_DEB_ARCH.deb" "$XIOS_BUILD_BASE"
   rm -rf "$XIOS_USR/share/doc/libintl-dev"
   echo "==> sysroot libintl = Procursus libintl8/libintl-dev 0.22 for this run"
-  # Same idea for zlib: the sysroot carries our libz1 (libz.1.dylib), so -lz binds
-  # @rpath/libz.1.dylib, a package Procursus does not have. Procursus links the system
-  # /usr/lib/libz.1.dylib (the SDK's libz.tbd). Hide ours for the run (header and API are
-  # the same) so gnutls & co. keep linking the system zlib, as the packages they replace do.
-  for f in libz.dylib libz.1.dylib pkgconfig/zlib.pc; do
-    if [ -e "$XIOS_USR/lib/$f" ] || [ -L "$XIOS_USR/lib/$f" ]; then
-      mkdir -p "$INTL_BAK/lib/$(dirname "$f")"
-      mv "$XIOS_USR/lib/$f" "$INTL_BAK/lib/$f"
+  # Same idea for zlib and libxml2. The sysroot carries our libz1 and libxml2 2.13, so -lz
+  # bound @rpath/libz.1.dylib and libarchive picked up @rpath/libxml2.2.dylib, packages
+  # Procursus does not have; with only the dylibs hidden, -lz then took our static libz.a
+  # and libarchive and sudo shipped a private zlib with its symbols exported. Procursus
+  # (and our own 3.7.2+ios1 libarchive) link the SYSTEM /usr/lib/libz.1.dylib and
+  # /usr/lib/libxml2.2.dylib from the SDK's .tbd stubs, against the SDK's headers. Hide every
+  # sysroot copy, libxml2's headers included, so the SDK's are what configure finds.
+  for f in lib/libz.dylib lib/libz.1.dylib lib/libz.a lib/pkgconfig/zlib.pc \
+           lib/libxml2.dylib lib/libxml2.2.dylib lib/libxml2.a lib/pkgconfig/libxml-2.0.pc \
+           include/libxml2 bin/xml2-config; do
+    if [ -e "$XIOS_USR/$f" ] || [ -L "$XIOS_USR/$f" ]; then
+      mkdir -p "$INTL_BAK/$(dirname "$f")"
+      mv "$XIOS_USR/$f" "$INTL_BAK/$f"
     fi
   done
-  ls "$XIOS_USR"/lib/libz.*.dylib >/dev/null 2>&1 && echo "   NOTE: other libz dylibs remain: $(ls "$XIOS_USR"/lib/libz.*.dylib)"
+  for f in "$XIOS_USR"/lib/libz.*.dylib "$XIOS_USR"/lib/libxml2.*.dylib; do
+    [ -e "$f" ] || continue
+    mkdir -p "$INTL_BAK/lib"; mv "$f" "$INTL_BAK/lib/"
+  done
 fi
 
 # A light-cloned volume recreates every build_work/<pkg> dir, even for packages the source
@@ -177,11 +198,12 @@ if want libtiff-stage; then
 fi
 
 run lcms2 'usr/lib/liblcms2.*' 'usr/lib/pkgconfig/lcms2.pc' 'usr/include/lcms2.h' 'usr/include/lcms2_plugin.h'
+run gdk-pixbuf 'usr/lib/libgdk_pixbuf-2.0.*' 'usr/lib/pkgconfig/gdk-pixbuf-2.0.pc' 'usr/include/gdk-pixbuf-2.0'
 
 echo; echo "==> collect debs built by this run -> $RAW"
 find ./build_dist -name "*_$XIOS_DEB_ARCH.deb" -newermt "@$START" -exec cp -v {} "$RAW/" \;
 echo "==================== SUMMARY ===================="
-for p in libtasn1 nettle libidn2 p11-kit gnutls xz flac libsndfile sudo fribidi libarchive libx11 libtiff-stage lcms2; do
+for p in libtasn1 nettle libidn2 p11-kit gnutls xz flac libsndfile sudo fribidi libarchive libx11 libtiff-stage lcms2 gdk-pixbuf; do
   want $p && printf '  %-14s %s\n' $p "${RESULT[$p]:-SKIPPED}"
 done
 for p in "${!RESULT[@]}"; do [ "${RESULT[$p]}" = OK ] || exit 1; done

@@ -25,8 +25,6 @@ libarchive: libarchive-setup lz4 liblzo2 zstd xz nettle
 		--without-openssl \
 		--with-nettle \
 		--with-lzo2 \
-		--without-xml2 \
-		--without-expat \
 		--enable-bsdtar=shared \
 		--enable-bsdcpio=shared \
 		--enable-bsdcat=shared

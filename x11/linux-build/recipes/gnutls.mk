@@ -9,6 +9,10 @@ STRAPPROJECTS  += gnutls
 # Built against the nettle 3.10.2 / libtasn1 4.21.0 / p11-kit 0.26.5 / libidn2
 # 2.3.8 from this batch, so build_info/libgnutls30.control (and xx30, gnutls-bin)
 # version those Depends: apt links gnutls, and it must never meet nettle 3.9.1.
+# The gt_cv_func_CF* answers keep gettext's intlmacosx.m4 from adding
+# -framework CoreServices (newer m4 does since macOS 14); nothing in gnutls imports
+# from it and Procursus's 3.8.5 did not load it, so apt's TLS library stays on the
+# same system images it used before.
 GNUTLS_VERSION := 3.8.13
 DEB_GNUTLS_V   ?= $(GNUTLS_VERSION)+ios1
 
@@ -34,6 +38,8 @@ gnutls: gnutls-setup readline gettext libgcrypt libgmp10 libidn2 libunistring ne
 		--enable-local-libopts \
 		--with-default-trust-store-file=$(MEMO_PREFIX)/etc/ssl/certs/cacert.pem \
 		ac_cv_func_malloc_0_nonnull=yes \
+		gt_cv_func_CFPreferencesCopyAppValue=no \
+		gt_cv_func_CFLocaleCopyPreferredLanguages=no \
 		ac_cv_func_realloc_0_nonnull=yes \
 		P11_KIT_CFLAGS=-I$(BUILD_BASE)$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/include/p11-kit-1
 	+$(MAKE) -C $(BUILD_WORK)/gnutls
