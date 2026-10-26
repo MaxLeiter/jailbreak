@@ -727,14 +727,7 @@ Results (A10, portrait, plasmashell CPU from `proc_pid_rusage`, all threads / ma
 | cold clock open (first after start) | 1196 / 1026 ms | 1032 / 798 ms |
 
 Open items:
-- **What you now see is KWin, not Plasma.** On screen a warm clock popup opens in 290-480 ms and closes in 1.3-2.4 s
-  (grim polling, `qmlbench.py`). plasmashell has hidden the window ~150 ms after the tap; KWin then composites only
-  every ~200 ms during the `slidingpopups` slide-out (main thread 94% idle in poll), so a 200 ms animation takes ~2 s.
-  With `slidingpopups` unloaded the close is ~190 ms; blur makes no difference. Next step: KWin's perf CSV
-  (`KWIN_LOG_PERFORMANCE_DATA=1` in KWin's env) to see why the RenderLoop schedules so rarely.
-- **Rotation during startup can wedge the session**: the desktop keeps its old size, the panel never appears,
-  KWin and plasmashell idle. Seen 2 of ~8 starts when Xios rotated the output while plasmashell was starting. Once,
-  KWin's `WaylandEventThread` was parked waiting for a `dispatch()` that never came. Not fixed.
+- **Slide-out pacing and the start+rotate wedge**: fixed, see "Run 4" below.
 - Cold opens are still ~1 s: first QML component creation plus icon rendering; `KSharedDataCache` runs non-mmap
   here, so no `.kcache` icon cache persists between launches.
 - `xios-session 1.0.86` stops a slot's process groups in reverse start order; the old order killed iosc first and
@@ -742,3 +735,58 @@ Open items:
 
 Measuring: start a slot through ioscd, tap its card in Xios (a restart sends Xios back to its launcher), check
 `/var/jb/tmp/xios-status.d/iosc-<slot>.status` says `vblank`, then `abpass.sh`, `popmeasure.py`, `popprof.py`.
+
+### Run 4 (2026-10-26): popup slide-out pacing and the start+rotate wedge
+Device-tested, not published: `kwin 6.7.5+ios4`, `iosc 0.9.54`, `plasma-workspace 6.7.5+ios16`,
+`xios-launcher-tools 0.1.15` (only its ioscd plist changed). Portrait, slot kde-0b85, Xios presenting (`vblank`).
+
+**Slide-out pacing.** A warm clock popup closed in 1.47-1.71 s on screen (median of 3-5 grim-polled closes,
+`probes-plasma-perf/closebench.py`); it now closes in 411-463 ms (median 423). Without screen capture, from the tap to
+the last slide-out frame on the panel: 394 ms at ~50 fps (`taptrace.py` + `tracedur.py`). KWin's perf CSV: pageflips
+inside an animation were a median 101 ms apart (p90 183), now 16.9 ms (p90 35). Four causes, each found with
+`IOSC_PRESENT_TRACE=1` (iosc) and `KWIN_IOS_FRAME_TRACE=1` (kwin), both stamped in CLOCK_UPTIME_RAW ms so
+`tracemerge.py` can line them up:
+- **The whole session ran at background priority.** `com.max.ioscd.plist` had no `ProcessType`, so launchd ran ioscd
+  as Background and every process it spawns (iosc, KWin, plasmashell, D-Bus, audio) had thread priority 4
+  (`schedprio.py`). iosc's 10 ms repaint timer fired up to ~100 ms late (timer coalescing). `ProcessType Interactive`
+  gives 31, like sshd and the Metal broker; a slot also comes up in ~14 s instead of 26-34. Close: 1.47 s -> 1.07 s.
+- **iosc answered a repaint's feedbacks newest-first** (`wl_list_insert` at the head). KWin pairs each `presented`
+  with its oldest frame and destroys that feedback proxy, which drops the event already queued for it, so one frame
+  stayed "in flight" forever and KWin never had two real frames out. iosc appends now, and kwin matches events to
+  frames by feedback object. Close: -> ~740 ms.
+- **Stale present times.** After an idle stretch the app's first `presentedTime` is the previous present (1.4-23 s
+  old). KWin turned it into a safety margin of minus that much and parked its next composite that far out: popup
+  opens stalled 1.5-3 s. iosc ignores a present time older than the frame's publish, kwin clamps the margin at 0.
+- **One present-wait slot.** Every repaint replaced it, so while KWin kept committing, the wait kept moving to a
+  generation the app had not shown yet and nothing was answered until KWin stopped (~28 fps whatever the frame
+  limit). Feedbacks and frame callbacks now ride per-repaint batches. With up to 4 KWin frames in flight
+  (`KWIN_IOS_MAX_PENDING_FRAMES`, default 4; 3 gave ~44 fps, 4 ~53 fps for +25 MB of KWin swapchain) KWin keeps the
+  60 Hz panel nearly fed. The iosc -> app -> panel round trip is still 35-55 ms per frame (the app acks from
+  `addPresentedHandler`), and slidingpopups advances at most one refresh interval per composite, so a 200 ms slide
+  takes ~300 ms after plasmashell's ~90 ms to hide the window.
+
+Also fixed on the way: `run-kde-plasma.sh` passes `IOSC_DEBUG="${IOSC_DEBUG-}"`, and iosc treated an empty value as
+on, so every KDE iosc did three synchronous `glReadPixels` per repaint. `iosc_debug()` is truthy-checked now. That
+readback had been hiding a screencopy race: grim read the output before the GPU finished it (4 of 50 captures black
+or torn during an animation); screencopy now `glFinish()`es first (0 of 97). `IOSC_NO_OUTPUT_TRANSFORM` has the same
+empty-string pattern (desktop KDE's iosc never advertises an output transform); left alone, it predates this run.
+
+**The start+rotate wedge.** Reproduced with `startrot.sh` (stop the slot, ioscd SESSION at 1440x1080, tap the card in
+Xios through ipadctld while the iPad is portrait, judge with `rotcheck.py` 30 s later): 2 wedges in 5 runs. Every
+process was idle; KWin was fine. plasmashell never logged `Plasma Shell startup completed`, the panel containment
+sat at screen -1, and only wedged sessions logged `The backend got an unknown wallpaper provider type`. Cause: the
+image wallpaper is incubated asynchronously, so a `Qt.callLater(loadImage)` can run before `MediaProxy` has
+classified its source. `loadImage()` then falls back to `MediaProxy::useSingleImageDefaults()`, which cleared
+`m_source` before looking for the default wallpaper package, and this device has none (no `/usr/share/wallpapers`).
+The configured image was gone, nothing loaded, `WallpaperItem.loading` stayed true, the desktop never became
+`uiReady`, and `ShellCorona::checkAllDesktopsUiReady()` never created the waiting panels. The KWin
+`WaylandEventThread` "waiting for dispatch" seen in Run 3 is its normal state between reads, not a deadlock.
+`plasma-workspace +ios16` keeps the source when there is no default package and clears `loading` when the fallback
+leaves nothing to show. A wallpaper `Image=` pointing at a missing file reproduces the wedge every time on +ios15
+(no panel, black) and comes up with a panel on +ios16. After the fix: 36 of 36 start+rotate runs came up (24 on the
+incrementally built fix, 12 on the packaged debs). The race itself got rare later in the day: 10 runs on the unfixed
+build afterwards did not wedge.
+
+Probes (in `linux-build/probes-plasma-perf/`): `closebench.py`, `taptrace.py`, `tracedur.py`, `tracemerge.py`,
+`ptsum.py`, `schedprio.py`, `startrot.sh`, `rotcheck.py`. grim forces a synchronous iosc repaint (and now a
+`glFinish`), so grim polling itself slows pacing; use `taptrace.py` with `IOSC_PRESENT_TRACE=1` for frame timing.
