@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/libxfce4ui/start
-Depends: libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, xfconf, libstartup-notification0, libepoxy0
+Depends: libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, xfconf, libstartup-notification0, libepoxy0, libice6, libsm6
 Description: GTK3 widget library for the Xfce desktop environment
  libxfce4ui provides the shared GTK3 widgets used across Xfce dialogs and
  applications (including libxfce4kbd-private and the xfce4-ui helper utilities).

@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/hughsie/libxmlb
-Depends: libglib2.0-0, liblzma5
+Depends: libglib2.0-0, liblzma5, libzstd1
 Description: Library to help create and query binary XML blobs
  libxmlb is a library to create and query compressed binary XML blobs, used by
  AppStream. This package contains the shared library.

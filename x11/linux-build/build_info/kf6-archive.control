@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://kde.org/
-Depends: qt6-base
+Depends: qt6-base, libzstd1, libssl3
 Description: KArchive for the Xios desktop
  Reading, creating and manipulating archive formats (zip, tar, 7z).
  .

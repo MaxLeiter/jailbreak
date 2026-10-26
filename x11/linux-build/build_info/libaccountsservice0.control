@@ -5,7 +5,7 @@ Maintainer: @DEB_MAINTAINER@
 Section: Libraries
 Priority: optional
 Homepage: https://www.freedesktop.org/wiki/Software/AccountsService/
-Depends: libglib2.0-0, libpolkit-gobject-1-0
+Depends: libglib2.0-0, libpolkit-gobject-1-0, libcrypt2
 Description: Query and manipulate user account information (client library)
  The libaccountsservice client library for rootless iOS. gnome-shell imports
  gi://AccountsService in its panel boot path, so this library (and its on-device

@@ -52,23 +52,33 @@ DEPENDS_ADD = {
     "libgmime-3.0-0":           ["libgtkintl", "libz1"],
     "xwayland":                 ["libxau6"],
     "libxkbcommon-dev":         ["libxcb1"],          # libxkbcommon-x11
-    "libmutter-14-0":           ["angle", "libei1", "libatk1.0-0"],
+    # The X11 loads are weak (weaken-deb.sh), but mutter's X11 paths call them
+    # unchecked, so a missing lib is a NULL call rather than a clean fallback.
+    "libmutter-14-0":           ["angle", "libei1", "libatk1.0-0",
+                                 "libxtst6", "libx11-xcb1", "libxcb-randr0", "libxcb-res0"],
     "libstartup-notification0": ["libxcb-util1", "libx11-xcb1"],          # procursus
     "libxcb-render0":           ["libxau6", "libxdmcp6"],                 # procursus
     "tigervnc-common":          ["libsm6", "libice6", "libx11-6", "libxext6",
                                  "libjpeg62-turbo", "libpixman-1-0", "libgnutls30"],
     "tigervnc-scraping-server": ["libxtst6", "libxfixes3", "libxrandr2",
                                  "libsm6", "libice6", "libxext6"],
-    # These link @rpath/libintl.dylib (unversioned). Procursus libintl-dev owns
-    # the /var/jb/usr/lib/libintl.dylib -> libintl.8.dylib symlink that resolves
-    # it, so depend on it as a bridge until each recipe relinks to libintl.8
-    # (do NOT ship our own copy of that symlink: dpkg file conflict).
-    "ibus":                     ["libintl-dev"],
-    "libenchant-2-2":           ["libintl-dev"],
-    "libgee-0.8-2":             ["libintl-dev"],
-    "libgeocode-glib-2-0":         ["libintl-dev"],
-    "libgweather-4-0":          ["libintl-dev"],
-    "libibus-1.0-5":            ["libintl-dev"],
+    # Procursus dependency audit 2026-10-25 (docs/handoff/procursus-dependency-
+    # audit-2026-10-25.md): runtime loads of Procursus libraries that were missing
+    # from the package's Depends closure. The build_info/*.control sources carry
+    # the same lines, so these only matter for debs built before that change.
+    # KArchive: WITH_BZIP2/LIBLZMA/LIBZSTD=OFF only demote the backends to
+    # RECOMMENDED, so the build finds and links liblzma, libzstd and libcrypto.
+    "kf6-archive":              ["libzstd1", "libssl3"],
+    "libappstream5":            ["libzstd1"],
+    "libxmlb2":                 ["libzstd1"],
+    "libexo-2-0":               ["libice6", "libsm6"],
+    "libxfce4ui-2-0":           ["libice6", "libsm6"],
+    "thunar":                   ["libice6", "libsm6"],
+    "libaccountsservice0":      ["libcrypt2"],
+    # The old `libintl-dev` bridge entries are gone. Binaries that linked the
+    # unversioned @rpath/libintl.dylib (which only Procursus libintl-dev's dev
+    # symlink resolves) are now relinked to @rpath/libintl.8.dylib and given
+    # `Depends: libintl8` by recipes/relink-gtkintl.sh at package time.
 }
 
 # ── Mach-O minos (LC_BUILD_VERSION / LC_VERSION_MIN_IPHONEOS), fat-aware ──────
