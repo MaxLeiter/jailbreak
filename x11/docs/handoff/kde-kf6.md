@@ -686,3 +686,59 @@ speed.
 **Install the way it was tested.** `dpkg -i` both debs (dpkg renames into place, so nothing is overwritten while
 mapped), then re-sign every Mach-O on the device: copy to a new file, `ldid -S` with the file's own entitlements,
 `mv` over. `probes-qv4-jit/` has the scripts (`abrun.sh` is one full measurement pass).
+
+### Popup cost and the presentation-feedback hang (2026-10-26)
+Profiled plasmashell's main thread with a `task_for_pid` frame-pointer sampler (`linux-build/probes-plasma-perf/`,
+`fpsample.c` + `ppanalyze.py`; `spindump` is SIGKILLed on this device). Conditions: portrait, Xios presenting
+(`pacing vblank`), `fileproviderd` at ~1 core the whole time (it never settled), thermal state is this device's usual
+`serious`. qmlcache is written and reused (`/var/root/Library/Caches/plasmashell/qmlcache`), sycoca is not rebuilt per
+launch, the fontconfig cache exists. Idle plasmashell and KWin use 0% CPU.
+
+Where a warm clock popup's main-thread time went before the fixes (close ~1.2 s, open ~0.5 s):
+- **`enabled: dialog.visible` in Plasma 6.7's `CompactApplet.qml`** (a QTBUG-146992 workaround; 6.1.5 had none):
+  every open and close recursed `setEffectiveEnableRecur` through the popup and moved every Kirigami-themed item
+  between the Active and Disabled colour groups (palette resync, SVG re-colouring). 40-60% per phase, most of Kickoff.
+- **KSvg `ImageSet::filePath("colors")`** on each of those colour changes: hits were cached, misses were not, and
+  Breeze has no `colors` file, so every SvgItem re-ran `QStandardPaths::locate` (stat + Foundation): ~25% of close.
+- **The calendar model reset**: `CalendarView` calls `resetToToday()` on every `expandedChanged`, which rebuilt
+  `DaysModel` and re-created the 42 day delegates even when nothing changed: ~60% of what was left after the above.
+- JS (QV4) ~15-25%, and `QLocale::toString` reaching CoreFoundation/ICU through Darwin's `QSystemLocale` ~5% of open.
+
+Fixes: `plasma-desktop +ios12` drops the binding and `qt6-declarative +ios3` fixes the shortcut matcher instead
+(hidden windows never match); `kf6-svg +ios2` caches misses; `plasma-workspace +ios15` skips the redundant rebuild.
+
+**The hang.** On the third clock close after a fresh session (2 of 2 tries), Plasma froze: plasmashell's render
+thread spun in `eglSwapBuffers` (`wl_display_roundtrip_queue` in a loop, all three buffers held by KWin), the GUI
+thread waited on it, KWin sat idle. KWin 6.7 completes a nested-output frame only on `presented`/`discarded`, and
+iosc answered feedback only after a real repaint, so a KWin commit that changed nothing on screen left KWin's
+RenderLoop waiting forever. Anything that made iosc repaint (a client mapped on iosc itself) unwedged it.
+`iosc 0.9.53` answers such feedback from its frame clock; no hang in ~40 popup cycles over 4 sessions since.
+The shim's spin is fixed too, but the shim clients load is `/var/jb/lib/angle/libEGL.dylib`, so it ships as
+`angle es3-17` (not yet device-tested), not through iosc's `libiosc_egl.dylib`.
+
+Results (A10, portrait, plasmashell CPU from `proc_pid_rusage`, all threads / main thread, `popmeasure.py`):
+
+| | before | after |
+|---|---|---|
+| warm clock open | 530-781 / 370-522 ms | 62-202 / 26-115 ms |
+| warm clock close | 802-1038 / 751-1017 ms | 48-104 / 26-78 ms |
+| warm Kickoff open | 207-309 / 114-147 ms | 64-157 / 22-85 ms |
+| warm Kickoff close | 212-350 / 187-303 ms | 46-150 / 18-97 ms |
+| cold clock open (first after start) | 1196 / 1026 ms | 1032 / 798 ms |
+
+Open items:
+- **What you now see is KWin, not Plasma.** On screen a warm clock popup opens in 290-480 ms and closes in 1.3-2.4 s
+  (grim polling, `qmlbench.py`). plasmashell has hidden the window ~150 ms after the tap; KWin then composites only
+  every ~200 ms during the `slidingpopups` slide-out (main thread 94% idle in poll), so a 200 ms animation takes ~2 s.
+  With `slidingpopups` unloaded the close is ~190 ms; blur makes no difference. Next step: KWin's perf CSV
+  (`KWIN_LOG_PERFORMANCE_DATA=1` in KWin's env) to see why the RenderLoop schedules so rarely.
+- **Rotation during startup can wedge the session**: the desktop keeps its old size, the panel never appears,
+  KWin and plasmashell idle. Seen 2 of ~8 starts when Xios rotated the output while plasmashell was starting. Once,
+  KWin's `WaylandEventThread` was parked waiting for a `dispatch()` that never came. Not fixed.
+- Cold opens are still ~1 s: first QML component creation plus icon rendering; `KSharedDataCache` runs non-mmap
+  here, so no `.kcache` icon cache persists between launches.
+- `xios-session 1.0.86` stops a slot's process groups in reverse start order; the old order killed iosc first and
+  KWin died in `qFatal("Wayland connection broke")`, which was the SIGABRT crash report on every slot stop.
+
+Measuring: start a slot through ioscd, tap its card in Xios (a restart sends Xios back to its launcher), check
+`/var/jb/tmp/xios-status.d/iosc-<slot>.status` says `vblank`, then `abpass.sh`, `popmeasure.py`, `popprof.py`.
