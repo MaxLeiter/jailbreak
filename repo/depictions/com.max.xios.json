@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "0.2.1"
+          "text": "0.2.2"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "619.4 KiB"
+          "text": "620.4 KiB"
         },
         {
           "class": "DepictionTableTextView",
@@ -52,7 +52,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "## 0.2.1  \u00b7  2026-10-25\n- Asks ioscd which desktops are installed, so New Desktop matches exactly what xios-session can start\n- Falls back to checking the files itself when ioscd is older than 0.1.14\n\n## 0.2.0  \u00b7  2026-10-25\n- Rewritten: the app opens to a launcher of desktop cards with thumbnails, and each desktop has its own connection\n- Several desktops can run at once; switching detaches the one you leave\n- Rotation reconnects at once instead of flashing black; a second finger no longer breaks a drag\n- New Desktop offers only the flavors you have installed and names the package for the others\n- When the session launcher refuses to start a desktop, it says why in its own words\n- Change size works on a desktop in its own slot\n- Long-press is always right click; the status file and every diagnostic write moved off the main thread\n- Needs xios-session 1.0.81 and iosc 0.9.49 for side-by-side desktops\n\n## 0.1.12  \u00b7  2026-10-05\n- Ships together with xios-launcher-tools 0.1.12: the picker and ioscd now agree on desktop-file ids\n\n## 0.1.11  \u00b7  2026-08-02\n- Lets go of a display once its compositor is gone, so taps reach the desktop that is actually running instead of a stopped one\n\n## 0.1.10  \u00b7  2026-08-01\n- Fenced triple-buffered presentation\n\n## 0.1.2  \u00b7  2026-07-29\n- Fixes a trackpad click that stayed held down, which made everything drag-select\n- With a mouse or trackpad attached, the iPadOS pointer takes the desktop's cursor shape\n\n## 0.1.0  \u00b7  2026-07-29\n- First packaged release: the display app now installs from the repo instead of being sideloaded\n- Zero-copy IOSurface presentation through Metal, session and dimension picker, multi-display switching\n- Touch, Pencil, hardware keyboard, and on-screen keyboard routed back to the display server"
+          "markdown": "## 0.2.2  \u00b7  2026-10-25\n- The New Desktop card is the same size and shape as the desktop cards next to it\n\n## 0.2.1  \u00b7  2026-10-25\n- Asks ioscd which desktops are installed, so New Desktop matches exactly what xios-session can start\n- Falls back to checking the files itself when ioscd is older than 0.1.14\n\n## 0.2.0  \u00b7  2026-10-25\n- Rewritten: the app opens to a launcher of desktop cards with thumbnails, and each desktop has its own connection\n- Several desktops can run at once; switching detaches the one you leave\n- Rotation reconnects at once instead of flashing black; a second finger no longer breaks a drag\n- New Desktop offers only the flavors you have installed and names the package for the others\n- When the session launcher refuses to start a desktop, it says why in its own words\n- Change size works on a desktop in its own slot\n- Long-press is always right click; the status file and every diagnostic write moved off the main thread\n- Needs xios-session 1.0.81 and iosc 0.9.49 for side-by-side desktops\n\n## 0.1.12  \u00b7  2026-10-05\n- Ships together with xios-launcher-tools 0.1.12: the picker and ioscd now agree on desktop-file ids\n\n## 0.1.11  \u00b7  2026-08-02\n- Lets go of a display once its compositor is gone, so taps reach the desktop that is actually running instead of a stopped one\n\n## 0.1.10  \u00b7  2026-08-01\n- Fenced triple-buffered presentation\n\n## 0.1.2  \u00b7  2026-07-29\n- Fixes a trackpad click that stayed held down, which made everything drag-select\n- With a mouse or trackpad attached, the iPadOS pointer takes the desktop's cursor shape\n\n## 0.1.0  \u00b7  2026-07-29\n- First packaged release: the display app now installs from the repo instead of being sideloaded\n- Zero-copy IOSurface presentation through Metal, session and dimension picker, multi-display switching\n- Touch, Pencil, hardware keyboard, and on-screen keyboard routed back to the display server"
         }
       ]
     }
