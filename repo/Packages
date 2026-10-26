@@ -212,7 +212,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/brotli.json
 
 Package: bun
 Name: Bun
-Version: 1.4.4+ios1
+Version: 1.4.4+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -220,11 +220,11 @@ Section: Development
 Priority: optional
 Homepage: https://bun.sh
 Description: Bun JavaScript runtime for rootless iOS.
-Filename: debs/bun_1.4.4+ios1_iphoneos-arm64.deb
-Size: 24408260
-MD5sum: 98bd4bbab6068b89dd5a939fd5453261
-SHA1: 73bfb6334418836001cd7e201a473fd921a90d17
-SHA256: e86bc84d22d7cbc2364008730fdda4e394f75da52b2fade8fb7e0120be2d1dc5
+Filename: debs/bun_1.4.4+ios2_iphoneos-arm64.deb
+Size: 24411760
+MD5sum: d74a17ddf62860e25a8c015352f639db
+SHA1: 3775652cc8c48d23eb9da6ab47e33d44ad55b1c1
+SHA256: e8708cb4f7c730d1209c60f2dc19c0b6dc1fce6aacf7925e579a83aa66785c0c
 Icon: https://repo.maxleiter.com/icons/bun.png
 Depiction: https://repo.maxleiter.com/depictions/bun.html
 SileoDepiction: https://repo.maxleiter.com/depictions/bun.json
