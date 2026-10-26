@@ -31,7 +31,14 @@ while [ "$#" -gt 0 ]; do
     -h|--help) sed -n '2,18p' "$0" >&2; exit 0 ;;
     *)
       if [ -f "$HERE/targets/$1.env" ]; then TARGET="$1"
-      else SCRIPT="$1"
+      else
+        case "$1" in
+          # Looks like a target id (e.g. a retired rootful-1900) but has no
+          # descriptor. Without this it would be taken for the script name and
+          # then overwritten by the real one, silently building rootless.
+          *-[0-9][0-9][0-9][0-9]) echo "unknown target: $1" >&2; exit 2 ;;
+        esac
+        SCRIPT="$1"
       fi
       ;;
   esac
