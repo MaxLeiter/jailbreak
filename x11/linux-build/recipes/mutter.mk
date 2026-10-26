@@ -114,6 +114,14 @@ mutter: mutter-setup glib2.0 gtk4 graphene gdk-pixbuf pango cairo fribidi harfbu
 			$(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/bin -type f 2>/dev/null); do \
 		$(I_N_T) -change @rpath/libintl.dylib @rpath/libgtkintl.dylib $$f 2>/dev/null || true; \
 	done
+	# The cogl/clutter/cogl-pango/mtk sublibs install to lib/mutter-$(MUTTER_API_V), but the
+	# installed Mach-Os keep meson's build-tree rpaths (@loader_path/../cogl/cogl, ...), so the
+	# sublibs resolved only through launch-gnome-session.sh's DYLD_LIBRARY_PATH. Add the real
+	# directory to every mutter dylib (Procursus dependency audit 2026-10-25). -add_rpath
+	# refuses a duplicate, hence || true on re-runs.
+	for f in $$(find $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib -type f -name '*.dylib' 2>/dev/null); do \
+		$(I_N_T) -add_rpath $(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/mutter-$(MUTTER_API_V) $$f 2>/dev/null || true; \
+	done
 	rm -f $(BUILD_STAGE)/mutter/$(MEMO_PREFIX)$(MEMO_SUB_PREFIX)/lib/libintl.dylib
 	$(call AFTER_BUILD,copy)
 endif
