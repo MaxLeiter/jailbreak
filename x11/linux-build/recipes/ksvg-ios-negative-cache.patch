@@ -1,0 +1,58 @@
+diff -ru a/src/ksvg/private/imageset_p.cpp b/src/ksvg/private/imageset_p.cpp
+--- a/src/ksvg/private/imageset_p.cpp
++++ b/src/ksvg/private/imageset_p.cpp
+@@ -237,11 +237,15 @@
+ 
+ QString ImageSetPrivate::findInImageSet(const QString &image, const QString &theme, bool cache)
+ {
++    const QString missKey = theme + QLatin1Char('/') + image;
+     if (cache) {
+         auto it = discoveries.constFind(image);
+         if (it != discoveries.constEnd()) {
+             return it.value();
+         }
++        if (discoveryMisses.contains(missKey)) {
++            return QString();
++        }
+     }
+ 
+     QString search;
+@@ -262,6 +266,8 @@
+ 
+     if (cache && !search.isEmpty()) {
+         discoveries.insert(image, search);
++    } else if (cache) {
++        discoveryMisses.insert(missKey);
+     }
+ 
+     return search;
+@@ -287,6 +293,7 @@
+ 
+     if (caches & SvgElementsCache) {
+         discoveries.clear();
++        discoveryMisses.clear();
+     }
+ }
+ 
+diff -ru a/src/ksvg/private/imageset_p.h b/src/ksvg/private/imageset_p.h
+--- a/src/ksvg/private/imageset_p.h
++++ b/src/ksvg/private/imageset_p.h
+@@ -11,6 +11,7 @@
+ #include "imageset.h"
+ #include "svg.h"
+ #include <QHash>
++#include <QSet>
+ 
+ #include <KColorScheme>
+ #include <KImageCache>
+@@ -148,6 +149,10 @@
+     QHash<qint64, QString> cachedSelectedSvgStyleSheets;
+     QHash<qint64, QString> cachedInactiveSvgStyleSheets;
+     QHash<QString, QString> discoveries;
++    // xios ios-perf-negative-cache: "theme/image" lookups that found nothing. discoveries only remembers hits, so
++    // a file a theme does not ship (every SvgItem/FrameSvgItem asks for "colors" on each colour change) went back
++    // to QStandardPaths::locate, i.e. stat() calls and Foundation path queries, every time.
++    QSet<QString> discoveryMisses;
+     QTimer *pixmapSaveTimer;
+     QTimer *updateNotificationTimer;
+     unsigned cacheSize;

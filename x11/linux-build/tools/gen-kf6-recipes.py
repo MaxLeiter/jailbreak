@@ -291,8 +291,17 @@ TABLE = [
          deps=["karchive", "kcolorscheme", "kconfig", "kcoreaddons", "kguiaddons", "kirigami"],
          qt_deps=["qt6-base", "qt6-svg", "qt6-declarative"],
          desc="SVG rendering framework with theming support (Plasma themes).",
+         ios_rev=2,
+         seds=["if [ ! -e $(BUILD_WORK)/ksvg/.xios-negcache-applied ]; then \\\n"
+               "\t\tpatch -p1 -N --no-backup-if-mismatch -d $(BUILD_WORK)/ksvg < /work/recipes/ksvg-ios-negative-cache.patch && \\\n"
+               "\t\ttouch $(BUILD_WORK)/ksvg/.xios-negcache-applied; \\\n"
+               "\tfi"],
          notes=["Direct kwin requirement (KF6::Svg). The KirigamiPlatform dep is why kirigami",
-                "sits in wave 1."]),
+                "sits in wave 1.",
+                "+ios2: ksvg-ios-negative-cache.patch caches ImageSet lookups that miss. Every",
+                "SvgItem/FrameSvgItem asks for the theme's \"colors\" file on each colour change",
+                "and Breeze has none, so each one re-ran QStandardPaths::locate (stat + Foundation):",
+                "~25% of plasmashell's main thread per clock popup close on the A10."]),
     dict(t="kiconthemes", kind="kf", deb="kf6-iconthemes",
          deps=["karchive", "breeze-icons", "kcolorscheme", "kconfigwidgets", "ki18n", "kwidgetsaddons"],
          qt_deps=["qt6-base", "qt6-svg", "qt6-declarative"],
