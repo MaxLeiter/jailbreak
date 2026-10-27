@@ -10,7 +10,7 @@
       "views": [
         {
           "class": "DepictionMarkdownView",
-          "markdown": "TIFF image codec runtime for GIMP with a private XZ runtime"
+          "markdown": "TIFF image codec runtime (libtiff 4.7) with a private XZ runtime"
         },
         {
           "class": "DepictionSeparatorView"
@@ -22,12 +22,12 @@
         {
           "class": "DepictionTableTextView",
           "title": "Version",
-          "text": "4.7.0+ios2"
+          "text": "4.7.2+ios1"
         },
         {
           "class": "DepictionTableTextView",
           "title": "Size",
-          "text": "279.9 KiB"
+          "text": "283.1 KiB"
         },
         {
           "class": "DepictionTableTextView",

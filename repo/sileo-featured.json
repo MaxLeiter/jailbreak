@@ -179,6 +179,11 @@
       "url": "https://repo.maxleiter.com/banners/file-roller.png"
     },
     {
+      "title": "flac",
+      "package": "flac",
+      "url": "https://repo.maxleiter.com/banners/flac.png"
+    },
+    {
       "title": "fontconfig",
       "package": "fontconfig",
       "url": "https://repo.maxleiter.com/banners/fontconfig.png"
@@ -299,6 +304,11 @@
       "url": "https://repo.maxleiter.com/banners/gnumeric.png"
     },
     {
+      "title": "gnutls-bin",
+      "package": "gnutls-bin",
+      "url": "https://repo.maxleiter.com/banners/gnutls-bin.png"
+    },
+    {
       "title": "gobject-introspection",
       "package": "gobject-introspection",
       "url": "https://repo.maxleiter.com/banners/gobject-introspection.png"
@@ -352,6 +362,11 @@
       "title": "icu-devtools",
       "package": "icu-devtools",
       "url": "https://repo.maxleiter.com/banners/icu-devtools.png"
+    },
+    {
+      "title": "idn2",
+      "package": "idn2",
+      "url": "https://repo.maxleiter.com/banners/idn2.png"
     },
     {
       "title": "imv",
@@ -1064,6 +1079,11 @@
       "url": "https://repo.maxleiter.com/banners/libappstream5.png"
     },
     {
+      "title": "libarchive-dev",
+      "package": "libarchive-dev",
+      "url": "https://repo.maxleiter.com/banners/libarchive-dev.png"
+    },
+    {
       "title": "libarchive-tools",
       "package": "libarchive-tools",
       "url": "https://repo.maxleiter.com/banners/libarchive-tools.png"
@@ -1374,6 +1394,26 @@
       "url": "https://repo.maxleiter.com/banners/libfcft4.png"
     },
     {
+      "title": "libflac++-dev",
+      "package": "libflac++-dev",
+      "url": "https://repo.maxleiter.com/banners/libflac++-dev.png"
+    },
+    {
+      "title": "libflac++6v5",
+      "package": "libflac++6v5",
+      "url": "https://repo.maxleiter.com/banners/libflac++6v5.png"
+    },
+    {
+      "title": "libflac-dev",
+      "package": "libflac-dev",
+      "url": "https://repo.maxleiter.com/banners/libflac-dev.png"
+    },
+    {
+      "title": "libflac8",
+      "package": "libflac8",
+      "url": "https://repo.maxleiter.com/banners/libflac8.png"
+    },
+    {
       "title": "libfmt-dev",
       "package": "libfmt-dev",
       "url": "https://repo.maxleiter.com/banners/libfmt-dev.png"
@@ -1417,6 +1457,21 @@
       "title": "libfreetype6",
       "package": "libfreetype6",
       "url": "https://repo.maxleiter.com/banners/libfreetype6.png"
+    },
+    {
+      "title": "libfribidi-bin",
+      "package": "libfribidi-bin",
+      "url": "https://repo.maxleiter.com/banners/libfribidi-bin.png"
+    },
+    {
+      "title": "libfribidi-dev",
+      "package": "libfribidi-dev",
+      "url": "https://repo.maxleiter.com/banners/libfribidi-dev.png"
+    },
+    {
+      "title": "libfribidi0",
+      "package": "libfribidi0",
+      "url": "https://repo.maxleiter.com/banners/libfribidi0.png"
     },
     {
       "title": "libgbm-dev",
@@ -1634,6 +1689,21 @@
       "url": "https://repo.maxleiter.com/banners/libgnome-desktop-dev.png"
     },
     {
+      "title": "libgnutls30",
+      "package": "libgnutls30",
+      "url": "https://repo.maxleiter.com/banners/libgnutls30.png"
+    },
+    {
+      "title": "libgnutls30-dev",
+      "package": "libgnutls30-dev",
+      "url": "https://repo.maxleiter.com/banners/libgnutls30-dev.png"
+    },
+    {
+      "title": "libgnutlsxx30",
+      "package": "libgnutlsxx30",
+      "url": "https://repo.maxleiter.com/banners/libgnutlsxx30.png"
+    },
+    {
       "title": "libgoa-1.0-0b",
       "package": "libgoa-1.0-0b",
       "url": "https://repo.maxleiter.com/banners/libgoa-1.0-0b.png"
@@ -1814,6 +1884,11 @@
       "url": "https://repo.maxleiter.com/banners/libharfbuzz0b.png"
     },
     {
+      "title": "libhogweed6",
+      "package": "libhogweed6",
+      "url": "https://repo.maxleiter.com/banners/libhogweed6.png"
+    },
+    {
       "title": "libibus-1.0-5",
       "package": "libibus-1.0-5",
       "url": "https://repo.maxleiter.com/banners/libibus-1.0-5.png"
@@ -1847,6 +1922,16 @@
       "title": "libicu78",
       "package": "libicu78",
       "url": "https://repo.maxleiter.com/banners/libicu78.png"
+    },
+    {
+      "title": "libidn2-0",
+      "package": "libidn2-0",
+      "url": "https://repo.maxleiter.com/banners/libidn2-0.png"
+    },
+    {
+      "title": "libidn2-dev",
+      "package": "libidn2-dev",
+      "url": "https://repo.maxleiter.com/banners/libidn2-dev.png"
     },
     {
       "title": "libjavascriptcoregtk-4.1-0",
@@ -1924,6 +2009,16 @@
       "url": "https://repo.maxleiter.com/banners/libltdl7.png"
     },
     {
+      "title": "liblzma-dev",
+      "package": "liblzma-dev",
+      "url": "https://repo.maxleiter.com/banners/liblzma-dev.png"
+    },
+    {
+      "title": "liblzma5",
+      "package": "liblzma5",
+      "url": "https://repo.maxleiter.com/banners/liblzma5.png"
+    },
+    {
       "title": "libmimalloc",
       "package": "libmimalloc",
       "url": "https://repo.maxleiter.com/banners/libmimalloc.png"
@@ -1994,6 +2089,11 @@
       "url": "https://repo.maxleiter.com/banners/libmypaint-dev.png"
     },
     {
+      "title": "libnettle8",
+      "package": "libnettle8",
+      "url": "https://repo.maxleiter.com/banners/libnettle8.png"
+    },
+    {
       "title": "libnghttp2-14",
       "package": "libnghttp2-14",
       "url": "https://repo.maxleiter.com/banners/libnghttp2-14.png"
@@ -2012,6 +2112,16 @@
       "title": "libnotify4",
       "package": "libnotify4",
       "url": "https://repo.maxleiter.com/banners/libnotify4.png"
+    },
+    {
+      "title": "libp11-kit-dev",
+      "package": "libp11-kit-dev",
+      "url": "https://repo.maxleiter.com/banners/libp11-kit-dev.png"
+    },
+    {
+      "title": "libp11-kit0",
+      "package": "libp11-kit0",
+      "url": "https://repo.maxleiter.com/banners/libp11-kit0.png"
     },
     {
       "title": "libpango-1.0-0",
@@ -2234,6 +2344,16 @@
       "url": "https://repo.maxleiter.com/banners/libsimdutf-dev.png"
     },
     {
+      "title": "libsndfile1",
+      "package": "libsndfile1",
+      "url": "https://repo.maxleiter.com/banners/libsndfile1.png"
+    },
+    {
+      "title": "libsndfile1-dev",
+      "package": "libsndfile1-dev",
+      "url": "https://repo.maxleiter.com/banners/libsndfile1-dev.png"
+    },
+    {
       "title": "libsoup-3.0-0",
       "package": "libsoup-3.0-0",
       "url": "https://repo.maxleiter.com/banners/libsoup-3.0-0.png"
@@ -2297,6 +2417,21 @@
       "title": "libswscale6",
       "package": "libswscale6",
       "url": "https://repo.maxleiter.com/banners/libswscale6.png"
+    },
+    {
+      "title": "libtasn1-6",
+      "package": "libtasn1-6",
+      "url": "https://repo.maxleiter.com/banners/libtasn1-6.png"
+    },
+    {
+      "title": "libtasn1-6-dev",
+      "package": "libtasn1-6-dev",
+      "url": "https://repo.maxleiter.com/banners/libtasn1-6-dev.png"
+    },
+    {
+      "title": "libtasn1-bin",
+      "package": "libtasn1-bin",
+      "url": "https://repo.maxleiter.com/banners/libtasn1-bin.png"
     },
     {
       "title": "libtiff6",
@@ -2442,6 +2577,21 @@
       "title": "libx11-dev",
       "package": "libx11-dev",
       "url": "https://repo.maxleiter.com/banners/libx11-dev.png"
+    },
+    {
+      "title": "libx11-doc",
+      "package": "libx11-doc",
+      "url": "https://repo.maxleiter.com/banners/libx11-doc.png"
+    },
+    {
+      "title": "libx11-xcb-dev",
+      "package": "libx11-xcb-dev",
+      "url": "https://repo.maxleiter.com/banners/libx11-xcb-dev.png"
+    },
+    {
+      "title": "libx11-xcb1",
+      "package": "libx11-xcb1",
+      "url": "https://repo.maxleiter.com/banners/libx11-xcb1.png"
     },
     {
       "title": "libxau-dev",
@@ -2699,6 +2849,16 @@
       "url": "https://repo.maxleiter.com/banners/nautilus.png"
     },
     {
+      "title": "nettle-bin",
+      "package": "nettle-bin",
+      "url": "https://repo.maxleiter.com/banners/nettle-bin.png"
+    },
+    {
+      "title": "nettle-dev",
+      "package": "nettle-dev",
+      "url": "https://repo.maxleiter.com/banners/nettle-dev.png"
+    },
+    {
       "title": "nwg-look",
       "package": "nwg-look",
       "url": "https://repo.maxleiter.com/banners/nwg-look.png"
@@ -2722,6 +2882,16 @@
       "title": "OpenJDK 21 Headless Runtime",
       "package": "openjdk-21-jre-headless",
       "url": "https://repo.maxleiter.com/banners/openjdk-21-jre-headless.png"
+    },
+    {
+      "title": "p11-kit",
+      "package": "p11-kit",
+      "url": "https://repo.maxleiter.com/banners/p11-kit.png"
+    },
+    {
+      "title": "p11-kit-modules",
+      "package": "p11-kit-modules",
+      "url": "https://repo.maxleiter.com/banners/p11-kit-modules.png"
     },
     {
       "title": "papers",
@@ -2979,6 +3149,11 @@
       "url": "https://repo.maxleiter.com/banners/slurp.png"
     },
     {
+      "title": "sndfile-programs",
+      "package": "sndfile-programs",
+      "url": "https://repo.maxleiter.com/banners/sndfile-programs.png"
+    },
+    {
       "title": "sqlite3",
       "package": "sqlite3",
       "url": "https://repo.maxleiter.com/banners/sqlite3.png"
@@ -3192,6 +3367,16 @@
       "title": "xwayland",
       "package": "xwayland",
       "url": "https://repo.maxleiter.com/banners/xwayland.png"
+    },
+    {
+      "title": "xz-utils",
+      "package": "xz-utils",
+      "url": "https://repo.maxleiter.com/banners/xz-utils.png"
+    },
+    {
+      "title": "xzdec",
+      "package": "xzdec",
+      "url": "https://repo.maxleiter.com/banners/xzdec.png"
     },
     {
       "title": "yad",

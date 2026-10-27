@@ -30,6 +30,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/evolution-data-server-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/extra-cmake-modules.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/fast-float-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/flac.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/fontconfig.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/fontconfig-config.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gcr4-dev.html</loc></url>
@@ -44,6 +45,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/gnome-session.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gnome-settings-daemon.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gnome-shell.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/gnutls-bin.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gobject-introspection.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/gtk-3-bin.html</loc></url>
@@ -52,6 +54,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/hicolor-icon-theme.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/ibus.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/icu-devtools.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/idn2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/iosc.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/iosc-shell.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/iso-codes.html</loc></url>
@@ -187,6 +190,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/libadwaita-1-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libappstream-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libappstream5.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libarchive-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libarchive-tools.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libarchive13.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libass-dev.html</loc></url>
@@ -249,6 +253,10 @@
   <url><loc>https://repo.maxleiter.com/depictions/libexo-2-0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfcft-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfcft4.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libflac++-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libflac++6v5.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libflac-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libflac8.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfmt-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfmt12.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfolks-dev.html</loc></url>
@@ -258,6 +266,9 @@
   <url><loc>https://repo.maxleiter.com/depictions/libfontenc1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfreetype-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libfreetype6.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libfribidi-bin.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libfribidi-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libfribidi0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgbm-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgbm1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgck-1-0.html</loc></url>
@@ -301,6 +312,9 @@
   <url><loc>https://repo.maxleiter.com/depictions/libgnome-autoar-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgnome-desktop-4-2.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgnome-desktop-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libgnutls30.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libgnutls30-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libgnutlsxx30.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgoa-1.0-0b.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgoa-1.0-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libgoffice-0.10-10.html</loc></url>
@@ -337,6 +351,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/libharfbuzz-icu0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libharfbuzz-subset0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libharfbuzz0b.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libhogweed6.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libibus-1.0-5.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libibus-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libical-dev.html</loc></url>
@@ -344,6 +359,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/libicu-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libicu74.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libicu78.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libidn2-0.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libidn2-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libjavascriptcoregtk-4.1-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libjpeg-turbo-progs.html</loc></url>
@@ -359,6 +376,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/liblcms2-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/liblcms2-utils.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libltdl7.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/liblzma-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/liblzma5.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libmimalloc.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libmimalloc-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libmozjs-115-0.html</loc></url>
@@ -373,10 +392,13 @@
   <url><loc>https://repo.maxleiter.com/depictions/libmutter-14-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libmypaint-1.5-1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libmypaint-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libnettle8.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libnghttp2-14.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libnghttp2-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libnotify-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libnotify4.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libp11-kit-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libp11-kit0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpango-1.0-0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpango1.0-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libpangomm-1.4-1v5.html</loc></url>
@@ -421,6 +443,8 @@
   <url><loc>https://repo.maxleiter.com/depictions/libsimdjson-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libsimdutf.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libsimdutf-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libsndfile1.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libsndfile1-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libsoup-3.0-0.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libsoup-3.0-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libsqlite3-1.html</loc></url>
@@ -434,6 +458,9 @@
   <url><loc>https://repo.maxleiter.com/depictions/libswresample5.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libswscale-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libswscale6.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libtasn1-6.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libtasn1-6-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libtasn1-bin.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libtiff6.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libtllist-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libtommath-dev.html</loc></url>
@@ -463,6 +490,9 @@
   <url><loc>https://repo.maxleiter.com/depictions/libx11-6.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libx11-data.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libx11-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libx11-doc.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libx11-xcb-dev.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/libx11-xcb1.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libxau-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libxau6.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/libxcb-render0.html</loc></url>
@@ -511,9 +541,13 @@
   <url><loc>https://repo.maxleiter.com/depictions/mesa-demos.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/milou.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/mypaint-brushes.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/nettle-bin.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/nettle-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/opencode.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/openjdk-21-jdk-headless.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/p11-kit.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/p11-kit-modules.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/phonon4qt6.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/phonon4qt6-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/plasma-activities.html</loc></url>
@@ -563,6 +597,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/qt6-wayland.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/qt6-wayland-dev.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/shared-mime-info.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/sndfile-programs.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/sqlite3.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/systemsettings.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/systemsettings-dev.html</loc></url>
@@ -600,5 +635,7 @@
   <url><loc>https://repo.maxleiter.com/depictions/xkbcomp.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/xkeyboard-config.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/xwayland.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/xz-utils.html</loc></url>
+  <url><loc>https://repo.maxleiter.com/depictions/xzdec.html</loc></url>
   <url><loc>https://repo.maxleiter.com/depictions/zlib-dev.html</loc></url>
 </urlset>

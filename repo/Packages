@@ -20,7 +20,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: angle
 Name: ANGLE (GLES via Metal)
-Version: 2.1.0+git20260630.a32d31d+es3-16
+Version: 2.1.0+git20260630.a32d31d+es3-17
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
@@ -29,11 +29,11 @@ Installed-Size: 13512
 Depends: firmware (>= 15.0)
 Description: Hardware OpenGL ES via Google ANGLE's Metal backend (GLES -> Metal/AGX).
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-16_iphoneos-arm64.deb
-Size: 3946928
-MD5sum: ed3710e7a7183167b0c310336a4ccec5
-SHA1: ac5af6e0d46315b101ece580a0e4123e24b4dc2c
-SHA256: ed7488b9714728c891a5dfe6cbb2ba895da842fb3b98e9e7fc25369a480d385d
+Filename: debs/angle_2.1.0+git20260630.a32d31d+es3-17_iphoneos-arm64.deb
+Size: 3949152
+MD5sum: 109df8402421a871070d4f0de5332372
+SHA1: a26801b98646fdbdb536e27c18ddaf152577f3d0
+SHA256: fd08c5ad7245bf544d1b06bbb1a773e238010b74b5568b48f12114008fbb405b
 Icon: https://repo.maxleiter.com/icons/angle.png
 Depiction: https://repo.maxleiter.com/depictions/angle.html
 SileoDepiction: https://repo.maxleiter.com/depictions/angle.json
@@ -439,22 +439,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/com.max.xiosprefs.json
 Homepage: https://repo.maxleiter.com
 
 Package: curl
-Version: 8.20.0+ios1
+Version: 8.22.0+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Networking
 Priority: optional
 Homepage: https://curl.se/
-Depends: libiosexec1 (>= 1.3.1), libcurl4 (= 8.20.0+ios1)
+Depends: libiosexec1 (>= 1.3.1), libcurl4 (= 8.22.0+ios1)
 Description: command line URL transfer tool
-Installed-Size: 440
+Installed-Size: 444
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/curl_8.20.0+ios1_iphoneos-arm64.deb
-Size: 251894
-MD5sum: 797eabc35902a88221129ff8d44f08ef
-SHA1: d9304e5be2c65f87fb5888447ec73a5ee1f36ecc
-SHA256: 8796cad29630caffb6b4eb8f9d00ba4d22dc47bbf18047341b7dd1f6c3843181
+Filename: debs/curl_8.22.0+ios1_iphoneos-arm64.deb
+Size: 256400
+MD5sum: eab4772b2fcf2b9d096d40d65630c6ed
+SHA1: b680d8d660354471ed6fd559990c1d6050409ffb
+SHA256: 62c9355ee4be78cf002286075efed801c442eb562771994705f68b0a6c444929
 Icon: https://repo.maxleiter.com/icons/curl.png
 Depiction: https://repo.maxleiter.com/depictions/curl.html
 SileoDepiction: https://repo.maxleiter.com/depictions/curl.json
@@ -633,44 +633,44 @@ Native Depiction: https://repo.maxleiter.com/depictions/epiphany-native.json
 Homepage: https://repo.maxleiter.com
 
 Package: evolution-data-server
-Version: 3.52.4+ios2
+Version: 3.52.4+ios3
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: System
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/evolution-data-server
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libical3, libsoup-3.0-0, libsecret-1-0, libjson-glib-1.0-0, libsqlite3-1, libxml2, libicu74, dbus
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libical3, libsoup-3.0-0, libsecret-1-0, libjson-glib-1.0-0, libsqlite3-1, libxml2, libicu74, dbus, libintl8
 Description: evolution database backend server
 Installed-Size: 21228
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/evolution-data-server_3.52.4+ios2_iphoneos-arm64.deb
-Size: 4197556
-MD5sum: f59510be735c7749dfc4ca27d529b1f9
-SHA1: 5321e705f1bdec1844466d8bad8b7095d082a44d
-SHA256: f844273ee7b6e8a4dd1e1121a1ddf121abb1654c3bfbe5a91b2a6c1e29ced124
+Filename: debs/evolution-data-server_3.52.4+ios3_iphoneos-arm64.deb
+Size: 3182458
+MD5sum: f647b09c30b7c068dc8aa3fc0d834477
+SHA1: 30c53fc6c209ceaf739d84a46f2f9f9e1f9acd95
+SHA256: 351b5528c05844f75efad6417c2961f4c65adf41182b5d2e0a02b6faede2153a
 Icon: https://repo.maxleiter.com/icons/evolution-data-server.png
 Depiction: https://repo.maxleiter.com/depictions/evolution-data-server.html
 SileoDepiction: https://repo.maxleiter.com/depictions/evolution-data-server.json
 Native Depiction: https://repo.maxleiter.com/depictions/evolution-data-server.json
 
 Package: evolution-data-server-dev
-Version: 3.52.4+ios2
+Version: 3.52.4+ios3
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/evolution-data-server
-Depends: evolution-data-server (= 3.52.4+ios2), libical-dev
+Depends: evolution-data-server (= 3.52.4+ios3), libical-dev
 Description: evolution database backend server - development files
 Installed-Size: 2268
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/evolution-data-server-dev_3.52.4+ios2_iphoneos-arm64.deb
-Size: 351154
-MD5sum: 2e92fe46f263afd033611465055e8d86
-SHA1: 784bde43306745630051f0d9ac8d4f16349457d2
-SHA256: 7fe2ab6efd5604505550d84f16e70b71bd15bdd488a633405df0d89e41fc5bf2
+Filename: debs/evolution-data-server-dev_3.52.4+ios3_iphoneos-arm64.deb
+Size: 350408
+MD5sum: 2161bb70168e06beb9e4d0630e98c3ba
+SHA1: 8e870bcbf4eacac1201096611b15f9988d10837e
+SHA256: dfe36f9408e0e97e48bf40659aea62473a6f7a642412ab6be440bde5e9c7b6e6
 Icon: https://repo.maxleiter.com/icons/evolution-data-server-dev.png
 Depiction: https://repo.maxleiter.com/depictions/evolution-data-server-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/evolution-data-server-dev.json
@@ -738,6 +738,28 @@ Icon: https://repo.maxleiter.com/icons/file-roller.png
 Depiction: https://repo.maxleiter.com/depictions/file-roller.html
 SileoDepiction: https://repo.maxleiter.com/depictions/file-roller.json
 Native Depiction: https://repo.maxleiter.com/depictions/file-roller.json
+
+Package: flac
+Version: 1.3.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libogg0, libflac8
+Section: Utilities
+Priority: standard
+Description: Free Lossless Audio Codec - command line tools
+Installed-Size: 460
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/flac_1.3.4+ios1_iphoneos-arm64.deb
+Size: 130608
+MD5sum: 29564c1b599c63b45a2d3a264da50765
+SHA1: a172c715de2543f6bc8e4dcf4871b63ff122a854
+SHA256: 17f45e3497d6930f36a344720f68a62327ee14e04a20d2f789bacbf997e9d629
+Icon: https://repo.maxleiter.com/icons/flac.png
+Depiction: https://repo.maxleiter.com/depictions/flac.html
+SileoDepiction: https://repo.maxleiter.com/depictions/flac.json
+Native Depiction: https://repo.maxleiter.com/depictions/flac.json
+Homepage: https://repo.maxleiter.com
 
 Package: fontconfig
 Version: 2.17.1+ios1
@@ -989,21 +1011,22 @@ SileoDepiction: https://repo.maxleiter.com/depictions/gjs.json
 Native Depiction: https://repo.maxleiter.com/depictions/gjs.json
 
 Package: glib-networking
-Version: 2.80.0+ios1
+Version: 2.80.1+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/glib-networking
 Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgnutls30, ca-certificates
 Description: TLS support for GLib networking on Xios
-Installed-Size: 1528
+Installed-Size: 1560
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/glib-networking_2.80.0+ios1_iphoneos-arm64.deb
-Size: 178934
-MD5sum: 12048218444791bac0ba78bf9e9833da
-SHA1: a36b56efb1c72bfed8879df8027c86b2c0e6a6c7
-SHA256: 76ce80bd96857c0c377fbfa8b6150e38b3925c7814d8896971932adc4de2c7bb
+Filename: debs/glib-networking_2.80.1+ios1_iphoneos-arm64.deb
+Size: 181292
+MD5sum: 9f0ce8929e12cb59e1362ba6ff1afccb
+SHA1: 41386a4348d745f85b61a2dc447234d57c07b9f9
+SHA256: fca09fecc77ff3a73b43928986d61817f2b576fee88d4ccb542d1e7d8b88beb1
 Icon: https://repo.maxleiter.com/icons/glib-networking.png
 Depiction: https://repo.maxleiter.com/depictions/glib-networking.html
 SileoDepiction: https://repo.maxleiter.com/depictions/glib-networking.json
@@ -1160,7 +1183,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/gnome-session.json
 Native Depiction: https://repo.maxleiter.com/depictions/gnome-session.json
 
 Package: gnome-settings-daemon
-Version: 46.0+ios1
+Version: 46.0+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -1171,11 +1194,11 @@ Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libglib2.0-bin, libgtk-3-0, libgn
 Description: GNOME settings daemon (minimal) for the Xios desktop
 Installed-Size: 6536
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/gnome-settings-daemon_46.0+ios1_iphoneos-arm64.deb
-Size: 1017286
-MD5sum: fb1ebdf43116972ce8cd5fea05e74353
-SHA1: c417400f8988a54138f8cbc9bcfdcc3935e1a766
-SHA256: a7f257e5d6ffa0ea7f17f52176d5a43e76cf8d35c3945cb7c33131c694ccc229
+Filename: debs/gnome-settings-daemon_46.0+ios2_iphoneos-arm64.deb
+Size: 753156
+MD5sum: 7f4b19916171f0f94d53487cd6323b46
+SHA1: 7db8d00d40e0e24776428b487cb3665cb67f7e39
+SHA256: 9f6355186e60c9a376e3a453d03d7a278c9d7a9facc5dbccfde29e46f59ff392
 Icon: https://repo.maxleiter.com/icons/gnome-settings-daemon.png
 Depiction: https://repo.maxleiter.com/depictions/gnome-settings-daemon.html
 SileoDepiction: https://repo.maxleiter.com/depictions/gnome-settings-daemon.json
@@ -1245,6 +1268,29 @@ Depiction: https://repo.maxleiter.com/depictions/gnumeric.html
 SileoDepiction: https://repo.maxleiter.com/depictions/gnumeric.json
 Native Depiction: https://repo.maxleiter.com/depictions/gnumeric.json
 
+Package: gnutls-bin
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Version: 3.8.13+ios1
+Conflicts: gnutls (<< 1:0)
+Depends: libiosexec1 (>= 1.3.1), libgnutls30 (>= 3.8.13+ios1), libintl8 (>= 0.20.0), libgmp10, libidn2-0 (>= 2.3.8), libunistring5, libnettle8 (>= 3.10.2), libhogweed6 (>= 3.10.2), libp11-kit0 (>= 0.26.5), libtasn1-6 (>= 4.21.0), libzstd1, libbrotli1
+Section: Utilities
+Priority: optional
+Description: GNU TLS library - commandline utilities
+Installed-Size: 1544
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/gnutls-bin_3.8.13+ios1_iphoneos-arm64.deb
+Size: 365546
+MD5sum: fa698c705885a21b6645db4325fa9a0f
+SHA1: fbe847fb1557283ca67cfc65dc7222888ecb1bde
+SHA256: c92c8b27f4a0d0af32cca2a4739cfbc45408df87e82172220a46b767d832c711
+Icon: https://repo.maxleiter.com/icons/gnutls-bin.png
+Depiction: https://repo.maxleiter.com/depictions/gnutls-bin.html
+SileoDepiction: https://repo.maxleiter.com/depictions/gnutls-bin.json
+Native Depiction: https://repo.maxleiter.com/depictions/gnutls-bin.json
+Homepage: https://repo.maxleiter.com
+
 Package: gobject-introspection
 Version: 1.78.0+ios1
 Architecture: iphoneos-arm64
@@ -1308,43 +1354,44 @@ SileoDepiction: https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.
 Native Depiction: https://repo.maxleiter.com/depictions/gsettings-desktop-schemas.json
 
 Package: gtk-3-bin
-Version: 3.24.38+ios3
+Version: 3.24.52+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libiosexec1 (>= 1.3.1), libgtk-3-0 (>= 3.24.38+ios2), libglib2.0-bin, libgtkintl
+Depends: libiosexec1 (>= 1.3.1), libgtk-3-0 (= 3.24.52+ios1), libglib2.0-bin, libgtkintl
 Description: Programs for the GTK graphical user interface library
 Installed-Size: 820
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/gtk-3-bin_3.24.38+ios3_iphoneos-arm64.deb
-Size: 229942
-MD5sum: 28c6a7a4ed34daf5af32373269ddb8da
-SHA1: 9a236df6ac8101369c3ac8ed219b61ef1df82c50
-SHA256: 1f0d046110ee1f020ac004296d420a5bdd8fe4888f73ad7f147c08207ab603c8
+Filename: debs/gtk-3-bin_3.24.52+ios1_iphoneos-arm64.deb
+Size: 226164
+MD5sum: 0a8b5dcddb19cef961ea558efda9c3e8
+SHA1: f2e6f53a50e13d7e00ffe31c4d74f11eac54ef83
+SHA256: 071dda741fafeff243975b200f46c6b479f53c96c02aecca3c06973887f0bc93
 Icon: https://repo.maxleiter.com/icons/gtk-3-bin.png
 Depiction: https://repo.maxleiter.com/depictions/gtk-3-bin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/gtk-3-bin.json
 Native Depiction: https://repo.maxleiter.com/depictions/gtk-3-bin.json
 
 Package: gtk-4-bin
-Version: 4.14.5+wl1
+Version: 4.14.5+wl2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libiosexec1 (>= 1.3.1), libgtk-4-1 (= 4.14.5+wl1), libglib2.0-bin, libgtkintl, libxkbcommon0, libwayland0, libcairo-script-interpreter2
+Depends: libiosexec1 (>= 1.3.1), libgtk-4-1 (= 4.14.5+wl2), libglib2.0-bin, libgtkintl, libxkbcommon0, libwayland0, libcairo-script-interpreter2
 Description: Programs for the GTK 4 graphical user interface library
-Installed-Size: 9256
+Installed-Size: 9228
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/gtk-4-bin_4.14.5+wl1_iphoneos-arm64.deb
-Size: 2403482
-MD5sum: 1455008409eacde7c09841050fabe4c6
-SHA1: 9f84d5c6a7d5b83dd0688065f62ee95f31cdbd12
-SHA256: d91c2af3ec794f3330ca5ea99e0b5544acc69dedc3eef42c3a920d1b7c6598cb
+Filename: debs/gtk-4-bin_4.14.5+wl2_iphoneos-arm64.deb
+Size: 2411786
+MD5sum: aaac3c3b35a94bba452e428ca32a925a
+SHA1: d11aba95e90135e87010a5cbd353b4040aae9660
+SHA256: 8d8c68fb3134642e8b38f6b84027062169be0f0e1b9daa511fee006f8a0e3af4
 Icon: https://repo.maxleiter.com/icons/gtk-4-bin.png
 Depiction: https://repo.maxleiter.com/depictions/gtk-4-bin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/gtk-4-bin.json
@@ -1433,22 +1480,22 @@ SileoDepiction: https://repo.maxleiter.com/depictions/hitori.json
 Native Depiction: https://repo.maxleiter.com/depictions/hitori.json
 
 Package: ibus
-Version: 1.5.29+ios1
+Version: 1.5.29+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Homepage: https://github.com/ibus/ibus
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libibus-1.0-5, dbus, libintl-dev
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libibus-1.0-5, dbus, libintl8
 Description: Intelligent Input Bus - daemon and data
 Installed-Size: 832
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/ibus_1.5.29+ios1_iphoneos-arm64.deb
-Size: 148286
-MD5sum: 8559036c1aca1ea020785fdc00640cbe
-SHA1: a9a0b11c50e783fef4baaf4617312ed7627de609
-SHA256: 0e080805e46586876f0693e31777e4b194b8bdb5661955a85d8c1a4209ec1f9e
+Filename: debs/ibus_1.5.29+ios2_iphoneos-arm64.deb
+Size: 127130
+MD5sum: f77fa2cafc0131b6d862f06c97e3f974
+SHA1: cd76b6ea4888030222f51427c81c8e91fe38f6ba
+SHA256: 0ccfb9c98895584f20d52aa94e74fc3677dcb6cbe34b17733e91f39b28f19e73
 Icon: https://repo.maxleiter.com/icons/ibus.png
 Depiction: https://repo.maxleiter.com/depictions/ibus.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ibus.json
@@ -1476,6 +1523,31 @@ SileoDepiction: https://repo.maxleiter.com/depictions/icu-devtools.json
 Native Depiction: https://repo.maxleiter.com/depictions/icu-devtools.json
 Homepage: https://repo.maxleiter.com
 
+Package: idn2
+Version: 2.3.8+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libidn2-0 (= 2.3.8+ios1)
+Replaces: libidn2 (<< 2.3.8+ios1)
+Conflicts: libidn2 (<< 2.3.8+ios1)
+Section: Utilities
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/libidn/#libidn2
+Description: Internationalized domain names (IDNA2008/TR46) command line tool
+Installed-Size: 180
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/idn2_2.3.8+ios1_iphoneos-arm64.deb
+Size: 39330
+MD5sum: fcfe81f7188596ea7022f608dbd3fdd4
+SHA1: e7aeee18be31e9d9c2f44a86f12a79c6efcdf7e8
+SHA256: 7d919e53d22f108ee91ea0d636d61c62b3f9d7713ebfd059701827389bf56eae
+Icon: https://repo.maxleiter.com/icons/idn2.png
+Depiction: https://repo.maxleiter.com/depictions/idn2.html
+SileoDepiction: https://repo.maxleiter.com/depictions/idn2.json
+Native Depiction: https://repo.maxleiter.com/depictions/idn2.json
+
 Package: imv
 Version: 5.0.1+ios13
 Architecture: iphoneos-arm64
@@ -1499,7 +1571,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/imv.json
 
 Package: iosc
 Name: iosc (Wayland compositor)
-Version: 0.9.52
+Version: 0.9.54
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -1509,11 +1581,11 @@ Section: X11
 Priority: optional
 Installed-Size: 756
 Description: GPU-accelerated Wayland compositor for the Xios desktop
-Filename: debs/iosc_0.9.52_iphoneos-arm64.deb
-Size: 186658
-MD5sum: ab47d5c7ed9224139c1e3cef52efa92a
-SHA1: b3c224a94cffd20e99d3f23b60e02facdc86dde1
-SHA256: 36a6e8480f549be3c9c7d2baf9bb2b6e4045d11ae55b64e26b7520a5ab8b5d7a
+Filename: debs/iosc_0.9.54_iphoneos-arm64.deb
+Size: 189016
+MD5sum: d4027f8cbfb946fd3f76b49f36b172f4
+SHA1: 9d8f3c6ecc721f4acb4cf42ce34b8ff8d57281bc
+SHA256: e8e9278bb0bbab4d40886eb6897b715fc6c222e99b5019c7026518247e6b9a4b
 Icon: https://repo.maxleiter.com/icons/iosc.png
 Depiction: https://repo.maxleiter.com/depictions/iosc.html
 SileoDepiction: https://repo.maxleiter.com/depictions/iosc.json
@@ -1690,42 +1762,42 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kdecoration-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kdecoration-dev.json
 
 Package: kf6-archive
-Version: 6.30.0+ios1
+Version: 6.30.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://kde.org/
-Depends: libiosexec1 (>= 1.3.1), qt6-base
+Depends: libiosexec1 (>= 1.3.1), qt6-base, libzstd1, libssl3
 Description: KArchive for the Xios desktop
 Installed-Size: 436
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-archive_6.30.0+ios1_iphoneos-arm64.deb
-Size: 104670
-MD5sum: 4f922a1735965a7405b0ff0490922c85
-SHA1: 93e84b67838476400bc57b0852bf87586542c7c1
-SHA256: 9d2bef056b329edaf2b1fdd0bf1b68d79513d85dfd1aa102c67d95a4c57ea98a
+Filename: debs/kf6-archive_6.30.0+ios2_iphoneos-arm64.deb
+Size: 104666
+MD5sum: 1737df9b6b3a37a022c2f9375b4815ab
+SHA1: d7dcae8822ade9591bc6f9d2c0fb7f75ec9d697a
+SHA256: 496b93910106cb8a75497296cc1e3b34998b2615d58eb2edc31f2e3f74f53569
 Icon: https://repo.maxleiter.com/icons/kf6-archive.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-archive.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-archive.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-archive.json
 
 Package: kf6-archive-dev
-Version: 6.30.0+ios1
+Version: 6.30.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-archive (= 6.30.0+ios1), extra-cmake-modules, qt6-base-dev
+Depends: kf6-archive (= 6.30.0+ios2), extra-cmake-modules, qt6-base-dev
 Description: Development files for KArchive
 Installed-Size: 216
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-archive-dev_6.30.0+ios1_iphoneos-arm64.deb
-Size: 18236
-MD5sum: 9afe83ec0623c6fa85943457f06e5e08
-SHA1: 023e6649ac1a317234d9653afe50d0e34cbdc8d5
-SHA256: ec2ae750cf135f1ee691d763822cc2b13d8a19aa9c0436905642f6d46c411e2e
+Filename: debs/kf6-archive-dev_6.30.0+ios2_iphoneos-arm64.deb
+Size: 18170
+MD5sum: 96ff66a01a8e310d9a25388a30627294
+SHA1: ba7ed8675627692ea56215f23d331783fb6ebdb9
+SHA256: 699be8b282cd0511a29bd8c9235fba57364ae4689c10a8927a30b0d3230764b3
 Icon: https://repo.maxleiter.com/icons/kf6-archive-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-archive-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-archive-dev.json
@@ -3559,7 +3631,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kf6-statusnotifieritem-dev
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-statusnotifieritem-dev.json
 
 Package: kf6-svg
-Version: 6.30.0+ios1
+Version: 6.30.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
@@ -3569,32 +3641,32 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-svg, qt6-declarative, kf6-archive
 Description: KSvg for the Xios desktop
 Installed-Size: 788
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-svg_6.30.0+ios1_iphoneos-arm64.deb
-Size: 124096
-MD5sum: f6954c615efd24f18a6c9ca27987f19e
-SHA1: fefb9023c111bd9723904e52ec91f7a066bb62df
-SHA256: 16bf5fcbb8642cb917e3f2186bf4a8445a64988e830ef0805e7342e58d5c33bb
+Filename: debs/kf6-svg_6.30.0+ios2_iphoneos-arm64.deb
+Size: 124944
+MD5sum: 55ecf7d7ab51b8c6a0e5cc388a19d64f
+SHA1: eadd35a28222b3ce8e42cc9fc2f7be4a9bb4a6a0
+SHA256: 69845ce527935e543bc0560339a8423a861c7f161cefca1daef7b5a9adae696d
 Icon: https://repo.maxleiter.com/icons/kf6-svg.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-svg.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-svg.json
 Native Depiction: https://repo.maxleiter.com/depictions/kf6-svg.json
 
 Package: kf6-svg-dev
-Version: 6.30.0+ios1
+Version: 6.30.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: kf6-svg (= 6.30.0+ios1), extra-cmake-modules, qt6-base-dev, qt6-svg-dev, qt6-declarative-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-kirigami-dev
+Depends: kf6-svg (= 6.30.0+ios2), extra-cmake-modules, qt6-base-dev, qt6-svg-dev, qt6-declarative-dev, kf6-archive-dev, kf6-colorscheme-dev, kf6-config-dev, kf6-coreaddons-dev, kf6-guiaddons-dev, kf6-kirigami-dev
 Description: Development files for KSvg
 Installed-Size: 140
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kf6-svg-dev_6.30.0+ios1_iphoneos-arm64.deb
-Size: 16184
-MD5sum: ffc5617b59b026a1af8b9dde3783921c
-SHA1: 30271b4462b7ace4cf0431ac8c40fe0e8851320d
-SHA256: b101e60b76def0499fb499c58d2f24729c58fb67f54b230f89e53a2387bdb3cb
+Filename: debs/kf6-svg-dev_6.30.0+ios2_iphoneos-arm64.deb
+Size: 16160
+MD5sum: 43e7da7f27acbb597cb2ade0e56e5a56
+SHA1: b26e53ec8a798f168d40353e50d8a8fae5bf7b19
+SHA256: 4e4b438c0450d28fb87212330f34bb888c9079757a00b4549be3763abafdbbd0
 Icon: https://repo.maxleiter.com/icons/kf6-svg-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kf6-svg-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kf6-svg-dev.json
@@ -4168,7 +4240,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwayland-dev.json
 
 Package: kwin
-Version: 6.7.5+ios3
+Version: 6.7.5+ios5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -4178,32 +4250,32 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-wayland, qt6-too
 Description: KWin Wayland compositor with Xios ANGLE/IOSurface acceleration
 Installed-Size: 33392
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin_6.7.5+ios3_iphoneos-arm64.deb
-Size: 3620034
-MD5sum: f75648c5e97906a8cfac141576df1b1f
-SHA1: 1e8e00a54eebc38ea5c1a600bc0c4b75612f8cef
-SHA256: 28473a2418701c86b926a622c9cfb0adf0a76d30f3efd30f20bd70d09592f31b
+Filename: debs/kwin_6.7.5+ios5_iphoneos-arm64.deb
+Size: 3617148
+MD5sum: f038b0b51a0b1e06fc4881644c766cca
+SHA1: 05d90c48e80c0723fc113029a8c6a961bf9f1ecd
+SHA256: 1494a2dd6091a5caadeca6724de1c3e2c39c693d03bed0cfe3dec5ea28e35559
 Icon: https://repo.maxleiter.com/icons/kwin.png
 Depiction: https://repo.maxleiter.com/depictions/kwin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin.json
 Native Depiction: https://repo.maxleiter.com/depictions/kwin.json
 
 Package: kwin-dev
-Version: 6.7.5+ios3
+Version: 6.7.5+ios5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: kwin (= 6.7.5+ios3), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
+Depends: kwin (= 6.7.5+ios5), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-wayland-dev, qt6-tools-dev, qt6-sensors-dev, qt6-5compat-dev, kdecoration-dev, kwayland-dev
 Description: Development files for KWin
 Installed-Size: 2428
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/kwin-dev_6.7.5+ios3_iphoneos-arm64.deb
-Size: 329570
-MD5sum: be71bd23558537ec6b8c7e3e197a23bf
-SHA1: 1c3773cde6cd870077bc9487de7e4109655883dc
-SHA256: 8f3e10d1d5924486d922eda0e0608222f7382c05849338b07720264b3e0e790c
+Filename: debs/kwin-dev_6.7.5+ios5_iphoneos-arm64.deb
+Size: 329042
+MD5sum: cdc13d1eeff39dd374515af9b9fcdcff
+SHA1: eafd9058f1c81cb33c98f15a932023c4863c831a
+SHA256: fa0756b1196dbec49e3d4cddfa96e2d37570635b668e00c616dbf89794272ac2
 Icon: https://repo.maxleiter.com/icons/kwin-dev.png
 Depiction: https://repo.maxleiter.com/depictions/kwin-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/kwin-dev.json
@@ -4233,7 +4305,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/kwrite.json
 
 Package: ladybird-app
 Name: Ladybird
-Version: 0.1.25+ios1
+Version: 0.1.26+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -4242,12 +4314,12 @@ Section: Apps
 Priority: optional
 MinimumOSVersion: 16.0
 Description: The Ladybird browser for iPhone and iPad
-Installed-Size: 207824
-Filename: debs/ladybird-app_0.1.25+ios1_iphoneos-arm64.deb
-Size: 69891198
-MD5sum: b0b6e92ec3aa427723048b3428373cd4
-SHA1: 24166c44a8838460c636a0a24f3b7572a6fbab89
-SHA256: 8789fcfa05502223e83d8d6824f68b531998db4389d9aa189b021111f95d64c6
+Installed-Size: 253964
+Filename: debs/ladybird-app_0.1.26+ios2_iphoneos-arm64.deb
+Size: 83468698
+MD5sum: ece0b9b808c95bde51d0b06110c02153
+SHA1: 821b344f6d8e96f64fe8c9553084ca05db875582
+SHA256: 429e98707fca7abe7996f86302b216c7fdddd5004f0f4fe4bc1d168c35eed38a
 Icon: https://repo.maxleiter.com/icons/ladybird-app.png
 Depiction: https://repo.maxleiter.com/depictions/ladybird-app.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-app.json
@@ -4256,7 +4328,7 @@ Homepage: https://ladybird.org
 
 Package: ladybird-tls
 Name: Ladybird private OpenSSL 3.5
-Version: 3.5.3+wl1
+Version: 3.5.3+wl2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -4266,11 +4338,11 @@ MinimumOSVersion: 16.0.0
 Depends: libiosexec1 (>= 1.3.1), ca-certificates
 Installed-Size: 5108
 Description: Private OpenSSL 3.5 runtime for Ladybird
-Filename: debs/ladybird-tls_3.5.3+wl1_iphoneos-arm64.deb
-Size: 2083892
-MD5sum: 3165a2a21c96ef1a98c9d4a6475c1b82
-SHA1: 9212c868834be62cfbd980d8d14a3bd73a7828ff
-SHA256: cef0042a7d0109057b4afd00be26c2218f9d5399870053ec393c36529ee86af3
+Filename: debs/ladybird-tls_3.5.3+wl2_iphoneos-arm64.deb
+Size: 2083856
+MD5sum: 632ab13465e9fc287f897b17aa14fdc9
+SHA1: 89ab94bd8b694aa93aea3d04a6f7ef6112d965b9
+SHA256: ca8b637b06aae99e4f981bd4f40160d5d3c25448f9df919b11a2df3f98c5f393
 Icon: https://repo.maxleiter.com/icons/ladybird-tls.png
 Depiction: https://repo.maxleiter.com/depictions/ladybird-tls.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-tls.json
@@ -4279,20 +4351,20 @@ Homepage: https://repo.maxleiter.com
 
 Package: ladybird-wayland
 Name: Ladybird (Wayland)
-Version: 0.1.0+wl5
+Version: 0.1.0+wl6
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: angle, libgtk-4-1 (>= 4.14.5+wl1), libadwaita-1-0, libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libcairo2, libcairo-gobject2, libgraphene-1.0-0, libepoxy0, libfribidi0, libharfbuzz0b (>= 10.2.0+ios1), libfontconfig1 (>= 2.17.1+ios1), libfreetype6 (>= 2.13.3+ios1), libwayland0, libxkbcommon0, libcurl4 (>= 8.20.0+ios1), libnghttp2-14 (>= 1.61.0+ios1), ladybird-tls (>= 3.5.3+wl1), libicu78 (>= 78.3+ios1), libiosexec1, libpng16-16 (>= 1.6.50+ios1), libjpeg62-turbo (>= 3.1.1+ios1), libbrotli1 (>= 1.1.0+ios1), libz1 (>= 1.3.1+ios1), libsqlite3-1 (>= 3.52.0+ios1), libwebp7 (>= 1.6.0+ios1), libwebpdemux2 (>= 1.6.0+ios1), libwebpmux3 (>= 1.6.0+ios1), libsharpyuv0 (>= 1.6.0+ios1), libfmt12 (>= 12.1.0+ios1), libmimalloc (>= 2.2.7+ios1), libsimdjson (>= 4.2.4+ios1), libsimdutf (>= 7.4.0+ios1), libtommath1 (>= 1.3.0+ios1), libwoff2-1 (>= 1.0.2+ios1), libxml2 (>= 2.13.8+ios1), libpsl5, libavcodec61 (>= 7.1.1+ios1), libavformat61 (>= 7.1.1+ios1), libavutil59 (>= 7.1.1+ios1), libswresample5 (>= 7.1.1+ios1)
+Depends: angle, libgtk-4-1 (>= 4.14.5+wl1), libadwaita-1-0, libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libcairo2, libcairo-gobject2, libgraphene-1.0-0, libepoxy0, libfribidi0, libharfbuzz0b (>= 10.2.0+ios1), libfontconfig1 (>= 2.17.1+ios1), libfreetype6 (>= 2.13.3+ios1), libwayland0, libxkbcommon0, libcurl4 (>= 8.20.0+ios1), libnghttp2-14 (>= 1.61.0+ios1), ladybird-tls (>= 3.5.3+wl1), libicu78 (>= 78.3+ios1), libiosexec1, libpng16-16 (>= 1.6.50+ios1), libjpeg62-turbo (>= 3.1.1+ios1), libbrotli1 (>= 1.1.0+ios1), libz1 (>= 1.3.1+ios1), libsqlite3-1 (>= 3.52.0+ios1), libwebp7 (>= 1.6.0+ios1), libwebpdemux2 (>= 1.6.0+ios1), libwebpmux3 (>= 1.6.0+ios1), libsharpyuv0 (>= 1.6.0+ios1), libfmt12 (>= 12.1.0+ios1), libmimalloc (>= 2.2.7+ios1), libsimdjson (>= 4.2.4+ios1), libsimdutf (>= 7.4.0+ios1), libtommath1 (>= 1.3.0+ios1), libwoff2-1 (>= 1.0.2+ios1), libxml2 (>= 2.13.8+ios1), libpsl5, libavcodec61 (>= 7.1.1+ios1), libavformat61 (>= 7.1.1+ios1), libavutil59 (>= 7.1.1+ios1), libswresample5 (>= 7.1.1+ios1), libintl8
 Section: Apps
 Priority: optional
 Description: The Ladybird browser for Xios desktop sessions
 Installed-Size: 140692
-Filename: debs/ladybird-wayland_0.1.0+wl5_iphoneos-arm64.deb
-Size: 43022494
-MD5sum: 2c2b4cda55b469f4a5451a3ee03e9064
-SHA1: 3bf20836eb1c3808c6000e675a517f13b315cf59
-SHA256: 264c4b75f9fce2a90dba6401855b6ac81690e9eceb0dcb887983ae3cd01578a1
+Filename: debs/ladybird-wayland_0.1.0+wl6_iphoneos-arm64.deb
+Size: 33796614
+MD5sum: 0a6733a17852baa093520594b6aa9407
+SHA1: 2ae7853a03b34ea6fefca0bec1a7160437575889
+SHA256: 33bc24d071ad4cfde52645d59a6c01b03156c01de9bc9e4a62ef76d8fa4692fe
 Icon: https://repo.maxleiter.com/icons/ladybird-wayland.png
 Depiction: https://repo.maxleiter.com/depictions/ladybird-wayland.html
 SileoDepiction: https://repo.maxleiter.com/depictions/ladybird-wayland.json
@@ -4364,64 +4436,66 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libaccountsservice-dev.jso
 Native Depiction: https://repo.maxleiter.com/depictions/libaccountsservice-dev.json
 
 Package: libaccountsservice0
-Version: 23.13.9+ios1
+Version: 23.13.9+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://www.freedesktop.org/wiki/Software/AccountsService/
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libpolkit-gobject-1-0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libpolkit-gobject-1-0, libcrypt2
 Description: Query and manipulate user account information (client library)
 Installed-Size: 276
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libaccountsservice0_23.13.9+ios1_iphoneos-arm64.deb
-Size: 61632
-MD5sum: 99d1c42aabfbf0bc44cc6f1d2064abfb
-SHA1: 367a90c6cfc2a278cd8fe5387da991d8c50c2acc
-SHA256: dc99ed1fd026f31ccb8442f90dbc24c631a9551639e11708a313ba5b83236800
+Filename: debs/libaccountsservice0_23.13.9+ios2_iphoneos-arm64.deb
+Size: 61600
+MD5sum: 2b81028e770cb0023bbe041931259543
+SHA1: e05ffdd01616122f96817bc8d380b512bc94d5d7
+SHA256: 994c3e3cdab4e40f06dc9fc86865c4728ebd5f08abf92ef44f6a0d69842500c3
 Icon: https://repo.maxleiter.com/icons/libaccountsservice0.png
 Depiction: https://repo.maxleiter.com/depictions/libaccountsservice0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libaccountsservice0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libaccountsservice0.json
 
 Package: libadwaita-1-0
-Version: 1.5.0+ios1
+Version: 1.5.8+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://gnome.pages.gitlab.gnome.org/libadwaita/
 Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libappstream5, libfribidi0
 Description: GNOME building blocks for modern GTK4 applications
-Installed-Size: 1880
+Installed-Size: 1896
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libadwaita-1-0_1.5.0+ios1_iphoneos-arm64.deb
-Size: 404264
-MD5sum: b9eb86faccc342280998afd67f0af335
-SHA1: 7434e30fff862d16553c8d773f8c426ef14730ba
-SHA256: 4b6db02e439adcdd81e0f04f9fc6d91dcefdd229876ff2a5a2ce4fb99324db7e
+Filename: debs/libadwaita-1-0_1.5.8+ios1_iphoneos-arm64.deb
+Size: 399720
+MD5sum: 41761b284f033e5c1872a9e2814913b1
+SHA1: 1596620fbfd271061b74179144c3d60f86f28094
+SHA256: 920901221bef5c0103dc24577db075392070b2fc55b72d10b19256d8a26568c3
 Icon: https://repo.maxleiter.com/icons/libadwaita-1-0.png
 Depiction: https://repo.maxleiter.com/depictions/libadwaita-1-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libadwaita-1-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libadwaita-1-0.json
 
 Package: libadwaita-1-dev
-Version: 1.5.0+ios1
+Version: 1.5.8+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://gnome.pages.gitlab.gnome.org/libadwaita/
-Depends: libadwaita-1-0 (>= 1.5.0), libgtk-4-dev, libappstream-dev
+Depends: libadwaita-1-0 (= 1.5.8+ios1), libgtk-4-dev, libappstream-dev
 Description: Development files for libadwaita
 Installed-Size: 432
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libadwaita-1-dev_1.5.0+ios1_iphoneos-arm64.deb
-Size: 45336
-MD5sum: 9f82bb3c21d3d96e2246e377d271227a
-SHA1: 289c1f6390bb15480e7fc302c9cdaedaed9cbea2
-SHA256: ed2f9f76d39572323cdb65673b98d198623d9ed3e68996da311e52099ba84adb
+Filename: debs/libadwaita-1-dev_1.5.8+ios1_iphoneos-arm64.deb
+Size: 54650
+MD5sum: 4e601e56237bc70ec85b9c132f07f05a
+SHA1: 283360f17c51f7ee2bb00519154e9aef81286154
+SHA256: a92f1e59ad36bab456a2e70b366c9fe7a5e3c03b26b0f92f21071170b6cb93dd
 Icon: https://repo.maxleiter.com/icons/libadwaita-1-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libadwaita-1-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libadwaita-1-dev.json
@@ -4449,43 +4523,65 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libappstream-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libappstream-dev.json
 
 Package: libappstream5
-Version: 1.0.3+ios1
+Version: 1.0.3+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://www.freedesktop.org/wiki/Distributions/AppStream/
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libyaml-0-2, libxmlb2
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libyaml-0-2, libxmlb2, libzstd1
 Description: Software component metadata library
 Installed-Size: 4072
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libappstream5_1.0.3+ios1_iphoneos-arm64.deb
-Size: 895106
-MD5sum: 14b7cda8d415e4cf8bfa56046927cd12
-SHA1: ba90cfd71e01fb7c3efba07e35ce2a684ae7915c
-SHA256: 6e197067c709f27a62a2bea07466be1bb0c79b0d0d6df39c3c8addfb27def104
+Filename: debs/libappstream5_1.0.3+ios2_iphoneos-arm64.deb
+Size: 895040
+MD5sum: eca39d22fd63834fe3669ca11c853589
+SHA1: dcec9ba4dfbbe64555e987fcae899474dc437544
+SHA256: e94b87b6683b41b1d53df3347e68a1cc524f91c0080fd0ffef06a8262667905f
 Icon: https://repo.maxleiter.com/icons/libappstream5.png
 Depiction: https://repo.maxleiter.com/depictions/libappstream5.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libappstream5.json
 Native Depiction: https://repo.maxleiter.com/depictions/libappstream5.json
 
+Package: libarchive-dev
+Version: 3.8.10+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Development
+Priority: optional
+Depends: libarchive13 (>= 3.8.10+ios1), liblz4-dev, liblzma-dev, libzstd-dev, nettle-dev, liblzo2-dev
+Description: Multi-format archive and compression library - devel
+Installed-Size: 364
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libarchive-dev_3.8.10+ios1_iphoneos-arm64.deb
+Size: 153308
+MD5sum: 916bacdf32160f0bde68a6398ab3785a
+SHA1: a45607bb6f8d8222e890364f6d20d3ad93a93b87
+SHA256: 2009eb5dbaf6c9e487416b334b993578883a1ceb9469e8e71a46e70a9f954efd
+Icon: https://repo.maxleiter.com/icons/libarchive-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libarchive-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libarchive-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libarchive-dev.json
+Homepage: https://repo.maxleiter.com
+
 Package: libarchive-tools
-Version: 3.7.2+ios1
+Version: 3.8.10+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
-Conflicts: libarchive (<< 3.7.2)
-Depends: libiosexec1 (>= 1.3.1), libarchive13 (>= 3.7.2)
+Conflicts: libarchive (<< 3.8.10+ios1)
+Depends: libiosexec1 (>= 1.3.1), libarchive13 (>= 3.8.10+ios1)
 Description: FreeBSD implementations of 'tar' and 'cpio' and other archive tools
-Installed-Size: 532
+Installed-Size: 524
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libarchive-tools_3.7.2+ios1_iphoneos-arm64.deb
-Size: 146596
-MD5sum: 42b7ddd59c8ff7d7650b7e5a4d1a69c8
-SHA1: cad410d990fa90528b76f9ad4764075b3deb8961
-SHA256: 8e742f8c562ecd0b6f0d640fb8c90420f32a53a7df69a592148da75c6a6209dd
+Filename: debs/libarchive-tools_3.8.10+ios1_iphoneos-arm64.deb
+Size: 131770
+MD5sum: 0101131e550d4a4fa41a0e08c4852c73
+SHA1: 9a126245885d32450a88f21a8b96f7330d558da8
+SHA256: 1f65837302ae5787aa4674cc7cfcd7417d3676e60c2ea875d39e84f88a390567
 Icon: https://repo.maxleiter.com/icons/libarchive-tools.png
 Depiction: https://repo.maxleiter.com/depictions/libarchive-tools.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libarchive-tools.json
@@ -4493,23 +4589,24 @@ Native Depiction: https://repo.maxleiter.com/depictions/libarchive-tools.json
 Homepage: https://repo.maxleiter.com
 
 Package: libarchive13
-Version: 3.7.2+ios1
+Version: 3.8.10+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Depends: libiosexec1 (>= 1.3.1), liblz4-1, liblzma5 (>= 5.2.5), libzstd1, libnettle8, liblzo2-2
-Provides: libarchive (= 3.7.2)
+Provides: libarchive (= 3.8.10+ios1)
 Replaces: libarchive
 Conflicts: libarchive
 Description: Multi-format archive and compression library
 Installed-Size: 692
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libarchive13_3.7.2+ios1_iphoneos-arm64.deb
-Size: 334134
-MD5sum: 75ab15ffd275de1be35c5f33d8688262
-SHA1: 2a2b647320db271befcbfdec7065d0b29dc904ac
-SHA256: 15a942e91da3772dd6b58d96910b22ae811f3617dbc272ac7d26918eac5f1426
+Filename: debs/libarchive13_3.8.10+ios1_iphoneos-arm64.deb
+Size: 333116
+MD5sum: 2d625d46b9c71f10b59eb16c7b4b9781
+SHA1: 17f4ff3c0bd129940b0a69dce5eca30b0b91fa22
+SHA256: cb4fa72986d2ce2f605cd789595a281da0a55b7f9d723a5c5f32ec0d402c03b3
 Icon: https://repo.maxleiter.com/icons/libarchive13.png
 Depiction: https://repo.maxleiter.com/depictions/libarchive13.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libarchive13.json
@@ -4712,21 +4809,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libavcodec-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libavcodec59
-Version: 5.1.2+ios2
+Version: 5.1.10+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
-Depends: libiosexec1 (>= 1.3.1), libavutil57 (>= 5.1.2), libswresample4 (>= 5.1.2), liblzma5
+Depends: libiosexec1 (>= 1.3.1), libavutil57 (= 5.1.10+ios2), libswresample4 (= 5.1.10+ios2), liblzma5, libz1
 Description: FFmpeg codec library - runtime
-Installed-Size: 11280
+Installed-Size: 11312
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libavcodec59_5.1.2+ios2_iphoneos-arm64.deb
-Size: 4661274
-MD5sum: 479e0c681b915b39645918d843d3c7e0
-SHA1: f7cb415c09117cbb7b60a61e8059ed5166a8ccbd
-SHA256: dfe324bf86c0e566827dcda2f8a65115420c82c512dcede48f1c40596b8549d3
+Filename: debs/libavcodec59_5.1.10+ios2_iphoneos-arm64.deb
+Size: 5558356
+MD5sum: a94ac9e55b078bbdc17fe69350667fff
+SHA1: ea8499da007a1ec63fb19c096c47af425a90d4fd
+SHA256: 49b110ad47075517a123035aecaefded4d50e4914b4ffe30fb37f396c06793d2
 Icon: https://repo.maxleiter.com/icons/libavcodec59.png
 Depiction: https://repo.maxleiter.com/depictions/libavcodec59.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libavcodec59.json
@@ -4819,21 +4916,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libavfilter-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libavfilter8
-Version: 5.1.2+ios2
+Version: 5.1.10+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
-Depends: libiosexec1 (>= 1.3.1), libavutil57 (>= 5.1.2), libavcodec59 (>= 5.1.2), libavformat59 (>= 5.1.2), libswscale6 (>= 5.1.2), libswresample4 (>= 5.1.2), liblzma5
+Depends: libiosexec1 (>= 1.3.1), libavutil57 (= 5.1.10+ios2), libavcodec59 (= 5.1.10+ios2), libavformat59 (= 5.1.10+ios2), libswscale6 (= 5.1.10+ios2), libswresample4 (= 5.1.10+ios2), liblzma5, libz1
 Description: FFmpeg audio/video filtering library - runtime
 Installed-Size: 3116
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libavfilter8_5.1.2+ios2_iphoneos-arm64.deb
-Size: 1121170
-MD5sum: 858a6ff8d2ed6d60f42268eee64032dd
-SHA1: 25552b365cb88d9ef8ec5f7a1001ac03d98d41e9
-SHA256: 8e833a7355659dcc4bfdd7eb996a25d96754fd84acfb40f5f3350ed0e2809ed9
+Filename: debs/libavfilter8_5.1.10+ios2_iphoneos-arm64.deb
+Size: 1365790
+MD5sum: 0a19624c7c07e07308ba99f0d96f20e2
+SHA1: a76dc502cb6e9df0e08fe0802375b5b62b85c257
+SHA256: fef59e82720a55448a55641597eee048bdf5d2292002ebbfa33cadc8d83fef0d
 Icon: https://repo.maxleiter.com/icons/libavfilter8.png
 Depiction: https://repo.maxleiter.com/depictions/libavfilter8.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libavfilter8.json
@@ -4863,21 +4960,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libavformat-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libavformat59
-Version: 5.1.2+ios2
+Version: 5.1.10+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
-Depends: libiosexec1 (>= 1.3.1), libavutil57 (>= 5.1.2), libavcodec59 (>= 5.1.2), libswresample4 (>= 5.1.2), liblzma5
+Depends: libiosexec1 (>= 1.3.1), libavutil57 (= 5.1.10+ios2), libavcodec59 (= 5.1.10+ios2), libswresample4 (= 5.1.10+ios2), liblzma5, libz1
 Description: FFmpeg container muxing/demuxing library - runtime
-Installed-Size: 2244
+Installed-Size: 2260
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libavformat59_5.1.2+ios2_iphoneos-arm64.deb
-Size: 927998
-MD5sum: 34ece32b4616666edd64c54e0df1e270
-SHA1: bf2251b100757e19579062d1907d5351c77b1650
-SHA256: a29cb2b4fcee18b4ca8bcd8f1361bfe41253e31315fb0f493f8d6edc61f5aed8
+Filename: debs/libavformat59_5.1.10+ios2_iphoneos-arm64.deb
+Size: 1108420
+MD5sum: a8aae508f8877e068a677fb78b8c08ad
+SHA1: 04bdae02e8c248689e168f4ac6278bd5b4d86e03
+SHA256: 1e44dbfa88db1979a428e985480d974137aebdbd1cd30515cce66f716232788a
 Icon: https://repo.maxleiter.com/icons/libavformat59.png
 Depiction: https://repo.maxleiter.com/depictions/libavformat59.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libavformat59.json
@@ -4929,7 +5026,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/libavutil-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libavutil57
-Version: 5.1.2+ios1
+Version: 5.1.10+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -4937,13 +5034,13 @@ Section: Libraries
 Priority: optional
 Description: FFmpeg portable utility library - runtime
 Depends: libiosexec1 (>= 1.3.1)
-Installed-Size: 600
+Installed-Size: 616
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libavutil57_5.1.2+ios1_iphoneos-arm64.deb
-Size: 270984
-MD5sum: 2048268e8133b0dd3f0f9c82969ff976
-SHA1: b93e9d47ae125c56459305b6ec9413584b3e564d
-SHA256: e0287974e42cba5a7d08a04069be7bf53e813c19c9e3f08d8a7778966851e277
+Filename: debs/libavutil57_5.1.10+ios2_iphoneos-arm64.deb
+Size: 271232
+MD5sum: 0c3657f80aff2de3e32748f1cde8a6ce
+SHA1: 9e26408c1eab2638405503d70585664e2c969701
+SHA256: 5aa0b1ee975eb8575b97093af7ba021fdeed4626d07ac34b72e10f364537d086
 Icon: https://repo.maxleiter.com/icons/libavutil57.png
 Depiction: https://repo.maxleiter.com/depictions/libavutil57.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libavutil57.json
@@ -5264,7 +5361,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/libcolord2.json
 Homepage: https://repo.maxleiter.com
 
 Package: libcurl4
-Version: 8.20.0+ios1
+Version: 8.22.0+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -5272,41 +5369,41 @@ Section: Libraries
 Priority: optional
 Homepage: https://curl.se/
 Depends: libiosexec1 (>= 1.3.1), libnghttp2-14, libpsl5, libssl3, libzstd1, libbrotli1, libz1
-Replaces: curl (<< 8.20.0+ios1)
-Conflicts: curl (<< 8.20.0+ios1)
+Replaces: curl (<< 8.22.0+ios1)
+Conflicts: curl (<< 8.22.0+ios1)
 Description: client-side URL transfer library
-Installed-Size: 724
+Installed-Size: 756
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libcurl4_8.20.0+ios1_iphoneos-arm64.deb
-Size: 327560
-MD5sum: 4b2de3dc55744896478dfa7a9d13f6ae
-SHA1: 079950da6201cbb6965459a71cacd882e854ab61
-SHA256: 5aeec1e4fd6b647c1cdbb7b3962e0bc0099ecf807f52cc6bbd51687827ce4b0a
+Filename: debs/libcurl4_8.22.0+ios1_iphoneos-arm64.deb
+Size: 345174
+MD5sum: 760cdccc8f44710b73d1103eacbaeee7
+SHA1: d657b7bd9b1e6b35c9d86cb8e25798f314e97404
+SHA256: 345d4c7ff2c02f06045a19e198c9df0def889948698f440c700470ecbf68cb85
 Icon: https://repo.maxleiter.com/icons/libcurl4.png
 Depiction: https://repo.maxleiter.com/depictions/libcurl4.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libcurl4.json
 Native Depiction: https://repo.maxleiter.com/depictions/libcurl4.json
 
 Package: libcurl4-openssl-dev
-Version: 8.20.0+ios1
+Version: 8.22.0+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://curl.se/
-Provides: libcurl-dev (= 8.20.0+ios1)
-Depends: libcurl4 (= 8.20.0+ios1), libidn2-dev, libssl-dev, libnghttp2-dev, libpsl-dev, libzstd-dev, libbrotli-dev
-Replaces: curl (<< 8.20.0+ios1)
-Conflicts: curl (<< 8.20.0+ios1)
+Provides: libcurl-dev (= 8.22.0+ios1)
+Depends: libcurl4 (= 8.22.0+ios1), libidn2-dev, libssl-dev, libnghttp2-dev, libpsl-dev, libzstd-dev, libbrotli-dev
+Replaces: curl (<< 8.22.0+ios1)
+Conflicts: curl (<< 8.22.0+ios1)
 Description: development files for libcurl
-Installed-Size: 3772
+Installed-Size: 3868
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libcurl4-openssl-dev_8.20.0+ios1_iphoneos-arm64.deb
-Size: 1209616
-MD5sum: 1e7a4616d648cff343124346e18c59fe
-SHA1: d79348dd007067cd77de44f3c6442758c7a5bc31
-SHA256: 3dcf5036ed0e075bfc4d6ae189cae6f3e8cad954fd02f51e6e86da5818b03784
+Filename: debs/libcurl4-openssl-dev_8.22.0+ios1_iphoneos-arm64.deb
+Size: 1248312
+MD5sum: 8216ec35ce8461ca4894fed6679f2c32
+SHA1: 6d9b4ffe7014e33be3524a84228f33a2504b7948
+SHA256: 6643c99543e66f930f36c1fa46bf2c5088cf2be4dfa38311431f79a555b68b04
 Icon: https://repo.maxleiter.com/icons/libcurl4-openssl-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libcurl4-openssl-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libcurl4-openssl-dev.json
@@ -5523,21 +5620,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libei1.json
 Homepage: https://repo.maxleiter.com
 
 Package: libenchant-2-2
-Version: 2.6.1+ios1
+Version: 2.6.1+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://abiword.github.io/enchant/
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libintl8
 Description: Generic spell-checking library - runtime
 Installed-Size: 264
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libenchant-2-2_2.6.1+ios1_iphoneos-arm64.deb
-Size: 28560
-MD5sum: 6314bd0fd33f4a1a91bcc414ac87bf04
-SHA1: 16d20ef136f3499c224cd13e50f1f687020ad74f
-SHA256: c61abd64409adfe800ee00fb3e502ec6a25cde037f9baa9de343de68321a6ea5
+Filename: debs/libenchant-2-2_2.6.1+ios2_iphoneos-arm64.deb
+Size: 25546
+MD5sum: cf8dd41fcffcba35809623485bd39076
+SHA1: bd184ba5fb7a39d5ae473a8d1e3ed9deebc04dea
+SHA256: 6fe5e79494804afc69eacc379817fa7d1e9f397f57a96da52d517e32822dc63f
 Icon: https://repo.maxleiter.com/icons/libenchant-2-2.png
 Depiction: https://repo.maxleiter.com/depictions/libenchant-2-2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libenchant-2-2.json
@@ -5649,106 +5746,109 @@ Native Depiction: https://repo.maxleiter.com/depictions/libepoxy0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libexempi-dev
-Version: 2.5.2+ios2
+Version: 2.6.6+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://libopenraw.freedesktop.org/exempi/
-Depends: libexempi8 (>= 2.5.2)
+Depends: libexempi8 (= 2.6.6+ios1)
 Description: library to parse XMP metadata - development files
-Installed-Size: 120
+Installed-Size: 116
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libexempi-dev_2.5.2+ios2_iphoneos-arm64.deb
-Size: 16428
-MD5sum: 8214460f5b8755bb54c2f4e3cf669cf3
-SHA1: 4377f3877c422a4746c3d684df5e6bc3e03f63ba
-SHA256: 42f9e688c684747e9ef220d56dc9c1eb82d67745369328461322b15d47fbc15c
+Filename: debs/libexempi-dev_2.6.6+ios1_iphoneos-arm64.deb
+Size: 19584
+MD5sum: e9a52d27017a8a99b199305951c54b15
+SHA1: 6565cca9834f13f21f8bbeb3482c3dda060ca6fc
+SHA256: 3365f46632de1f4d3ce3bbbb2a7f1cc9bcc077009588b087f301c12f3b335292
 Icon: https://repo.maxleiter.com/icons/libexempi-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libexempi-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libexempi-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libexempi-dev.json
 
 Package: libexempi8
-Version: 2.5.2+ios1
+Version: 2.6.6+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://libopenraw.freedesktop.org/exempi/
 Description: library to parse XMP metadata - runtime
 Depends: libiosexec1 (>= 1.3.1)
-Installed-Size: 1180
+Installed-Size: 1196
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libexempi8_2.5.2+ios1_iphoneos-arm64.deb
-Size: 488950
-MD5sum: f5cd0f772d917b6c34b21e00d4428e1d
-SHA1: 00380a3dc25f0255b2cfd996520475c245fe1bc5
-SHA256: 9f962902b252e40d9bc1e09076fad193a153bcca30b9535179b2ff7356936ea0
+Filename: debs/libexempi8_2.6.6+ios1_iphoneos-arm64.deb
+Size: 499908
+MD5sum: 88877da4fa43c813e124f488f9586c60
+SHA1: 2d733fe6b6533f8739f48e240402b7bc94398bc1
+SHA256: 15e596a643430e8f03d9bec112ac8c535670391fd1a1337bc8ec2d7f6d3986e5
 Icon: https://repo.maxleiter.com/icons/libexempi8.png
 Depiction: https://repo.maxleiter.com/depictions/libexempi8.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libexempi8.json
 Native Depiction: https://repo.maxleiter.com/depictions/libexempi8.json
 
 Package: libexiv2-28
-Version: 0.28.3+ios2
+Version: 0.28.9+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://exiv2.org/
 Depends: libiosexec1 (>= 1.3.1), libpng16-16
 Description: Exiv2 image metadata library for the Xios desktop
-Installed-Size: 2252
+Installed-Size: 2272
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libexiv2-28_0.28.3+ios2_iphoneos-arm64.deb
-Size: 731524
-MD5sum: 11fddc9b7bcda2f7fd129bf020a3f014
-SHA1: f94d15c742a2521008743218ea93c53b90c171e7
-SHA256: 222ca4c73adb206aed712964047020863b680385a2553552b94f7907bd0a5b47
+Filename: debs/libexiv2-28_0.28.9+ios1_iphoneos-arm64.deb
+Size: 737862
+MD5sum: 44dd820f24e1d8655234f9c1796aec93
+SHA1: 56dba993b5e72b9d08205c0706fbe8e615b1dc36
+SHA256: b6bdfd76906a44cc84fedf65ca418f848a1d180400c86bcd6778a32b59d28103
 Icon: https://repo.maxleiter.com/icons/libexiv2-28.png
 Depiction: https://repo.maxleiter.com/depictions/libexiv2-28.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libexiv2-28.json
 Native Depiction: https://repo.maxleiter.com/depictions/libexiv2-28.json
 
 Package: libexiv2-dev
-Version: 0.28.3+ios2
+Version: 0.28.9+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://exiv2.org/
-Depends: libexiv2-28 (= 0.28.3+ios2), libpng16-dev
+Depends: libexiv2-28 (= 0.28.9+ios1), libpng16-dev
 Description: Development files for Exiv2
 Installed-Size: 524
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libexiv2-dev_0.28.3+ios2_iphoneos-arm64.deb
-Size: 82380
-MD5sum: 63d5a6012fb64caf4921b16ad22da99c
-SHA1: 38d68063614443ce1b41638b16a6a5aa3dec7240
-SHA256: a3767795f422af2199917209af8781950b82b4ce4610bd0fd4b67f9199492f58
+Filename: debs/libexiv2-dev_0.28.9+ios1_iphoneos-arm64.deb
+Size: 82584
+MD5sum: ade99726fe2cc39f84a54440a896a459
+SHA1: 595143c0e09c52a29cf78d0f5ca84af6b547b72b
+SHA256: 081839d8ca987bb9d48aed22cc6dc0719847d637dc4b2daa3a65a2cf8d239494
 Icon: https://repo.maxleiter.com/icons/libexiv2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libexiv2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libexiv2-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libexiv2-dev.json
 
 Package: libexo-2-0
-Version: 4.16.4+ios1
+Version: 4.16.4+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/exo/start
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libxfce4util7, libxfce4ui-2-0
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libxfce4util7, libxfce4ui-2-0, libice6, libsm6, libintl8
 Description: Helper/extension library for Xfce applications
 Installed-Size: 2132
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libexo-2-0_4.16.4+ios1_iphoneos-arm64.deb
-Size: 317338
-MD5sum: de3d0ed6466bfadbfe51990a224ae861
-SHA1: 5f87fb172b4fdb2a9cd3c627ab6af6c5bb80bb3d
-SHA256: 37d6ec2850971ecc5175bb6ef641fb57e50c8fe61bcbfd0ec1e061a1178707e3
+Filename: debs/libexo-2-0_4.16.4+ios2_iphoneos-arm64.deb
+Size: 265888
+MD5sum: fa9c6edf7db462d759d85cb894b70f68
+SHA1: 843f0ada3e258bc00a58515723bc97a006a599ad
+SHA256: 0c658f20b39ab9e0fac393696d633c70ed7e496fd981836812e67328a2efd789
 Icon: https://repo.maxleiter.com/icons/libexo-2-0.png
 Depiction: https://repo.maxleiter.com/depictions/libexo-2-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libexo-2-0.json
@@ -5796,6 +5896,94 @@ Icon: https://repo.maxleiter.com/icons/libfcft4.png
 Depiction: https://repo.maxleiter.com/depictions/libfcft4.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libfcft4.json
 Native Depiction: https://repo.maxleiter.com/depictions/libfcft4.json
+
+Package: libflac++-dev
+Version: 1.3.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libflac-dev, libflac++6v5 (= 1.3.4+ios1)
+Section: Development
+Priority: standard
+Description: Free Lossless Audio Codec - C++ development library
+Installed-Size: 164
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libflac++-dev_1.3.4+ios1_iphoneos-arm64.deb
+Size: 23464
+MD5sum: 40a31c323122228322007656119cd6f8
+SHA1: dd7d11b441f77b2f15c0075df1362aa8cf248388
+SHA256: 619a1b36cb3b92b309cac13a8d26b7d316ec85816d39371cb17a5cce972f4cba
+Icon: https://repo.maxleiter.com/icons/libflac++-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libflac++-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libflac++-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libflac++-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libflac++6v5
+Version: 1.3.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libflac8
+Section: Libraries
+Priority: standard
+Description: Free Lossless Audio Codec - C++ runtime library
+Installed-Size: 172
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libflac++6v5_1.3.4+ios1_iphoneos-arm64.deb
+Size: 30308
+MD5sum: 5ea84932e85b7f9ad43fa0ad2bf69130
+SHA1: e3a59d2cac50bd4b12d2f79e352cb1ec4eda758b
+SHA256: 7b862332c37b8e67c55072897bebbc24e5c2ff898f382aa6f3466a65c2ec5850
+Icon: https://repo.maxleiter.com/icons/libflac++6v5.png
+Depiction: https://repo.maxleiter.com/depictions/libflac++6v5.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libflac++6v5.json
+Native Depiction: https://repo.maxleiter.com/depictions/libflac++6v5.json
+Homepage: https://repo.maxleiter.com
+
+Package: libflac-dev
+Version: 1.3.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libogg-dev, libflac8 (= 1.3.4+ios1)
+Section: Development
+Priority: standard
+Description: Free Lossless Audio Codec - C development library
+Installed-Size: 404
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libflac-dev_1.3.4+ios1_iphoneos-arm64.deb
+Size: 65592
+MD5sum: 4da18127749352876181057699ba4e8c
+SHA1: 9a8431d98c027f79b93d798e80b0cc78d8634ae6
+SHA256: c850d645b095d521aa54f20a8253e8594fb67c3e5489f266fdcec64cd5cc6a81
+Icon: https://repo.maxleiter.com/icons/libflac-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libflac-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libflac-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libflac-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libflac8
+Version: 1.3.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libogg0
+Section: Libraries
+Priority: standard
+Description: Free Lossless Audio Codec - runtime C library
+Installed-Size: 276
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libflac8_1.3.4+ios1_iphoneos-arm64.deb
+Size: 94598
+MD5sum: 87297491c60e86f84f2f7a7a163b115a
+SHA1: 948c1baaa0ca7486c8b4ebe122e021c65f57927c
+SHA256: 61864e3e77388d4f36aaa35faaf08ecb6cb4026503003d5f67b2d1d223498f4d
+Icon: https://repo.maxleiter.com/icons/libflac8.png
+Depiction: https://repo.maxleiter.com/depictions/libflac8.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libflac8.json
+Native Depiction: https://repo.maxleiter.com/depictions/libflac8.json
+Homepage: https://repo.maxleiter.com
 
 Package: libfmt-dev
 Priority: optional
@@ -5948,21 +6136,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libfontenc1.json
 Homepage: https://repo.maxleiter.com
 
 Package: libfreetype-dev
-Version: 2.13.3+ios1
+Version: 2.14.3+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libbrotli-dev, libpng16-dev, libfreetype6 (= 2.13.3+ios1)
+Depends: libbrotli-dev, libpng16-dev, libfreetype6 (= 2.14.3+ios1)
 Section: Development
 Priority: standard
 Description: FreeType 2 font engine, development files (transitional package)
-Installed-Size: 1844
+Installed-Size: 1848
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libfreetype-dev_2.13.3+ios1_iphoneos-arm64.deb
-Size: 568914
-MD5sum: b49554d99217dee8db423e69de40390c
-SHA1: 51fc3df3f55c3ae649ab256ee370f02e2090e77e
-SHA256: 84a3a7e62ba1b2df6622a56276c39985e678151454b959ecace4069c30fd974f
+Filename: debs/libfreetype-dev_2.14.3+ios1_iphoneos-arm64.deb
+Size: 571944
+MD5sum: 6fb39c2e4b112c71b78d4c31d54aa57c
+SHA1: 7e1160abdd2461a541a162e457f35b92a54a6a72
+SHA256: 05ccbbd00abede7243d4845166461bf4820a4cbe4cc504dc0bf9b8d59ad532c1
 Icon: https://repo.maxleiter.com/icons/libfreetype-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libfreetype-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libfreetype-dev.json
@@ -5970,7 +6158,7 @@ Native Depiction: https://repo.maxleiter.com/depictions/libfreetype-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libfreetype6
-Version: 2.13.3+ios1
+Version: 2.14.3+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -5978,18 +6166,84 @@ Depends: libiosexec1 (>= 1.3.1), libbrotli1, libpng16-16
 Section: Libraries
 Priority: standard
 Description: FreeType 2 font engine, shared library files
-Installed-Size: 608
+Installed-Size: 624
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libfreetype6_2.13.3+ios1_iphoneos-arm64.deb
-Size: 324240
-MD5sum: 6699f74b4a5595c9f3dcfbe2fdfb4708
-SHA1: 32f3aaf6bf4aee9d5d3e448abf70bf83b8ccb5f1
-SHA256: af08396508e864b80934cfed59690244674b35fc81911291506c336bea3167f5
+Filename: debs/libfreetype6_2.14.3+ios1_iphoneos-arm64.deb
+Size: 326464
+MD5sum: 70c334716779770c567fc505c1507d10
+SHA1: 5dc6aa90cec3c043501f56426d8ecd703c704fda
+SHA256: f844a5781aac79d96b06d1dc71627472857f18111ed635fab54868840d851656
 Icon: https://repo.maxleiter.com/icons/libfreetype6.png
 Depiction: https://repo.maxleiter.com/depictions/libfreetype6.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libfreetype6.json
 Native Depiction: https://repo.maxleiter.com/depictions/libfreetype6.json
 Homepage: https://repo.maxleiter.com
+
+Package: libfribidi-bin
+Version: 1.0.17+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libfribidi0 (= 1.0.17+ios1)
+Section: Utilities
+Priority: optional
+Homepage: https://github.com/fribidi/fribidi/
+Description: Free Implementation of the Unicode BiDi algorithm (utility)
+Installed-Size: 164
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libfribidi-bin_1.0.17+ios1_iphoneos-arm64.deb
+Size: 28464
+MD5sum: 98d3d57cbc36b3bbdb7ff0190ba41c34
+SHA1: a63d26f3996e2ec0120f23b7d143830105f6fda1
+SHA256: 41f78804735b7b3a1285eb26c4eb9673083ee329b538b2a99573125e27dab414
+Icon: https://repo.maxleiter.com/icons/libfribidi-bin.png
+Depiction: https://repo.maxleiter.com/depictions/libfribidi-bin.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libfribidi-bin.json
+Native Depiction: https://repo.maxleiter.com/depictions/libfribidi-bin.json
+
+Package: libfribidi-dev
+Version: 1.0.17+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libfribidi0 (= 1.0.17+ios1)
+Section: Development
+Priority: optional
+Homepage: https://github.com/fribidi/fribidi/
+Description: Development files for FreeBidi library
+Installed-Size: 344
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libfribidi-dev_1.0.17+ios1_iphoneos-arm64.deb
+Size: 61376
+MD5sum: 4f9b814f90ac3eefde97bd57f3a4cd3d
+SHA1: cade184971ac5c794eef76c138ceb666b6404575
+SHA256: 6895bf8240c9ed20cdfdca09a5c46ff4c13750dc4c03dbbf3c89592cff533bf9
+Icon: https://repo.maxleiter.com/icons/libfribidi-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libfribidi-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libfribidi-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libfribidi-dev.json
+
+Package: libfribidi0
+Version: 1.0.17+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: https://github.com/fribidi/fribidi/
+Description: Free Implementation of the Unicode BiDi algorithm
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 248
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libfribidi0_1.0.17+ios1_iphoneos-arm64.deb
+Size: 39750
+MD5sum: 7024af05685ce244eb2c470d20811f92
+SHA1: 7919388bea4f6d56602f93a2a188df2e3ce3ecf7
+SHA256: 397900b6bfe035ad81c99492238e4047d0026a5c87630354ad72827371b5700e
+Icon: https://repo.maxleiter.com/icons/libfribidi0.png
+Depiction: https://repo.maxleiter.com/depictions/libfribidi0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libfribidi0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libfribidi0.json
 
 Package: libgbm-dev
 Version: 21.0.0+ios2
@@ -6119,42 +6373,44 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgcr-4-4.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgcr-4-4.json
 
 Package: libgdk-pixbuf-2.0-0
-Version: 2.42.12+ios1
+Version: 2.42.12+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/gdk-pixbuf
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libpng16-16, libjpeg62-turbo, libtiff5
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libpng16-16, libjpeg62-turbo, libtiff6 (>= 4.7.2)
 Description: GDK Pixbuf library
 Installed-Size: 312
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgdk-pixbuf-2.0-0_2.42.12+ios1_iphoneos-arm64.deb
-Size: 94624
-MD5sum: 018807035a549221103a957f4e8a7457
-SHA1: 4ce8b9c812bc03b06c3eff9aa858b5c2ed875942
-SHA256: a58eec224c16ea5877a52af7406499aaed83bc8c4b1f31020f286806c3b7675b
+Filename: debs/libgdk-pixbuf-2.0-0_2.42.12+ios2_iphoneos-arm64.deb
+Size: 94636
+MD5sum: b40d1927a7825665988fbd12378d9866
+SHA1: c0473c4f71ff340422daa26a3e5ec196938670bc
+SHA256: 535d396135976a97d19d0bc9f0a3c8a4bd2ba1cccb939a7ee722902930e0e3c8
 Icon: https://repo.maxleiter.com/icons/libgdk-pixbuf-2.0-0.png
 Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-0.json
 
 Package: libgdk-pixbuf-2.0-dev
-Version: 2.42.12+ios1
+Version: 2.42.12+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/gdk-pixbuf
-Depends: libiosexec1 (>= 1.3.1), libgdk-pixbuf-2.0-0 (>= 2.42.12), libglib2.0-dev, libpng16-dev, libjpeg62-turbo-dev, libtiff-dev
+Depends: libiosexec1 (>= 1.3.1), libgdk-pixbuf-2.0-0 (= 2.42.12+ios2), libglib2.0-dev, libpng16-dev, libjpeg62-turbo-dev, libtiff-dev
 Description: Development files for the GDK Pixbuf library
 Installed-Size: 488
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgdk-pixbuf-2.0-dev_2.42.12+ios1_iphoneos-arm64.deb
-Size: 43222
-MD5sum: ef017e9bef4fd015e39964101b1bfda7
-SHA1: f87472af209de208894532be80652e68bf3b3b82
-SHA256: fda74826a992381249fe2d5bf7b01fdf582adf075f617aa019b3bed3d31520e9
+Filename: debs/libgdk-pixbuf-2.0-dev_2.42.12+ios2_iphoneos-arm64.deb
+Size: 48900
+MD5sum: ba2358f550ce5667e963a8ba76615bac
+SHA1: a2013b3ba1aff29b2878bd8b935b66883546f7aa
+SHA256: 6989c5a87d89ab45231406d363f2fe47b7a39be7715ec2f89fac2f13b446919a
 Icon: https://repo.maxleiter.com/icons/libgdk-pixbuf-2.0-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgdk-pixbuf-2.0-dev.json
@@ -6205,21 +6461,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgdm1.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgdm1.json
 
 Package: libgee-0.8-2
-Version: 0.20.8+ios1
+Version: 0.20.8+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://wiki.gnome.org/Projects/Libgee
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libintl8
 Description: GObject collection library - runtime
 Installed-Size: 664
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgee-0.8-2_0.20.8+ios1_iphoneos-arm64.deb
-Size: 202056
-MD5sum: 7d74e130eeaa30c88c203982edffb8c2
-SHA1: a7c2704bf19c79e89e78c786db7587b905401bb4
-SHA256: eb4ff98c874a033e6cd7656875934747f9666b95ee345f743853497bd32e0916
+Filename: debs/libgee-0.8-2_0.20.8+ios2_iphoneos-arm64.deb
+Size: 171074
+MD5sum: 7a7db1421b09c0f0bc2c1d836a983f86
+SHA1: 4e26301be52e913af2c12d9a1d9eec391bd0e153
+SHA256: 7b9ec487e04f4d0b955ae28df11cacfbd7ffaae052b93aee7c6bb55e9b9ede36
 Icon: https://repo.maxleiter.com/icons/libgee-0.8-2.png
 Depiction: https://repo.maxleiter.com/depictions/libgee-0.8-2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgee-0.8-2.json
@@ -6788,42 +7044,44 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libglu1-mesa.json
 Native Depiction: https://repo.maxleiter.com/depictions/libglu1-mesa.json
 
 Package: libgmime-3.0-0
-Version: 3.2.7+ios1
+Version: 3.2.15+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/jstedfast/gmime
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtkintl, libz1
 Description: MIME parser and utility library - runtime
-Installed-Size: 544
+Installed-Size: 516
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgmime-3.0-0_3.2.7+ios1_iphoneos-arm64.deb
-Size: 183926
-MD5sum: b25b58c6d551ca97ce6851351fbd0b8c
-SHA1: 0e4a0d9d785c68e8375094fac7012c4442eda72c
-SHA256: 3703cf0782c5441b980cad9146c0332091732067df3ad29b5920e01793226dee
+Filename: debs/libgmime-3.0-0_3.2.15+ios1_iphoneos-arm64.deb
+Size: 183412
+MD5sum: 402f9ceceb5f3cbe39bee0b47a019d84
+SHA1: 74459afa03ab926228e0c1cd287c330ac4c56e1f
+SHA256: 71a3b045b50a10fe5610a8d993c82b21fac764e2c11a47f4c33a7fa9c06a695c
 Icon: https://repo.maxleiter.com/icons/libgmime-3.0-0.png
 Depiction: https://repo.maxleiter.com/depictions/libgmime-3.0-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgmime-3.0-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgmime-3.0-0.json
 
 Package: libgmime-3.0-dev
-Version: 3.2.7+ios1
+Version: 3.2.15+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://github.com/jstedfast/gmime
-Depends: libgmime-3.0-0 (= 3.2.7+ios1), libglib2.0-dev
+Depends: libgmime-3.0-0 (= 3.2.15+ios1), libglib2.0-dev
 Description: Development files for GMime 3.0
 Installed-Size: 448
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgmime-3.0-dev_3.2.7+ios1_iphoneos-arm64.deb
-Size: 62968
-MD5sum: eca740375927fea8eed606b9e92a1e11
-SHA1: d308cdc1b7f6049cb7ec2007294153540c6ef80f
-SHA256: cc425941b7d457f72f0e17e0a06bf25f92be5a4fa8c2981561b70bc4e52b9be3
+Filename: debs/libgmime-3.0-dev_3.2.15+ios1_iphoneos-arm64.deb
+Size: 64330
+MD5sum: 457b8fbe49a94b6bbf645bd499d4d902
+SHA1: 46bdbd3b5d54af1668990daf4bc0e8ed2421b18d
+SHA256: 6310ef40e630d0357a3a5004cf29a7e0217285e09a47fb5e0c92096451627199
 Icon: https://repo.maxleiter.com/icons/libgmime-3.0-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgmime-3.0-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgmime-3.0-dev.json
@@ -6913,6 +7171,77 @@ Depiction: https://repo.maxleiter.com/depictions/libgnome-desktop-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgnome-desktop-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgnome-desktop-dev.json
 
+Package: libgnutls30
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Version: 3.8.13+ios1
+Provides: gnutls (= 1:0)
+Conflicts: gnutls (<< 1:0)
+Replaces: gnutls (<< 1:0)
+Depends: libiosexec1 (>= 1.3.1), libintl8 (>= 0.20.0), libgmp10, libidn2-0 (>= 2.3.8), libunistring5, libnettle8 (>= 3.10.2), libhogweed6 (>= 3.10.2), libp11-kit0 (>= 0.26.5), libtasn1-6 (>= 4.21.0), libzstd1, libbrotli1
+Section: Libraries
+Priority: optional
+Homepage: http://www.gnu.org/software/gnutls/
+Description: GNU TLS library - main runtime library
+Installed-Size: 2112
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgnutls30_3.8.13+ios1_iphoneos-arm64.deb
+Size: 1001130
+MD5sum: 4f616c614cb498c892f32cad2aea9c85
+SHA1: 11e1fc2c11ecac5815bb516ca35a38bddb418614
+SHA256: d9c071511747a6ab242f44ff8ffef3888d7b998fecaef1319be037275f1abc52
+Icon: https://repo.maxleiter.com/icons/libgnutls30.png
+Depiction: https://repo.maxleiter.com/depictions/libgnutls30.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgnutls30.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgnutls30.json
+
+Package: libgnutls30-dev
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Version: 3.8.13+ios1
+Conflicts: gnutls (<< 1:0)
+Depends: libgnutls30 (>= 3.8.13+ios1), libgnutlsxx30 (>= 3.8.13+ios1), libp11-kit-dev, libtasn1-6-dev, nettle-dev, libidn2-dev
+Section: Libraries
+Priority: optional
+Homepage: http://www.gnu.org/software/gnutls/
+Description: GNU TLS library - development files
+Installed-Size: 608
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgnutls30-dev_3.8.13+ios1_iphoneos-arm64.deb
+Size: 206400
+MD5sum: 1572321ca9784f38db2e646f1f0b7f89
+SHA1: 22ad6fd84cd791ddbac15a1ae4e97fcae71f462a
+SHA256: dce2521dcf49768207725519707dc264c4bea3886b4990c7fe16c25d70f99046
+Icon: https://repo.maxleiter.com/icons/libgnutls30-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libgnutls30-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgnutls30-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgnutls30-dev.json
+
+Package: libgnutlsxx30
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Version: 3.8.13+ios1
+Conflicts: gnutls (<< 1:0)
+Depends: libiosexec1 (>= 1.3.1), libintl8 (>= 0.20.0), libgmp10, libidn2-0 (>= 2.3.8), libunistring5, libnettle8 (>= 3.10.2), libhogweed6 (>= 3.10.2), libp11-kit0 (>= 0.26.5), libtasn1-6 (>= 4.21.0), libgnutls30 (= 3.8.13+ios1), libzstd1, libbrotli1
+Section: Libraries
+Priority: optional
+Homepage: http://www.gnu.org/software/gnutls/
+Description: GNU TLS library - C++ runtime library
+Installed-Size: 272
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libgnutlsxx30_3.8.13+ios1_iphoneos-arm64.deb
+Size: 141918
+MD5sum: cbb8ec921839b2086f3a9ee28fd132bd
+SHA1: 2915c5f5e28a099510b39ca7c1435eb5ab3fd2c8
+SHA256: 3f2ce6b6ad59f5de3cb1e19abf017c76c1dc813d7b3592901680473343f0e3fb
+Icon: https://repo.maxleiter.com/icons/libgnutlsxx30.png
+Depiction: https://repo.maxleiter.com/depictions/libgnutlsxx30.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libgnutlsxx30.json
+Native Depiction: https://repo.maxleiter.com/depictions/libgnutlsxx30.json
+
 Package: libgoa-1.0-0b
 Version: 3.46.0+ios1
 Architecture: iphoneos-arm64
@@ -6956,44 +7285,44 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgoa-1.0-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgoa-1.0-dev.json
 
 Package: libgoffice-0.10-10
-Version: 0.10.61+ios1
+Version: 0.10.61+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.5.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/goffice
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libgsf-1-114, libxml2, libxslt1.1, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libgsf-1-114, libxml2, libxslt1.1, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libintl8
 Description: GOffice spreadsheet/chart library
 Installed-Size: 2900
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgoffice-0.10-10_0.10.61+ios1_iphoneos-arm64.deb
-Size: 954232
-MD5sum: 04df9116903446c6dda8a84ad981f41f
-SHA1: 7466d4b3ff6f5b12849fb1949e1adf9f004d8d26
-SHA256: aeb4c1a2d0fcc29925ec76b06ca905ac9aeee662275028d6cf11b4731549da9e
+Filename: debs/libgoffice-0.10-10_0.10.61+ios2_iphoneos-arm64.deb
+Size: 824794
+MD5sum: ce8d659206ad499b4f33ae0cf1a8c830
+SHA1: 182b52529d2b88f94ad6470d4264c00ec811702b
+SHA256: a320bed6e9efc9ce7403cc560e756f784e517fd31850650b33f1cc362a30ba1d
 Icon: https://repo.maxleiter.com/icons/libgoffice-0.10-10.png
 Depiction: https://repo.maxleiter.com/depictions/libgoffice-0.10-10.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgoffice-0.10-10.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgoffice-0.10-10.json
 
 Package: libgoffice-0.10-dev
-Version: 0.10.61+ios1
+Version: 0.10.61+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.5.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/goffice
-Depends: libgoffice-0.10-10 (= 0.10.61+ios1), libgtk-3-dev, libgsf-1-dev, libxml2-dev, libxslt1-dev, libpango1.0-dev, libcairo2-dev, libgdk-pixbuf-2.0-dev
+Depends: libgoffice-0.10-10 (= 0.10.61+ios2), libgtk-3-dev, libgsf-1-dev, libxml2-dev, libxslt1-dev, libpango1.0-dev, libcairo2-dev, libgdk-pixbuf-2.0-dev
 Description: GOffice spreadsheet/chart library - development files
 Installed-Size: 896
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgoffice-0.10-dev_0.10.61+ios1_iphoneos-arm64.deb
+Filename: debs/libgoffice-0.10-dev_0.10.61+ios2_iphoneos-arm64.deb
 Size: 102348
-MD5sum: 5e36f9062dbe9837437723740a12ac52
-SHA1: 1a5b47042f1bdb369c30577c8b39ae08f18d0cdc
-SHA256: 45bea4935a5fe10eadbce9b3330232015a32c3e08f68ab6081514835dcc5afaa
+MD5sum: 1662766921bad4cf7ce8b9e6b7fe1a9b
+SHA1: 72d16e128927014b3243be642228a2b1c4831dbe
+SHA256: 3c8053642010ab4b22f91cfe6877120e60806f11b6abe461ec9b2ec975c3683e
 Icon: https://repo.maxleiter.com/icons/libgoffice-0.10-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgoffice-0.10-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgoffice-0.10-dev.json
@@ -7122,44 +7451,44 @@ Native Depiction: https://repo.maxleiter.com/depictions/libgraphite2-utils.json
 Homepage: https://repo.maxleiter.com
 
 Package: libgsf-1-114
-Version: 1.14.58+ios1
+Version: 1.14.60+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/libgsf
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libz-ng2
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libz-ng2
 Description: GNOME structured file library
 Installed-Size: 336
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgsf-1-114_1.14.58+ios1_iphoneos-arm64.deb
-Size: 114230
-MD5sum: 702bdc4ffe7621c88055082072185569
-SHA1: 7c56d4af256fdda5e64bd3bf15dc324add0f3e98
-SHA256: 540f661c9cf41edaa77b50932b2741db657c34c38db03d3f6c60eb9642e5a8e4
+Filename: debs/libgsf-1-114_1.14.60+ios1_iphoneos-arm64.deb
+Size: 114492
+MD5sum: bf459fae9e339be1325e618d39419f52
+SHA1: d2ec8c7aafd66923bdb3080a345984fdead5bc1f
+SHA256: 22f8f54b1e5dfd3dd8af6601774c59500e0ee160d8096983654cfb56d2e13880
 Icon: https://repo.maxleiter.com/icons/libgsf-1-114.png
 Depiction: https://repo.maxleiter.com/depictions/libgsf-1-114.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgsf-1-114.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgsf-1-114.json
 
 Package: libgsf-1-dev
-Version: 1.14.58+ios1
+Version: 1.14.60+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/libgsf
-Depends: libgsf-1-114 (= 1.14.58+ios1), libglib2.0-dev, libxml2-dev, libz-ng-dev
+Depends: libgsf-1-114 (= 1.14.60+ios1), libglib2.0-dev, libxml2-dev, libz-ng-dev
 Description: GNOME structured file library - development files
 Installed-Size: 328
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgsf-1-dev_1.14.58+ios1_iphoneos-arm64.deb
-Size: 45472
-MD5sum: 68ecdfd134c9f59f966ecfc7ed898ac2
-SHA1: 4ad23448a367b99c66db049ed097d0e90e4ce58a
-SHA256: 7ffb17d58e2c0e7ba76ca6c81ad4aa9153760bf29cae23b9af36c211b97a4e88
+Filename: debs/libgsf-1-dev_1.14.60+ios1_iphoneos-arm64.deb
+Size: 45582
+MD5sum: 714c7a238d838c1c8e683c5ce9d479ad
+SHA1: d55857ec234dd05c089ec9523fc00b16f908443f
+SHA256: bd26085f5ea8e540735629c3a2d7980ea24992724d7960bdfb9875213917856d
 Icon: https://repo.maxleiter.com/icons/libgsf-1-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgsf-1-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgsf-1-dev.json
@@ -7208,84 +7537,88 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libgspell-1-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgspell-1-dev.json
 
 Package: libgtk-3-0
-Version: 3.24.38+ios3
+Version: 3.24.52+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://www.gtk.org/
 Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libatk1.0-0, libcairo2, libcairo-gobject2, libepoxy0, libfribidi0, libfontconfig1, libharfbuzz0b, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libxcomposite1, libwayland0, libxkbcommon0, libgtkintl, adwaita-icon-theme
 Description: GTK graphical user interface library
-Installed-Size: 36384
+Installed-Size: 40684
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgtk-3-0_3.24.38+ios3_iphoneos-arm64.deb
-Size: 9126378
-MD5sum: b87e81a6b65927df220fe5760c0fec4d
-SHA1: e1111c6eedc2c207d3ef7fb24fdbece37a3a416e
-SHA256: ca7b069ebcbbf18b917b752d3138bb0909dfd8bde5086bb830863841f137e243
+Filename: debs/libgtk-3-0_3.24.52+ios1_iphoneos-arm64.deb
+Size: 10560036
+MD5sum: 62096ecdc2d4aa41904a96887a8d476c
+SHA1: 01abea526bc6bf808e03d698ee92fde536b76f4c
+SHA256: 026aef01588d14e90b227501e991286f2fb3f664f3edefbaff4421028e5c3dd5
 Icon: https://repo.maxleiter.com/icons/libgtk-3-0.png
 Depiction: https://repo.maxleiter.com/depictions/libgtk-3-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-3-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgtk-3-0.json
 
 Package: libgtk-3-dev
-Version: 3.24.38+ios3
+Version: 3.24.52+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libgtk-3-0 (>= 3.24.38+ios2), gtk-3-bin (>= 3.24.38+ios2), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libatk1.0-dev, libcairo2-dev, libepoxy-dev, libwayland-dev, libxkbcommon-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev, libxcomposite-dev
+Depends: libgtk-3-0 (= 3.24.52+ios1), gtk-3-bin (= 3.24.52+ios1), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libatk1.0-dev, libcairo2-dev, libepoxy-dev, libwayland-dev, libxkbcommon-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev, libxcomposite-dev
 Description: Development files for the GTK library
-Installed-Size: 3380
+Installed-Size: 3376
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgtk-3-dev_3.24.38+ios3_iphoneos-arm64.deb
-Size: 544388
-MD5sum: 8a327a9db30f3c84826c8284fccb2407
-SHA1: fe113ee6204ac2e4bb6320c0dac2bc4b9e12f7b7
-SHA256: 557e6c0e2eef865b39e10b537159974ed2e135a088ed6cfd7abd27bdeea24d9a
+Filename: debs/libgtk-3-dev_3.24.52+ios1_iphoneos-arm64.deb
+Size: 545086
+MD5sum: 2fe9e5e83da56f3f6050dc261862da72
+SHA1: bc1aaf021c6cd760ce9a8ac846b58aa0f34accab
+SHA256: 96efc9706e51c848da674de811f1b2117aebcfdf54afd76ec5c87e9f5dd1f3d3
 Icon: https://repo.maxleiter.com/icons/libgtk-3-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgtk-3-dev.json
 
 Package: libgtk-4-1
-Version: 4.14.5+wl1
+Version: 4.14.5+wl2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libcairo2, libcairo-gobject2, libgraphene-1.0-0, libepoxy0, libfribidi0, libharfbuzz0b, libfontconfig1, libpng16-16, libjpeg62-turbo, libtiff5, libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libgtkintl, adwaita-icon-theme
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libpango-1.0-0, libcairo2, libcairo-gobject2, libgraphene-1.0-0, libepoxy0, libfribidi0, libharfbuzz0b (>= 10.2.0), libfontconfig1, libpng16-16, libjpeg62-turbo, libtiff6 (>= 4.7.2), libx11-6, libxext6, libxi6, libxrandr2, libxcursor1, libxfixes3, libxdamage1, libxinerama1, libxrender1, libgtkintl, adwaita-icon-theme, libxkbcommon0, libwayland0, libcairo-script-interpreter2
 Description: GTK graphical user interface library
-Installed-Size: 23844
+Installed-Size: 23876
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgtk-4-1_4.14.5+wl1_iphoneos-arm64.deb
-Size: 4500540
-MD5sum: 4c40190e38741c1c0aa620328c324c23
-SHA1: e3d81aead3ee199b3d92e7f43ee4b8fe79e1fb55
-SHA256: 07ccf1acce06b07ab0a14eed96079ee6fe1b4a50960e02f95a6388d177686d97
+Filename: debs/libgtk-4-1_4.14.5+wl2_iphoneos-arm64.deb
+Size: 6639594
+MD5sum: 4ed41b8546846281dcc905b899c119cb
+SHA1: 48c230b008d8b03a7bcad4a99132d50e67a4f59b
+SHA256: 7000cca4a625697092d94b58a18e4b172ca3a84f322e11cc6618b6cdcfc6d6a0
 Icon: https://repo.maxleiter.com/icons/libgtk-4-1.png
 Depiction: https://repo.maxleiter.com/depictions/libgtk-4-1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-4-1.json
 Native Depiction: https://repo.maxleiter.com/depictions/libgtk-4-1.json
 
 Package: libgtk-4-dev
-Version: 4.14.5+wl1
+Version: 4.14.5+wl2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.2.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.gtk.org/
-Depends: libgtk-4-1 (= 4.14.5+wl1), gtk-4-bin (= 4.14.5+wl1), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libcairo2-dev, libgraphene-1.0-dev, libepoxy-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev
+Depends: libgtk-4-1 (= 4.14.5+wl2), gtk-4-bin (= 4.14.5+wl2), libglib2.0-dev, libpango1.0-dev, libgdk-pixbuf-2.0-dev, libcairo2-dev, libgraphene-1.0-dev, libepoxy-dev, libx11-dev, libxext-dev, libxi-dev, libxrandr-dev, libxcursor-dev, libxfixes-dev, libxdamage-dev, libxinerama-dev, libxrender-dev
 Description: Development files for the GTK library
 Installed-Size: 2828
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libgtk-4-dev_4.14.5+wl1_iphoneos-arm64.deb
-Size: 300520
-MD5sum: 35d309b6547dd47d39192a0af8ac15b5
-SHA1: 5228f3043122832c70a70098d1471a9a653ea78a
-SHA256: 61fa0da85749e12fcea4dc7f75fc368a6d58b8cf823b491cbf473275f754c41b
+Filename: debs/libgtk-4-dev_4.14.5+wl2_iphoneos-arm64.deb
+Size: 299636
+MD5sum: b91f6c5595325c7a28f12c49e297c476
+SHA1: bc30c90ff94e0d0543643cb301305b7b3e89ed90
+SHA256: cd7369ef00cc38d1b07b13a528c75499a74d5cf4895d9c21f04d5663fee79b0c
 Icon: https://repo.maxleiter.com/icons/libgtk-4-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libgtk-4-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libgtk-4-dev.json
@@ -7546,21 +7879,22 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libhandy-1-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libhandy-1-dev.json
 
 Package: libharfbuzz-bin
-Version: 10.2.0+ios2
+Version: 14.5.1+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libcairo2, libharfbuzz-subset0
 Section: Utilities
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine (utility)
-Installed-Size: 608
+Installed-Size: 532
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-bin_10.2.0+ios2_iphoneos-arm64.deb
-Size: 105538
-MD5sum: 9d6459c275321452029c3b19ef5b342a
-SHA1: 6d382412a66f88968767d1661c587f9da2c59940
-SHA256: e863acbc0d7e5911ef897277a4fc919c7243653298f741608c01d1d242905da9
+Filename: debs/libharfbuzz-bin_14.5.1+ios2_iphoneos-arm64.deb
+Size: 114490
+MD5sum: e3a10d93a7a79f5237ba619cbc0c1caf
+SHA1: 3c08d147432125ca7f457ab5dd3496bd8acb888e
+SHA256: f1fbcb1eebdcdf1171d09153223715b50099aa56f19604f24bcc826d994a48f1
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-bin.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.json
@@ -7568,21 +7902,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-bin.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-dev
-Version: 10.2.0+ios2
+Version: 14.5.1+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libharfbuzz0b (= 10.2.0+ios2), libharfbuzz-icu0 (= 10.2.0+ios2), libharfbuzz-subset0 (= 10.2.0+ios2), libfreetype-dev, libicu-dev
+Depends: libharfbuzz0b (= 14.5.1+ios2), libharfbuzz-icu0 (= 14.5.1+ios2), libharfbuzz-subset0 (= 14.5.1+ios2), libfreetype-dev, libicu-dev
 Section: Development
 Priority: standard
 Multi-Arch: foreign
 Description: Development files for OpenType text shaping engine - Ladybird pin 10.2.0
-Installed-Size: 588
+Installed-Size: 648
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-dev_10.2.0+ios2_iphoneos-arm64.deb
-Size: 101004
-MD5sum: f3b781e7106f656717b87138ecbb2b9c
-SHA1: b0c1e317dd0ac96fea521bc87a0f65d4b9030d5f
-SHA256: b4e1a487b8138d9a95f6ff8f1f60f5421a4fc25bc79ac2b7edc149723ed918dd
+Filename: debs/libharfbuzz-dev_14.5.1+ios2_iphoneos-arm64.deb
+Size: 121370
+MD5sum: 8272ceaa30f7b64c751a51e3aa9b5087
+SHA1: bdb05a297b88e0e335c02259a58adf0fa1031786
+SHA256: 5a1154d24f2fd0340228766eed52d7979e6fe8ebe22d8ea29e5b03024cb93cb1
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.json
@@ -7590,21 +7925,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-gobject0
-Version: 10.2.0+ios2
+Version: 14.5.1+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b, libgraphite2-3, libintl8, libfreetype6, libglib2.0-0
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine ICU backend (GObject library)
-Installed-Size: 196
+Installed-Size: 224
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-gobject0_10.2.0+ios2_iphoneos-arm64.deb
-Size: 58370
-MD5sum: da91f2c4e316db685397c3bd18fa2d3e
-SHA1: c49c82485ba099656b2c950f861c4494f0615c9e
-SHA256: afe83151c04940d2f8015b379a77149ebd792bdaae997230a8b30c09f608fb4b
+Filename: debs/libharfbuzz-gobject0_14.5.1+ios2_iphoneos-arm64.deb
+Size: 69914
+MD5sum: c63400dd996d25912165b2c983d6e402
+SHA1: 3bb67c29efb3e24d9f73a779d77b928a971f0c0e
+SHA256: 5c1dd8d5c86b52bfe375b31714481b468a41ce40210db7abbd56aecfa94467b0
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-gobject0.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.json
@@ -7612,21 +7948,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-gobject0.jso
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-icu0
-Version: 10.2.0+ios2
+Version: 14.5.1+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 10.2.0+ios2), libfreetype6, libicu78
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 14.5.1+ios2), libfreetype6, libicu78
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine, ICU backend - Ladybird pin 10.2.0
-Installed-Size: 144
+Installed-Size: 156
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-icu0_10.2.0+ios2_iphoneos-arm64.deb
-Size: 38740
-MD5sum: 7336c892dc656bdf7f7e8c55b49edfb0
-SHA1: 5cab0cc59527425228db2ad0e4383079a305db1a
-SHA256: 10de8397ef41340f0fb5577033699480d49319f05a05bf004b1489e589a247b0
+Filename: debs/libharfbuzz-icu0_14.5.1+ios2_iphoneos-arm64.deb
+Size: 49918
+MD5sum: 2b807d03fe1b1de4587bfd8be4416be1
+SHA1: 14eaf15309c73b04432ca0443140aec0c3dfea2f
+SHA256: 1d8d26caff33b14fd719c9ec324c023cf52e736ecceac8efd60c38226d64b3a4
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-icu0.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-icu0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-icu0.json
@@ -7634,21 +7971,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-icu0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz-subset0
-Version: 10.2.0+ios2
+Version: 14.5.1+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 10.2.0+ios2)
+Depends: libiosexec1 (>= 1.3.1), libharfbuzz0b (= 14.5.1+ios2)
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine, subset backend - Ladybird pin 10.2.0
-Installed-Size: 976
+Installed-Size: 1252
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz-subset0_10.2.0+ios2_iphoneos-arm64.deb
-Size: 357558
-MD5sum: 6496c27e3625eb61e99f0fc8a6906cdf
-SHA1: d1dd87ff495f9280926c4c16cad3fedde4995baf
-SHA256: 90103845dd4cdf413f634037fc115d7883b2662246b0252f6b9a74f8f104d881
+Filename: debs/libharfbuzz-subset0_14.5.1+ios2_iphoneos-arm64.deb
+Size: 460998
+MD5sum: b94675ea432d98b293ead0649c05710e
+SHA1: 0ad066b5fa0037ffb06ca1d4c9d3f514a3f2ece8
+SHA256: 7d2970f538eb238aae65be64ed6017332cba7c91d8d8d87b6e74ed707d3ae872
 Icon: https://repo.maxleiter.com/icons/libharfbuzz-subset0.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.json
@@ -7656,44 +7994,67 @@ Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz-subset0.json
 Homepage: https://repo.maxleiter.com
 
 Package: libharfbuzz0b
-Version: 10.2.0+ios2
+Version: 14.5.1+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), libfreetype6, libglib2.0-0, libgraphite2-3
 Section: Libraries
 Priority: standard
 Multi-Arch: foreign
 Description: OpenType text shaping engine (shared library)
-Installed-Size: 1016
+Installed-Size: 1100
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libharfbuzz0b_10.2.0+ios2_iphoneos-arm64.deb
-Size: 378640
-MD5sum: 9b2142544f11e9702dc9068a3457e7b0
-SHA1: a4af5e0833537cf354e42a08dac364aaef7934f2
-SHA256: 038719e77d4862ad92b8f9a377cb773694e5c55c1bb15d1185d31807d2f9d3e1
+Filename: debs/libharfbuzz0b_14.5.1+ios2_iphoneos-arm64.deb
+Size: 432662
+MD5sum: 5d08393f686e8a6d6f91c24930e03f31
+SHA1: ebcd2d7abd583ae03aefe20e23172333be055c35
+SHA256: 30c7f78ab037d06137ca9bdc1bf7ea2140fbf315a673337d9c551598ad7fbd89
 Icon: https://repo.maxleiter.com/icons/libharfbuzz0b.png
 Depiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.json
 Native Depiction: https://repo.maxleiter.com/depictions/libharfbuzz0b.json
 Homepage: https://repo.maxleiter.com
 
+Package: libhogweed6
+Version: 3.10.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libgmp10, libnettle8 (= 3.10.2+ios1)
+Section: Libraries
+Priority: optional
+Homepage: http://www.lysator.liu.se/~nisse/nettle/
+Description: low level cryptographic library (public-key cryptos)
+Installed-Size: 352
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libhogweed6_3.10.2+ios1_iphoneos-arm64.deb
+Size: 216576
+MD5sum: 53ec073c52abd22d024a2eefe5865fe0
+SHA1: ec813b7961c220e9f3780332608481687f79785d
+SHA256: afedd6632d79555026964dabef22c572ee90e45adfaacf2640f54c43b37c25a3
+Icon: https://repo.maxleiter.com/icons/libhogweed6.png
+Depiction: https://repo.maxleiter.com/depictions/libhogweed6.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libhogweed6.json
+Native Depiction: https://repo.maxleiter.com/depictions/libhogweed6.json
+
 Package: libibus-1.0-5
-Version: 1.5.29+ios1
+Version: 1.5.29+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/ibus/ibus
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libintl-dev
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libintl8
 Description: Intelligent Input Bus - client library
 Installed-Size: 568
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libibus-1.0-5_1.5.29+ios1_iphoneos-arm64.deb
-Size: 190774
-MD5sum: a90216993cd50942821e9ebe2d443891
-SHA1: dbe74dd6293c4584028d82cb8f3349996c1e1a15
-SHA256: 069615c629e1ed8ca6e76f60a97f7f23fc5f6624b6c66900b144d2c2c842b7ea
+Filename: debs/libibus-1.0-5_1.5.29+ios2_iphoneos-arm64.deb
+Size: 154040
+MD5sum: 0075d2b2ae5036730539d56538833db3
+SHA1: 0261c7ee07a353655f5c168cb6a8cccc29b417a3
+SHA256: 6c2121b429b4bb2676c67ca5c94bc38be2b95e803cff700d60b8dffeef8c3ad6
 Icon: https://repo.maxleiter.com/icons/libibus-1.0-5.png
 Depiction: https://repo.maxleiter.com/depictions/libibus-1.0-5.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libibus-1.0-5.json
@@ -7722,44 +8083,44 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libibus-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libibus-dev.json
 
 Package: libical-dev
-Version: 3.0.17+ios1
+Version: 3.0.20+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://libical.github.io/libical/
-Depends: libical3 (>= 3.0.17)
+Depends: libical3 (= 3.0.20+ios1)
 Description: iCalendar parser library - development files
 Installed-Size: 1072
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libical-dev_3.0.17+ios1_iphoneos-arm64.deb
-Size: 78768
-MD5sum: 5c31b5af0169b5a1876ce1c6fc904e75
-SHA1: a641b1bc80d149bd2237a42a87bb51133d659286
-SHA256: 62fb469ebcbd4340161cc6b09d34fd0b1c5520e4095110dd83cf10779589bb16
+Filename: debs/libical-dev_3.0.20+ios1_iphoneos-arm64.deb
+Size: 99308
+MD5sum: 36340e71c4a7aff5b446f4faf2ef466d
+SHA1: 540b0080d425e7db23566781d5a4dd849ad4eb00
+SHA256: 070fae00dc5e11c0d9475e864c9ea9e8720b93e4f9b5be9f7e6027f509dfd1ae
 Icon: https://repo.maxleiter.com/icons/libical-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libical-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libical-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libical-dev.json
 
 Package: libical3
-Version: 3.0.17+ios1
+Version: 3.0.20+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://libical.github.io/libical/
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libicu74
+Depends: libintl8, libiosexec1 (>= 1.3.1), libglib2.0-0, libxml2, libicu74
 Description: iCalendar parser library - runtime
 Installed-Size: 1180
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libical3_3.0.17+ios1_iphoneos-arm64.deb
-Size: 276454
-MD5sum: 116128f9041d68df1d2847ffe3887d35
-SHA1: 785a0597675e2887dad675831af16e34c67b97fb
-SHA256: a613e413f987e04a0ec90249c76739e5d1fffcedb60d3620ab28b03dd022eb09
+Filename: debs/libical3_3.0.20+ios1_iphoneos-arm64.deb
+Size: 279730
+MD5sum: 85862c49a373427d289c87b69a74d289
+SHA1: b5e5cdee9106530908ce1b031e862d5e4faf7441
+SHA256: 92652741ca9335a82a46c0412c463807fa4808f3bd6b112c99f699078beb977c
 Icon: https://repo.maxleiter.com/icons/libical3.png
 Depiction: https://repo.maxleiter.com/depictions/libical3.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libical3.json
@@ -7830,6 +8191,57 @@ Depiction: https://repo.maxleiter.com/depictions/libicu78.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libicu78.json
 Native Depiction: https://repo.maxleiter.com/depictions/libicu78.json
 Homepage: https://repo.maxleiter.com
+
+Package: libidn2-0
+Version: 2.3.8+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libintl8, libunistring5
+Replaces: libidn2 (<< 2.3.8+ios1)
+Conflicts: libidn2 (<< 2.3.8+ios1)
+Provides: libidn2 (= 2.3.8+ios1)
+Section: Libraries
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/libidn/#libidn2
+Description: Internationalized domain names (IDNA2008/TR46) library
+Installed-Size: 876
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libidn2-0_2.3.8+ios1_iphoneos-arm64.deb
+Size: 199418
+MD5sum: 739396d97ed0157659385b841e93acb7
+SHA1: d57d9b98e3ec3f6256dd7d489262e55374ac9776
+SHA256: 055f936702702ae62c05d8a8ad637e5f80f2bab361ebec9c58ad66babe110c05
+Icon: https://repo.maxleiter.com/icons/libidn2-0.png
+Depiction: https://repo.maxleiter.com/depictions/libidn2-0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libidn2-0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libidn2-0.json
+
+Package: libidn2-dev
+Version: 2.3.8+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libidn2-0 (= 2.3.8+ios1)
+Replaces: libidn2 (<< 2.3.8+ios1)
+Conflicts: libidn2 (<< 2.3.8+ios1)
+Section: Development
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/libidn/#libidn2
+Description: Internationalized domain names (IDNA2008/TR46) development files
+Installed-Size: 580
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libidn2-dev_2.3.8+ios1_iphoneos-arm64.deb
+Size: 202878
+MD5sum: 48c43a81b94af28074ebd9c9308e590a
+SHA1: 59877138a498ec6b8ebef658b502ddce76a24a19
+SHA256: 515732a41b26f380086cad8b1b4a4335108bd5a38ac8100f67533368fbf0e996
+Icon: https://repo.maxleiter.com/icons/libidn2-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libidn2-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libidn2-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libidn2-dev.json
 
 Package: libjavascriptcoregtk-4.1-0
 Version: 2.44.4+ios1
@@ -8060,8 +8472,9 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libkscreen-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libkscreen-dev.json
 
 Package: liblcms2-2
-Version: 2.12+ios1
+Version: 2.12+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: standard
@@ -8069,11 +8482,11 @@ Description: Little CMS 2 color management library
 Depends: libiosexec1 (>= 1.3.1)
 Installed-Size: 340
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/liblcms2-2_2.12+ios1_iphoneos-arm64.deb
-Size: 136966
-MD5sum: ad6b0ce2fd41a45cf6583c32e47ea6bd
-SHA1: 5b0225306c3ed79e492d6a351fb2431f8f7a1055
-SHA256: 9a0106a6409756205e9b1e4c06bbc617264c2f11063eac610bc90a9abc49d0df
+Filename: debs/liblcms2-2_2.12+ios2_iphoneos-arm64.deb
+Size: 136964
+MD5sum: e0a6d0e7ad33ec817f53a40d2173b8d7
+SHA1: 61f012ffc360cc43db37d97a8acea70d19a80da5
+SHA256: f3b5f06ea9b87554ff4fcccae81c983bedd843b0a5ce7b9a71a7a197474f8fc9
 Icon: https://repo.maxleiter.com/icons/liblcms2-2.png
 Depiction: https://repo.maxleiter.com/depictions/liblcms2-2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/liblcms2-2.json
@@ -8081,20 +8494,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/liblcms2-2.json
 Homepage: https://repo.maxleiter.com
 
 Package: liblcms2-dev
-Version: 2.12+ios1
+Version: 2.12+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: liblcms2-2 (>= 2.12)
+Depends: liblcms2-2 (= 2.12+ios2)
 Section: Development
 Priority: standard
 Description: Little CMS 2 color management library development headers
 Installed-Size: 656
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/liblcms2-dev_2.12+ios1_iphoneos-arm64.deb
-Size: 173884
-MD5sum: c19fdedf1f79fc415692ff8f4d3cb064
-SHA1: 3742c32c9001ac8e1b3fde4e44f6efc59f3f188a
-SHA256: a537d71cd277018c07f7049f708cd6b182345513dced5e9e5c5ebe0a778274ba
+Filename: debs/liblcms2-dev_2.12+ios2_iphoneos-arm64.deb
+Size: 212334
+MD5sum: ff476b34b9d5088c602076666951dd9b
+SHA1: 32deb37a0cd5081b1c6a4693412e06fe43558a58
+SHA256: 9a7ff414256615ff37c0e7e8769c991ad6d048025dd16a96e01c5234d7669ce4
 Icon: https://repo.maxleiter.com/icons/liblcms2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/liblcms2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/liblcms2-dev.json
@@ -8102,20 +8516,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/liblcms2-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: liblcms2-utils
-Version: 2.12+ios1
+Version: 2.12+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), liblcms2-2 (>= 2.12), libjpeg62-turbo, libtiff5
+Depends: libiosexec1 (>= 1.3.1), liblcms2-2 (>= 2.12+ios2), libjpeg62-turbo, libtiff6 (>= 4.7.2)
 Section: Multimedia
 Priority: standard
 Description: Little CMS 2 color management library (utilities)
 Installed-Size: 516
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/liblcms2-utils_2.12+ios1_iphoneos-arm64.deb
-Size: 45154
-MD5sum: 87916fa738764dd0c8fe6154dd8a4335
-SHA1: 0c5f044461214899a10502ab53b475dbea87f038
-SHA256: 236ab2ea273058a5af1cd71d5d403b1931cacdc35a50ef3fff7e2116c9d98bf8
+Filename: debs/liblcms2-utils_2.12+ios2_iphoneos-arm64.deb
+Size: 45118
+MD5sum: c68f4ecf09d7e6d2a050a218cfdfa33a
+SHA1: 5af573ce3c33447beb7880a3cf0eed425cf0e9cf
+SHA256: e09019015a0533935490de623f8d1547bfcdaa0440750f35a6af32fa08194d5e
 Icon: https://repo.maxleiter.com/icons/liblcms2-utils.png
 Depiction: https://repo.maxleiter.com/depictions/liblcms2-utils.html
 SileoDepiction: https://repo.maxleiter.com/depictions/liblcms2-utils.json
@@ -8142,6 +8557,54 @@ Depiction: https://repo.maxleiter.com/depictions/libltdl7.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libltdl7.json
 Native Depiction: https://repo.maxleiter.com/depictions/libltdl7.json
 Homepage: https://repo.maxleiter.com
+
+Package: liblzma-dev
+Version: 5.8.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Replaces: xz, lzma
+Conflicts: xz (<<1:0), lzma (<<3:0)
+Depends: liblzma5 (>= 5.8.4+ios1)
+Section: Development
+Priority: standard
+Homepage: https://tukaani.org/xz/
+Description: XZ-format compression library - development files
+Installed-Size: 488
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/liblzma-dev_5.8.4+ios1_iphoneos-arm64.deb
+Size: 151450
+MD5sum: bf21bfc42527044e159869522d6c3328
+SHA1: ae01210581c6432131dc36d8b5ffa7379fa9c880
+SHA256: 63064dd732ee0a2dd8dbb834d3dfcb1bcd8ecc3549d8f29d895219ac5382e332
+Icon: https://repo.maxleiter.com/icons/liblzma-dev.png
+Depiction: https://repo.maxleiter.com/depictions/liblzma-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/liblzma-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/liblzma-dev.json
+
+Package: liblzma5
+Version: 5.8.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Replaces: xz, lzma
+Conflicts: xz (<<1:0), lzma (<<3:0)
+Section: Libraries
+Priority: standard
+Homepage: https://tukaani.org/xz/
+Description: XZ-format compression library
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 260
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/liblzma5_5.8.4+ios1_iphoneos-arm64.deb
+Size: 133070
+MD5sum: d0fb827f580393a5c77c86682b62084c
+SHA1: de888f9da067da5b64287d9ea7d557f818a8598a
+SHA256: 6dfef32e3b9c239c0af0d21bc708137536cb67f852913c2d6ec876d9ee3ece80
+Icon: https://repo.maxleiter.com/icons/liblzma5.png
+Depiction: https://repo.maxleiter.com/depictions/liblzma5.html
+SileoDepiction: https://repo.maxleiter.com/depictions/liblzma5.json
+Native Depiction: https://repo.maxleiter.com/depictions/liblzma5.json
 
 Package: libmimalloc
 Version: 2.2.7+ios1
@@ -8360,20 +8823,20 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libmpfr6.json
 Native Depiction: https://repo.maxleiter.com/depictions/libmpfr6.json
 
 Package: libmutter-14-0
-Version: 46.0+ios11
+Version: 46.0+ios12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libgraphene-1.0-0, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libjson-glib-1.0-0, liblcms2-2, libcolord2, libxkbcommon0, libpixman-1-0, libwayland0, angle (>= 2.1.0+git20260630.a32d31d+es3-14), libei1, libatk1.0-0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-4-1, libgraphene-1.0-0, libpango-1.0-0, libcairo2, libgdk-pixbuf-2.0-0, libjson-glib-1.0-0, liblcms2-2, libcolord2, libxkbcommon0, libpixman-1-0, libwayland0, angle (>= 2.1.0+git20260630.a32d31d+es3-14), libei1, libatk1.0-0, libxtst6, libx11-xcb1, libxcb-randr0, libxcb-res0
 Section: Libraries
 Priority: optional
 Description: window manager library from the Mutter window manager
 Installed-Size: 9088
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libmutter-14-0_46.0+ios11_iphoneos-arm64.deb
-Size: 2053604
-MD5sum: 59e568198daa20dd1dd3f55cd5cb5460
-SHA1: 8179e88a801742b16c82d39a5f53a898c3001c41
-SHA256: 134dbd0b78f6c51bcd390c4bfa3644aa85dfc704f215bd94e3b842ac2325a122
+Filename: debs/libmutter-14-0_46.0+ios12_iphoneos-arm64.deb
+Size: 1613910
+MD5sum: cfeaa8ec71844230c66d07385832d6c7
+SHA1: 04dd6291ec598a4e4b9a53e1e0bb519e0a7fad86
+SHA256: d14b1e33b876a6cc416b92a6cee1e144067dfd5a7ba61ba40802a201acf70e47
 Icon: https://repo.maxleiter.com/icons/libmutter-14-0.png
 Depiction: https://repo.maxleiter.com/depictions/libmutter-14-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libmutter-14-0.json
@@ -8441,8 +8904,30 @@ Depiction: https://repo.maxleiter.com/depictions/libmypaint-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libmypaint-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libmypaint-dev.json
 
+Package: libnettle8
+Version: 3.10.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Section: Libraries
+Priority: optional
+Homepage: http://www.lysator.liu.se/~nisse/nettle/
+Description: low level cryptographic library (symmetric and one-way cryptos)
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 380
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libnettle8_3.10.2+ios1_iphoneos-arm64.deb
+Size: 187166
+MD5sum: dbb57d33d3d405d57128ac6373adcbba
+SHA1: 7a889b5da1bec63fb879aace4257176006c34b0c
+SHA256: 3b7ce19e3b8d7e89e9437e76996d8bc827a0a2605d3548364af6e7cbaae29975
+Icon: https://repo.maxleiter.com/icons/libnettle8.png
+Depiction: https://repo.maxleiter.com/depictions/libnettle8.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libnettle8.json
+Native Depiction: https://repo.maxleiter.com/depictions/libnettle8.json
+
 Package: libnghttp2-14
-Version: 1.61.0+ios1
+Version: 1.70.0+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -8453,33 +8938,33 @@ Description: library implementing HTTP/2 protocol (shared library)
 Depends: libiosexec1 (>= 1.3.1)
 Installed-Size: 228
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libnghttp2-14_1.61.0+ios1_iphoneos-arm64.deb
-Size: 74380
-MD5sum: d299bba61204a46b93454af31dd1686f
-SHA1: 356ba174918aaf20b7407634acfbfe037c80cee4
-SHA256: 3233fdb55995f2828569e3017306089ac84a430a0469ee68bed8f223530ed0db
+Filename: debs/libnghttp2-14_1.70.0+ios1_iphoneos-arm64.deb
+Size: 71502
+MD5sum: 35028d5ef92f7f4d766098cbbfba8198
+SHA1: 55789fc7856d69e2183e693066832c0d094a12b0
+SHA256: 0a1b874fc23cf1b6f2c199f5c8bbd328c6f8033105b66ed3ff08cd8e5eafbf9a
 Icon: https://repo.maxleiter.com/icons/libnghttp2-14.png
 Depiction: https://repo.maxleiter.com/depictions/libnghttp2-14.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libnghttp2-14.json
 Native Depiction: https://repo.maxleiter.com/depictions/libnghttp2-14.json
 
 Package: libnghttp2-dev
-Version: 1.61.0+ios1
+Version: 1.70.0+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libnghttp2-14 (= 1.61.0+ios1)
+Depends: libnghttp2-14 (= 1.70.0+ios1)
 Section: Development
 Priority: standard
 Homepage: https://nghttp2.org/
 Description: library implementing HTTP/2 protocol (development files)
-Installed-Size: 560
+Installed-Size: 544
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libnghttp2-dev_1.61.0+ios1_iphoneos-arm64.deb
-Size: 140052
-MD5sum: c6a007bd65be1a242d105744efb877da
-SHA1: d06a3a36f988fa825917dd1c3992bf0bd7cc7be6
-SHA256: a99e0a03ca7ee65f3abc1f9dccbcb69130f32e80e577962a5270614a21b3d827
+Filename: debs/libnghttp2-dev_1.70.0+ios1_iphoneos-arm64.deb
+Size: 134654
+MD5sum: 6990e59d885795a78516b7b1419c27fd
+SHA1: 1da0f2a3b46cac4d735e2a96b44a83f58a96946e
+SHA256: 347191e4fb794bf35587a98c6278cb4b1bcc0b316f77ad7f51eec6bbdddc56de
 Icon: https://repo.maxleiter.com/icons/libnghttp2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libnghttp2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libnghttp2-dev.json
@@ -8528,6 +9013,55 @@ Icon: https://repo.maxleiter.com/icons/libnotify4.png
 Depiction: https://repo.maxleiter.com/depictions/libnotify4.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libnotify4.json
 Native Depiction: https://repo.maxleiter.com/depictions/libnotify4.json
+
+Package: libp11-kit-dev
+Version: 0.26.5+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Conflicts: p11-kit (<< 0.26.5+ios1)
+Depends: libp11-kit0 (>= 0.26.5+ios1), libintl-dev, libffi-dev
+Section: Development
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://p11-glue.github.io/p11-glue/p11-kit.html
+Description: library for loading and coordinating access to PKCS#11 modules - development
+Installed-Size: 820
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libp11-kit-dev_0.26.5+ios1_iphoneos-arm64.deb
+Size: 108302
+MD5sum: 80780f37e9e87c70abdd1fb0b1e744d4
+SHA1: d188529325001c031e342503467cd88cc869a605
+SHA256: 13652d44ba5293fbc84738060de55c472f94284a23a8b9366a14c0b88a94ff16
+Icon: https://repo.maxleiter.com/icons/libp11-kit-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libp11-kit-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libp11-kit-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libp11-kit-dev.json
+
+Package: libp11-kit0
+Version: 0.26.5+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Conflicts: p11-kit (<< 0.26.5+ios1)
+Replaces: p11-kit (<< 0.26.5+ios1)
+Depends: libiosexec1 (>= 1.3.1), libintl8, libffi8, ca-certificates
+Section: Libraries
+Priority: standard
+Multi-Arch: foreign
+Homepage: https://p11-glue.github.io/p11-glue/p11-kit.html
+Description: library for loading and coordinating access to PKCS#11 modules - runtime
+Installed-Size: 1332
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libp11-kit0_0.26.5+ios1_iphoneos-arm64.deb
+Size: 270586
+MD5sum: c7f65bfb24cf62851e10959bce504b77
+SHA1: 6bdf9b37f6503b44c695e07a1cd8dbfa732c577f
+SHA256: 7ada6b83d425c1b74c9eae32b232d0c3c880812d8109a2030368a1908519e802
+Icon: https://repo.maxleiter.com/icons/libp11-kit0.png
+Depiction: https://repo.maxleiter.com/depictions/libp11-kit0.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libp11-kit0.json
+Native Depiction: https://repo.maxleiter.com/depictions/libp11-kit0.json
 
 Package: libpango-1.0-0
 Version: 1.50.14+ios1
@@ -8742,7 +9276,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libplasma-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libplasma-dev.json
 
 Package: libpng16-16
-Version: 1.6.50+ios1
+Version: 1.6.59+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -8753,11 +9287,11 @@ Description: PNG library - runtime (version 1.6)
 Depends: libiosexec1 (>= 1.3.1)
 Installed-Size: 248
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libpng16-16_1.6.50+ios1_iphoneos-arm64.deb
-Size: 101510
-MD5sum: 95f64b3bad1887a68097bedae97a2bef
-SHA1: 82a4899fd3c7af4282c7d6bfc91d6ba4b04e8b64
-SHA256: 50128fb3a472dd57fbf4beeb971a46f01348ff2d4c750a2e10ded250dc8d23ff
+Filename: debs/libpng16-16_1.6.59+ios1_iphoneos-arm64.deb
+Size: 102274
+MD5sum: 87bcd2fb5d7a02ebfc6bb5922a0558a1
+SHA1: 096eee96578eb462f4bc46717e1033380f460e28
+SHA256: 5ae7ac26b7c731908bc495079123b1c6e2567710e0c65dc3223cefca7e823b81
 Icon: https://repo.maxleiter.com/icons/libpng16-16.png
 Depiction: https://repo.maxleiter.com/depictions/libpng16-16.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libpng16-16.json
@@ -8765,22 +9299,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/libpng16-16.json
 Homepage: https://repo.maxleiter.com
 
 Package: libpng16-dev
-Version: 1.6.50+ios1
+Version: 1.6.59+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libpng16-16 (>= 1.6.50+ios1)
+Depends: libpng16-16 (>= 1.6.59+ios1)
 Section: Development
 Priority: optional
 Multi-Arch: foreign
 Description: PNG library - development (version 1.6)
 Installed-Size: 608
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libpng16-dev_1.6.50+ios1_iphoneos-arm64.deb
-Size: 242994
-MD5sum: dd4488898dcca1407bc3bc242c8aa7c4
-SHA1: 809d4f753c495f98ad5f45c95605b894796f8210
-SHA256: fc4a83a5e95e05c5cf824243bcc036cb27d08d5d4f27cb1ca91fe889cf3bfc9d
+Filename: debs/libpng16-dev_1.6.59+ios1_iphoneos-arm64.deb
+Size: 243552
+MD5sum: 472d90c48ecec3f955efebc160e29e90
+SHA1: 715edfcd8feb995fd326cb4f7a350f83dff51741
+SHA256: 7d5342aa103387b8b0bba5ce0933bc63114c961f07681c280ac849af30789ae2
 Icon: https://repo.maxleiter.com/icons/libpng16-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libpng16-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libpng16-dev.json
@@ -8788,22 +9322,22 @@ Native Depiction: https://repo.maxleiter.com/depictions/libpng16-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libpng16-tools
-Version: 1.6.50+ios1
+Version: 1.6.59+ios1
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libpng16-16 (>= 1.6.50+ios1)
+Depends: libiosexec1 (>= 1.3.1), libpng16-16 (>= 1.6.59+ios1)
 Section: Multimedia
 Priority: optional
 Multi-Arch: foreign
 Description: PNG library - minimal runtime library (version 1.6)
 Installed-Size: 220
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libpng16-tools_1.6.50+ios1_iphoneos-arm64.deb
-Size: 32444
-MD5sum: 06102d3930ade49babf34725e08fe4ad
-SHA1: 8a6f1cac2a6fe82eb5e9a237cd127e7997b0fcc2
-SHA256: 83b5bf41cbe0883182321b8215b271cf5c84475d03fe5dc8b35b840521ebaae1
+Filename: debs/libpng16-tools_1.6.59+ios1_iphoneos-arm64.deb
+Size: 32630
+MD5sum: c961a83491d4066b89fbf6c26f25bd17
+SHA1: 868676fe77755bff953e23584dbdef960aba8b99
+SHA256: 84f0a05eb387ad6ebad8958ebc15fb17b90f87c014d70fdcd8b51a958c944384
 Icon: https://repo.maxleiter.com/icons/libpng16-tools.png
 Depiction: https://repo.maxleiter.com/depictions/libpng16-tools.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libpng16-tools.json
@@ -9194,84 +9728,88 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libqrencode4.json
 Native Depiction: https://repo.maxleiter.com/depictions/libqrencode4.json
 
 Package: librsvg2-2
-Version: 2.56.5+ios1
+Version: 2.56.6+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://wiki.gnome.org/Projects/LibRsvg
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libcairo2, libcairo-gobject2, libpango-1.0-0, libfreetype6, libharfbuzz0b, libxml2
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgdk-pixbuf-2.0-0, libcairo2, libcairo-gobject2, libpango-1.0-0, libfreetype6, libharfbuzz0b, libxml2, libgtkintl
 Description: SVG rendering library
-Installed-Size: 3908
+Installed-Size: 3924
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/librsvg2-2_2.56.5+ios1_iphoneos-arm64.deb
-Size: 1591926
-MD5sum: 11f44371e9f6f1ef686353dbf626d875
-SHA1: 302f2a8f37d3bf53d8178100be5084bbdc245de6
-SHA256: e00f3b87ba22aed7c18708e88f76dbed544b15a4d1c1f3d789abb10c68f8cc3a
+Filename: debs/librsvg2-2_2.56.6+ios1_iphoneos-arm64.deb
+Size: 1597600
+MD5sum: 557575e79f55ad690367752e8f49423d
+SHA1: 16e2e7e20307990d054544d478e8ef747ac9114e
+SHA256: 1d8baf4952e65b95df0704f81207bf890611c24d40d89ed7a9cd31deaf97c8e6
 Icon: https://repo.maxleiter.com/icons/librsvg2-2.png
 Depiction: https://repo.maxleiter.com/depictions/librsvg2-2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/librsvg2-2.json
 Native Depiction: https://repo.maxleiter.com/depictions/librsvg2-2.json
 
 Package: librsvg2-bin
-Version: 2.56.5+ios1
+Version: 2.56.6+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
 Priority: optional
 Homepage: https://wiki.gnome.org/Projects/LibRsvg
-Depends: libiosexec1 (>= 1.3.1), librsvg2-2 (>= 2.56.5), libglib2.0-0, libgdk-pixbuf-2.0-0, libcairo2, libpango-1.0-0
+Depends: libiosexec1 (>= 1.3.1), librsvg2-2 (= 2.56.6+ios1), libglib2.0-0, libgdk-pixbuf-2.0-0, libcairo2, libpango-1.0-0, libxml2, libgtkintl, libz1
 Description: command-line SVG conversion tools
-Installed-Size: 4744
+Installed-Size: 4760
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/librsvg2-bin_2.56.5+ios1_iphoneos-arm64.deb
-Size: 1583502
-MD5sum: 8685e671d615873243813deb12b0d7f3
-SHA1: b792955780d0b85abc6cba5e355db306fed1c628
-SHA256: d42cc8108ee5008d09eda295daf9424eeedd484d81bc5e9819da126472ac96d2
+Filename: debs/librsvg2-bin_2.56.6+ios1_iphoneos-arm64.deb
+Size: 1908334
+MD5sum: a4143f415ab9502887f64739052f3477
+SHA1: 13321c80629c5293d1fb56e9c6317f36ea3a22d0
+SHA256: aac931b92ed63877ca4890877a067c882f00b2c30c47907cbf156fecded23f48
 Icon: https://repo.maxleiter.com/icons/librsvg2-bin.png
 Depiction: https://repo.maxleiter.com/depictions/librsvg2-bin.html
 SileoDepiction: https://repo.maxleiter.com/depictions/librsvg2-bin.json
 Native Depiction: https://repo.maxleiter.com/depictions/librsvg2-bin.json
 
 Package: librsvg2-common
-Version: 2.56.5+ios1
+Version: 2.56.6+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://wiki.gnome.org/Projects/LibRsvg
-Depends: libiosexec1 (>= 1.3.1), librsvg2-2 (>= 2.56.5), libgdk-pixbuf-2.0-0, libglib2.0-0
+Depends: libiosexec1 (>= 1.3.1), librsvg2-2 (= 2.56.6+ios1), libgdk-pixbuf-2.0-0, libglib2.0-0
 Description: SVG loader for GdkPixbuf
 Installed-Size: 156
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/librsvg2-common_2.56.5+ios1_iphoneos-arm64.deb
-Size: 35742
-MD5sum: a71cb190ce721179b9c633c6206d19b7
-SHA1: 81ab2aa4f79f10501d53b4bec9daec46dd8c84b7
-SHA256: c969540967d3035c77636c97add2cab3479d77d9d994fb6224551fad01d6448b
+Filename: debs/librsvg2-common_2.56.6+ios1_iphoneos-arm64.deb
+Size: 36840
+MD5sum: 4f816bd50527c1d3f5df31d8d84a29b7
+SHA1: f07a84fae8fc09b1983564d7f15409c23b5387c1
+SHA256: c11ff49b67a74ac57d2e7880762f2636f87d6259d0de2e17f8937f0430d9b78e
 Icon: https://repo.maxleiter.com/icons/librsvg2-common.png
 Depiction: https://repo.maxleiter.com/depictions/librsvg2-common.html
 SileoDepiction: https://repo.maxleiter.com/depictions/librsvg2-common.json
 Native Depiction: https://repo.maxleiter.com/depictions/librsvg2-common.json
 
 Package: librsvg2-dev
-Version: 2.56.5+ios1
+Version: 2.56.6+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://wiki.gnome.org/Projects/LibRsvg
-Depends: librsvg2-2 (>= 2.56.5), libgdk-pixbuf-2.0-dev, libcairo2-dev, libpango1.0-dev, libfreetype-dev, libharfbuzz-dev, libxml2-dev
+Depends: librsvg2-2 (= 2.56.6+ios1), libgdk-pixbuf-2.0-dev, libcairo2-dev, libpango1.0-dev, libfreetype-dev, libharfbuzz-dev, libxml2-dev
 Description: Development files for librsvg
 Installed-Size: 176
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/librsvg2-dev_2.56.5+ios1_iphoneos-arm64.deb
-Size: 49198
-MD5sum: 521ec8f121c20ca7569dea2eb81eff14
-SHA1: 66a0477b6d61bf27121bf2804bb473deaf967bb9
-SHA256: fe761c3895401bcacc3ccd0327bcc82d9e8eb9cd7cae76528f6c9c630ba95710
+Filename: debs/librsvg2-dev_2.56.6+ios1_iphoneos-arm64.deb
+Size: 53848
+MD5sum: d8c670d7b60aca71218c9edfdf0b5029
+SHA1: f5c8e861393a8044266247da2b7bd0e765e84e13
+SHA256: b1074daa4d36561eac6d2bdf5f3ce7edeccb5507c05542bc92cab0d051072fdf
 Icon: https://repo.maxleiter.com/icons/librsvg2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/librsvg2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/librsvg2-dev.json
@@ -9476,43 +10014,89 @@ Depiction: https://repo.maxleiter.com/depictions/libsimdutf-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsimdutf-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libsimdutf-dev.json
 
-Package: libsoup-3.0-0
-Version: 3.4.4+ios1
+Package: libsndfile1
+Version: 1.2.2+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libflac8, libvorbis0a, libvorbisenc2, libopus0, libogg0
+Section: Libraries
+Priority: standard
+Description: Library for reading/writing audio files
+Installed-Size: 512
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libsndfile1_1.2.2+ios1_iphoneos-arm64.deb
+Size: 199734
+MD5sum: 2cdfb32fc666efa7f2e93d7449a63b7f
+SHA1: 1c49ad45143fe7748063b1481eb0bafa0d0596ca
+SHA256: cb11da2c4f773a98a6502406a9a4d52560289cb4007210a8fa2f19290fecabb0
+Icon: https://repo.maxleiter.com/icons/libsndfile1.png
+Depiction: https://repo.maxleiter.com/depictions/libsndfile1.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libsndfile1.json
+Native Depiction: https://repo.maxleiter.com/depictions/libsndfile1.json
+Homepage: https://repo.maxleiter.com
+
+Package: libsndfile1-dev
+Version: 1.2.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libsndfile1 (= 1.2.2+ios1), libflac-dev, libvorbis-dev, libopus-dev, libogg-dev
+Section: Development
+Priority: standard
+Description: Development files for libsndfile; a library for reading/writing audio files
+Installed-Size: 800
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libsndfile1-dev_1.2.2+ios1_iphoneos-arm64.deb
+Size: 279752
+MD5sum: e0e4b604b38eee7d3daa575cd08a882e
+SHA1: 4bb8a7d831be9d1529ed9b30d776e46ec59773db
+SHA256: 3617d3128d4282cbdf88e12f0c84f4ccc865a79f4404916a5ed41df0efdc3252
+Icon: https://repo.maxleiter.com/icons/libsndfile1-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libsndfile1-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libsndfile1-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libsndfile1-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libsoup-3.0-0
+Version: 3.8.0+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://libsoup.org/
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libpsl5, libxml2, libnghttp2-14, libsqlite3-1, libbrotli1
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libpsl5, libxml2, libnghttp2-14, libsqlite3-1, libbrotli1, libz1
 Description: HTTP client/server library for GNOME (libsoup 3) - runtime
-Installed-Size: 652
+Installed-Size: 672
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libsoup-3.0-0_3.4.4+ios1_iphoneos-arm64.deb
-Size: 254494
-MD5sum: ccdd140a2ac072b48275ab232d40c464
-SHA1: 200c33c4b96ca2f7aaf9bf0503151c5a30efd29f
-SHA256: 1c9b3d2174811b89c357b918bca805916fc72008ec6227dd0b2b18966386786e
+Filename: debs/libsoup-3.0-0_3.8.0+ios1_iphoneos-arm64.deb
+Size: 269298
+MD5sum: 8c88ca253c7b3ba524ff2497e456a65e
+SHA1: cfc45fca6800fb5d18ad643e3cdcb6684d1316c1
+SHA256: 148e496b09ad8b5664005c3df6f9b9febbd437ef024a583a87ede5304f75aaab
 Icon: https://repo.maxleiter.com/icons/libsoup-3.0-0.png
 Depiction: https://repo.maxleiter.com/depictions/libsoup-3.0-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsoup-3.0-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libsoup-3.0-0.json
 
 Package: libsoup-3.0-dev
-Version: 3.4.4+ios1
+Version: 3.8.0+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://libsoup.org/
-Depends: libsoup-3.0-0 (>= 3.4.4), libglib2.0-dev, libbrotli-dev
+Depends: libsoup-3.0-0 (= 3.8.0+ios1), libglib2.0-dev, libbrotli-dev
 Description: Development files for libsoup 3
-Installed-Size: 332
+Installed-Size: 360
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libsoup-3.0-dev_3.4.4+ios1_iphoneos-arm64.deb
-Size: 76232
-MD5sum: e02085529ecb37b8814ee9a0fa482eec
-SHA1: 31ce36397d3f8e82547772a8ab62d5f71d8bffb9
-SHA256: ed01176eee871084565d342dcdfca8eec6f0ba38474c1bdd56d29f1410cb8ce2
+Filename: debs/libsoup-3.0-dev_3.8.0+ios1_iphoneos-arm64.deb
+Size: 86616
+MD5sum: 73587f9d8f2cae02434f2bc5fbdbb3eb
+SHA1: e169459798c235060ff5b8401058e9135bf038bd
+SHA256: 15af33a071c4a696b19ba7a1966eb6c3ecac092bb20b5508dd0eca465f946ca5
 Icon: https://repo.maxleiter.com/icons/libsoup-3.0-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libsoup-3.0-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsoup-3.0-dev.json
@@ -9521,19 +10105,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libsoup-3.0-dev.json
 Package: libsqlite3-1
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-Version: 3.52.0+ios3
+MinimumOSVersion: 16.0.0
+Version: 3.53.4+ios3
 Section: Libraries
 Priority: standard
 Description: SQLite 3 shared library
 Homepage: https://www.sqlite.org/
 Depends: libiosexec1 (>= 1.3.1)
-Installed-Size: 1128
+Installed-Size: 1148
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libsqlite3-1_3.52.0+ios3_iphoneos-arm64.deb
-Size: 636398
-MD5sum: f9871a9554c9b75a370ecd070e5c6e4a
-SHA1: 3011e4efa371a1b41bfdffb52cf9e219052c50a0
-SHA256: a4b09ad1b6eebc0560d9735ec81424c4c60967e493a7ef52b09418209f6628cc
+Filename: debs/libsqlite3-1_3.53.4+ios3_iphoneos-arm64.deb
+Size: 644496
+MD5sum: 95f4769c16c1568a711571e1a82e5522
+SHA1: d5d3ca90edb1924a8b886c49bea4532d2990b0f2
+SHA256: c56a2d81ed04e18839c1a0b64c5195cfc6b4ac989ae0b0683eda395d438a5a1b
 Icon: https://repo.maxleiter.com/icons/libsqlite3-1.png
 Depiction: https://repo.maxleiter.com/depictions/libsqlite3-1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsqlite3-1.json
@@ -9542,19 +10127,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libsqlite3-1.json
 Package: libsqlite3-dev
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-Version: 3.52.0+ios3
-Depends: libsqlite3-1 (= 3.52.0+ios3)
+MinimumOSVersion: 16.0.0
+Version: 3.53.4+ios3
+Depends: libsqlite3-1 (= 3.53.4+ios3)
 Section: Development
 Priority: standard
 Description: SQLite 3 development files
 Homepage: https://www.sqlite.org/
-Installed-Size: 2296
+Installed-Size: 2328
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libsqlite3-dev_3.52.0+ios3_iphoneos-arm64.deb
-Size: 936336
-MD5sum: c8a28111235faeecb728036fed5ac982
-SHA1: 2f00e737a15a72099c6fa675b0ee2615d4dace55
-SHA256: 277614079e63141d2dbd4089c562669f459b44afb2f15bc536f280ebb6130cc6
+Filename: debs/libsqlite3-dev_3.53.4+ios3_iphoneos-arm64.deb
+Size: 951962
+MD5sum: dbb6cbccb91a5a29b20a6f30b30c096e
+SHA1: 84523cbdff8aa6084e68ee948951c146db2910bf
+SHA256: f1e8f2124cb4014c37502ea125a4610392f9ed31dad5b0c963c2a13f1fa0ba98
 Icon: https://repo.maxleiter.com/icons/libsqlite3-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libsqlite3-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libsqlite3-dev.json
@@ -9671,21 +10257,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libswresample-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libswresample4
-Version: 5.1.2+ios2
+Version: 5.1.10+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
-Depends: libiosexec1 (>= 1.3.1), libavutil57 (>= 5.1.2)
+Depends: libiosexec1 (>= 1.3.1), libavutil57 (= 5.1.10+ios2)
 Description: FFmpeg audio resampling library - runtime
 Installed-Size: 140
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libswresample4_5.1.2+ios2_iphoneos-arm64.deb
-Size: 36488
-MD5sum: 6ad863e5acc5a084c7c189effc1f6a8e
-SHA1: c417109244d98751b2f0856d350eeef6bf2bb7ad
-SHA256: dae546c92b0e1468c4c9c507bab1ba68db8e68813d87f7f6d2ccfb37e45c3504
+Filename: debs/libswresample4_5.1.10+ios2_iphoneos-arm64.deb
+Size: 43074
+MD5sum: e783f355fa55aace8132acdc47532b66
+SHA1: 3de0e23d4677aae65dcc962672c258507688ba12
+SHA256: feced07d56b88f544e904de9183fae66bff8a94ec222de4d7a63601edbb78a42
 Icon: https://repo.maxleiter.com/icons/libswresample4.png
 Depiction: https://repo.maxleiter.com/depictions/libswresample4.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libswresample4.json
@@ -9736,42 +10322,117 @@ Native Depiction: https://repo.maxleiter.com/depictions/libswscale-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libswscale6
-Version: 5.1.2+ios2
+Version: 5.1.10+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
-Depends: libiosexec1 (>= 1.3.1), libavutil57 (>= 5.1.2)
+Depends: libiosexec1 (>= 1.3.1), libavutil57 (= 5.1.10+ios2)
 Description: FFmpeg image scaling library - runtime
 Installed-Size: 560
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libswscale6_5.1.2+ios2_iphoneos-arm64.deb
-Size: 156590
-MD5sum: 222a795a6352c743e234a6cb86112ed3
-SHA1: ef42d54edc187b6f7ae3e3e0fedd8ec24e8a4523
-SHA256: 73cbb16172a9cbc7f7b7bbab30d4d4ba020b2e3de3c2689bec10eebc0c353402
+Filename: debs/libswscale6_5.1.10+ios2_iphoneos-arm64.deb
+Size: 187634
+MD5sum: be89349b6dc87e2aea528a61137283b2
+SHA1: 0386cf4812fa43690cb6e50cbdd0393eee84a8d6
+SHA256: 22fac0bc5ba2da6753101492e6bd0d09ee5d546948de331c84f43ed67828a3ed
 Icon: https://repo.maxleiter.com/icons/libswscale6.png
 Depiction: https://repo.maxleiter.com/depictions/libswscale6.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libswscale6.json
 Native Depiction: https://repo.maxleiter.com/depictions/libswscale6.json
 Homepage: https://repo.maxleiter.com
 
-Package: libtiff6
-Version: 4.7.0+ios2
+Package: libtasn1-6
+Version: 4.21.0+ios1
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Replaces: libtasn1 (<< 1:0)
+Conflicts: libtasn1 (<< 1:0)
+Provides: libtasn1 (= 4.21.0+ios1)
+Section: Libraries
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/libtasn1
+Description: Manage ASN.1 structures (runtime)
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 196
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libtasn1-6_4.21.0+ios1_iphoneos-arm64.deb
+Size: 58456
+MD5sum: c15b3b6c2895f1752439f66375a132c6
+SHA1: 9956269ac22dedebd5e17269a96e4b0afbce0a0d
+SHA256: e5fcc4bb0a2037e060f9b0a5ab55be26c90931cb71aed3c0d009dde43f2d95ae
+Icon: https://repo.maxleiter.com/icons/libtasn1-6.png
+Depiction: https://repo.maxleiter.com/depictions/libtasn1-6.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libtasn1-6.json
+Native Depiction: https://repo.maxleiter.com/depictions/libtasn1-6.json
+
+Package: libtasn1-6-dev
+Version: 4.21.0+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Conflicts: libtasn1 (<< 4.21.0+ios1)
+Depends: libtasn1-6 (>= 4.21.0+ios1)
+Section: Development
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/libtasn1
+Description: Manage ASN.1 structures (development)
+Installed-Size: 388
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libtasn1-6-dev_4.21.0+ios1_iphoneos-arm64.deb
+Size: 112898
+MD5sum: 91651b8b91d4d57d17ce731ae1eff615
+SHA1: df2df06257ae6b6c4e000627109945b504525cb2
+SHA256: c5fb033e84cae8f01899e7c84e68ff77be982580408b5f7286ed680221f14619
+Icon: https://repo.maxleiter.com/icons/libtasn1-6-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libtasn1-6-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libtasn1-6-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libtasn1-6-dev.json
+
+Package: libtasn1-bin
+Version: 4.21.0+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Conflicts: libtasn1 (<< 4.21.0+ios1)
+Depends: libiosexec1 (>= 1.3.1), libtasn1-6 (>= 4.21.0+ios1)
+Section: Security
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://www.gnu.org/software/libtasn1
+Description: Manage ASN.1 structures (binaries)
+Installed-Size: 368
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libtasn1-bin_4.21.0+ios1_iphoneos-arm64.deb
+Size: 48046
+MD5sum: a390e30377b1b06e26d0a156259c9ef0
+SHA1: 84de0aefc2f852319a6b33fbe52919747aede3ae
+SHA256: f63e52fc9a887a245797f18b44c6d96dfc8e13b0fc3ebd7221dabb73f7db961a
+Icon: https://repo.maxleiter.com/icons/libtasn1-bin.png
+Depiction: https://repo.maxleiter.com/depictions/libtasn1-bin.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libtasn1-bin.json
+Native Depiction: https://repo.maxleiter.com/depictions/libtasn1-bin.json
+
+Package: libtiff6
+Version: 4.7.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://www.gimp.org/
 Depends: libjpeg62-turbo, libwebp7, libz1
-Description: TIFF image codec runtime for GIMP with a private XZ runtime
+Description: TIFF image codec runtime (libtiff 4.7) with a private XZ runtime
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libtiff6_4.7.0+ios2_iphoneos-arm64.deb
-Size: 286626
-MD5sum: a9d722ac3ba3347aad093dc9685007fe
-SHA1: 2a00c3bec5aca3465b3c7e4d231fd0bb7c10c53d
-SHA256: 1a10cbe517a5f76251ecf17e23919054a442722c4a922d0db088c6dc0e151968
+Filename: debs/libtiff6_4.7.2+ios1_iphoneos-arm64.deb
+Size: 289916
+MD5sum: 080ebc73cc9445514a591309b9184535
+SHA1: 3a505b832a71a84e042275d16bc7824a5165ed58
+SHA256: 15ccc15012ad555776e6a924a233b05ba55affdbb0688b094e6cf9651d7be56b
 Icon: https://repo.maxleiter.com/icons/libtiff6.png
 Depiction: https://repo.maxleiter.com/depictions/libtiff6.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libtiff6.json
@@ -10108,22 +10769,22 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libvte-2.91-gtk4-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libvte-2.91-gtk4-0.json
 
 Package: libwayland-dev
-Version: 1.24.0+ios2
+Version: 1.24.0+ios3
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libwayland0 (= 1.24.0+ios2), libffi-dev, libexpat1-dev
+Depends: libiosexec1 (>= 1.3.1), libwayland0 (= 1.24.0+ios2), libffi-dev
 Section: Development
 Priority: optional
 Homepage: https://wayland.freedesktop.org
 Description: Development files for the Wayland libraries
 Installed-Size: 820
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libwayland-dev_1.24.0+ios2_iphoneos-arm64.deb
-Size: 122024
-MD5sum: fd2841b3ceec95ca25fe9e0fe6878d45
-SHA1: b909d59e38504862a7db35672435e0dd73518bdd
-SHA256: eacd70cbeb499b714b81d01c2816676f15bcc889e384af507cfe2f12498ec9f4
+Filename: debs/libwayland-dev_1.24.0+ios3_iphoneos-arm64.deb
+Size: 122018
+MD5sum: 695fbe58cf87029078b30b1704969671
+SHA1: 1555f993348fa59576f6ebb80627f97870977625
+SHA256: 07c3efad9f4a4710e3c93d6413d7dd257c257e83e6f55c62bfa4a263661c52b1
 Icon: https://repo.maxleiter.com/icons/libwayland-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libwayland-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libwayland-dev.json
@@ -10153,42 +10814,42 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libwayland0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libwayland0.json
 
 Package: libwebkit2gtk-4.1-0
-Version: 2.44.4+ios1
+Version: 2.44.4+ios5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://webkitgtk.org/
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libjavascriptcoregtk-4.1-0 (= 2.44.4+ios1), libglib2.0-0, libgtk-3-0, libsoup-3.0-0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libharfbuzz0b, libfontconfig1, libfreetype6, libjpeg62-turbo, libpng16-16, libwebp7, libwebpdemux2, libwebpmux3, libxml2, libxslt1.1, libsecret-1-0, libgcrypt20, libtasn1-6, libepoxy0, libwayland0, libx11-6, libxcomposite1, libxdamage1, libxrender1, libatk-bridge2.0-0, libatk1.0-0
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libjavascriptcoregtk-4.1-0 (= 2.44.4+ios1), libglib2.0-0, libgtk-3-0, libsoup-3.0-0, libcairo2, libpango-1.0-0, libgdk-pixbuf-2.0-0, libharfbuzz0b, libfontconfig1, libfreetype6, libjpeg62-turbo, libpng16-16, libwebp7, libwebpdemux2, libwebpmux3, libxml2, libxslt1.1, libsecret-1-0, libgcrypt20, libtasn1-6, libepoxy0, libwayland0, libx11-6, libxcomposite1, libxdamage1, libxrender1, libatk-bridge2.0-0, libatk1.0-0, libintl8
 Description: WebKitGTK 4.1 runtime for rootless iOS
 Installed-Size: 70600
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libwebkit2gtk-4.1-0_2.44.4+ios1_iphoneos-arm64.deb
-Size: 18355868
-MD5sum: 403586e8613a0eedcb05b6c2c7a4f673
-SHA1: 31d870e95a85a5fbc4dc7610ac325c1c80767876
-SHA256: 3185363eb1f516abe90ce8566906250b3c86b967ad87151fc23d2353566c9b29
+Filename: debs/libwebkit2gtk-4.1-0_2.44.4+ios5_iphoneos-arm64.deb
+Size: 14450278
+MD5sum: 27a9c433d2c87dac3e234f7d35302971
+SHA1: 449f8ed273f435f719d19012d04bb4f5e92c4e69
+SHA256: 79ee3b1e043a4a586a51372e586f1eabe75a7885ee36716ed93dd27d64d59566
 Icon: https://repo.maxleiter.com/icons/libwebkit2gtk-4.1-0.png
 Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-0.json
 
 Package: libwebkit2gtk-4.1-dev
-Version: 2.44.4+ios1
+Version: 2.44.4+ios5
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://webkitgtk.org/
-Depends: libwebkit2gtk-4.1-0 (= 2.44.4+ios1), libjavascriptcoregtk-4.1-dev (= 2.44.4+ios1), libgtk-3-dev, libsoup-3.0-dev, libglib2.0-dev
+Depends: libwebkit2gtk-4.1-0 (= 2.44.4+ios5), libjavascriptcoregtk-4.1-dev (= 2.44.4+ios1), libgtk-3-dev, libsoup-3.0-dev, libglib2.0-dev
 Description: WebKitGTK 4.1 development files for rootless iOS
 Installed-Size: 1464
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libwebkit2gtk-4.1-dev_2.44.4+ios1_iphoneos-arm64.deb
-Size: 136780
-MD5sum: 9261507c264c34497da991e3ff40de28
-SHA1: 9effbe01529b38439988bd1e09891555d28f2c9c
-SHA256: 5ccc680fcd15a80bc7674c88a810264d8663e6d39625d9b2da06f095085dfcf9
+Filename: debs/libwebkit2gtk-4.1-dev_2.44.4+ios5_iphoneos-arm64.deb
+Size: 136364
+MD5sum: 82a51eef25e1754c47a9cc35b1f3b3dc
+SHA1: 82a42b213ed81f4d1e581a16e09d2238fd73dbf7
+SHA256: bf6069978891c32d7c524510213a37e6b2120437a07119433220876084a6c0cb
 Icon: https://repo.maxleiter.com/icons/libwebkit2gtk-4.1-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libwebkit2gtk-4.1-dev.json
@@ -10328,19 +10989,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/libwoff2-dev.json
 Package: libx11-6
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-Version: 1.7.3.1+ios1
-Depends: libiosexec1 (>= 1.2.2), libx11-data (>= 1.7.3.1), libxcb1
+MinimumOSVersion: 16.0.0
+Version: 1.8.14+ios1
+Depends: libiosexec1 (>= 1.3.1), libx11-data (= 1.8.14+ios1), libxcb1
 Section: Libraries
 Priority: optional
 Multi-Arch: foreign
 Description: X11 client-side library
-Installed-Size: 1152
+Installed-Size: 1176
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libx11-6_1.7.3.1+ios1_iphoneos-arm64.deb
-Size: 559896
-MD5sum: d91461e7d0132cc19645fab6936a55be
-SHA1: 0fec92ec69ecca017514750830d18b5dffa0ddbe
-SHA256: 8fcb032dbb5b47a17fe72505da0a4932d1fb6cee5214af0ca0115d924bb0a6d8
+Filename: debs/libx11-6_1.8.14+ios1_iphoneos-arm64.deb
+Size: 644738
+MD5sum: 16965f499067a2bcf009be3533e2e9c0
+SHA1: 715ac97798dfa27862a35590b790a1b5988bd30c
+SHA256: 31df6150fb877110a351be714589d038825d660f39958a7d1349e7f0be64e74c
 Icon: https://repo.maxleiter.com/icons/libx11-6.png
 Depiction: https://repo.maxleiter.com/depictions/libx11-6.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libx11-6.json
@@ -10350,17 +11012,17 @@ Homepage: https://repo.maxleiter.com
 Package: libx11-data
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: all
-Version: 1.7.3.1+ios1
+Version: 1.8.14+ios1
 Section: X11
 Priority: optional
 Description: X11 client-side library
-Installed-Size: 1852
+Installed-Size: 2000
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libx11-data_1.7.3.1+ios1_all.deb
-Size: 168440
-MD5sum: 69d7a3319d070dd370c7b8a74f783417
-SHA1: 26bcb2c869fe7c8599fcb8792dea36c3efbe3326
-SHA256: a34a771bee40a95b7ee21d4db245a9ae048f0909bfcbe245db81e2e773b5c253
+Filename: debs/libx11-data_1.8.14+ios1_all.deb
+Size: 152504
+MD5sum: b7a87a22fba410a015418e935afbdad4
+SHA1: fdb989e55a3f1a996540f20fd1926f38f3fc4f64
+SHA256: 1839bdfdab4d36fed52db6cf200a3698790e1e5fce933f26e52d431b5c3dcb60
 Icon: https://repo.maxleiter.com/icons/libx11-data.png
 Depiction: https://repo.maxleiter.com/depictions/libx11-data.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libx11-data.json
@@ -10370,23 +11032,90 @@ Homepage: https://repo.maxleiter.com
 Package: libx11-dev
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-Version: 1.7.3.1+ios2
-Depends: libx11-6 (>= 1.7.3.1), libxcb1-dev, libxdmcp-dev, libxau-dev, x11proto-dev, xtrans-dev
+MinimumOSVersion: 16.0.0
+Version: 1.8.14+ios1
+Depends: libx11-6 (= 1.8.14+ios1), libxcb1-dev, libxdmcp-dev, libxau-dev, x11proto-dev, xtrans-dev
 Section: Development
 Priority: optional
 Multi-Arch: foreign
 Description: X11 client-side library (development headers)
-Installed-Size: 4196
+Installed-Size: 1976
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libx11-dev_1.7.3.1+ios2_iphoneos-arm64.deb
-Size: 1490770
-MD5sum: 5d100b730c815b7c056e32a0c31593d1
-SHA1: 11cb8be3b939baa91c56e9bb7b6b745cb1bb7fe6
-SHA256: 16f681977d32f6e8f6203e1d348f6f5bfb90177b7820b11e85c724584e7917c2
+Filename: debs/libx11-dev_1.8.14+ios1_iphoneos-arm64.deb
+Size: 788582
+MD5sum: 9f514f49d8d9f4b4939a1adce0f74f01
+SHA1: 836c073d054cdeae713ac6157ae9ce03c3e472e4
+SHA256: 9873fabbb58886bb517111c2d188f173b28f3eb5f31a79559872bec7082bf3f3
 Icon: https://repo.maxleiter.com/icons/libx11-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libx11-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libx11-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libx11-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libx11-doc
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: all
+Version: 1.8.14+ios1
+Section: Documentation
+Priority: optional
+Description: X11 client-side library (development documentation)
+Installed-Size: 3380
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libx11-doc_1.8.14+ios1_all.deb
+Size: 801598
+MD5sum: 1a3c347c498a316d315b19c6b3ac3fe7
+SHA1: 67f1b56c0f4a9a6c5b0392830abee7a7bd44dc43
+SHA256: 5322a2abab9f6fe21594ac95fe9ec47ca2b7cd0a11344c30b6ed5edd8348ee3a
+Icon: https://repo.maxleiter.com/icons/libx11-doc.png
+Depiction: https://repo.maxleiter.com/depictions/libx11-doc.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libx11-doc.json
+Native Depiction: https://repo.maxleiter.com/depictions/libx11-doc.json
+Homepage: https://repo.maxleiter.com
+
+Package: libx11-xcb-dev
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Version: 1.8.14+ios1
+Depends: libx11-xcb1 (= 1.8.14+ios1)
+Section: Development
+Priority: optional
+Multi-Arch: foreign
+Description: Xlib/XCB interface library (development headers)
+Installed-Size: 104
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libx11-xcb-dev_1.8.14+ios1_iphoneos-arm64.deb
+Size: 9286
+MD5sum: 1f48e2e2382bf7548af2dc882012f4e9
+SHA1: 42ef0fc2ba23d1ddeef8298622ed7ad94f2114a6
+SHA256: 9fb38b8be04a97cb98a82a14453aeca17b50697a9994da497d6361d4003ed327
+Icon: https://repo.maxleiter.com/icons/libx11-xcb-dev.png
+Depiction: https://repo.maxleiter.com/depictions/libx11-xcb-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libx11-xcb-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/libx11-xcb-dev.json
+Homepage: https://repo.maxleiter.com
+
+Package: libx11-xcb1
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Version: 1.8.14+ios1
+Section: Libraries
+Priority: optional
+Multi-Arch: foreign
+Description: Xlib/XCB interface library
+Depends: libiosexec1 (>= 1.3.1)
+Installed-Size: 120
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/libx11-xcb1_1.8.14+ios1_iphoneos-arm64.deb
+Size: 9182
+MD5sum: e5a6033c13f40a1baa98050f94689208
+SHA1: b6e26b08225eca169f83d55e7526c920e5db6cff
+SHA256: 7ff80e274348b5705d386e322f8050def5b7f5bb591e8be8cd7f4975a21b74cb
+Icon: https://repo.maxleiter.com/icons/libx11-xcb1.png
+Depiction: https://repo.maxleiter.com/depictions/libx11-xcb1.html
+SileoDepiction: https://repo.maxleiter.com/depictions/libx11-xcb1.json
+Native Depiction: https://repo.maxleiter.com/depictions/libx11-xcb1.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxau-dev
@@ -10769,42 +11498,42 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxext6.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxfce4ui-2-0
-Version: 4.16.0+ios1
+Version: 4.16.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/libxfce4ui/start
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, xfconf, libstartup-notification0, libepoxy0
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, xfconf, libstartup-notification0, libepoxy0, libice6, libsm6, libintl8
 Description: GTK3 widget library for the Xfce desktop environment
 Installed-Size: 2248
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxfce4ui-2-0_4.16.0+ios1_iphoneos-arm64.deb
-Size: 340594
-MD5sum: 37ce1b2054f62381dd445af3038bfd21
-SHA1: 409bba9876ccf6c6e046de67bdfd8b93e901199c
-SHA256: 893dcd0f72daeed09b9d27b1c0e3f75b2114bcdf261fa1cb52c3a82168adc587
+Filename: debs/libxfce4ui-2-0_4.16.0+ios2_iphoneos-arm64.deb
+Size: 285728
+MD5sum: b89992093abad204c83400b72b207301
+SHA1: bb38162101445c668f49a223815da73b36612c10
+SHA256: 5f3dca113935c045ca6550a161e30a5d5aab79584aaf2e503d350024ed277e39
 Icon: https://repo.maxleiter.com/icons/libxfce4ui-2-0.png
 Depiction: https://repo.maxleiter.com/depictions/libxfce4ui-2-0.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxfce4ui-2-0.json
 Native Depiction: https://repo.maxleiter.com/depictions/libxfce4ui-2-0.json
 
 Package: libxfce4util7
-Version: 4.16.0+ios1
+Version: 4.16.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/libxfce4util/start
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libintl8
 Description: Utility library for the Xfce desktop environment
 Installed-Size: 1252
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxfce4util7_4.16.0+ios1_iphoneos-arm64.deb
-Size: 105848
-MD5sum: 4ca2003f7ab062c96bc58a7578018122
-SHA1: b4a7b705470e6042d011c3694357075cc0721042
-SHA256: 4229b960c4252a0274d9e6195d65ab97cce9a7f9720f9fb56f2106f8e6f2c84f
+Filename: debs/libxfce4util7_4.16.0+ios2_iphoneos-arm64.deb
+Size: 91712
+MD5sum: c8a76247adc8d4f0bb2c5d6686a05b34
+SHA1: badc3c90a9b702a92cde9faca4d6ccd9010122dd
+SHA256: 1211311dec484b8010c0acc06d2dc4a81e83362584f9277f2b51ec5de8e88bd1
 Icon: https://repo.maxleiter.com/icons/libxfce4util7.png
 Depiction: https://repo.maxleiter.com/depictions/libxfce4util7.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxfce4util7.json
@@ -11002,8 +11731,9 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxkbfile1.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxml2
-Version: 2.13.8+ios2
+Version: 2.13.9+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Depends: libiosexec1 (>= 1.3.1), liblzma5
 Section: Libraries
@@ -11011,11 +11741,11 @@ Priority: optional
 Description: GNOME XML library
 Installed-Size: 1160
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxml2_2.13.8+ios2_iphoneos-arm64.deb
-Size: 544650
-MD5sum: 1a8b682ae170bc1bc936404991832498
-SHA1: 963b5c24bec0680ae3d9f4446664d0784e537e23
-SHA256: 0a503a2b5b33c55afcd597eb0f6741849a059c97e22d5957023df8702bedc757
+Filename: debs/libxml2_2.13.9+ios2_iphoneos-arm64.deb
+Size: 545206
+MD5sum: 4f0bba7cd9ebb1673cf6a87f04e26269
+SHA1: 1e86b42a68e557ebb30c2d0af3799b795f6ee8e7
+SHA256: 5aa586ae499917b6ea1cd8cf6546582499bbdfbe7ddd010db268a61ff6e2daf4
 Icon: https://repo.maxleiter.com/icons/libxml2.png
 Depiction: https://repo.maxleiter.com/depictions/libxml2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxml2.json
@@ -11023,20 +11753,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxml2.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxml2-dev
-Version: 2.13.8+ios2
+Version: 2.13.9+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libxml2 (= 2.13.8+ios2), liblzma-dev
+Depends: libxml2 (= 2.13.9+ios2), liblzma-dev
 Section: Development
 Priority: optional
 Description: Development files for the GNOME XML library
 Installed-Size: 2316
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxml2-dev_2.13.8+ios2_iphoneos-arm64.deb
-Size: 818706
-MD5sum: 64e4d5c686ec9238f041849b3a597fbb
-SHA1: eeb174a251eb77bac6cd9de8d022460e1cabdcb7
-SHA256: 657a21e479dac908482e9371bbb76e2d5adfaab1437d70772bbdc67bded51167
+Filename: debs/libxml2-dev_2.13.9+ios2_iphoneos-arm64.deb
+Size: 819052
+MD5sum: 96fc8961f9f06257cdf8ea9ef87584c3
+SHA1: 570faa36196571e8a20c19cca67486a9dac26efe
+SHA256: 927cbb5a6f4027d73c7f94ded85fae77e4b98de81ffc70dcf36b79cb293bdcae
 Icon: https://repo.maxleiter.com/icons/libxml2-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libxml2-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxml2-dev.json
@@ -11044,20 +11775,21 @@ Native Depiction: https://repo.maxleiter.com/depictions/libxml2-dev.json
 Homepage: https://repo.maxleiter.com
 
 Package: libxml2-utils
-Version: 2.13.8+ios2
+Version: 2.13.9+ios2
 Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), libxml2 (= 2.13.8+ios2), libncursesw6, libreadline8, liblzma5
+Depends: libiosexec1 (>= 1.3.1), libxml2 (= 2.13.9+ios2), libncursesw6, libreadline8, liblzma5
 Section: Utilities
 Priority: optional
 Description: XML utilities
 Installed-Size: 312
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxml2-utils_2.13.8+ios2_iphoneos-arm64.deb
-Size: 105432
-MD5sum: 6c156216c7530a90b484fa8e866d3b52
-SHA1: 0960a955112d7c9dc0820e1f73122c37498222d2
-SHA256: 423363d9213c635809e7264779cb289e8e4942d06080ea852bf25a2caf7a5f38
+Filename: debs/libxml2-utils_2.13.9+ios2_iphoneos-arm64.deb
+Size: 105698
+MD5sum: 5307a5ad0cdc20b3b836156095297339
+SHA1: 813e21adb22ea9f7a2274a11280de53ffbb5703b
+SHA256: c7547305c433c91e028c9415d7b7b3dff4480d4ebca456c23d013c8f948cd80d
 Icon: https://repo.maxleiter.com/icons/libxml2-utils.png
 Depiction: https://repo.maxleiter.com/depictions/libxml2-utils.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxml2-utils.json
@@ -11086,21 +11818,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libxmlb-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libxmlb-dev.json
 
 Package: libxmlb2
-Version: 0.3.14+ios1
+Version: 0.3.14+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://github.com/hughsie/libxmlb
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, liblzma5
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, liblzma5, libzstd1
 Description: Library to help create and query binary XML blobs
 Installed-Size: 256
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxmlb2_0.3.14+ios1_iphoneos-arm64.deb
-Size: 74886
-MD5sum: 0251b36adec7f825de8fee996bfb6bed
-SHA1: 23850e4d59ae8a5983f0d890a4b7ef493e88c8d3
-SHA256: 8ca255ac21ce7f7357b12f7476acdd2608b568afa1574c394f4074ae99b1f67a
+Filename: debs/libxmlb2_0.3.14+ios2_iphoneos-arm64.deb
+Size: 74874
+MD5sum: dbc8c99811f1fc99004fb75e3dd28378
+SHA1: 407197318c62c76937b0d39bde4e07e6b701cb47
+SHA256: 3e006410295f28014b2f694e5eeff2abc448b412df739f20688acc0f92458a78
 Icon: https://repo.maxleiter.com/icons/libxmlb2.png
 Depiction: https://repo.maxleiter.com/depictions/libxmlb2.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxmlb2.json
@@ -11171,29 +11903,29 @@ SileoDepiction: https://repo.maxleiter.com/depictions/libxshmfence1.json
 Native Depiction: https://repo.maxleiter.com/depictions/libxshmfence1.json
 
 Package: libxslt1-dev
-Version: 1.1.43+ios1
+Version: 1.1.43+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://gitlab.gnome.org/GNOME/libxslt
-Depends: libxslt1.1 (= 1.1.43+ios1), libxml2-dev
+Depends: libxslt1.1 (= 1.1.43+ios2), libxml2-dev
 Description: XSLT processing library - development files
 Installed-Size: 256
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxslt1-dev_1.1.43+ios1_iphoneos-arm64.deb
-Size: 54226
-MD5sum: 2abd164abfcac3c86096b40c8f8c3eae
-SHA1: ad2dfdd3c49ea4c7d1bf2dbfd56fb07bc120f45d
-SHA256: c2404f781c916f07d44fb2fb2d76341e81fc545e15dd50f85db19e0a77494a6c
+Filename: debs/libxslt1-dev_1.1.43+ios2_iphoneos-arm64.deb
+Size: 54218
+MD5sum: 24862a58ea59ab02ee82144c614ced2a
+SHA1: 73853be8cb17f28096c6b9cd22246934750b70e2
+SHA256: 98b45e18f13d92da9152c728fd052e1be6ad3f943cabc5627411feee2e41e216
 Icon: https://repo.maxleiter.com/icons/libxslt1-dev.png
 Depiction: https://repo.maxleiter.com/depictions/libxslt1-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxslt1-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/libxslt1-dev.json
 
 Package: libxslt1.1
-Version: 1.1.43+ios1
+Version: 1.1.43+ios2
 Architecture: iphoneos-arm64
 MinimumOSVersion: 16.0.0
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
@@ -11204,11 +11936,11 @@ Depends: libiosexec1 (>= 1.3.1), libxml2
 Description: XSLT processing library
 Installed-Size: 428
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/libxslt1.1_1.1.43+ios1_iphoneos-arm64.deb
-Size: 139824
-MD5sum: 4decacad1fd479050f8dff843117449a
-SHA1: 92a8bc5cbfb9368a6de727dbbf43210d9e305370
-SHA256: 2cbd0d7abe1069bca1d6134bbf97959cb9573f2295c89d9627a9d22248445349
+Filename: debs/libxslt1.1_1.1.43+ios2_iphoneos-arm64.deb
+Size: 139970
+MD5sum: d7fa3ff2e4ffcbefce7ee98924cfffc8
+SHA1: 99545c38939b67ac79f3fb6757a40e8a5687d1cf
+SHA256: a0077dc130bf2c77b8a510c9837d488e74e417a31d7d758375c73dd7884548ac
 Icon: https://repo.maxleiter.com/icons/libxslt1.1.png
 Depiction: https://repo.maxleiter.com/depictions/libxslt1.1.html
 SileoDepiction: https://repo.maxleiter.com/depictions/libxslt1.1.json
@@ -11469,6 +12201,54 @@ Depiction: https://repo.maxleiter.com/depictions/nautilus.html
 SileoDepiction: https://repo.maxleiter.com/depictions/nautilus.json
 Native Depiction: https://repo.maxleiter.com/depictions/nautilus.json
 
+Package: nettle-bin
+Version: 3.10.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libgmp10, libnettle8 (>= 3.10.2), libhogweed6 (>= 3.10.2)
+Section: Utilities
+Priority: optional
+Homepage: http://www.lysator.liu.se/~nisse/nettle/
+Description: low level cryptographic library (binary tools)
+Replaces: nettle
+Conflicts: nettle
+Installed-Size: 476
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/nettle-bin_3.10.2+ios1_iphoneos-arm64.deb
+Size: 50238
+MD5sum: 2d1bbfa9da482b9626560e2c287ff3cf
+SHA1: e80e98912b577b82fc478945e8e7d10e43866de1
+SHA256: e5e5f45db9eab0bff1e84c94ec0a07f47fa36c2909471387a6c4633782333180
+Icon: https://repo.maxleiter.com/icons/nettle-bin.png
+Depiction: https://repo.maxleiter.com/depictions/nettle-bin.html
+SileoDepiction: https://repo.maxleiter.com/depictions/nettle-bin.json
+Native Depiction: https://repo.maxleiter.com/depictions/nettle-bin.json
+
+Package: nettle-dev
+Version: 3.10.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libnettle8 (= 3.10.2+ios1), libhogweed6 (= 3.10.2+ios1)
+Section: Development
+Priority: optional
+Homepage: http://www.lysator.liu.se/~nisse/nettle/
+Description: low level cryptographic library (development files)
+Replaces: nettle
+Conflicts: nettle
+Installed-Size: 2804
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/nettle-dev_3.10.2+ios1_iphoneos-arm64.deb
+Size: 811108
+MD5sum: f4e2a5d6a2a60031064436a5513562fa
+SHA1: f35848414eaf3fd4e89f2873ff6e05be2264621e
+SHA256: 0f4d0ffcf1c40cf0e708d1e2d85d7fad3fbe4f73f6f0540cc0e638496f22f700
+Icon: https://repo.maxleiter.com/icons/nettle-dev.png
+Depiction: https://repo.maxleiter.com/depictions/nettle-dev.html
+SileoDepiction: https://repo.maxleiter.com/depictions/nettle-dev.json
+Native Depiction: https://repo.maxleiter.com/depictions/nettle-dev.json
+
 Package: nwg-look
 Version: 1.1.1+ios1
 Architecture: iphoneos-arm64
@@ -11577,6 +12357,54 @@ Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.html
 SileoDepiction: https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.json
 Native Depiction: https://repo.maxleiter.com/depictions/openjdk-21-jre-headless.json
 Homepage: https://repo.maxleiter.com
+
+Package: p11-kit
+Version: 0.26.5+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libp11-kit0 (>= 0.26.5+ios1), p11-kit-modules (>= 0.26.5+ios1), libtasn1-6 (>= 4.21.0), libintl8, ca-certificates
+Section: Security
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://p11-glue.github.io/p11-glue/p11-kit.html
+Description: p11-glue utilities
+Installed-Size: 780
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/p11-kit_0.26.5+ios1_iphoneos-arm64.deb
+Size: 144910
+MD5sum: 0f05f1fbbe83db1490299f7f99585c87
+SHA1: e60b5ada57cd20a60127a451050fc6cc1104af14
+SHA256: 717eb81193de6ac466be4e692d9b3334320bb3db7381a0fac28c2b49728fad94
+Icon: https://repo.maxleiter.com/icons/p11-kit.png
+Depiction: https://repo.maxleiter.com/depictions/p11-kit.html
+SileoDepiction: https://repo.maxleiter.com/depictions/p11-kit.json
+Native Depiction: https://repo.maxleiter.com/depictions/p11-kit.json
+
+Package: p11-kit-modules
+Version: 0.26.5+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Conflicts: p11-kit (<< 0.26.5+ios1)
+Replaces: p11-kit (<< 0.26.5+ios1)
+Depends: libiosexec1 (>= 1.3.1), libp11-kit0 (= 0.26.5+ios1), libtasn1-6 (>= 4.21.0), libintl8, libffi8, ca-certificates
+Section: Security
+Priority: optional
+Multi-Arch: foreign
+Homepage: https://p11-glue.github.io/p11-glue/p11-kit.html
+Description: p11-glue proxy and trust modules
+Installed-Size: 1552
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/p11-kit-modules_0.26.5+ios1_iphoneos-arm64.deb
+Size: 312164
+MD5sum: 9039ffacbd32639f531aba964e5294f7
+SHA1: 1f81eb20d8d8c6d99e9ad78b3f819ae7a468eca6
+SHA256: 17d45c9df10718fec0e501fd7726879ced186141764c913672df8a7c272ee604
+Icon: https://repo.maxleiter.com/icons/p11-kit-modules.png
+Depiction: https://repo.maxleiter.com/depictions/p11-kit-modules.html
+SileoDepiction: https://repo.maxleiter.com/depictions/p11-kit-modules.json
+Native Depiction: https://repo.maxleiter.com/depictions/p11-kit-modules.json
 
 Package: papers
 Version: 46.2+ios1
@@ -11726,7 +12554,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-activities-stats-de
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-activities-stats-dev.json
 
 Package: plasma-desktop
-Version: 6.7.5+ios11
+Version: 6.7.5+ios12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: KDE
@@ -11736,32 +12564,32 @@ Depends: libiosexec1 (>= 1.3.1), qt6-base, qt6-declarative, qt6-svg, qt6-wayland
 Description: Plasma Desktop containment layer for Xios
 Installed-Size: 13404
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-desktop_6.7.5+ios11_iphoneos-arm64.deb
-Size: 2051596
-MD5sum: 4e950ec1c94e4b3987360508167542f3
-SHA1: 3afe4289b3f951f1958f003801e69730f07b64b1
-SHA256: 6b0acff89932553e9b0d76e5215d9d049250579a052bb4d37aa1a37449dad100
+Filename: debs/plasma-desktop_6.7.5+ios12_iphoneos-arm64.deb
+Size: 2051616
+MD5sum: e5d59b04cc10f74644e1a1688e85524c
+SHA1: 9f2e130f5989d86816c4474387fce706bcfbe823
+SHA256: 9f971d9df1119fd04699ce209617ba35c073b4c912ff4a722d4edd780a4a694d
 Icon: https://repo.maxleiter.com/icons/plasma-desktop.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-desktop.json
 
 Package: plasma-desktop-dev
-Version: 6.7.5+ios11
+Version: 6.7.5+ios12
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/plasma-desktop/
-Depends: plasma-desktop (= 6.7.5+ios11), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, kf6-kirigami-addons-dev, libplasma-dev, plasma-workspace-dev, plasma-activities-dev, plasma-activities-stats-dev
+Depends: plasma-desktop (= 6.7.5+ios12), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, kf6-kirigami-addons-dev, libplasma-dev, plasma-workspace-dev, plasma-activities-dev, plasma-activities-stats-dev
 Description: Development files for Plasma Desktop on Xios
 Installed-Size: 28
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-desktop-dev_6.7.5+ios11_iphoneos-arm64.deb
-Size: 1068
-MD5sum: 74c3b6eb4896498e172f6279142ae6e7
-SHA1: a967c0a698950f3f5ceae40ca33db4f3bc709c71
-SHA256: 1214485e5d48265aac5a43c489140dea0a1e6e3bae63f1d6d3ff8b1ab753935b
+Filename: debs/plasma-desktop-dev_6.7.5+ios12_iphoneos-arm64.deb
+Size: 1060
+MD5sum: 48ab455c33c3b8753a915ee03389034e
+SHA1: 059445cc71e87f8a0b3cc792d596aa39ce6a6381
+SHA256: 8ee5225b9eac5bf5904b0a8d56d1ba73f0fcb423f638b07d200752265031af1c
 Icon: https://repo.maxleiter.com/icons/plasma-desktop-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-desktop-dev.json
@@ -11935,7 +12763,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/plasma-wayland-protocols.j
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-wayland-protocols.json
 
 Package: plasma-workspace
-Version: 6.7.5+ios14
+Version: 6.7.5+ios17
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Utilities
@@ -11946,32 +12774,32 @@ Replaces: plasma-mobile (<< 6.1.5+ios21)
 Description: First-light Plasma Workspace shell for Xios
 Installed-Size: 30016
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-workspace_6.7.5+ios14_iphoneos-arm64.deb
-Size: 3675260
-MD5sum: 5433b7957b3fceb425e911150a7a35a6
-SHA1: 60e7b2c416a04fbe1139c2d32efa126fc4422e03
-SHA256: cb49c67553c1405fb790244c7d465cdd7d7c2212764ec776db3720694a6e48e1
+Filename: debs/plasma-workspace_6.7.5+ios17_iphoneos-arm64.deb
+Size: 3673484
+MD5sum: 62eb08ec8df6f9c4b77fd17d3b829aba
+SHA1: 0b330d4d980f91b9c1e1d527cd0532b27e04e646
+SHA256: f1146969133f37f2cddfd9d857356dc705384b37d2356b094032b57c6367fbf3
 Icon: https://repo.maxleiter.com/icons/plasma-workspace.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
 Native Depiction: https://repo.maxleiter.com/depictions/plasma-workspace.json
 
 Package: plasma-workspace-dev
-Version: 6.7.5+ios14
+Version: 6.7.5+ios17
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://kde.org/
-Depends: plasma-workspace (= 6.7.5+ios14), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, kf6-kquickcharts-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
+Depends: plasma-workspace (= 6.7.5+ios17), extra-cmake-modules, qt6-base-dev, qt6-declarative-dev, qt6-svg-dev, qt6-wayland-dev, qt6-5compat-dev, qcoro6-dev, kf6-kquickcharts-dev, libplasma-dev, plasma-activities-dev, plasma-activities-stats-dev, kwayland-dev, layer-shell-qt-dev
 Description: Development files for Plasma Workspace on Xios
 Installed-Size: 500
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/plasma-workspace-dev_6.7.5+ios14_iphoneos-arm64.deb
-Size: 49014
-MD5sum: 33163426b1c70746cdab16d873ddbcca
-SHA1: fb1262f7000dc6471da9d26510ea6170070ac190
-SHA256: f528ba53d52e79da7705e5c786996708671de1814731567bab0bcd4a72ff8a5e
+Filename: debs/plasma-workspace-dev_6.7.5+ios17_iphoneos-arm64.deb
+Size: 48864
+MD5sum: fe226654106de64791fbf054b1fbd7a3
+SHA1: 6c938f0738ca05b6d24617c1ef517d7fbf9be3ff
+SHA256: 066f7b3f48fa13fee10a3f6268c017d0911f014fb4c758db90fc36f0cdab9174
 Icon: https://repo.maxleiter.com/icons/plasma-workspace-dev.png
 Depiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/plasma-workspace-dev.json
@@ -12257,7 +13085,7 @@ SileoDepiction: https://repo.maxleiter.com/depictions/qt6-base-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-base-dev.json
 
 Package: qt6-declarative
-Version: 6.10.3+ios1
+Version: 6.10.3+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
@@ -12265,34 +13093,34 @@ Priority: optional
 Homepage: https://www.qt.io/
 Depends: libiosexec1 (>= 1.3.1), qt6-base
 Description: Qt 6 QML and QtQuick for the Xios desktop
-Installed-Size: 60012
+Installed-Size: 60208
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-declarative_6.10.3+ios1_iphoneos-arm64.deb
-Size: 11649874
-MD5sum: 9162f0f8d8675cec80c2d708f5901ae4
-SHA1: 047730f3c4105750c666e381a5d350afd20acfe5
-SHA256: 971c2e7c1d045631f1b80def00bf0033724c0ee7a3238d699a31969313caa1f9
+Filename: debs/qt6-declarative_6.10.3+ios3_iphoneos-arm64.deb
+Size: 11724948
+MD5sum: 49bef13a6b7c49196ce19f03740f8c94
+SHA1: f9bcad9dfeefd97387bb01be19c8cda724f0961f
+SHA256: e7d3823f583f4f5606eb691355b8ecf4b86b4a2d8913777d4523b7f9ed480879
 Icon: https://repo.maxleiter.com/icons/qt6-declarative.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-declarative.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-declarative.json
 Native Depiction: https://repo.maxleiter.com/depictions/qt6-declarative.json
 
 Package: qt6-declarative-dev
-Version: 6.10.3+ios1
+Version: 6.10.3+ios3
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Development
 Priority: optional
 Homepage: https://www.qt.io/
-Depends: libiosexec1 (>= 1.3.1), qt6-declarative (= 6.10.3+ios1), qt6-base-dev, qt6-shadertools-dev
+Depends: libiosexec1 (>= 1.3.1), qt6-declarative (= 6.10.3+ios3), qt6-base-dev, qt6-shadertools-dev
 Description: Development files for Qt 6 QML and QtQuick
-Installed-Size: 16900
+Installed-Size: 16944
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/qt6-declarative-dev_6.10.3+ios1_iphoneos-arm64.deb
-Size: 989392
-MD5sum: 63c9d95da064aa85a01e8c00c24a747e
-SHA1: f39990a4942f91edacfacc86a61220eeee82f421
-SHA256: 2c74c0213d74cc9b369c9b0932aee2c65119842fa8a988efa3c6f7d2e99c57d1
+Filename: debs/qt6-declarative-dev_6.10.3+ios3_iphoneos-arm64.deb
+Size: 993694
+MD5sum: 9fd4f446cbaf75027120673257c34eb2
+SHA1: 04e8aeb10d5d9ee7f590380a2746bd88a171f2eb
+SHA256: 03fa3848d5297eb4eb33b4ef5d10c7e1dd908514440b100909a7e0b289dccded
 Icon: https://repo.maxleiter.com/icons/qt6-declarative-dev.png
 Depiction: https://repo.maxleiter.com/depictions/qt6-declarative-dev.html
 SileoDepiction: https://repo.maxleiter.com/depictions/qt6-declarative-dev.json
@@ -12656,22 +13484,45 @@ Depiction: https://repo.maxleiter.com/depictions/slurp.html
 SileoDepiction: https://repo.maxleiter.com/depictions/slurp.json
 Native Depiction: https://repo.maxleiter.com/depictions/slurp.json
 
+Package: sndfile-programs
+Version: 1.2.2+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Depends: libiosexec1 (>= 1.3.1), libsndfile1 (>= 1.2.2+ios1), libflac8, libvorbis0a, libvorbisenc2, libopus0, libogg0
+Section: Utilities 
+Priority: standard
+Description: Sample programs that use libsndfile
+Installed-Size: 804
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/sndfile-programs_1.2.2+ios1_iphoneos-arm64.deb
+Size: 61286
+MD5sum: 885ec4d72699fb6b9c7e712ac5c49dac
+SHA1: 15029e3ab9787b00bc549104836845d4c36c8b31
+SHA256: 5f9f83f91d75c3a78e8cae65a32afa50f8011f4cc3c557f1be3450e16f37e229
+Icon: https://repo.maxleiter.com/icons/sndfile-programs.png
+Depiction: https://repo.maxleiter.com/depictions/sndfile-programs.html
+SileoDepiction: https://repo.maxleiter.com/depictions/sndfile-programs.json
+Native Depiction: https://repo.maxleiter.com/depictions/sndfile-programs.json
+Homepage: https://repo.maxleiter.com
+
 Package: sqlite3
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Architecture: iphoneos-arm64
-Version: 3.52.0+ios3
-Depends: libiosexec1 (>= 1.3.1), libsqlite3-1 (= 3.52.0+ios3), libreadline8, libncursesw6
+MinimumOSVersion: 16.0.0
+Version: 3.53.4+ios3
+Depends: libiosexec1 (>= 1.3.1), libsqlite3-1 (= 3.53.4+ios3), libreadline8, libncursesw6
 Section: Data_Storage
 Priority: standard
 Description: Command line interface for SQLite 3
 Homepage: https://www.sqlite.org/
 Installed-Size: 360
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/sqlite3_3.52.0+ios3_iphoneos-arm64.deb
-Size: 150400
-MD5sum: 4d1a3136629b1df376ff52e508ac5079
-SHA1: 673abbf447f5a8429cd0846a27c7c12171b37c02
-SHA256: c70529ff300dab598d53c3a4adfb3811d7d1b7f82bc0aa1d9407e2fe34a7e1d3
+Filename: debs/sqlite3_3.53.4+ios3_iphoneos-arm64.deb
+Size: 151600
+MD5sum: ba5b9a62ccbd6358fcefc07aeb652aa5
+SHA1: 5bcc928ff1dc220b2c2509a8fae7deef8f523c6a
+SHA256: 778f1aa782e9c928246665be1e93768bced5939d841b4156bb7078d5d0135de8
 Icon: https://repo.maxleiter.com/icons/sqlite3.png
 Depiction: https://repo.maxleiter.com/depictions/sqlite3.html
 SileoDepiction: https://repo.maxleiter.com/depictions/sqlite3.json
@@ -12763,40 +13614,40 @@ SileoDepiction: https://repo.maxleiter.com/depictions/systemsettings-dev.json
 Native Depiction: https://repo.maxleiter.com/depictions/systemsettings-dev.json
 
 Package: thunar
-Version: 4.16.11+ios1
+Version: 4.16.11+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11/Wayland Apps
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/thunar/start
-Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0
+Depends: libgtkintl, libiosexec1 (>= 1.3.1), libglib2.0-0, libgtk-3-0, libgdk-pixbuf-2.0-0, libxfce4util7, libxfce4ui-2-0, libexo-2-0, libice6, libsm6, libintl8
 Description: File manager for the Xfce desktop environment
 Installed-Size: 6780
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/thunar_4.16.11+ios1_iphoneos-arm64.deb
-Size: 1381666
-MD5sum: aa8b07e4343a8ffa60464fa8d8b29f8b
-SHA1: 4a80f509b06f110ebf0813af4bcb2f475fde5b28
-SHA256: b87bdd19fd15a06d295e2b63da24ca9d827b6b1a0e1c1ffe117af59e0566c664
+Filename: debs/thunar_4.16.11+ios2_iphoneos-arm64.deb
+Size: 1051434
+MD5sum: 4e9600853fa547881ebd4af75f6b80c3
+SHA1: d71a1e9c71b9f81fb13d1e7299cdb60b3e25aed3
+SHA256: f4e8cb079b563b21e682790d4bdc04ef83ebb68c9fe35a059faf5f805ac1ba8f
 Icon: https://repo.maxleiter.com/icons/thunar.png
 Depiction: https://repo.maxleiter.com/depictions/thunar.html
 SileoDepiction: https://repo.maxleiter.com/depictions/thunar.json
 Native Depiction: https://repo.maxleiter.com/depictions/thunar.json
 
 Package: tigervnc-common
-Version: 1.11.0+rootless1
+Version: 1.11.0+rootless2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: X11
 Description: Virtual network computing; Common software needed by servers
-Depends: libiosexec1 (>= 1.3.1)
+Depends: libiosexec1 (>= 1.3.1), libsm6, libice6, libx11-6, libxext6, libjpeg62-turbo, libpixman-1-0, libgnutls30
 Installed-Size: 380
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/tigervnc-common_1.11.0+rootless1_iphoneos-arm64.deb
-Size: 57026
-MD5sum: 9b2468419e773fcc96c487de37b5e931
-SHA1: a48507c5f9b18d5f489fbcecdd5075dd97ab34f2
-SHA256: fa25a790178873ac0ec90babf53ee637bfe4fe4ffaf9bd84ed0b7b9d9bf525e6
+Filename: debs/tigervnc-common_1.11.0+rootless2_iphoneos-arm64.deb
+Size: 57020
+MD5sum: 7c22a2ea8a2c2d320cdebbf3464d3de6
+SHA1: f65b1aa0a0121b8c50740a74fd065080d2acd047
+SHA256: b36380eb245a87bf1d4deb6e9533a42ab78b00013c97688f76853686ed89d7af
 Icon: https://repo.maxleiter.com/icons/tigervnc-common.png
 Depiction: https://repo.maxleiter.com/depictions/tigervnc-common.html
 SileoDepiction: https://repo.maxleiter.com/depictions/tigervnc-common.json
@@ -12804,20 +13655,20 @@ Native Depiction: https://repo.maxleiter.com/depictions/tigervnc-common.json
 Homepage: https://repo.maxleiter.com
 
 Package: tigervnc-scraping-server
-Version: 1.11.0+rootless1
+Version: 1.11.0+rootless2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libiosexec1 (>= 1.3.1), xauth, libgl1, libgeneral0, libmd0, libgnutls30, libjpeg62-turbo, libpam2, libpixman-1-0, libx11-6, libxau6, libxdmcp6, libxdamage1, libxfont2, perl, xkbcomp, xkeyboard-config, tigervnc-common
+Depends: libiosexec1 (>= 1.3.1), xauth, libgl1, libgeneral0, libmd0, libgnutls30, libjpeg62-turbo, libpam2, libpixman-1-0, libx11-6, libxau6, libxdmcp6, libxdamage1, libxfont2, perl, xkbcomp, xkeyboard-config, tigervnc-common, libxtst6, libxfixes3, libxrandr2, libsm6, libice6, libxext6
 Provides: vnc-server
 Section: X11
 Description: Virtual network computing server performing X screen scraping
 Installed-Size: 628
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/tigervnc-scraping-server_1.11.0+rootless1_iphoneos-arm64.deb
-Size: 216646
-MD5sum: 3a047b3aa696763a0934da2ed4c930a3
-SHA1: 00a9663440b6f5c3033224450be2658c1de8529b
-SHA256: a3116211eb2fec1c5bb4b96032d803862f9ff89c9e661ef30f7c213d4035c521
+Filename: debs/tigervnc-scraping-server_1.11.0+rootless2_iphoneos-arm64.deb
+Size: 216636
+MD5sum: c800342b93a0504cab99de75fc2f85c8
+SHA1: 67fa836a0265441284fae18ecb25c894fc508685
+SHA256: 8e3c6fd13bc5a5405549f2c737811ba0ac9ee96ce2248973bf42a34e293a3b59
 Icon: https://repo.maxleiter.com/icons/tigervnc-scraping-server.png
 Depiction: https://repo.maxleiter.com/depictions/tigervnc-scraping-server.html
 SileoDepiction: https://repo.maxleiter.com/depictions/tigervnc-scraping-server.json
@@ -13100,21 +13951,21 @@ SileoDepiction: https://repo.maxleiter.com/depictions/xdg-desktop-portal-kde.jso
 Native Depiction: https://repo.maxleiter.com/depictions/xdg-desktop-portal-kde.json
 
 Package: xfconf
-Version: 4.16.0+ios1
+Version: 4.16.0+ios2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Section: Libraries
 Priority: optional
 Homepage: https://docs.xfce.org/xfce/xfconf/start
-Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libxfce4util7, dbus
+Depends: libiosexec1 (>= 1.3.1), libglib2.0-0, libxfce4util7, dbus, libintl8
 Description: Configuration storage and query system for Xfce
 Installed-Size: 1556
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Filename: debs/xfconf_4.16.0+ios1_iphoneos-arm64.deb
-Size: 178784
-MD5sum: 9264da4920d51ddf259bbe601958df33
-SHA1: f91f5bda4334019c28e708475afc899abea5cf4c
-SHA256: 84b82139e24ea87a020e6b4d68a0a5705a6fa1d411bedc4e28947f0a0b3eee79
+Filename: debs/xfconf_4.16.0+ios2_iphoneos-arm64.deb
+Size: 150676
+MD5sum: 73f80046414b67d5278f846f3c04fd8b
+SHA1: cea2cd4435f7fdd6c84983d9446ac83d59ec22e9
+SHA256: 39f6d39a3883fa630c02520f20fccf5e32e1310dcbe02aa8ff2e676a6b1b023a
 Icon: https://repo.maxleiter.com/icons/xfconf.png
 Depiction: https://repo.maxleiter.com/depictions/xfconf.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xfconf.json
@@ -13206,19 +14057,19 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-desktop-stublibs
 Name: Xios desktop compatibility libraries
-Version: 0.1.1
+Version: 0.1.2
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
-Depends: libglib2.0-0
+Depends: libglib2.0-0, libintl8
 Section: X11
 Priority: optional
 Description: iOS compatibility libraries for the GNOME desktop stack
-Filename: debs/xios-desktop-stublibs_0.1.1_iphoneos-arm64.deb
-Size: 13472
-MD5sum: 89077720228744f3db0e6deb07193562
-SHA1: 2aa0158919b1c479b576a5a93d4aa3d60be63062
-SHA256: 5f6b51a1d7cdf3911c6ee63f7f67192b423244ef993dc28af9ff14ae854b5acd
+Filename: debs/xios-desktop-stublibs_0.1.2_iphoneos-arm64.deb
+Size: 12154
+MD5sum: dbb1e6d7f38338e38b630a4d6ac14449
+SHA1: 687a9271aa5ec59ae157701ac17f8f86af0f1b41
+SHA256: 03002e06ebe54519893eb3a24396bc3498a0b1e2d68dfae8a1238c8f3aab9c90
 Icon: https://repo.maxleiter.com/icons/xios-desktop-stublibs.png
 Depiction: https://repo.maxleiter.com/depictions/xios-desktop-stublibs.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-desktop-stublibs.json
@@ -13359,7 +14210,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-launcher-tools
 Name: Xios Home Screen launcher tools
-Version: 0.1.14
+Version: 0.1.15
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -13371,11 +14222,11 @@ Priority: optional
 MinimumOSVersion: 16.5.0
 Installed-Size: 880
 Description: on-device iPad Home Screen app sync for Xios
-Filename: debs/xios-launcher-tools_0.1.14_iphoneos-arm64.deb
-Size: 218280
-MD5sum: 48df7248126ecd8fe42f3d431e33bc54
-SHA1: 7620effb91db2f49dfa5491cca67fbc706a5c009
-SHA256: 9222bf79320313cdf042fb4b0dafbfcc336205469c1a9f0a3b5f86b6db629d3e
+Filename: debs/xios-launcher-tools_0.1.15_iphoneos-arm64.deb
+Size: 218666
+MD5sum: cd42377ed19666704c741317aeae77bf
+SHA1: 97fed2e0db61df401b4dd1363a72dd1c1fb15cf3
+SHA256: 3a49539d5e4828aa60d64ceb7e8b8dfadf360222c590e5f22af45b95d8ddc754
 Icon: https://repo.maxleiter.com/icons/xios-launcher-tools.png
 Depiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-launcher-tools.json
@@ -13449,7 +14300,7 @@ Homepage: https://repo.maxleiter.com
 
 Package: xios-session
 Name: Xios session launcher
-Version: 1.0.85
+Version: 1.0.86
 Architecture: iphoneos-arm64
 Maintainer: Max Leiter <maxwell.leiter@gmail.com>
 Author: Max Leiter <maxwell.leiter@gmail.com>
@@ -13462,11 +14313,11 @@ Section: X11
 Priority: optional
 Installed-Size: 208
 Description: pick-a-desktop session launcher for the Xios stack
-Filename: debs/xios-session_1.0.85_iphoneos-arm64.deb
-Size: 59196
-MD5sum: ef3c7aebd0fe5d4654d9737588415002
-SHA1: 95c14c0809386268819d16fdbb69fc3f251a7cc7
-SHA256: 09fe6cb6b7725dcd7432979ed4ff4144ac0ef250b542a6c2053793eb9469afde
+Filename: debs/xios-session_1.0.86_iphoneos-arm64.deb
+Size: 59394
+MD5sum: 04ff00042c7c90bf322de08921469f45
+SHA1: 3842d3c7d4993fe60938846614814ea73a3d9694
+SHA256: fc2bf1ae9b273edcf4a5ffbdec601b6b86107e6e3f008ccf26395d95081add2d
 Icon: https://repo.maxleiter.com/icons/xios-session.png
 Depiction: https://repo.maxleiter.com/depictions/xios-session.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xios-session.json
@@ -13576,6 +14427,55 @@ Icon: https://repo.maxleiter.com/icons/xwayland.png
 Depiction: https://repo.maxleiter.com/depictions/xwayland.html
 SileoDepiction: https://repo.maxleiter.com/depictions/xwayland.json
 Native Depiction: https://repo.maxleiter.com/depictions/xwayland.json
+
+Package: xz-utils
+Version: 5.8.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Replaces: xz, lzma
+Conflicts: xz (<<1:0), lzma (<<3:0)
+Provides: xz (=1:0), lzma (=3:0)
+Depends: libiosexec1 (>= 1.3.1), liblzma5 (>= 5.8.4+ios1), libintl8
+Section: Archiving
+Priority: standard
+Homepage: https://tukaani.org/xz/
+Description: XZ-format compression utilities
+Installed-Size: 1252
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/xz-utils_5.8.4+ios1_iphoneos-arm64.deb
+Size: 257758
+MD5sum: b443472067398578362e7db1bf0f19c7
+SHA1: 2c2cae19a1e3cbe81058817b08d3a88c1909e84a
+SHA256: ff62231ae76fec6d915b83cd8e06b53cc39b1573f74e18911257552f642cbbad
+Icon: https://repo.maxleiter.com/icons/xz-utils.png
+Depiction: https://repo.maxleiter.com/depictions/xz-utils.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xz-utils.json
+Native Depiction: https://repo.maxleiter.com/depictions/xz-utils.json
+
+Package: xzdec
+Version: 5.8.4+ios1
+Architecture: iphoneos-arm64
+MinimumOSVersion: 16.0.0
+Maintainer: Max Leiter <maxwell.leiter@gmail.com>
+Replaces: xz, lzma
+Conflicts: xz (<<1:0), lzma (<<3:0)
+Depends: libiosexec1 (>= 1.3.1), libintl8
+Section: Archiving
+Priority: optional
+Homepage: https://tukaani.org/xz/
+Description: XZ-format compression utilities - tiny decompressors
+Installed-Size: 320
+Author: Max Leiter <maxwell.leiter@gmail.com>
+Filename: debs/xzdec_5.8.4+ios1_iphoneos-arm64.deb
+Size: 82978
+MD5sum: b3b14c47ac37bcdf5a5907ab7ea790fb
+SHA1: dcef5f620bce42347fec4bac5d37e679623ca134
+SHA256: e132761817daccb5240509533751d40ebfe99168d90bffd3ee428bcc8cbfe86a
+Icon: https://repo.maxleiter.com/icons/xzdec.png
+Depiction: https://repo.maxleiter.com/depictions/xzdec.html
+SileoDepiction: https://repo.maxleiter.com/depictions/xzdec.json
+Native Depiction: https://repo.maxleiter.com/depictions/xzdec.json
 
 Package: yad
 Version: 15.0+ios1
